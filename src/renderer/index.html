@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' app: data: blob:; script-src 'self' app: 'unsafe-inline' 'unsafe-eval'; style-src 'self' app: 'unsafe-inline'; img-src 'self' app: local-file: data: blob:; media-src 'self' app: local-file: data: blob:; font-src 'self' app: data:; connect-src 'self' app: local-file:"
+    />
+    <title>Vditor Desktop</title>
+    <link rel="stylesheet" href="app://app/vditor/dist/index.css" />
+    <link rel="stylesheet" href="app://app/styles/app.css" />
+  </head>
+  <body>
+    <div id="app">
+      <div id="windowTitlebar" class="window-titlebar">
+        <nav id="appMenuBar" class="app-menu-bar">
+          <button data-menu="file" data-i18n="menu.file">File</button>
+          <button data-menu="edit" data-i18n="menu.edit">Edit</button>
+          <button data-menu="view" data-i18n="menu.view">View</button>
+          <button data-menu="help" data-i18n="menu.help">Help</button>
+        </nav>
+        <div id="windowTitle" class="window-title">Vditor Desktop</div>
+        <div class="window-controls">
+          <button id="windowMinimize" aria-label="Minimize">
+            <svg viewBox="0 0 12 12"><path d="M1 8.5h10" /></svg>
+          </button>
+          <button id="windowMaximize" aria-label="Maximize">
+            <svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="9" height="9" /></svg>
+          </button>
+          <button id="windowClose" class="close" aria-label="Close">
+            <svg viewBox="0 0 12 12"><path d="m2 2 8 8M10 2 2 10" /></svg>
+          </button>
+        </div>
+      </div>
+      <header class="titlebar" aria-label="应用工具栏">
+        <div class="app-tools">
+          <button
+            id="toggleSidebar"
+            class="icon-btn"
+            data-i18n-title="toolbar.toggleSidebar"
+            aria-label="Toggle Sidebar"
+          >
+            <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
+          </button>
+          <button
+            id="newFile"
+            class="icon-btn"
+            data-i18n-title="toolbar.newFile"
+            aria-label="New File"
+          >
+            <svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v5h5M12 11v6M9 14h6" /></svg>
+          </button>
+          <button
+            id="openFile"
+            class="icon-btn"
+            data-i18n-title="toolbar.openFile"
+            aria-label="Open File"
+          >
+            <svg viewBox="0 0 24 24"><path d="M3 7h7l2 2h9l-3 10H5zM3 7v12h2" /></svg>
+          </button>
+          <button
+            id="saveFile"
+            class="icon-btn"
+            data-i18n-title="toolbar.saveFile"
+            aria-label="Save File"
+          >
+            <svg viewBox="0 0 24 24"><path d="M5 3h12l2 2v16H5zM8 3v6h8V3M8 21v-7h8v7" /></svg>
+          </button>
+          <button
+            id="settingsButton"
+            class="icon-btn"
+            data-i18n-title="toolbar.settings"
+            aria-label="Settings"
+          >
+            <svg viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="3" />
+              <path
+                d="M9.6 3h4.8l.55 2.15 1.35.78 2.14-.63 2.4 4.15-1.6 1.52v1.56l1.6 1.52-2.4 4.15-2.14-.63-1.35.78L14.4 21H9.6l-.55-2.15-1.35-.78-2.14.63-2.4-4.15 1.6-1.52v-1.56l-1.6-1.52 2.4-4.15 2.14.63 1.35-.78z"
+              />
+            </svg>
+          </button>
+        </div>
+        <div id="vditorToolbarMount" class="vditor-toolbar-mount"></div>
+      </header>
+      <div class="workbench">
+        <aside id="sidebar" class="sidebar">
+          <div class="sidebar-tabs">
+            <button data-view="files" class="active" data-i18n="sidebar.files">Files</button
+            ><button data-view="outline" data-i18n="sidebar.outline">Outline</button>
+          </div>
+          <section id="filesView" class="sidebar-view active">
+            <div class="side-toolbar">
+              <button id="workspaceHeading" class="workspace-heading" title="Open Folder">
+                <svg viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M2.5 5.5h5l1.6 2h8.4v8.5h-15z" />
+                  <path d="M2.5 7.5v-3h5l1.6 2h8.4v1" />
+                </svg>
+                <span id="workspaceName" data-i18n="sidebar.noWorkspace">No workspace opened</span>
+              </button>
+              <button id="refreshTree" data-i18n-title="sidebar.refresh" title="Refresh">↻</button>
+            </div>
+            <div id="fileTree" class="tree">
+              <button id="openFolderEmpty" class="empty-action" data-i18n="sidebar.openFolder">
+                Open Folder
+              </button>
+            </div>
+          </section>
+          <section id="outlineView" class="sidebar-view">
+            <div class="panel-heading" data-i18n="sidebar.documentOutline">Document Outline</div>
+            <nav id="outlineTree" class="outline-tree">
+              <div class="empty" data-i18n="sidebar.noHeadings">No headings</div>
+            </nav>
+          </section>
+          <div id="sidebarResize" class="sidebar-resize"></div>
+        </aside>
+        <main class="main-area">
+          <div id="tabBar" class="tabbar">
+            <button id="addTab" class="add-tab" data-i18n-title="tab.new" title="New Tab">
+              ＋
+            </button>
+          </div>
+          <div id="editorArea" class="editor-area">
+            <div id="noTabs" class="no-tabs hidden">
+              <div data-i18n="empty.noTabs">No opened tabs</div>
+              <div class="no-tabs-actions">
+                <button id="emptyNewFile" data-i18n="empty.newFile">New File</button
+                ><button id="emptyOpenFile" data-i18n="empty.openFile">Open File</button>
+              </div>
+            </div>
+          </div>
+          <footer class="statusbar">
+            <div class="status-left">
+              <span id="statusPath"></span><span id="statusMessage"></span>
+            </div>
+            <div class="status-right">
+              <span id="statusMode">IR</span><span id="statusWords">0 词</span
+              ><span id="statusChars">0 字符</span><span id="statusLines">1 行</span>
+              <span id="statusEncoding">UTF-8</span><span id="statusLineEnding">LF</span>
+              <button
+                id="statusSettings"
+                class="status-icon"
+                data-i18n-title="toolbar.settings"
+                aria-label="Settings"
+              >
+                <svg viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="3" />
+                  <path
+                    d="M9.6 3h4.8l.55 2.15 1.35.78 2.14-.63 2.4 4.15-1.6 1.52v1.56l1.6 1.52-2.4 4.15-2.14-.63-1.35.78L14.4 21H9.6l-.55-2.15-1.35-.78-2.14.63-2.4-4.15 1.6-1.52v-1.56l-1.6-1.52 2.4-4.15 2.14.63 1.35-.78z"
+                  />
+                </svg>
+              </button>
+              <label
+                class="theme-switch"
+                data-i18n-title="status.toggleTheme"
+                aria-label="Toggle color theme"
+              >
+                <input id="statusThemeToggle" type="checkbox" />
+                <span aria-hidden="true"></span>
+              </label>
+              <span id="statusVersion">v0.1.0</span>
+            </div>
+          </footer>
+        </main>
+      </div>
+    </div>
+
+    <div id="settingsModal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-card settings-card">
+        <header>
+          <h2 data-i18n="settings.title">Settings</h2>
+          <button class="modal-close" data-close="settingsModal">×</button>
+        </header>
+        <div class="settings-layout">
+          <nav class="settings-nav">
+            <button class="active" data-panel="appearance" data-i18n="settings.appearance">
+              Appearance</button
+            ><button data-panel="fonts" data-i18n="settings.fonts">Fonts</button
+            ><button data-panel="editor" data-i18n="settings.editor">Editor</button>
+            <button data-panel="preview" data-i18n="settings.preview">Preview</button
+            ><button data-panel="files" data-i18n="settings.files">Files & Session</button
+            ><button data-panel="advanced" data-i18n="settings.advanced">Advanced</button>
+          </nav>
+          <form id="settingsForm" class="settings-content">
+            <section data-settings-panel="appearance" class="active">
+              <h3 data-i18n="settings.appearance">Appearance</h3>
+              <label data-i18n-label="settings.language"
+                >Language<select name="locale">
+                  <option value="system" data-i18n="locale.system">System</option>
+                  <option value="en_US">English</option>
+                  <option value="zh_CN">简体中文</option>
+                </select></label
+              >
+              <label class="check"
+                ><input name="systemTheme" type="checkbox" />
+                <span data-i18n="settings.followSystemTheme">Follow system theme</span></label
+              >
+              <label data-i18n-label="settings.appTheme"
+                >App theme<select name="theme">
+                  <option value="classic" data-i18n="theme.light">Light</option>
+                  <option value="dark" data-i18n="theme.dark">Dark</option>
+                </select></label
+              >
+              <label data-i18n-label="settings.contentTheme"
+                >Content theme<select name="contentTheme">
+                  <option value="light">Light</option>
+                  <option value="ant-design">Ant Design</option>
+                  <option value="wechat">WeChat</option>
+                  <option value="dark">Dark</option>
+                </select></label
+              >
+              <label data-i18n-label="settings.codeTheme"
+                >Code theme<select name="codeTheme">
+                  <option value="github">GitHub</option>
+                  <option value="monokai">Monokai</option>
+                  <option value="dracula">Dracula</option>
+                  <option value="vs">Visual Studio</option>
+                </select></label
+              >
+              <h3 data-i18n="settings.zoom">Zoom</h3>
+              <label data-i18n-label="settings.uiZoom"
+                >UI zoom<select name="uiZoom">
+                  <option>75</option>
+                  <option>80</option>
+                  <option>90</option>
+                  <option>100</option>
+                  <option>110</option>
+                  <option>125</option>
+                  <option>150</option>
+                  <option>175</option>
+                  <option>200</option>
+                </select></label
+              >
+              <label data-i18n-label="settings.editorZoom"
+                >Editor zoom<select name="editorZoom">
+                  <option>75</option>
+                  <option>80</option>
+                  <option>90</option>
+                  <option>100</option>
+                  <option>110</option>
+                  <option>125</option>
+                  <option>150</option>
+                  <option>175</option>
+                  <option>200</option>
+                </select></label
+              >
+              <label id="previewZoomSetting" data-i18n-label="settings.previewZoom"
+                >Preview zoom<select name="previewZoom">
+                  <option>75</option>
+                  <option>80</option>
+                  <option>90</option>
+                  <option>100</option>
+                  <option>110</option>
+                  <option>125</option>
+                  <option>150</option>
+                  <option>175</option>
+                  <option>200</option>
+                </select></label
+              >
+            </section>
+            <section data-settings-panel="fonts">
+              <h3 data-i18n="settings.fonts">Fonts</h3>
+              <h4 class="settings-subheading" data-i18n="settings.interfaceFonts">Interface</h4>
+              <label data-i18n-label="settings.uiFont"
+                >UI font<input name="uiFontFamily" type="text"
+              /></label>
+              <h4 class="settings-subheading" data-i18n="settings.sourceFonts">
+                Split-view source editor
+              </h4>
+              <label data-i18n-label="settings.sourceFont"
+                >Split-view source font<input name="editorFontFamily" type="text"
+              /></label>
+              <label data-i18n-label="settings.sourceFontSize"
+                >Split-view source size<input name="editorFontSize" type="number" min="10" max="36"
+              /></label>
+              <h4 class="settings-subheading" data-i18n="settings.renderedFonts">
+                Rendered editor and preview
+              </h4>
+              <label data-i18n-label="settings.renderedFont"
+                >Rendered text font<input name="previewFontFamily" type="text"
+              /></label>
+              <label data-i18n-label="settings.renderedFontSize"
+                >Rendered text size<input name="previewFontSize" type="number" min="10" max="36"
+              /></label>
+              <label data-i18n-label="settings.codeFont"
+                >Rendered code font<input name="previewCodeFontFamily" type="text"
+              /></label>
+              <label data-i18n-label="settings.codeFontSize"
+                >Rendered code size<input name="previewCodeFontSize" type="number" min="9" max="36"
+              /></label>
+            </section>
+            <section data-settings-panel="editor">
+              <h3 data-i18n="settings.editor">Editor</h3>
+              <label data-i18n-label="settings.defaultMode"
+                >Default mode<select name="editMode">
+                  <option value="wysiwyg">WYSIWYG</option>
+                  <option value="ir" data-i18n="mode.ir">Instant Rendering</option>
+                  <option value="sv" data-i18n="mode.sv">Split View</option>
+                </select></label
+              >
+              <label class="check"
+                ><input name="tabInsertSpaces" type="checkbox" />
+                <span data-i18n="settings.tabInsertSpaces"
+                  >Insert spaces when pressing Tab</span
+                ></label
+              >
+              <label data-i18n-label="settings.tabSize"
+                >Tab space count<select name="tabSize">
+                  <option value="2">2</option>
+                  <option value="4">4</option>
+                  <option value="6">6</option>
+                  <option value="8">8</option>
+                </select></label
+              >
+              <label class="check"
+                ><input name="showWhitespace" type="checkbox" />
+                <span data-i18n="settings.showWhitespace"
+                  >Show spaces as dots in split view</span
+                ></label
+              >
+              <label class="check"
+                ><input name="autoIndent" type="checkbox" />
+                <span data-i18n="settings.autoIndent">Automatic indentation</span></label
+              >
+              <label class="check"
+                ><input name="typewriterMode" type="checkbox" />
+                <span data-i18n="settings.typewriter">Typewriter mode</span></label
+              >
+              <label class="check"
+                ><input name="wordWrap" type="checkbox" />
+                <span data-i18n="settings.wordWrap">Word wrap</span></label
+              >
+              <label class="check"
+                ><input name="rtl" type="checkbox" />
+                <span data-i18n="settings.rtl">Right-to-left layout</span></label
+              >
+              <h4 class="settings-subheading" data-i18n="settings.editorLayout">Editor layout</h4>
+              <label class="range-setting" data-i18n-label="settings.editorTextWidth"
+                >Text paragraph width
+                <span class="range-control"
+                  ><input
+                    id="editorTextWidth"
+                    name="editorTextWidth"
+                    type="range"
+                    min="40"
+                    max="100"
+                    step="1"
+                  /><output id="editorTextWidthValue" for="editorTextWidth">100%</output></span
+                ></label
+              >
+              <p class="muted" data-i18n="settings.editorTextWidthHint">
+                Applies to WYSIWYG and Instant Rendering modes.
+              </p>
+            </section>
+            <section data-settings-panel="preview">
+              <h3 data-i18n="settings.previewMarkdown">Preview & Markdown</h3>
+              <label data-i18n-label="settings.previewDelay"
+                >Render delay (ms)<input name="previewDelay" type="number" min="0" max="5000"
+              /></label>
+              <label data-i18n-label="settings.previewWidth"
+                >Preview max width<input name="previewMaxWidth" type="number" min="320" max="2400"
+              /></label>
+              <label data-i18n-label="settings.mathEngine"
+                >Math engine<select name="mathEngine">
+                  <option>KaTeX</option>
+                  <option>MathJax</option>
+                </select></label
+              >
+              <div class="check-grid">
+                <label
+                  ><input name="enableHighlight" type="checkbox" />
+                  <span data-i18n="settings.codeHighlight">Code highlighting</span></label
+                ><label
+                  ><input name="lineNumbers" type="checkbox" />
+                  <span data-i18n="settings.lineNumbers">Line numbers</span></label
+                >
+                <label
+                  ><input name="enableAutoSpace" type="checkbox" />
+                  <span data-i18n="settings.autoSpace">Auto spacing</span></label
+                ><label><input name="enableCallout" type="checkbox" /> Callout</label>
+                <label
+                  ><input name="enableFootnotes" type="checkbox" />
+                  <span data-i18n="settings.footnotes">Footnotes</span></label
+                ><label
+                  ><input name="enableImageCaption" type="checkbox" />
+                  <span data-i18n="settings.imageCaption">Image captions</span></label
+                >
+                <label
+                  ><input name="enableMark" type="checkbox" />
+                  <span data-i18n="settings.mark">Mark syntax</span></label
+                ><label
+                  ><input name="enableSub" type="checkbox" />
+                  <span data-i18n="settings.subscript">Subscript</span></label
+                >
+                <label
+                  ><input name="enableSup" type="checkbox" />
+                  <span data-i18n="settings.superscript">Superscript</span></label
+                ><label
+                  ><input name="toc" type="checkbox" />
+                  <span data-i18n="settings.toc">Table of contents</span></label
+                >
+                <label
+                  ><input name="gfmAutoLink" type="checkbox" />
+                  <span data-i18n="settings.autoLink">Auto link</span></label
+                ><label
+                  ><input name="sanitize" type="checkbox" />
+                  <span data-i18n="settings.sanitize">Sanitize XSS</span></label
+                >
+              </div>
+            </section>
+            <section data-settings-panel="files">
+              <h3 data-i18n="settings.files">Files & Session</h3>
+              <label class="check"
+                ><input name="restoreTabs" type="checkbox" />
+                <span data-i18n="settings.restoreTabs">Restore tabs at startup</span></label
+              >
+              <label class="check"
+                ><input name="restoreWorkspace" type="checkbox" />
+                <span data-i18n="settings.restoreWorkspace"
+                  >Restore workspace at startup</span
+                ></label
+              >
+              <label class="check"
+                ><input name="autoSave" type="checkbox" />
+                <span data-i18n="settings.autoSave">Auto save</span></label
+              >
+              <label data-i18n-label="settings.autoSaveDelay"
+                >Auto-save delay (ms)<input
+                  name="autoSaveDelay"
+                  type="number"
+                  min="250"
+                  max="60000"
+              /></label>
+              <label data-i18n-label="settings.imageDirectory"
+                >Image directory<input name="pasteImagesDir" type="text"
+              /></label>
+              <label data-i18n-label="settings.imageMaxWidth"
+                >Image max width<input name="imageMaxWidth" type="number" min="0" max="10000"
+              /></label>
+              <label data-i18n-label="settings.imageQuality"
+                >Image quality<input
+                  name="imageQuality"
+                  type="number"
+                  min="0.1"
+                  max="1"
+                  step="0.05"
+              /></label>
+            </section>
+            <section data-settings-panel="advanced">
+              <h3 data-i18n="settings.advanced">Advanced</h3>
+              <button id="resetSettings" type="button" class="danger" data-i18n="settings.reset">
+                Restore defaults
+              </button>
+              <div id="versionInfo" class="version-info"></div>
+            </section>
+          </form>
+        </div>
+        <footer>
+          <button id="openSettingsFolder" type="button" class="settings-path-button">
+            <span id="settingsPath"></span>
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M2.5 5.5h5l1.6 2h8.4v8.5h-15z" />
+              <path d="M2.5 7.5v-3h5l1.6 2h8.4v1" />
+            </svg></button
+          ><button id="resetSettingsPage" type="button" data-i18n="settings.resetPage">
+            Reset This Page</button
+          ><button id="saveSettings" class="primary" data-i18n="settings.save">
+            Save Settings
+          </button>
+        </footer>
+      </div>
+    </div>
+    <div id="contextMenu" class="context-menu hidden"></div>
+    <script src="app://app/vditor/dist/index.min.js"></script>
+    <script src="app://app/locales.js"></script>
+    <script src="app://app/app.js"></script>
+  </body>
+</html>
