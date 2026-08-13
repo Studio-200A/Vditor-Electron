@@ -95,9 +95,9 @@ style="width: 128px; height: auto;" />
 
 ### 当前平台状态
 
-- **Linux x86_64：**主要开发和验证平台，可生成 Portable 与 AppImage。
-- **Windows：**已包含配置目录和窗口界面适配，尚未完成正式安装包实机验收。
-- **macOS：**已包含配置目录和原生红绿灯按钮适配，尚未完成正式 App 构建实机验收。
+- Linux：主要开发和验证平台，可生成 Portable 与 AppImage。
+- Windows：已包含配置目录和窗口界面适配，尚未完成正式安装包实机验收。
+- macOS：已包含配置目录和原生红绿灯按钮适配，尚未完成正式 App 构建实机验收。
 
 项目尚处于 pre-alpha 阶段，目前建议从源码运行，或自行构建 Linux 便携产物。
 
