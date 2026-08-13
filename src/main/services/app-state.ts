@@ -2,9 +2,12 @@ export interface AppSettings {
   restoreTabs: boolean;
   restoreWorkspace: boolean;
   systemTheme: boolean;
-  theme: 'classic' | 'dark';
+  theme: 'classic' | 'dark' | 'monokai-pro-dark';
+  lastDarkTheme: 'dark' | 'monokai-pro-dark';
   contentTheme: string;
   codeTheme: string;
+  lightCodeTheme: string;
+  darkCodeTheme: string;
   iconSet: 'ant' | 'material';
   locale: string;
   uiFontFamily: string;
@@ -37,6 +40,7 @@ export interface AppSettings {
   toolbarItems: string[];
   previewDelay: number;
   previewMaxWidth: number;
+  multiPlatformPreview: boolean;
   mathEngine: 'KaTeX' | 'MathJax';
   enableHighlight: boolean;
   lineNumbers: boolean;
@@ -63,6 +67,7 @@ export interface AppSettings {
   toolbarVisible: boolean;
   windowBounds: { x: number | undefined; y: number | undefined; width: number; height: number };
   windowMaximized: boolean;
+  settingsDialogSize: { width: number; height: number; customized: boolean };
   defaultOpenPath: string;
   recentPaths: string[];
   recentFiles: RecentFile[];
@@ -87,8 +92,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   restoreWorkspace: true,
   systemTheme: true,
   theme: 'classic',
+  lastDarkTheme: 'dark',
   contentTheme: 'light',
   codeTheme: 'github',
+  lightCodeTheme: 'github',
+  darkCodeTheme: 'monokai',
   iconSet: 'ant',
   locale: 'system',
   uiFontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
@@ -121,6 +129,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   toolbarItems: [],
   previewDelay: 1000,
   previewMaxWidth: 800,
+  multiPlatformPreview: false,
   mathEngine: 'KaTeX',
   enableHighlight: true,
   lineNumbers: false,
@@ -147,6 +156,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   toolbarVisible: true,
   windowBounds: { x: undefined, y: undefined, width: 1200, height: 800 },
   windowMaximized: false,
+  settingsDialogSize: { width: 1080, height: 780, customized: false },
   defaultOpenPath: '',
   recentPaths: [],
   recentFiles: [],

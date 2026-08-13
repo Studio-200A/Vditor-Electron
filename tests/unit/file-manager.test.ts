@@ -82,16 +82,11 @@ describe('FileManagerService', () => {
     expect(entries.map((entry) => entry.name)).toEqual(['folder', 'note2.md', 'note10.md']);
   });
 
-  it('renames and moves items', async () => {
+  it('renames items', async () => {
     const original = path.join(root, 'old.md');
-    const destinationDir = path.join(root, 'archive');
     fs.writeFileSync(original, 'content');
-    fs.mkdirSync(destinationDir);
 
-    const renamed = await service.renameItem(original, 'new.md');
-    await expect(service.moveItem(renamed, destinationDir)).resolves.toBe(
-      path.join(destinationDir, 'new.md'),
-    );
+    await expect(service.renameItem(original, 'new.md')).resolves.toBe(path.join(root, 'new.md'));
   });
 
   it('writes image bytes without text conversion', async () => {

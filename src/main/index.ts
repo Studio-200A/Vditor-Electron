@@ -1,8 +1,11 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, screen, shell } from 'electron';
+import * as fs from 'node:fs';
 import * as path from 'path';
 import { watch, FSWatcher } from 'chokidar';
+import { resolveApplicationPaths } from './app-paths';
 import { registerAppProtocol } from './protocol';
 import { createAppMenu } from './menu';
+import { extractOpenFilePaths } from './open-files';
 import { FileManagerService } from './services/file-manager';
 import { SettingsStore } from './services/settings-store';
 import { AppSettings, DEFAULT_SETTINGS } from './services/app-state';
@@ -12,31 +15,195 @@ let fileManager: FileManagerService;
 let settingsStore: SettingsStore;
 let watcher: FSWatcher | null = null;
 let closeConfirmed = false;
+let boundsBeforeMaximize: Electron.Rectangle | null = null;
+let windowMaximizedState = false;
+let windowBoundsSaveTimer: NodeJS.Timeout | null = null;
+let rendererReady = false;
+let pendingOpenFiles: string[] = [];
 
-function getEffectiveLocale(settings = settingsStore.getAll()): 'en_US' | 'zh_CN' {
-  if (settings.locale === 'zh_CN' || settings.locale === 'en_US') return settings.locale;
-  return app.getLocale().toLowerCase().startsWith('zh') ? 'zh_CN' : 'en_US';
+const applicationPaths = resolveApplicationPaths();
+fs.mkdirSync(applicationPaths.chromiumDir, { recursive: true });
+app.setPath('userData', applicationPaths.chromiumDir);
+app.setPath('sessionData', applicationPaths.chromiumDir);
+
+function isWindowMaximized(): boolean {
+  return windowMaximizedState;
 }
 
-function tr(english: string, chinese: string): string {
-  return getEffectiveLocale() === 'zh_CN' ? chinese : english;
+function persistWindowMaximized(maximized: boolean): void {
+  windowMaximizedState = maximized;
+  settingsStore.set('windowMaximized', maximized);
+}
+
+function persistNormalWindowBounds(): void {
+  if (!mainWindow || windowMaximizedState || mainWindow.isMaximized() || mainWindow.isFullScreen())
+    return;
+  const bounds = mainWindow.getBounds();
+  if (isMaximizedLikeBounds(bounds)) return;
+  boundsBeforeMaximize = { ...bounds };
+  settingsStore.set('windowBounds', {
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+  });
+}
+
+function scheduleNormalWindowBoundsSave(): void {
+  if (windowBoundsSaveTimer) clearTimeout(windowBoundsSaveTimer);
+  windowBoundsSaveTimer = setTimeout(() => {
+    windowBoundsSaveTimer = null;
+    persistNormalWindowBounds();
+  }, 400);
+}
+
+function isMaximizedLikeBounds(bounds: Electron.Rectangle): boolean {
+  const workArea = screen.getDisplayMatching(bounds).workArea;
+  const aligned = Math.abs(bounds.x - workArea.x) <= 32 && Math.abs(bounds.y - workArea.y) <= 32;
+  return aligned && bounds.width >= workArea.width * 0.9 && bounds.height >= workArea.height * 0.9;
+}
+
+function initialWindowBounds(settings: AppSettings): Electron.Rectangle {
+  const saved = settings.windowBounds;
+  const display =
+    saved.x !== undefined && saved.y !== undefined
+      ? screen.getDisplayMatching({
+          x: saved.x,
+          y: saved.y,
+          width: saved.width,
+          height: saved.height,
+        })
+      : screen.getPrimaryDisplay();
+  const workArea = display.workArea;
+  const candidate = {
+    x: saved.x ?? workArea.x + Math.round((workArea.width - saved.width) / 2),
+    y: saved.y ?? workArea.y + Math.round((workArea.height - saved.height) / 2),
+    width: saved.width,
+    height: saved.height,
+  };
+  if (!isMaximizedLikeBounds(candidate)) return candidate;
+  const width = Math.min(DEFAULT_SETTINGS.windowBounds.width, Math.max(760, workArea.width - 80));
+  const height = Math.min(
+    DEFAULT_SETTINGS.windowBounds.height,
+    Math.max(520, workArea.height - 80),
+  );
+  const repaired = {
+    x: workArea.x + Math.round((workArea.width - width) / 2),
+    y: workArea.y + Math.round((workArea.height - height) / 2),
+    width,
+    height,
+  };
+  settingsStore.set('windowBounds', repaired);
+  return repaired;
+}
+
+function toggleWindowMaximized(): void {
+  if (!mainWindow) return;
+  if (windowMaximizedState || mainWindow.isMaximized()) {
+    const target = boundsBeforeMaximize
+      ? { ...boundsBeforeMaximize }
+      : mainWindow.getNormalBounds();
+    persistWindowMaximized(false);
+    mainWindow.once('unmaximize', () => {
+      const restoreBounds = () => {
+        if (mainWindow && !mainWindow.isMaximized() && !mainWindow.isFullScreen()) {
+          const current = mainWindow.getBounds();
+          if (
+            current.x !== target.x ||
+            current.y !== target.y ||
+            current.width !== target.width ||
+            current.height !== target.height
+          ) {
+            mainWindow.setBounds(target);
+            mainWindow.setPosition(target.x, target.y);
+          }
+        }
+      };
+      // Some Linux window managers apply their own (0, 0) position after the
+      // unmaximize event. Re-check while and after the native transition settles.
+      [100, 350, 800, 1400].forEach((delay) => setTimeout(restoreBounds, delay));
+    });
+    mainWindow.unmaximize();
+  } else {
+    boundsBeforeMaximize = mainWindow.getBounds();
+    settingsStore.set('windowBounds', { ...boundsBeforeMaximize });
+    persistWindowMaximized(true);
+    mainWindow.maximize();
+  }
+}
+
+type AppLocale = 'en_US' | 'zh_Hans' | 'zh_Hant';
+
+function resolveSystemLocale(language: string): AppLocale {
+  const normalized = language.replace('_', '-').toLowerCase();
+  if (!normalized.startsWith('zh')) return 'en_US';
+  return /(?:^|-)hant(?:-|$)|(?:^|-)(?:tw|hk|mo)(?:-|$)/.test(normalized) ? 'zh_Hant' : 'zh_Hans';
+}
+
+function getEffectiveLocale(settings = settingsStore.getAll()): AppLocale {
+  if (['en_US', 'zh_Hans', 'zh_Hant'].includes(settings.locale)) {
+    return settings.locale as AppLocale;
+  }
+  return resolveSystemLocale(app.getLocale());
+}
+
+function tr(english: string, simplifiedChinese: string, traditionalChinese: string): string {
+  const locale = getEffectiveLocale();
+  if (locale === 'zh_Hans') return simplifiedChinese;
+  if (locale === 'zh_Hant') return traditionalChinese;
+  return english;
 }
 
 function send(channel: string, ...args: unknown[]): void {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, ...args);
 }
 
+function flushPendingOpenFiles(): void {
+  if (!rendererReady || !pendingOpenFiles.length || !mainWindow || mainWindow.isDestroyed()) return;
+  const paths = pendingOpenFiles;
+  pendingOpenFiles = [];
+  send('app:openFiles', paths);
+}
+
+function queueOpenFiles(paths: readonly string[]): void {
+  pendingOpenFiles = [...new Set([...pendingOpenFiles, ...paths])];
+  flushPendingOpenFiles();
+}
+
+function revealMainWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  if (!mainWindow.isVisible()) mainWindow.show();
+  mainWindow.focus();
+}
+
+function initialWindowBackground(settings: AppSettings): string {
+  const theme = settings.systemTheme
+    ? nativeTheme.shouldUseDarkColors
+      ? settings.lastDarkTheme
+      : 'classic'
+    : settings.theme;
+  if (theme === 'monokai-pro-dark') return '#2d2a2e';
+  return theme === 'dark' ? '#17181a' : '#f7f7f8';
+}
+
 function createWindow(): void {
   const settings = settingsStore.getAll();
+  const normalBounds = initialWindowBounds(settings);
   const options: Electron.BrowserWindowConstructorOptions = {
-    width: settings.windowBounds.width,
-    height: settings.windowBounds.height,
+    width: normalBounds.width,
+    height: normalBounds.height,
     minWidth: 760,
     minHeight: 520,
     title: 'Vditor Desktop',
-    backgroundColor: settings.theme === 'dark' ? '#181818' : '#ffffff',
+    backgroundColor: process.platform === 'linux' ? initialWindowBackground(settings) : '#00000000',
+    transparent: process.platform === 'win32',
+    hasShadow: true,
+    roundedCorners: true,
+    resizable: true,
     frame: process.platform === 'darwin',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
+    trafficLightPosition: process.platform === 'darwin' ? { x: 14, y: 9 } : undefined,
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -45,33 +212,47 @@ function createWindow(): void {
       sandbox: false,
     },
   };
-  if (settings.windowBounds.x !== undefined && settings.windowBounds.y !== undefined) {
-    options.x = settings.windowBounds.x;
-    options.y = settings.windowBounds.y;
-  }
+  options.x = normalBounds.x;
+  options.y = normalBounds.y;
   mainWindow = new BrowserWindow(options);
+  rendererReady = false;
+  mainWindow.webContents.on('did-start-loading', () => {
+    rendererReady = false;
+  });
+  windowMaximizedState = settings.windowMaximized;
+  boundsBeforeMaximize = { ...normalBounds };
   if (settings.windowMaximized) mainWindow.maximize();
   mainWindow.once('ready-to-show', () => mainWindow?.show());
   mainWindow.on('enter-full-screen', () => send('window:fullscreenChanged', true));
   mainWindow.on('leave-full-screen', () => send('window:fullscreenChanged', false));
+  mainWindow.on('maximize', () => {
+    persistWindowMaximized(true);
+    send('window:maximizedChanged', true);
+  });
+  mainWindow.on('unmaximize', () => {
+    persistWindowMaximized(false);
+    send('window:maximizedChanged', false);
+    scheduleNormalWindowBoundsSave();
+  });
+  mainWindow.on('move', scheduleNormalWindowBoundsSave);
+  mainWindow.on('resize', scheduleNormalWindowBoundsSave);
   void mainWindow.loadURL('app://app/index.html');
   mainWindow.on('close', (event) => {
     if (!mainWindow) return;
-    const bounds = mainWindow.getBounds();
-    settingsStore.set('windowBounds', {
-      x: bounds.x,
-      y: bounds.y,
-      width: bounds.width,
-      height: bounds.height,
-    });
-    settingsStore.set('windowMaximized', mainWindow.isMaximized());
+    if (!windowMaximizedState) persistNormalWindowBounds();
+    settingsStore.set('windowMaximized', windowMaximizedState);
     if (!closeConfirmed) {
       event.preventDefault();
       send('app:requestClose');
     }
   });
   mainWindow.on('closed', () => {
+    if (windowBoundsSaveTimer) clearTimeout(windowBoundsSaveTimer);
+    windowBoundsSaveTimer = null;
     mainWindow = null;
+    rendererReady = false;
+    boundsBeforeMaximize = null;
+    windowMaximizedState = false;
   });
 }
 
@@ -87,7 +268,7 @@ async function chooseSavePath(
 function registerIpcHandlers(): void {
   ipcMain.handle('file:openDialog', async () => {
     const result = await dialog.showOpenDialog(mainWindow!, {
-      title: tr('Open Markdown Files', '打开 Markdown 文件'),
+      title: tr('Open Markdown Files', '打开 Markdown 文件', '開啟 Markdown 檔案'),
       filters: [
         { name: 'Markdown', extensions: ['md', 'markdown', 'mdown', 'mkd', 'mkdn'] },
         { name: 'All Files', extensions: ['*'] },
@@ -98,16 +279,20 @@ function registerIpcHandlers(): void {
   });
   ipcMain.handle('file:openFolderDialog', async () => {
     const result = await dialog.showOpenDialog(mainWindow!, {
-      title: tr('Open Folder', '打开文件夹'),
+      title: tr('Open Folder', '打开文件夹', '開啟資料夾'),
       properties: ['openDirectory'],
     });
     return result.canceled ? null : result.filePaths[0];
   });
   ipcMain.handle('file:saveDialog', (_event, defaultPath?: string) =>
-    chooseSavePath(tr('Save Markdown File', '保存 Markdown 文件'), defaultPath || 'untitled.md', [
-      { name: 'Markdown', extensions: ['md', 'markdown'] },
-      { name: 'All Files', extensions: ['*'] },
-    ]),
+    chooseSavePath(
+      tr('Save Markdown File', '保存 Markdown 文件', '儲存 Markdown 檔案'),
+      defaultPath || 'untitled.md',
+      [
+        { name: 'Markdown', extensions: ['md', 'markdown'] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
+    ),
   );
   ipcMain.handle('file:exportDialog', (_event, type: 'html' | 'pdf', defaultPath?: string) =>
     chooseSavePath(`Export ${type.toUpperCase()}`, defaultPath || `document.${type}`, [
@@ -131,9 +316,6 @@ function registerIpcHandlers(): void {
   ipcMain.handle('file:rename', (_event, oldPath: string, newName: string) =>
     fileManager.renameItem(oldPath, newName),
   );
-  ipcMain.handle('file:move', (_event, source: string, destination: string) =>
-    fileManager.moveItem(source, destination),
-  );
   ipcMain.handle('file:delete', async (_event, filePath: string) =>
     shell.trashItem(path.resolve(filePath)),
   );
@@ -154,17 +336,27 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('app:getSettings', () => settingsStore.getAll());
+  ipcMain.on('app:rendererReady', (event) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return;
+    rendererReady = true;
+    flushPendingOpenFiles();
+  });
   ipcMain.handle('app:getDefaultSettings', () => structuredClone(DEFAULT_SETTINGS));
   ipcMain.handle('app:saveSettings', (_event, settings: Partial<AppSettings>) => {
     const savedSettings = settingsStore.update(settings);
-    if (Object.hasOwn(settings, 'locale') && process.platform === 'darwin')
-      Menu.setApplicationMenu(createAppMenu(getEffectiveLocale()));
+    if (
+      process.platform === 'darwin' &&
+      (Object.hasOwn(settings, 'locale') || Object.hasOwn(settings, 'editMode'))
+    )
+      Menu.setApplicationMenu(
+        createAppMenu(getEffectiveLocale(savedSettings), savedSettings.editMode),
+      );
     return savedSettings;
   });
   ipcMain.handle('app:resetSettings', () => {
     const settings = settingsStore.reset();
     if (process.platform === 'darwin')
-      Menu.setApplicationMenu(createAppMenu(getEffectiveLocale(settings)));
+      Menu.setApplicationMenu(createAppMenu(getEffectiveLocale(settings), settings.editMode));
     return settings;
   });
   ipcMain.handle('app:getSettingsPath', () => settingsStore.getPath());
@@ -180,10 +372,12 @@ function registerIpcHandlers(): void {
     nativeTheme.shouldUseDarkColors ? 'dark' : 'classic',
   );
   ipcMain.handle('app:isFullscreen', () => mainWindow?.isFullScreen() || false);
+  ipcMain.handle('app:isMaximized', () => isWindowMaximized());
   ipcMain.handle('app:getInfo', () => ({
     app: app.getVersion(),
     electron: process.versions.electron,
     node: process.versions.node,
+    platform: process.platform,
     vditor: '3.11.3',
   }));
   ipcMain.handle('app:setZoomFactor', (_event, zoom: number) => {
@@ -199,21 +393,6 @@ function registerIpcHandlers(): void {
   });
   ipcMain.handle('app:showItemInFolder', (_event, filePath: string) =>
     shell.showItemInFolder(path.resolve(filePath)),
-  );
-  ipcMain.handle(
-    'app:confirm',
-    async (_event, options: { title?: string; message: string; detail?: string }) => {
-      const result = await dialog.showMessageBox(mainWindow!, {
-        type: 'question',
-        title: options.title || 'Vditor Desktop',
-        message: options.message,
-        detail: options.detail,
-        buttons: [tr('Cancel', '取消'), tr('Continue', '继续')],
-        defaultId: 1,
-        cancelId: 0,
-      });
-      return result.response === 1;
-    },
   );
   ipcMain.handle('app:exportPDF', async (_event, html: string, defaultPath?: string) => {
     const output = await chooseSavePath('Export PDF', defaultPath || 'document.pdf', [
@@ -236,9 +415,7 @@ function registerIpcHandlers(): void {
   ipcMain.on('app:toggleFullscreen', () => mainWindow?.setFullScreen(!mainWindow.isFullScreen()));
   ipcMain.on('window:minimize', () => mainWindow?.minimize());
   ipcMain.on('window:maximize', () => {
-    if (!mainWindow) return;
-    if (mainWindow.isMaximized()) mainWindow.unmaximize();
-    else mainWindow.maximize();
+    toggleWindowMaximized();
   });
   ipcMain.on('window:close', () => mainWindow?.close());
   ipcMain.on('app:closeConfirmed', () => {
@@ -247,22 +424,41 @@ function registerIpcHandlers(): void {
   });
 }
 
-app.whenReady().then(() => {
-  registerAppProtocol();
-  settingsStore = new SettingsStore(process.env.VDITOR_DESKTOP_CONFIG_DIR);
-  fileManager = new FileManagerService();
-  registerIpcHandlers();
-  Menu.setApplicationMenu(
-    process.platform === 'darwin' ? createAppMenu(getEffectiveLocale()) : null,
-  );
-  nativeTheme.on('updated', () =>
-    send('app:systemThemeChanged', nativeTheme.shouldUseDarkColors ? 'dark' : 'classic'),
-  );
-  createWindow();
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+const ownsSingleInstanceLock = app.requestSingleInstanceLock();
+
+if (!ownsSingleInstanceLock) {
+  app.quit();
+} else {
+  queueOpenFiles(extractOpenFilePaths(process.argv));
+  app.on('second-instance', (_event, argv, workingDirectory) => {
+    queueOpenFiles(extractOpenFilePaths(argv, workingDirectory));
+    revealMainWindow();
   });
-});
+  app.on('open-file', (event, filePath) => {
+    event.preventDefault();
+    queueOpenFiles(extractOpenFilePaths([filePath]));
+    revealMainWindow();
+  });
+
+  void app.whenReady().then(() => {
+    registerAppProtocol();
+    settingsStore = new SettingsStore(applicationPaths.configDir);
+    fileManager = new FileManagerService();
+    registerIpcHandlers();
+    Menu.setApplicationMenu(
+      process.platform === 'darwin'
+        ? createAppMenu(getEffectiveLocale(), settingsStore.get('editMode'))
+        : null,
+    );
+    nativeTheme.on('updated', () =>
+      send('app:systemThemeChanged', nativeTheme.shouldUseDarkColors ? 'dark' : 'classic'),
+    );
+    createWindow();
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

@@ -7,6 +7,10 @@ coverage/
 test-results/
 playwright-report/
 .cache/
+.agents/
+.codex/
+.tmp/
+tmp/
 .eslintcache
 *.tsbuildinfo
 *.js.map

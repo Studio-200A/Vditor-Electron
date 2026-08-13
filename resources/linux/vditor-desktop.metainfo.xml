@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.github.studio200a.VditorDesktop</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Vditor Desktop</name>
+  <summary>Offline Markdown editor powered by Vditor</summary>
+  <summary xml:lang="zh-CN">基于 Vditor 的离线 Markdown 编辑器</summary>
+  <description>
+    <p>Vditor Desktop is an offline Markdown editor with WYSIWYG, instant-rendering, and split-view editing modes.</p>
+    <p xml:lang="zh-CN">Vditor Desktop 是一款支持所见即所得、即时渲染和分栏编辑模式的离线 Markdown 编辑器。</p>
+  </description>
+  <launchable type="desktop-id">com.github.studio200a.VditorDesktop.desktop</launchable>
+  <provides>
+    <mediatype>text/markdown</mediatype>
+  </provides>
+  <url type="homepage">https://github.com/Studio-200A/Vditor-Electron</url>
+  <url type="bugtracker">https://github.com/Studio-200A/Vditor-Electron/issues</url>
+  <developer id="com.github.studio200a">
+    <name>Studio 200A</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+</component>

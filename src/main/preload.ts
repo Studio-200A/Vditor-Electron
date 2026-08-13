@@ -23,8 +23,6 @@ contextBridge.exposeInMainWorld('fileAPI', {
     ipcRenderer.invoke('file:create', parent, name, type),
   renameItem: (oldPath: string, newName: string) =>
     ipcRenderer.invoke('file:rename', oldPath, newName),
-  moveItem: (source: string, destination: string) =>
-    ipcRenderer.invoke('file:move', source, destination),
   deleteItem: (filePath: string) => ipcRenderer.invoke('file:delete', filePath),
   basename: (filePath: string) => ipcRenderer.invoke('file:basename', filePath),
   dirname: (filePath: string) => ipcRenderer.invoke('file:dirname', filePath),
@@ -36,6 +34,7 @@ contextBridge.exposeInMainWorld('fileAPI', {
 });
 
 contextBridge.exposeInMainWorld('appAPI', {
+  platform: process.platform,
   getSettings: () => ipcRenderer.invoke('app:getSettings'),
   getDefaultSettings: () => ipcRenderer.invoke('app:getDefaultSettings'),
   saveSettings: (settings: Record<string, unknown>) =>
@@ -46,12 +45,11 @@ contextBridge.exposeInMainWorld('appAPI', {
   getSystemLocale: () => ipcRenderer.invoke('app:getSystemLocale'),
   getSystemTheme: () => ipcRenderer.invoke('app:getSystemTheme'),
   isFullscreen: () => ipcRenderer.invoke('app:isFullscreen'),
+  isMaximized: () => ipcRenderer.invoke('app:isMaximized'),
   getInfo: () => ipcRenderer.invoke('app:getInfo'),
   setZoomFactor: (zoom: number) => ipcRenderer.invoke('app:setZoomFactor', zoom),
   openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
   showItemInFolder: (filePath: string) => ipcRenderer.invoke('app:showItemInFolder', filePath),
-  confirm: (options: { title?: string; message: string; detail?: string }) =>
-    ipcRenderer.invoke('app:confirm', options),
   exportPDF: (html: string, defaultPath?: string) =>
     ipcRenderer.invoke('app:exportPDF', html, defaultPath),
   toggleFullscreen: () => ipcRenderer.send('app:toggleFullscreen'),
@@ -61,6 +59,10 @@ contextBridge.exposeInMainWorld('appAPI', {
   onRequestClose: (callback: () => void) => on('app:requestClose', callback),
   onFullscreenChanged: (callback: (fullscreen: boolean) => void) =>
     on('window:fullscreenChanged', callback),
+  onMaximizedChanged: (callback: (maximized: boolean) => void) =>
+    on('window:maximizedChanged', callback),
+  onOpenFiles: (callback: (paths: string[]) => void) => on('app:openFiles', callback),
+  rendererReady: () => ipcRenderer.send('app:rendererReady'),
   closeConfirmed: () => ipcRenderer.send('app:closeConfirmed'),
   minimize: () => ipcRenderer.send('window:minimize'),
   maximize: () => ipcRenderer.send('window:maximize'),

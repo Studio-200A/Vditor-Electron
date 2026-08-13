@@ -3,6 +3,7 @@
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+  const VDITOR = window.VditorDesktopAdapter;
   const state = {
     tabs: [],
     activeId: null,
@@ -40,7 +41,6 @@
     'undo',
     'redo',
     '|',
-    'fullscreen',
     'edit-mode',
     'both',
     'preview',
@@ -51,24 +51,95 @@
   let messageTimer;
   let appMenuCloseHandler;
   let settingsSaveTimer;
+  let settingsCloseTimer;
+  let confirmResolver;
+  let treeNameFrame;
+  let treeNameMeasureContext;
 
   function resolveLocale(locale) {
     if (locale && locale !== 'system' && LOCALES[locale]) return locale;
-    return /^zh(?:-|_)/i.test(navigator.language) ? 'zh_CN' : 'en_US';
+    const language = navigator.language.replace('_', '-').toLowerCase();
+    if (!language.startsWith('zh')) return 'en_US';
+    return /(?:^|-)hant(?:-|$)|(?:^|-)(?:tw|hk|mo)(?:-|$)/.test(language) ? 'zh_Hant' : 'zh_Hans';
   }
 
   function t(key, params = {}) {
     const table = LOCALES[state.locale] || LOCALES.en_US || {};
-    const fallback = (LOCALES.en_US || {})[key] || key;
-    return String(table[key] || fallback).replace(
-      /\{(\w+)\}/g,
-      (_match, name) => params[name] ?? `{${name}}`,
+    const english = LOCALES.en_US || {};
+    const fallback = Object.prototype.hasOwnProperty.call(english, key) ? english[key] : key;
+    const value = Object.prototype.hasOwnProperty.call(table, key) ? table[key] : fallback;
+    return String(value).replace(/\{(\w+)\}/g, (_match, name) => params[name] ?? `{${name}}`);
+  }
+
+  function updateMaximizedState(maximized) {
+    document.body.classList.toggle('window-maximized', maximized);
+    const button = $('#windowMaximize');
+    const key = maximized ? 'window.restore' : 'window.maximize';
+    button.dataset.i18nTitle = key;
+    button.title = t(key);
+    button.setAttribute('aria-label', t(key));
+  }
+
+  function closeConfirmDialog(action = 'cancel') {
+    if (!confirmResolver) return;
+    const resolve = confirmResolver;
+    confirmResolver = null;
+    $('#confirmModal').classList.add('hidden');
+    $('#confirmActions').replaceChildren();
+    resolve(action);
+  }
+
+  function showConfirmDialog({ title, message, detail = '', actions } = {}) {
+    if (confirmResolver) closeConfirmDialog('cancel');
+    const modal = $('#confirmModal');
+    $('#confirmTitle').textContent = title || t('dialog.confirmTitle');
+    $('#confirmMessage').textContent = message || '';
+    $('#confirmDetail').textContent = detail;
+    const availableActions = actions || [
+      { id: 'cancel', label: t('dialog.cancel') },
+      { id: 'confirm', label: t('dialog.continue'), primary: true },
+    ];
+    const actionHost = $('#confirmActions');
+    availableActions.forEach((action) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = action.label;
+      button.dataset.action = action.id;
+      if (action.primary) button.classList.add('primary');
+      if (action.danger) button.classList.add('danger');
+      button.onclick = () => closeConfirmDialog(action.id);
+      actionHost.append(button);
+    });
+    modal.classList.remove('hidden');
+    requestAnimationFrame(() =>
+      (actionHost.querySelector('.primary') || actionHost.querySelector('button'))?.focus(),
     );
+    return new Promise((resolve) => {
+      confirmResolver = resolve;
+    });
+  }
+
+  async function confirmDialog(options) {
+    return (await showConfirmDialog(options)) === 'confirm';
+  }
+
+  function showUnsavedDialog(message, detail = '') {
+    return showConfirmDialog({
+      title: t('dialog.unsavedTitle'),
+      message,
+      detail,
+      actions: [
+        { id: 'cancel', label: t('dialog.cancel') },
+        { id: 'discard', label: t('dialog.dontSave') },
+        { id: 'save', label: t('dialog.save'), primary: true },
+      ],
+    });
   }
 
   function applyLocale(locale) {
     state.locale = resolveLocale(locale);
-    document.documentElement.lang = state.locale === 'zh_CN' ? 'zh-CN' : 'en-US';
+    document.documentElement.lang =
+      state.locale === 'zh_Hans' ? 'zh-Hans' : state.locale === 'zh_Hant' ? 'zh-Hant' : 'en-US';
     $$('[data-i18n]').forEach((node) => {
       node.textContent = t(node.dataset.i18n);
     });
@@ -137,6 +208,44 @@
       : '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.5h6l4 4v11H5z"/><path d="M11 2.5v4h4"/></svg>';
   }
 
+  function middleEllipsis(value, availableWidth, style) {
+    if (!treeNameMeasureContext) {
+      treeNameMeasureContext = document.createElement('canvas').getContext('2d');
+    }
+    if (!treeNameMeasureContext || availableWidth <= 0) return value;
+    treeNameMeasureContext.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    const measure = (text) => treeNameMeasureContext.measureText(text).width;
+    if (measure(value) <= availableWidth) return value;
+    const characters = Array.from(value);
+    const ellipsis = '...';
+    for (let kept = characters.length - 1; kept > 1; kept -= 1) {
+      const leading = Math.ceil(kept / 2);
+      const trailing = Math.floor(kept / 2);
+      const candidate = `${characters.slice(0, leading).join('')}${ellipsis}${characters
+        .slice(characters.length - trailing)
+        .join('')}`;
+      if (measure(candidate) <= availableWidth) return candidate;
+    }
+    return ellipsis;
+  }
+
+  function updateTreeNameEllipses() {
+    treeNameFrame = null;
+    $$('.tree-name', $('#fileTree')).forEach((name) => {
+      if (!name.clientWidth) return;
+      name.textContent = middleEllipsis(
+        name.dataset.fullName || '',
+        name.clientWidth,
+        getComputedStyle(name),
+      );
+    });
+  }
+
+  function scheduleTreeNameEllipses() {
+    if (treeNameFrame) return;
+    treeNameFrame = requestAnimationFrame(updateTreeNameEllipses);
+  }
+
   function showMessage(message, error = false) {
     const target = $('#statusMessage');
     target.textContent = message;
@@ -148,24 +257,97 @@
     }, 4500);
   }
 
+  function isDarkTheme(theme) {
+    return theme === 'dark' || theme === 'monokai-pro-dark';
+  }
+
+  function darkThemePreference() {
+    return state.settings.lastDarkTheme === 'monokai-pro-dark' ? 'monokai-pro-dark' : 'dark';
+  }
+
+  function mapSystemTheme(theme) {
+    return theme === 'dark' ? darkThemePreference() : 'classic';
+  }
+
+  function preferredCodeTheme(dark) {
+    return dark ? state.settings.darkCodeTheme : state.settings.lightCodeTheme;
+  }
+
+  function ensureCodeThemeOption(codeTheme, dark) {
+    const select = $('#settingsForm [name="codeTheme"]');
+    if (!select || !codeTheme) return;
+    let option = Array.from(select.options).find((item) => item.value === codeTheme);
+    if (!option) {
+      option = new Option(codeTheme, codeTheme);
+      option.dataset.themeTone = dark ? 'dark' : 'light';
+      select.add(option);
+    }
+  }
+
+  function syncCodeThemeSelect(dark, codeTheme = preferredCodeTheme(dark)) {
+    const select = $('#settingsForm [name="codeTheme"]');
+    if (!select) return;
+    ensureCodeThemeOption(codeTheme, dark);
+    const tone = dark ? 'dark' : 'light';
+    Array.from(select.options).forEach((option) => {
+      const allowed = option.dataset.themeTone === tone;
+      option.hidden = !allowed;
+      option.disabled = !allowed;
+    });
+    select.value = codeTheme;
+  }
+
+  function syncCodeThemeMenus(dark) {
+    state.tabs.forEach((tab) => {
+      VDITOR.classifyCodeThemeButtons(tab.toolbar).forEach(({ button, tone }) => {
+        button.dataset.themeTone = tone;
+        button.hidden = tone !== (dark ? 'dark' : 'light');
+      });
+    });
+  }
+
+  function syncCodeThemeControls(dark, codeTheme = preferredCodeTheme(dark)) {
+    syncCodeThemeSelect(dark, codeTheme);
+    syncCodeThemeMenus(dark);
+  }
+
   async function resolveTheme() {
-    return state.settings.systemTheme ? await window.appAPI.getSystemTheme() : state.settings.theme;
+    return state.settings.systemTheme
+      ? mapSystemTheme(await window.appAPI.getSystemTheme())
+      : state.settings.theme;
   }
 
   async function applyTheme(theme) {
     document.documentElement.dataset.theme = theme;
-    if ($('#statusThemeToggle')) $('#statusThemeToggle').checked = theme === 'dark';
-    const contentTheme =
-      theme === 'dark' && state.settings.contentTheme === 'light'
+    const dark = isDarkTheme(theme);
+    if ($('#statusThemeToggle')) $('#statusThemeToggle').checked = dark;
+    const linkedContentTheme = ['light', 'dark'].includes(state.settings.contentTheme);
+    const contentTheme = linkedContentTheme
+      ? dark
         ? 'dark'
-        : state.settings.contentTheme;
+        : 'light'
+      : state.settings.contentTheme;
+    const settingsPatch = {};
+    if (linkedContentTheme && contentTheme !== state.settings.contentTheme) {
+      state.settings.contentTheme = contentTheme;
+      const contentThemeSelect = $('#settingsForm [name="contentTheme"]');
+      if (contentThemeSelect) contentThemeSelect.value = contentTheme;
+      settingsPatch.contentTheme = contentTheme;
+    }
+    const codeTheme = preferredCodeTheme(dark);
+    if (codeTheme !== state.settings.codeTheme) {
+      state.settings.codeTheme = codeTheme;
+      settingsPatch.codeTheme = codeTheme;
+    }
+    syncCodeThemeControls(dark, codeTheme);
+    if (Object.keys(settingsPatch).length) await window.appAPI.saveSettings(settingsPatch);
     state.tabs.forEach((tab) => {
       if (tab.vditor) {
         try {
           tab.vditor.setTheme(
-            theme,
+            dark ? 'dark' : 'classic',
             contentTheme,
-            state.settings.codeTheme,
+            codeTheme,
             'app://app/vditor/dist/css/content-theme',
           );
         } catch (_) {}
@@ -206,10 +388,19 @@
     });
   }
 
+  function scheduleWhitespaceMarkers(tab, sv = VDITOR.editorParts(tab?.host).source) {
+    if (!tab || !sv) return;
+    if (tab.whitespaceFrame) return;
+    tab.whitespaceFrame = requestAnimationFrame(() => {
+      tab.whitespaceFrame = null;
+      renderWhitespaceMarkers(tab, sv);
+    });
+  }
+
   function observeSplitLineNumbers(tab) {
     tab.lineObserver?.disconnect();
     tab.lineResizeObserver?.disconnect();
-    const sv = tab.host.querySelector('.vditor-sv');
+    const sv = VDITOR.editorParts(tab.host).source;
     if (!sv) return;
     tab.lineObserver = new MutationObserver(() => scheduleSplitLineNumbers(tab));
     tab.lineObserver.observe(sv, {
@@ -226,65 +417,17 @@
     tab.lineObserver?.disconnect();
     tab.lineResizeObserver?.disconnect();
     if (tab.lineNumberFrame) cancelAnimationFrame(tab.lineNumberFrame);
+    if (tab.whitespaceFrame) cancelAnimationFrame(tab.whitespaceFrame);
+    if (tab.splitScrollbarTimer) clearTimeout(tab.splitScrollbarTimer);
     tab.lineObserver = null;
     tab.lineResizeObserver = null;
     tab.lineNumberFrame = null;
+    tab.whitespaceFrame = null;
+    tab.splitScrollbarTimer = null;
   }
 
-  function headingMetadata(tab) {
-    return currentContent(tab)
-      .split(/\r?\n/)
-      .map((line, index) => {
-        const match = line.match(/^(#{1,6})\s+/);
-        return match ? { line: index, level: match[1].length } : null;
-      })
-      .filter(Boolean);
-  }
-
-  function applyHeadingFolds(tab, sv, headings) {
-    const hiddenLines = new Set();
-    sv.querySelectorAll('[data-fold-owner]').forEach((node) =>
-      node.removeAttribute('data-fold-owner'),
-    );
-    sv.querySelectorAll('[data-folded-heading]').forEach((node) =>
-      node.removeAttribute('data-folded-heading'),
-    );
-    const lineNodes = [[]];
-    Array.from(sv.children).forEach((block) => {
-      Array.from(block.childNodes).forEach((node) => {
-        lineNodes.at(-1).push(node);
-        if (node.nodeType === Node.ELEMENT_NODE && node.dataset.type === 'newline')
-          lineNodes.push([]);
-      });
-    });
-    headings.forEach((heading, index) => {
-      if (!tab.foldedHeadings.has(heading.line)) return;
-      const boundaryLine = headings
-        .slice(index + 1)
-        .find((item) => item.level <= heading.level)?.line;
-      const totalLines = currentContent(tab).split(/\r?\n/).length;
-      for (let line = heading.line + 1; line < (boundaryLine ?? totalLines); line += 1)
-        hiddenLines.add(line);
-    });
-    headings.forEach((heading) => {
-      if (!tab.foldedHeadings.has(heading.line)) return;
-      const headingNode = (lineNodes[heading.line] || []).find(
-        (node) =>
-          node.nodeType === Node.ELEMENT_NODE &&
-          (node.matches(`.h${heading.level}`) || node.querySelector(`.h${heading.level}`)),
-      );
-      if (headingNode) headingNode.dataset.foldedHeading = 'true';
-    });
-    hiddenLines.forEach((line) => {
-      (lineNodes[line] || []).forEach((node) => {
-        if (node.nodeType === Node.ELEMENT_NODE) node.dataset.foldOwner = 'true';
-      });
-    });
-    return hiddenLines;
-  }
-
-  function renderWhitespaceMarkers(tab, sv, positions, hiddenLines) {
-    const content = tab.host.querySelector('.vditor-content');
+  function renderWhitespaceMarkers(tab, sv) {
+    const content = VDITOR.editorParts(tab.host).content;
     let layer = content.querySelector(':scope > .sv-whitespace-layer');
     if (!state.settings.showWhitespace) {
       layer?.remove();
@@ -299,29 +442,76 @@
     layer.style.top = `${sv.offsetTop}px`;
     layer.style.width = `${sv.clientWidth}px`;
     layer.style.height = `${sv.clientHeight}px`;
-    const canvas = document.createElement('div');
-    canvas.className = 'sv-whitespace-canvas';
-    canvas.style.height = `${sv.scrollHeight}px`;
-    canvas.style.transform = `translateY(${-sv.scrollTop}px)`;
-    currentContent(tab)
-      .split(/\r?\n/)
-      .forEach((line, index) => {
-        if (hiddenLines.has(index) || !/[ \t]/.test(line)) return;
-        const marker = document.createElement('span');
-        marker.className = 'sv-whitespace-line';
-        marker.style.top = `${positions[index] || 0}px`;
-        const expanded = line.replace(/\t/g, ' '.repeat(Number(state.settings.tabSize) || 4));
-        marker.textContent = Array.from(expanded, (character) =>
-          character === ' ' ? '·' : '\u00a0',
-        ).join('');
-        canvas.appendChild(marker);
-      });
-    layer.replaceChildren(canvas);
+    let canvas = layer.querySelector(':scope > .sv-whitespace-canvas');
+    if (!canvas) {
+      canvas = document.createElement('canvas');
+      canvas.className = 'sv-whitespace-canvas';
+      layer.appendChild(canvas);
+    }
+    const pixelRatio = window.devicePixelRatio || 1;
+    const width = Math.max(1, sv.clientWidth);
+    const height = Math.max(1, sv.clientHeight);
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    canvas.style.transform = 'translateY(0)';
+    canvas.width = Math.ceil(width * pixelRatio);
+    canvas.height = Math.ceil(height * pixelRatio);
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    context.scale(pixelRatio, pixelRatio);
+    context.fillStyle = getComputedStyle(layer).color;
+    const svRect = sv.getBoundingClientRect();
+    const markerPositions = [];
+    const walker = document.createTreeWalker(sv, NodeFilter.SHOW_TEXT);
+    let textNode = walker.nextNode();
+    while (textNode) {
+      for (let index = 0; index < textNode.data.length; index += 1) {
+        const character = textNode.data[index];
+        if (character !== ' ' && character !== '\t') continue;
+        const range = document.createRange();
+        range.setStart(textNode, index);
+        range.setEnd(textNode, index + 1);
+        const rect = Array.from(range.getClientRects()).find(
+          (item) =>
+            item.width > 0 &&
+            item.height > 0 &&
+            item.right > svRect.left &&
+            item.left < svRect.right &&
+            item.bottom > svRect.top &&
+            item.top < svRect.bottom,
+        );
+        if (!rect) continue;
+        const markerCount = character === '\t' ? Number(state.settings.tabSize) || 4 : 1;
+        for (let markerIndex = 0; markerIndex < markerCount; markerIndex += 1) {
+          const x = rect.left - svRect.left + (rect.width * (markerIndex + 0.5)) / markerCount;
+          const y = rect.top - svRect.top + rect.height / 2;
+          markerPositions.push({ x, y });
+          context.beginPath();
+          context.arc(x, y, Math.max(1, Math.min(1.35, rect.height / 12)), 0, Math.PI * 2);
+          context.fill();
+        }
+      }
+      textNode = walker.nextNode();
+    }
+    canvas.dataset.markerCount = String(markerPositions.length);
+    canvas.dataset.scrollTop = String(sv.scrollTop);
+    canvas.whitespaceMarkerPositions = markerPositions;
+  }
+
+  function syncSplitViewLayout(tab) {
+    if (!tab?.vditor || !tab.ready) return;
+    const { source: sv, preview } = VDITOR.editorParts(tab.host);
+    if (!sv || !preview) return;
+    const splitMode = tab.vditor.getCurrentMode() === 'sv';
+    const sourceVisible = splitMode && getComputedStyle(sv).display !== 'none';
+    const previewVisible = splitMode && getComputedStyle(preview).display !== 'none';
+    tab.host.classList.toggle('sv-editor-only', sourceVisible && !previewVisible);
+    tab.host.classList.toggle('sv-preview-only', !sourceVisible && previewVisible);
+    tab.host.classList.toggle('sv-both', sourceVisible && previewVisible);
   }
 
   function ensureSplitResizer(tab) {
-    const content = tab.host.querySelector('.vditor-content');
-    const preview = tab.host.querySelector('.vditor-preview');
+    const { content, preview } = VDITOR.editorParts(tab.host);
     if (!content || !preview) return;
     let resizer = content.querySelector(':scope > .sv-split-resizer');
     if (!resizer) {
@@ -361,9 +551,8 @@
 
   function updateSplitLineNumbers(tab) {
     if (!tab || !tab.vditor || !tab.ready) return;
-    const content = tab.host.querySelector('.vditor-content');
-    const sv = tab.host.querySelector('.vditor-sv');
-    if (!content || !sv) return;
+    const { content, source: sv, preview } = VDITOR.editorParts(tab.host);
+    if (!content || !sv || !preview) return;
     let gutter = content.querySelector(':scope > .sv-line-numbers');
     if (!gutter) {
       gutter = document.createElement('div');
@@ -371,30 +560,33 @@
       content.insertBefore(gutter, content.firstChild);
       sv.addEventListener('scroll', () => {
         gutter.scrollTop = sv.scrollTop;
-        const whitespaceCanvas = content.querySelector('.sv-whitespace-canvas');
-        if (whitespaceCanvas) whitespaceCanvas.style.transform = `translateY(${-sv.scrollTop}px)`;
+        const canvas = content.querySelector('.sv-whitespace-canvas');
+        if (canvas) {
+          const renderedScrollTop = Number(canvas.dataset.scrollTop || 0);
+          canvas.style.transform = `translateY(${renderedScrollTop - sv.scrollTop}px)`;
+        }
+        scheduleWhitespaceMarkers(tab, sv);
       });
     }
     const isSplitView = tab.vditor.getCurrentMode() === 'sv';
-    gutter.classList.toggle('hidden', !isSplitView);
+    syncSplitViewLayout(tab);
+    const sourceVisible = isSplitView && getComputedStyle(sv).display !== 'none';
+    gutter.classList.toggle('hidden', !sourceVisible);
     if (tab.splitResizer) {
-      const previewVisible =
-        getComputedStyle(tab.host.querySelector('.vditor-preview')).display !== 'none';
-      tab.splitResizer.classList.toggle('hidden', !isSplitView || !previewVisible);
+      const previewVisible = getComputedStyle(preview).display !== 'none';
+      tab.splitResizer.classList.toggle('hidden', !sourceVisible || !previewVisible);
     }
-    if (!isSplitView) {
+    if (!sourceVisible) {
       content.querySelector(':scope > .sv-whitespace-layer')?.remove();
       return;
     }
 
     const count = Math.max(1, currentContent(tab).split(/\r?\n/).length);
-    const headings = headingMetadata(tab);
-    const hiddenLines = applyHeadingFolds(tab, sv, headings);
     const style = getComputedStyle(sv);
     const lineHeight =
       Number.parseFloat(style.lineHeight) || Number.parseFloat(style.fontSize) * 1.5;
     const svRect = sv.getBoundingClientRect();
-    const newlines = Array.from(sv.querySelectorAll('span[data-type="newline"]'));
+    const newlines = VDITOR.sourceNewlines(sv);
     const positions = [];
     let startContainer = sv;
     let startOffset = 0;
@@ -424,38 +616,34 @@
     canvas.className = 'sv-line-number-canvas';
     canvas.style.height = `${Math.max(sv.scrollHeight, positions.at(-1) + lineHeight)}px`;
     positions.forEach((top, index) => {
-      if (hiddenLines.has(index)) return;
       const number = document.createElement('span');
       number.className = 'sv-line-number';
       number.style.top = `${top}px`;
       number.textContent = String(index + 1);
-      const heading = headings.find((item) => item.line === index);
-      if (heading) {
-        number.classList.add('has-fold');
-        const toggle = document.createElement('button');
-        toggle.className = 'sv-fold-toggle';
-        toggle.type = 'button';
-        toggle.textContent = tab.foldedHeadings.has(index) ? '▶' : '▼';
-        toggle.title = tab.foldedHeadings.has(index) ? 'Expand section' : 'Collapse section';
-        toggle.onclick = (event) => {
-          event.stopPropagation();
-          if (tab.foldedHeadings.has(index)) tab.foldedHeadings.delete(index);
-          else tab.foldedHeadings.add(index);
-          scheduleSplitLineNumbers(tab);
-        };
-        number.prepend(toggle);
-      }
       canvas.appendChild(number);
     });
     gutter.replaceChildren(canvas);
     gutter.scrollTop = sv.scrollTop;
-    renderWhitespaceMarkers(tab, sv, positions, hiddenLines);
+    renderWhitespaceMarkers(tab, sv);
   }
 
   function setupSplitEditorEnhancements(tab) {
-    const sv = tab.host.querySelector('.vditor-sv');
+    const sv = VDITOR.editorParts(tab.host).source;
     if (!sv || sv.dataset.desktopEnhancements === 'true') return;
     sv.dataset.desktopEnhancements = 'true';
+    const revealScrollbar = () => {
+      sv.classList.add('scrollbar-visible');
+      if (tab.splitScrollbarTimer) clearTimeout(tab.splitScrollbarTimer);
+      tab.splitScrollbarTimer = setTimeout(() => {
+        sv.classList.remove('scrollbar-visible');
+        tab.splitScrollbarTimer = null;
+      }, 1000);
+    };
+    sv.addEventListener('mousemove', (event) => {
+      const rect = sv.getBoundingClientRect();
+      if (rect.right - event.clientX <= 14) revealScrollbar();
+    });
+    sv.addEventListener('scroll', revealScrollbar, { passive: true });
     sv.addEventListener(
       'keydown',
       (event) => {
@@ -503,11 +691,13 @@
     const s = state.settings;
     const wasModified = tab.modified;
     const savedBefore = tab.savedContent;
-    const lang = state.locale;
+    const lang =
+      state.locale === 'zh_Hans' ? 'zh_CN' : state.locale === 'zh_Hant' ? 'zh_TW' : 'en_US';
+    const appTheme = document.documentElement.dataset.theme || s.theme;
     return {
       value: tab.content,
       mode: tab.mode,
-      theme: document.documentElement.dataset.theme || s.theme,
+      theme: isDarkTheme(appTheme) ? 'dark' : 'classic',
       lang,
       icon: s.iconSet,
       cdn: 'app://app/vditor',
@@ -528,6 +718,9 @@
         mode: s.previewMode,
         delay: s.previewDelay,
         maxWidth: s.previewMaxWidth,
+        actions: s.multiPlatformPreview
+          ? ['desktop', 'tablet', 'mobile', 'mp-wechat', 'zhihu']
+          : [],
         hljs: { enable: s.enableHighlight, lineNumber: s.lineNumbers, style: s.codeTheme },
         math: { engine: s.mathEngine },
         markdown: {
@@ -552,17 +745,37 @@
       },
       upload: { accept: 'image/*', handler: (files) => handleImageUpload(tab, files) },
       after: () => {
+        const contract = VDITOR.validateHost(tab.host);
+        if (!contract.valid) {
+          tab.ready = false;
+          console.error('Unsupported Vditor DOM contract:', contract.missing);
+          showMessage(`Vditor integration mismatch: ${contract.missing.join(', ')}`, true);
+          return;
+        }
+        tab.host.dataset.localResourceBase = localResourceBase(tab.baseDir);
+        tab.resourceObserver?.disconnect();
+        tab.resourceObserver = VDITOR.observeRelativeImageSources(
+          tab.host,
+          tab.host.dataset.localResourceBase,
+        );
         const normalized = currentContent(tab);
         tab.content = normalized;
         tab.savedContent = wasModified ? savedBefore : normalized;
         tab.modified = wasModified || normalized !== tab.savedContent;
         tab.ready = true;
-        tab.toolbar = tab.host.querySelector(':scope > .vditor-toolbar');
+        tab.toolbar = VDITOR.editorParts(tab.host).toolbar;
         tab.toolbar.addEventListener(
           'click',
           (event) => handleVditorToolbarClick(tab, event),
           true,
         );
+        tab.toolbar.addEventListener(
+          'mousedown',
+          (event) => preserveSplitToolbarSelection(tab, event),
+          true,
+        );
+        syncSplitToolbarActions(tab);
+        syncCodeThemeControls(isDarkTheme(appTheme), state.settings.codeTheme);
         if (tab.id === state.activeId) mountEditorToolbar(tab);
         renderTabs();
         updateActiveUI();
@@ -579,14 +792,71 @@
     };
   }
 
+  function preserveSplitToolbarSelection(tab, event) {
+    const { type } = VDITOR.toolbarContext(event.target);
+    if (tab.vditor?.getCurrentMode() === 'sv' && (type === 'outdent' || type === 'indent')) {
+      event.preventDefault();
+      const selection = window.getSelection();
+      const sourceEditor = VDITOR.editorParts(tab.host).source;
+      if (sourceEditor?.contains(selection?.anchorNode) && selection.rangeCount > 0) {
+        tab.splitToolbarRange = selection.getRangeAt(0).cloneRange();
+      }
+    }
+  }
+
   function handleVditorToolbarClick(tab, event) {
-    const button = event.target.closest?.('button');
-    const item = button?.closest('.vditor-toolbar__item');
-    const trigger = item?.querySelector(':scope > button[data-type]');
+    const { button, item, trigger, type } = VDITOR.toolbarContext(event.target);
     if (!button || !trigger) return;
-    const type = trigger.dataset.type;
+    if (
+      button === trigger &&
+      (type === 'outdent' || type === 'indent') &&
+      tab.vditor?.getCurrentMode() === 'sv'
+    ) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const sourceEditor = VDITOR.editorParts(tab.host).source;
+      if (sourceEditor && tab.splitToolbarRange?.startContainer?.isConnected) {
+        sourceEditor.focus({ preventScroll: true });
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(tab.splitToolbarRange);
+      }
+      const range = window.getSelection()?.rangeCount ? window.getSelection().getRangeAt(0) : null;
+      const { marker, padding } = VDITOR.listContext(range?.startContainer);
+      if (sourceEditor && marker) {
+        if (type === 'outdent') {
+          padding?.remove();
+        } else {
+          const padding = document.createElement('span');
+          padding.dataset.type = 'padding';
+          padding.textContent = marker.textContent.replace(/\S/g, ' ');
+          marker.before(padding);
+        }
+        sourceEditor.dispatchEvent(
+          new InputEvent('input', {
+            bubbles: true,
+            inputType: type === 'outdent' ? 'deleteContentBackward' : 'insertText',
+            data: type === 'outdent' ? null : ' ',
+          }),
+        );
+      }
+      tab.splitToolbarRange = null;
+      return;
+    }
+    const themeMenu = type === 'code-theme' || type === 'content-theme';
+    if (themeMenu && button === trigger) {
+      VDITOR.hoverTooltips($('#vditorToolbarMount')).forEach((node) =>
+        node.classList.remove('vditor-tooltipped--hover'),
+      );
+      trigger.classList.add('app-submenu-open');
+      setTimeout(() => {
+        const panel = VDITOR.toolbarHint(item);
+        if (panel?.style.display !== 'block') trigger.classList.remove('app-submenu-open');
+      }, 0);
+    }
     if (button === trigger) {
-      if (type === 'both') setTimeout(() => scheduleSplitLineNumbers(tab), 50);
+      if (type === 'both' || type === 'preview')
+        setTimeout(() => scheduleSplitLineNumbers(tab), 50);
       return;
     }
     if (type === 'edit-mode' && ['wysiwyg', 'ir', 'sv'].includes(button.dataset.mode)) {
@@ -595,18 +865,51 @@
         tab.mode = tab.vditor.getCurrentMode();
         state.settings.editMode = tab.mode;
         window.appAPI.saveSettings({ editMode: tab.mode });
+        syncSplitToolbarActions(tab);
         updateActiveUI();
         scheduleSplitLineNumbers(tab);
       }, 50);
     } else if (type === 'code-theme') {
       const codeTheme = button.textContent.trim();
       if (!codeTheme) return;
+      const dark = isDarkTheme(document.documentElement.dataset.theme);
+      if (button.dataset.themeTone !== (dark ? 'dark' : 'light')) return;
+      const preferenceKey = dark ? 'darkCodeTheme' : 'lightCodeTheme';
       state.settings.codeTheme = codeTheme;
-      window.appAPI.saveSettings({ codeTheme });
+      state.settings[preferenceKey] = codeTheme;
+      syncCodeThemeSelect(dark, codeTheme);
+      window.appAPI.saveSettings({ codeTheme, [preferenceKey]: codeTheme });
     } else if (type === 'content-theme' && button.dataset.type) {
       state.settings.contentTheme = button.dataset.type;
       window.appAPI.saveSettings({ contentTheme: button.dataset.type });
+      if (button.dataset.type === 'light' || button.dataset.type === 'dark') {
+        setTimeout(
+          () => applyTheme(document.documentElement.dataset.theme || state.settings.theme),
+          0,
+        );
+      }
     }
+    if (themeMenu) {
+      setTimeout(() => {
+        VDITOR.toolbarHints($('#vditorToolbarMount')).forEach((panel) => {
+          panel.style.display = 'none';
+        });
+        VDITOR.openSubmenus($('#vditorToolbarMount')).forEach((node) => {
+          node.classList.remove('app-submenu-open');
+          node.blur();
+        });
+      }, 0);
+    }
+  }
+
+  function syncSplitToolbarActions(tab) {
+    if (!tab.toolbar || tab.vditor?.getCurrentMode() !== 'sv') return;
+    ['outdent', 'indent'].forEach((type) => {
+      const button = VDITOR.toolbarButton(tab.toolbar, type);
+      const item = button?.closest(VDITOR.selectors.toolbarItem);
+      if (item) item.style.display = 'block';
+      button?.classList.remove('vditor-menu--disabled');
+    });
   }
 
   function ensureEditor(tab) {
@@ -628,7 +931,7 @@
 
   function mountEditorToolbar(tab) {
     const mount = $('#vditorToolbarMount');
-    const mounted = mount.querySelector(':scope > .vditor-toolbar');
+    const mounted = mount.querySelector(VDITOR.selectors.toolbar);
     if (mounted && mounted !== tab.toolbar) {
       const owner = state.tabs.find((item) => item.toolbar === mounted);
       if (owner && owner.host.isConnected) owner.host.insertBefore(mounted, owner.host.firstChild);
@@ -639,10 +942,12 @@
 
   function rebuildEditor(tab, mode) {
     disconnectSplitLineNumbers(tab);
+    tab.resourceObserver?.disconnect();
+    tab.resourceObserver = null;
     if (tab.vditor) {
       restoreEditorToolbar(tab);
       try {
-        tab.content = tab.vditor.getValue();
+        tab.content = VDITOR.withOriginalImageSources(tab.host, () => tab.vditor.getValue());
         tab.vditor.destroy();
       } catch (_) {}
       tab.vditor = null;
@@ -685,7 +990,8 @@
       lineObserver: null,
       lineResizeObserver: null,
       lineNumberFrame: null,
-      foldedHeadings: new Set(),
+      whitespaceFrame: null,
+      resourceObserver: null,
       splitResizer: null,
       host: document.createElement('section'),
     };
@@ -701,6 +1007,7 @@
           tab.mode = tab.vditor.getCurrentMode();
           state.settings.editMode = tab.mode;
           window.appAPI.saveSettings({ editMode: tab.mode });
+          syncSplitToolbarActions(tab);
           if (tab.id === state.activeId) updateActiveUI();
           scheduleSplitLineNumbers(tab);
         }, 50);
@@ -758,6 +1065,7 @@
     state.tabs.forEach((item) => item.host.classList.toggle('active', item.id === id));
     ensureEditor(tab);
     if (tab.toolbar) mountEditorToolbar(tab);
+    scheduleSplitLineNumbers(tab);
     renderTabs();
     updateActiveUI();
     renderOutline();
@@ -768,14 +1076,16 @@
     const tab = state.tabs.find((item) => item.id === id);
     if (!tab) return;
     if (tab.modified) {
-      const proceed = await window.appAPI.confirm({
-        message: t('confirm.closeDirty', { title: tab.title }),
-        detail: t('confirm.closeDirtyDetail'),
-      });
-      if (!proceed) return;
+      const action = await showUnsavedDialog(
+        t('confirm.closeDirty', { title: tab.title }),
+        t('confirm.closeDirtyDetail'),
+      );
+      if (action === 'cancel' || (action === 'save' && !(await saveTab(tab)))) return;
     }
     clearTimeout(tab.saveTimer);
     disconnectSplitLineNumbers(tab);
+    tab.resourceObserver?.disconnect();
+    tab.resourceObserver = null;
     restoreEditorToolbar(tab);
     if (tab.vditor) {
       try {
@@ -837,7 +1147,9 @@
   function currentContent(tab) {
     if (!tab) return '';
     try {
-      return tab.vditor ? tab.vditor.getValue() : tab.content;
+      return tab.vditor
+        ? VDITOR.withOriginalImageSources(tab.host, () => tab.vditor.getValue())
+        : tab.content;
     } catch (_) {
       return tab.content;
     }
@@ -895,8 +1207,8 @@
     }
     const content = currentContent(tab);
     tab.content = content;
-    document.title = `${tab.modified ? '● ' : ''}${tab.title} — Vditor Desktop`;
-    $('#windowTitle').textContent = `${tab.modified ? '● ' : ''}${tab.title} — Vditor Desktop`;
+    document.title = `${tab.title} - Vditor Desktop`;
+    $('#windowTitle').textContent = `${tab.title} - Vditor Desktop`;
     $('#statusPath').textContent = tab.filePath || '';
     $('#statusPath').title = tab.filePath || '';
     const currentMode = tab.vditor && tab.ready ? tab.vditor.getCurrentMode() : tab.mode;
@@ -928,7 +1240,12 @@
   }
   async function chooseFolder() {
     const folder = await window.fileAPI.openFolderDialog();
-    if (folder) await setWorkspace(folder);
+    if (folder) {
+      await setWorkspace(folder);
+      toggleSidebar(true);
+      const filesTab = $('.sidebar-tabs [data-view="files"]');
+      if (filesTab && !filesTab.classList.contains('active')) filesTab.click();
+    }
   }
 
   async function setWorkspace(folder) {
@@ -978,13 +1295,9 @@
       const row = document.createElement('div');
       row.className = `tree-row tree-${entry.type === 'directory' ? 'dir' : 'file'}`;
       row.dataset.path = entry.path;
-      row.draggable = true;
-      row.innerHTML = `<span class="chevron">${entry.type === 'directory' ? '›' : ''}</span><span class="file-icon">${treeIcon(entry.type)}</span><span class="tree-name">${escapeHTML(entry.name)}</span>`;
+      row.innerHTML = `<span class="chevron">${entry.type === 'directory' ? '›' : ''}</span><span class="file-icon">${treeIcon(entry.type)}</span><span class="tree-name" data-full-name="${escapeHTML(entry.name)}" title="${escapeHTML(entry.name)}">${escapeHTML(entry.name)}</span>`;
       container.appendChild(row);
       row.addEventListener('contextmenu', (event) => showTreeMenu(event, entry));
-      row.addEventListener('dragstart', (event) =>
-        event.dataTransfer.setData('text/x-vditor-path', entry.path),
-      );
       if (entry.type === 'file') row.addEventListener('click', () => openPath(entry.path));
       else {
         const children = document.createElement('div');
@@ -997,28 +1310,12 @@
             children.dataset.loaded = 'true';
             await appendDirectory(children, entry.path, false);
           }
-        });
-        row.addEventListener('dragover', (event) => {
-          event.preventDefault();
-          row.classList.add('drop-target');
-        });
-        row.addEventListener('dragleave', () => row.classList.remove('drop-target'));
-        row.addEventListener('drop', async (event) => {
-          event.preventDefault();
-          row.classList.remove('drop-target');
-          const source = event.dataTransfer.getData('text/x-vditor-path');
-          if (source) {
-            try {
-              await window.fileAPI.moveItem(source, entry.path);
-              refreshTree();
-            } catch (error) {
-              showMessage(error.message, true);
-            }
-          }
+          scheduleTreeNameEllipses();
         });
         if (expanded) row.click();
       }
     }
+    scheduleTreeNameEllipses();
   }
 
   function showTreeMenu(event, entry) {
@@ -1081,7 +1378,7 @@
     }
   }
   async function deleteExplorerItem(entry) {
-    const proceed = await window.appAPI.confirm({
+    const proceed = await confirmDialog({
       message: t('workspace.delete', { name: entry.name }),
     });
     if (!proceed) return;
@@ -1116,23 +1413,35 @@
       target.innerHTML = `<div class="empty">${escapeHTML(t('sidebar.noHeadings'))}</div>`;
       return;
     }
-    headings.forEach((heading) => {
+    headings.forEach((heading, index) => {
       const button = document.createElement('button');
       button.style.paddingLeft = `${10 + (heading.level - 1) * 14}px`;
       button.textContent = heading.text;
       button.title = t('outline.line', { line: heading.line + 1 });
-      button.onclick = () => scrollToHeading(tab, heading.text);
+      button.onclick = () => scrollToHeading(tab, index);
       target.appendChild(button);
     });
   }
-  function scrollToHeading(tab, text) {
-    const candidates = $$(
-      'h1,h2,h3,h4,h5,h6,.vditor-ir__node,.vditor-wysiwyg [data-block]',
-      tab.host,
-    );
-    const node = candidates.find((item) => item.textContent.trim().includes(text));
-    if (node) node.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    if (tab.vditor) tab.vditor.focus();
+  function scrollHeadingIntoEditor(editor, heading) {
+    if (!editor || !heading || !editor.getClientRects().length) return;
+    const innerScroller = VDITOR.innerScroller(heading);
+    const scroller =
+      [innerScroller, editor].find(
+        (candidate) => candidate && candidate.scrollHeight > candidate.clientHeight + 1,
+      ) || editor;
+    const scrollerRect = scroller.getBoundingClientRect();
+    const headingRect = heading.getBoundingClientRect();
+    const top =
+      scroller.scrollTop +
+      headingRect.top -
+      scrollerRect.top -
+      Math.max(0, (scroller.clientHeight - headingRect.height) / 2);
+    scroller.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+  }
+  function scrollToHeading(tab, headingIndex) {
+    VDITOR.headingTargets(tab.host, headingIndex).forEach(({ editor, heading }) => {
+      scrollHeadingIntoEditor(editor, heading);
+    });
   }
 
   async function handleImageUpload(tab, files) {
@@ -1236,21 +1545,42 @@
       const key = input.name;
       let value;
       value = state.settings[key];
-      if (
-        key === 'codeTheme' &&
-        value &&
-        !Array.from(input.options).some((option) => option.value === value)
-      ) {
-        input.add(new Option(value, value));
-      }
       if (input.type === 'checkbox') input.checked = Boolean(value);
+      else if (input.type === 'radio') input.checked = input.value === value;
       else if (value !== undefined) input.value = value;
     });
+    syncCodeThemeSelect(
+      isDarkTheme(document.documentElement.dataset.theme),
+      state.settings.codeTheme,
+    );
     const tab = activeTab();
     const currentMode = tab?.vditor && tab.ready ? tab.vditor.getCurrentMode() : tab?.mode;
     $('#previewZoomSetting').classList.toggle('hidden', currentMode !== 'sv');
     $('#editorTextWidthValue').textContent = `${$('#editorTextWidth').value}%`;
-    $('#settingsModal').classList.remove('hidden');
+    restoreSettingsCardSize();
+    const modal = $('#settingsModal');
+    clearTimeout(settingsCloseTimer);
+    modal.classList.remove('hidden', 'modal-closing', 'modal-open');
+    requestAnimationFrame(() => requestAnimationFrame(() => modal.classList.add('modal-open')));
+  }
+
+  function closeSettings({ applyPresentation = true } = {}) {
+    const modal = $('#settingsModal');
+    if (modal.classList.contains('hidden') || modal.classList.contains('modal-closing')) return;
+    clearTimeout(settingsCloseTimer);
+    modal.classList.remove('modal-open');
+    modal.classList.add('modal-closing');
+    const duration = parseFloat(
+      getComputedStyle(modal).getPropertyValue('--settings-exit-duration'),
+    );
+    settingsCloseTimer = setTimeout(
+      () => {
+        modal.classList.add('hidden');
+        modal.classList.remove('modal-closing');
+        if (applyPresentation) applyPresentationSettings();
+      },
+      Number.isFinite(duration) ? duration + 30 : 190,
+    );
   }
   async function saveSettings(closeAfterSave = true) {
     clearTimeout(settingsSaveTimer);
@@ -1263,6 +1593,7 @@
       ]),
     );
     $$('[name]', form).forEach((input) => {
+      if (input.type === 'radio' && !input.checked) return;
       if (
         (input.type === 'number' || input.type === 'range') &&
         (!input.value || !input.validity.valid)
@@ -1275,9 +1606,17 @@
             ? Number(input.value)
             : input.value;
     });
+    patch.lastDarkTheme = isDarkTheme(patch.theme) ? patch.theme : darkThemePreference();
+    const dark = patch.systemTheme
+      ? isDarkTheme(document.documentElement.dataset.theme)
+      : isDarkTheme(patch.theme);
+    const codePreferenceKey = dark ? 'darkCodeTheme' : 'lightCodeTheme';
+    patch.lightCodeTheme = state.settings.lightCodeTheme;
+    patch.darkCodeTheme = state.settings.darkCodeTheme;
+    patch[codePreferenceKey] = patch.codeTheme;
     patch.toolbarConfig = state.settings.toolbarConfig;
     state.settings = await window.appAPI.saveSettings(patch);
-    if (closeAfterSave) $('#settingsModal').classList.add('hidden');
+    if (closeAfterSave) closeSettings({ applyPresentation: false });
     applyLocale(state.settings.locale);
     applyPresentationSettings();
     await applyTheme(await resolveTheme());
@@ -1291,13 +1630,23 @@
   async function resetCurrentSettingsPage() {
     const panel = $('[data-settings-panel].active');
     if (!panel || !state.defaultSettings) return;
+    if (panel.dataset.settingsPanel === 'appearance') {
+      state.settings.lastDarkTheme = state.defaultSettings.lastDarkTheme;
+      state.settings.lightCodeTheme = state.defaultSettings.lightCodeTheme;
+      state.settings.darkCodeTheme = state.defaultSettings.darkCodeTheme;
+    }
     $$('[name]', panel).forEach((input) => {
       const value = state.defaultSettings[input.name];
       if (input.type === 'checkbox') input.checked = Boolean(value);
+      else if (input.type === 'radio') input.checked = input.value === value;
       else if (value !== undefined) input.value = value;
     });
     if (panel.dataset.settingsPanel === 'editor')
       $('#editorTextWidthValue').textContent = `${$('#editorTextWidth').value}%`;
+    if (panel.dataset.settingsPanel === 'appearance') {
+      const theme = panel.querySelector('[name="theme"]:checked')?.value;
+      syncCodeThemeSelect(isDarkTheme(theme), preferredCodeTheme(isDarkTheme(theme)));
+    }
     await saveSettings(false);
   }
 
@@ -1308,6 +1657,10 @@
       (!input.value || !input.validity.valid)
     )
       return;
+    if (input.name === 'theme' && !$('#settingsForm [name="systemTheme"]').checked) {
+      const dark = isDarkTheme(input.value);
+      syncCodeThemeSelect(dark, preferredCodeTheme(dark));
+    }
     clearTimeout(settingsSaveTimer);
     settingsSaveTimer = setTimeout(
       () => saveSettings(false),
@@ -1315,28 +1668,86 @@
     );
   }
 
+  function settingsCardLimits() {
+    const maxWidth = Math.max(1, Math.floor(window.innerWidth * 0.9));
+    const maxHeight = Math.max(1, Math.floor(window.innerHeight * 0.9));
+    return {
+      minWidth: Math.min(620, maxWidth),
+      minHeight: Math.min(420, maxHeight),
+      maxWidth,
+      maxHeight,
+    };
+  }
+
+  function setSettingsCardBounds({ left, top, width, height }) {
+    const card = $('.settings-card');
+    const size = settingsCardLimits();
+    const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value));
+    const nextWidth = clamp(width, size.minWidth, size.maxWidth);
+    const nextHeight = clamp(height, size.minHeight, size.maxHeight);
+    const nextLeft = clamp(left, 0, Math.max(0, window.innerWidth - nextWidth));
+    const nextTop = clamp(top, 0, Math.max(0, window.innerHeight - nextHeight));
+    card.style.position = 'fixed';
+    card.style.left = `${nextLeft}px`;
+    card.style.top = `${nextTop}px`;
+    card.style.width = `${nextWidth}px`;
+    card.style.height = `${nextHeight}px`;
+  }
+
+  function settingsCardBounds() {
+    const card = $('.settings-card');
+    return {
+      left: card.offsetLeft,
+      top: card.offsetTop,
+      width: card.offsetWidth,
+      height: card.offsetHeight,
+    };
+  }
+
+  function restoreSettingsCardSize() {
+    const saved = state.settings.settingsDialogSize?.customized
+      ? state.settings.settingsDialogSize
+      : { width: 1080, height: 780 };
+    const size = settingsCardLimits();
+    const width = Math.min(size.maxWidth, Math.max(size.minWidth, Number(saved.width) || 1080));
+    const height = Math.min(size.maxHeight, Math.max(size.minHeight, Number(saved.height) || 780));
+    setSettingsCardBounds({
+      left: Math.round((window.innerWidth - width) / 2),
+      top: Math.round((window.innerHeight - height) / 2),
+      width,
+      height,
+    });
+  }
+
+  function persistSettingsCardSize() {
+    const { width, height } = settingsCardBounds();
+    const settingsDialogSize = {
+      width: Math.round(width),
+      height: Math.round(height),
+      customized: true,
+    };
+    state.settings.settingsDialogSize = settingsDialogSize;
+    void window.appAPI.saveSettings({ settingsDialogSize });
+  }
+
   function setupSettingsDrag() {
     const card = $('.settings-card');
     const header = card.querySelector(':scope > header');
+    const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value));
+
     header.addEventListener('mousedown', (event) => {
       if (event.button !== 0 || event.target.closest('button')) return;
-      const rect = card.getBoundingClientRect();
-      card.style.position = 'fixed';
-      card.style.left = `${rect.left}px`;
-      card.style.top = `${rect.top}px`;
-      const offsetX = event.clientX - rect.left;
-      const offsetY = event.clientY - rect.top;
+      const start = settingsCardBounds();
+      setSettingsCardBounds(start);
+      const offsetX = event.clientX - start.left;
+      const offsetY = event.clientY - start.top;
       const move = (moveEvent) => {
-        const left = Math.max(
-          0,
-          Math.min(window.innerWidth - card.offsetWidth, moveEvent.clientX - offsetX),
-        );
-        const top = Math.max(
-          0,
-          Math.min(window.innerHeight - card.offsetHeight, moveEvent.clientY - offsetY),
-        );
-        card.style.left = `${left}px`;
-        card.style.top = `${top}px`;
+        setSettingsCardBounds({
+          left: moveEvent.clientX - offsetX,
+          top: moveEvent.clientY - offsetY,
+          width: start.width,
+          height: start.height,
+        });
       };
       const up = () => {
         window.removeEventListener('mousemove', move);
@@ -1344,6 +1755,55 @@
       };
       window.addEventListener('mousemove', move);
       window.addEventListener('mouseup', up);
+    });
+
+    $$('[data-settings-resize]', card).forEach((handle) => {
+      handle.addEventListener('mousedown', (event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const edge = handle.dataset.settingsResize;
+        const start = settingsCardBounds();
+        const right = start.left + start.width;
+        const bottom = start.top + start.height;
+        const startX = event.clientX;
+        const startY = event.clientY;
+        setSettingsCardBounds(start);
+        document.body.classList.add('settings-card-resizing');
+        const move = (moveEvent) => {
+          const size = settingsCardLimits();
+          const deltaX = moveEvent.clientX - startX;
+          const deltaY = moveEvent.clientY - startY;
+          const width = edge.includes('w')
+            ? clamp(start.width - deltaX, size.minWidth, size.maxWidth)
+            : edge.includes('e')
+              ? clamp(start.width + deltaX, size.minWidth, size.maxWidth)
+              : start.width;
+          const height = edge.includes('n')
+            ? clamp(start.height - deltaY, size.minHeight, size.maxHeight)
+            : edge.includes('s')
+              ? clamp(start.height + deltaY, size.minHeight, size.maxHeight)
+              : start.height;
+          setSettingsCardBounds({
+            left: edge.includes('w') ? right - width : start.left,
+            top: edge.includes('n') ? bottom - height : start.top,
+            width,
+            height,
+          });
+        };
+        const up = () => {
+          document.body.classList.remove('settings-card-resizing');
+          window.removeEventListener('mousemove', move);
+          window.removeEventListener('mouseup', up);
+          persistSettingsCardSize();
+        };
+        window.addEventListener('mousemove', move);
+        window.addEventListener('mouseup', up);
+      });
+    });
+
+    window.addEventListener('resize', () => {
+      if (card.style.position === 'fixed') setSettingsCardBounds(settingsCardBounds());
     });
   }
 
@@ -1382,27 +1842,33 @@
       save: () => saveTab(),
       'save-as': () => saveTab(activeTab(), true),
       'close-tab': () => activeTab() && closeTab(activeTab().id),
+      quit: () => window.appAPI.closeWindow(),
       'toggle-sidebar': toggleSidebar,
       settings: openSettings,
       'export-html': exportHTML,
       'export-pdf': exportPDF,
       about: () => {
         openSettings();
-        $('.settings-nav [data-panel="advanced"]').click();
+        $('.settings-nav [data-panel="about"]').click();
       },
       mode: () => {
         const tab = activeTab();
         if (tab && value !== tab.mode) {
           rebuildEditor(tab, value);
-          state.settings.editMode = value;
-          window.appAPI.saveSettings({ editMode: value });
         }
+        state.settings.editMode = value;
+        window.appAPI.saveSettings({ editMode: value });
       },
       theme: async () => {
         state.settings.theme = value;
         state.settings.systemTheme = false;
-        await window.appAPI.saveSettings({ theme: value, systemTheme: false });
-        applyTheme(value);
+        if (isDarkTheme(value)) state.settings.lastDarkTheme = value;
+        await window.appAPI.saveSettings({
+          theme: value,
+          systemTheme: false,
+          ...(isDarkTheme(value) ? { lastDarkTheme: value } : {}),
+        });
+        await applyTheme(value);
       },
     };
     if (handlers[action]) handlers[action]();
@@ -1417,8 +1883,14 @@
       document.execCommand(command);
       activeTab()?.vditor?.focus();
     };
+    const currentEditorMode = () => {
+      const tab = activeTab();
+      return tab?.vditor && tab.ready
+        ? tab.vditor.getCurrentMode()
+        : tab?.mode || state.settings.editMode;
+    };
     const menus = {
-      file: [
+      file: () => [
         ['menu.new', run('new'), 'Ctrl+N'],
         ['menu.open', run('open'), 'Ctrl+O'],
         ['menu.openFolder', run('open-folder')],
@@ -1428,8 +1900,9 @@
         null,
         ['menu.exportHtml', run('export-html')],
         ['menu.exportPdf', run('export-pdf')],
+        ...(state.tabs.length ? [null, ['menu.closeTab', run('close-tab'), 'Ctrl+W']] : []),
         null,
-        ['menu.closeTab', run('close-tab'), 'Ctrl+W'],
+        ['menu.quit', run('quit'), 'Ctrl+Q'],
       ],
       edit: [
         ['menu.undo', edit('undo'), 'Ctrl+Z'],
@@ -1441,6 +1914,19 @@
         ['menu.selectAll', edit('selectAll'), 'Ctrl+A'],
       ],
       view: [
+        {
+          label: 'menu.editMode',
+          children: [
+            [
+              'menu.editModeWysiwyg',
+              run('mode', 'wysiwyg'),
+              '',
+              () => currentEditorMode() === 'wysiwyg',
+            ],
+            ['menu.editModeIr', run('mode', 'ir'), '', () => currentEditorMode() === 'ir'],
+            ['menu.editModeSv', run('mode', 'sv'), '', () => currentEditorMode() === 'sv'],
+          ],
+        },
         {
           label: 'menu.layout',
           children: [
@@ -1532,7 +2018,8 @@
       trigger.classList.add('active');
       const popup = document.createElement('div');
       popup.className = 'app-menu-popup';
-      fillPopup(popup, menus[trigger.dataset.menu] || []);
+      const menu = menus[trigger.dataset.menu];
+      fillPopup(popup, typeof menu === 'function' ? menu() : menu || []);
       document.body.appendChild(popup);
       const rect = trigger.getBoundingClientRect();
       popup.style.left = `${rect.left}px`;
@@ -1580,9 +2067,13 @@
 
   function setupEvents() {
     setupAppMenus();
+    window.appAPI.onOpenFiles((paths) => void openPaths(paths));
     $('#windowMinimize').onclick = () => window.appAPI.minimize();
     $('#windowMaximize').onclick = () => window.appAPI.maximize();
     $('#windowClose').onclick = () => window.appAPI.closeWindow();
+    $('#confirmModal').onclick = (event) => {
+      if (event.target === $('#confirmModal')) closeConfirmDialog('cancel');
+    };
     $('#windowTitlebar').ondblclick = (event) => {
       if (!event.target.closest('button')) window.appAPI.maximize();
     };
@@ -1596,10 +2087,14 @@
     $('#settingsButton').onclick = openSettings;
     $('#statusSettings').onclick = openSettings;
     $('#statusThemeToggle').onchange = async (event) => {
-      const theme = event.target.checked ? 'dark' : 'classic';
+      const theme = event.target.checked ? darkThemePreference() : 'classic';
       state.settings.theme = theme;
       state.settings.systemTheme = false;
-      await window.appAPI.saveSettings({ theme, systemTheme: false });
+      await window.appAPI.saveSettings({
+        theme,
+        systemTheme: false,
+        ...(isDarkTheme(theme) ? { lastDarkTheme: theme } : {}),
+      });
       await applyTheme(theme);
     };
     $('#refreshTree').onclick = refreshTree;
@@ -1617,6 +2112,7 @@
             view.classList.toggle('active', view.id === `${button.dataset.view}View`),
           );
           if (button.dataset.view === 'outline') renderOutline();
+          else scheduleTreeNameEllipses();
         }),
     );
     $$('.settings-nav button').forEach(
@@ -1628,12 +2124,13 @@
           $$('[data-settings-panel]').forEach((panel) =>
             panel.classList.toggle('active', panel.dataset.settingsPanel === button.dataset.panel),
           );
+          $('#resetSettingsPage').classList.toggle('hidden', button.dataset.panel === 'about');
         }),
     );
     $$('[data-close]').forEach((button) => {
       button.onclick = () => {
-        $(`#${button.dataset.close}`).classList.add('hidden');
-        if (button.dataset.close === 'settingsModal') applyPresentationSettings();
+        if (button.dataset.close === 'settingsModal') closeSettings();
+        else $(`#${button.dataset.close}`).classList.add('hidden');
       };
     });
     $('#saveSettings').onclick = () => saveSettings(true);
@@ -1645,7 +2142,7 @@
       document.documentElement.style.setProperty('--editor-text-width', `${value}%`);
     };
     $('#resetSettings').onclick = async () => {
-      if (await window.appAPI.confirm({ message: t('confirm.resetSettings') })) {
+      if (await confirmDialog({ message: t('confirm.resetSettings') })) {
         state.settings = await window.appAPI.resetSettings();
         applyLocale(state.settings.locale);
         openSettings();
@@ -1654,11 +2151,19 @@
     setupSettingsDrag();
     $('#openSettingsFolder').onclick = async () =>
       window.appAPI.showItemInFolder(await window.appAPI.getSettingsPath());
+    $$('[data-external]').forEach((button) => {
+      button.onclick = () => window.appAPI.openExternal(button.dataset.external);
+    });
     document.addEventListener('click', () => $('#contextMenu').classList.add('hidden'));
     document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !$('#confirmModal').classList.contains('hidden')) {
+        event.preventDefault();
+        closeConfirmDialog('cancel');
+        return;
+      }
       if (event.key === 'Alt' && $('#app').classList.contains('fullscreen')) {
         event.preventDefault();
-        $('#app').classList.add('fullscreen-menu-visible');
+        $('#app').classList.toggle('fullscreen-menu-visible');
         return;
       }
       if (event.key === 'Escape') $('#app').classList.remove('fullscreen-menu-visible');
@@ -1688,6 +2193,9 @@
         event.preventDefault();
         const tab = activeTab();
         if (tab) closeTab(tab.id);
+      } else if (key === 'q') {
+        event.preventDefault();
+        window.appAPI.closeWindow();
       }
     });
     const resize = $('#sidebarResize');
@@ -1701,6 +2209,7 @@
         const width = Math.max(180, Math.min(500, event.clientX));
         $('#sidebar').style.width = `${width}px`;
         state.settings.sidebarWidth = width;
+        scheduleTreeNameEllipses();
       }
     });
     window.addEventListener('mouseup', () => {
@@ -1710,14 +2219,18 @@
         window.appAPI.saveSettings({ sidebarWidth: state.settings.sidebarWidth });
       }
     });
+    new ResizeObserver(scheduleTreeNameEllipses).observe($('#sidebar'));
     window.appAPI.onMenuAction(handleMenu);
     window.appAPI.onSystemThemeChanged((theme) => {
-      if (state.settings.systemTheme) applyTheme(theme);
+      if (state.settings.systemTheme) void applyTheme(mapSystemTheme(theme));
     });
     window.appAPI.onFullscreenChanged((fullscreen) => {
       $('#app').classList.toggle('fullscreen', fullscreen);
       if (!fullscreen) $('#app').classList.remove('fullscreen-menu-visible');
       state.tabs.forEach((tab) => scheduleSplitLineNumbers(tab));
+    });
+    window.appAPI.onMaximizedChanged((maximized) => {
+      updateMaximizedState(maximized);
     });
     window.fileAPI.onChanged(handleExternalChange);
     window.appAPI.onRequestClose(async () => {
@@ -1726,11 +2239,17 @@
         window.appAPI.closeConfirmed();
         return;
       }
-      const proceed = await window.appAPI.confirm({
-        message: t('confirm.quitDirty', { count: dirty.length }),
-        detail: dirty.map((tab) => tab.title).join('\n'),
-      });
-      if (proceed) window.appAPI.closeConfirmed();
+      const action = await showUnsavedDialog(
+        t('confirm.quitDirty', { count: dirty.length }),
+        dirty.map((tab) => `• ${tab.title}`).join('\n'),
+      );
+      if (action === 'cancel') return;
+      if (action === 'save') {
+        for (const tab of dirty) {
+          if (!(await saveTab(tab))) return;
+        }
+      }
+      window.appAPI.closeConfirmed();
     });
     document.body.addEventListener('dragover', (event) => event.preventDefault());
     document.body.addEventListener('drop', async (event) => {
@@ -1747,11 +2266,12 @@
   }
 
   async function init() {
-    if (typeof Vditor === 'undefined' || !window.fileAPI || !window.appAPI) {
+    if (typeof Vditor === 'undefined' || !VDITOR || !window.fileAPI || !window.appAPI) {
       document.body.innerHTML =
         '<div class="fatal"><h1>应用资源加载失败</h1><p>请重新运行 npm run build。</p></div>';
       return;
     }
+    document.body.dataset.platform = window.appAPI.platform;
     state.settings = await window.appAPI.getSettings();
     state.defaultSettings = await window.appAPI.getDefaultSettings();
     applyLocale(state.settings.locale);
@@ -1759,13 +2279,13 @@
     $('#sidebar').style.width = `${state.settings.sidebarWidth}px`;
     toggleSidebar(state.settings.sidebarVisible);
     $('#app').classList.toggle('fullscreen', await window.appAPI.isFullscreen());
+    updateMaximizedState(await window.appAPI.isMaximized());
     applyPresentationSettings();
     await applyTheme(await resolveTheme());
     $('#settingsPath').textContent = await window.appAPI.getSettingsDisplayPath();
     const info = await window.appAPI.getInfo();
     $('#statusVersion').textContent = `v${info.app}`;
-    $('#versionInfo').innerHTML =
-      `Vditor Desktop ${escapeHTML(info.app)}<br>Vditor ${escapeHTML(info.vditor)} · Electron ${escapeHTML(info.electron)} · Node ${escapeHTML(info.node)}`;
+    $('#versionInfo').textContent = `Version ${info.app} · Electron ${info.electron}`;
     const session = state.settings.session;
     if (state.settings.restoreWorkspace && session?.workspacePath)
       await setWorkspace(session.workspacePath);
@@ -1775,6 +2295,7 @@
       if (active) switchTab(active.id);
     }
     if (!state.tabs.length) updateActiveUI();
+    window.appAPI.rendererReady();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

@@ -1,8 +1,11 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import * as TOML from '@iarna/toml';
 import { expect, test, type Page } from '@playwright/test';
 import { _electron as electron, type ElectronApplication } from 'playwright';
+import type { AppSettings } from '../../src/main/services/app-state';
+import { SettingsStore } from '../../src/main/services/settings-store';
 
 const projectRoot = path.resolve(__dirname, '../..');
 
@@ -12,29 +15,35 @@ interface RunningApp {
   testRoot: string;
 }
 
-async function launchApp(settings: Record<string, unknown> = {}): Promise<RunningApp> {
+async function launchApp(
+  settings: Record<string, unknown> = {},
+  startupFiles: Record<string, string> = {},
+): Promise<RunningApp> {
   const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-e2e-'));
   const configDir = path.join(testRoot, 'config');
   fs.mkdirSync(configDir);
-  fs.writeFileSync(
-    path.join(configDir, 'settings.json'),
-    JSON.stringify({
-      locale: 'en_US',
-      systemTheme: false,
-      restoreTabs: false,
-      restoreWorkspace: false,
-      autoSave: false,
-      ...settings,
-    }),
-  );
+  new SettingsStore(configDir).update({
+    locale: 'en_US',
+    systemTheme: false,
+    restoreTabs: false,
+    restoreWorkspace: false,
+    autoSave: false,
+    ...settings,
+  } as Partial<AppSettings>);
+  const startupPaths = Object.entries(startupFiles).map(([name, content]) => {
+    const filePath = path.join(testRoot, name);
+    fs.writeFileSync(filePath, content);
+    return filePath;
+  });
 
   const app = await electron.launch({
-    args: ['.'],
+    args: ['.', ...startupPaths],
     cwd: projectRoot,
     env: {
       ...process.env,
       ELECTRON_DISABLE_SECURITY_WARNINGS: 'true',
       VDITOR_DESKTOP_CONFIG_DIR: configDir,
+      VDITOR_DESKTOP_DATA_DIR: path.join(testRoot, 'chromium'),
     },
   });
   const page = await app.firstWindow();
@@ -42,8 +51,29 @@ async function launchApp(settings: Record<string, unknown> = {}): Promise<Runnin
   return { app, page, testRoot };
 }
 
+function readSettings(testRoot: string): Record<string, unknown> {
+  return TOML.parse(
+    fs.readFileSync(path.join(testRoot, 'config', 'config.toml'), 'utf8'),
+  ) as Record<string, unknown>;
+}
+
+function readSetting(testRoot: string, section: string, key: string): unknown {
+  return (readSettings(testRoot)[section] as Record<string, unknown>)[key];
+}
+
 async function closeApp(running: RunningApp): Promise<void> {
-  await running.app.close();
+  if (!running.page.isClosed()) {
+    const closed = running.app.waitForEvent('close');
+    await running.page.evaluate(() => window.appAPI.closeWindow());
+    try {
+      const discard = running.page.locator('#confirmActions [data-action="discard"]');
+      await discard.waitFor({ state: 'visible', timeout: 1000 });
+      await discard.click();
+    } catch {
+      // A clean window closes immediately and destroys the page before a dialog can appear.
+    }
+    await closed;
+  }
   fs.rmSync(running.testRoot, { recursive: true, force: true });
 }
 
@@ -52,13 +82,62 @@ async function createNewTab(page: Page): Promise<void> {
   await page.waitForSelector('.editor-host.active .vditor-content');
 }
 
-async function typeMarkdown(source: ReturnType<Page['locator']>, lines: string[]): Promise<void> {
-  await source.click();
-  for (const [index, line] of lines.entries()) {
-    if (index) await source.press('Enter');
-    await source.pressSequentially(line);
+test('isolates TOML configuration and Chromium data in the configured directories', async () => {
+  const running = await launchApp();
+  try {
+    const { app, page, testRoot } = running;
+    const configPath = path.join(testRoot, 'config', 'config.toml');
+    const chromiumPath = path.join(testRoot, 'chromium');
+    await expect.poll(() => fs.existsSync(configPath)).toBe(true);
+    await expect.poll(() => fs.existsSync(chromiumPath)).toBe(true);
+    await expect(page.evaluate(() => window.appAPI.getSettingsPath())).resolves.toBe(configPath);
+    await expect(
+      app.evaluate(({ app: electronApp }) => ({
+        userData: electronApp.getPath('userData'),
+        sessionData: electronApp.getPath('sessionData'),
+      })),
+    ).resolves.toEqual({ userData: chromiumPath, sessionData: chromiumPath });
+  } finally {
+    await closeApp(running);
   }
-}
+});
+
+test('opens a Markdown file supplied by the desktop launcher on cold start', async () => {
+  const running = await launchApp({}, { 'launcher target.md': '# Opened from desktop' });
+  try {
+    const { page } = running;
+    await expect(page.locator('.document-tab.active > span')).toHaveText('launcher target.md');
+    await expect(page.locator('#windowTitle')).toHaveText('launcher target.md - Vditor Desktop');
+    await expect(page.locator('.editor-host.active')).toContainText('Opened from desktop');
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('forwards Markdown files from a second application invocation', async () => {
+  const running = await launchApp();
+  try {
+    const { app, page, testRoot } = running;
+    const filePath = path.join(testRoot, 'second invocation.md');
+    fs.writeFileSync(filePath, '# Opened by second instance');
+    await app.evaluate(
+      ({ app: electronApp }, payload) => {
+        electronApp.emit(
+          'second-instance',
+          {} as Electron.Event,
+          [process.execPath, payload.filePath],
+          payload.workingDirectory,
+          {},
+        );
+      },
+      { filePath, workingDirectory: testRoot },
+    );
+    await expect(page.locator('.document-tab.active > span')).toHaveText('second invocation.md');
+    await expect(page.locator('.editor-host.active')).toContainText('Opened by second instance');
+  } finally {
+    await closeApp(running);
+  }
+});
 
 test('creates numbered tabs and shows the empty state after closing all tabs', async () => {
   const running = await launchApp();
@@ -66,9 +145,15 @@ test('creates numbered tabs and shows the empty state after closing all tabs', a
     const { page } = running;
     await expect(page.locator('.document-tab')).toHaveCount(0);
     await expect(page.locator('#noTabs')).toBeVisible();
+    await page.locator('[data-menu="file"]').click();
+    await expect(page.locator('.app-menu-popup button', { hasText: 'Close Tab' })).toHaveCount(0);
+    await page.locator('[data-menu="file"]').click();
 
     await page.locator('#addTab').click();
     await expect(page.locator('.document-tab span')).toHaveText(['Untitled 1']);
+    await page.locator('[data-menu="file"]').click();
+    await expect(page.locator('.app-menu-popup button', { hasText: 'Close Tab' })).toBeVisible();
+    await page.locator('[data-menu="file"]').click();
     await page.locator('#addTab').click();
     await expect(page.locator('.document-tab span')).toHaveText(['Untitled 1', 'Untitled 2']);
 
@@ -78,6 +163,8 @@ test('creates numbered tabs and shows the empty state after closing all tabs', a
     await expect(page.locator('#noTabs')).toBeVisible();
     await expect(page.locator('#emptyNewFile')).toBeVisible();
     await expect(page.locator('#emptyOpenFile')).toBeVisible();
+    await page.locator('[data-menu="file"]').click();
+    await expect(page.locator('.app-menu-popup button', { hasText: 'Close Tab' })).toHaveCount(0);
   } finally {
     await closeApp(running);
   }
@@ -88,17 +175,19 @@ test('opens the View > Layout submenu and toggles the unified toolbar', async ()
   try {
     const { page } = running;
     await createNewTab(page);
+    const layoutMenu = () =>
+      page.locator('.app-menu-popup:not(.submenu) button.has-submenu', { hasText: 'Layout' });
     await page.locator('[data-menu="view"]').click();
-    await page.locator('.app-menu-popup button.has-submenu').hover();
+    await layoutMenu().hover();
     await expect(page.locator('.app-menu-popup.submenu')).toBeVisible();
     await page.locator('.app-menu-popup:not(.submenu) button', { hasText: 'Settings' }).hover();
     await expect(page.locator('.app-menu-popup.submenu')).toHaveCount(0);
-    await page.locator('.app-menu-popup button.has-submenu').hover();
+    await layoutMenu().hover();
     await page.locator('.app-menu-popup.submenu button', { hasText: 'Show Toolbar' }).click();
     await expect(page.locator('#app')).toHaveClass(/toolbar-hidden/);
 
     await page.locator('[data-menu="view"]').click();
-    await page.locator('.app-menu-popup button.has-submenu').hover();
+    await layoutMenu().hover();
     await page.locator('.app-menu-popup.submenu button', { hasText: 'Show Toolbar' }).click();
     await expect(page.locator('#app')).not.toHaveClass(/toolbar-hidden/);
 
@@ -107,6 +196,43 @@ test('opens the View > Layout submenu and toggles the unified toolbar', async ()
     await page.locator('[data-menu="edit"]').hover();
     await expect(page.locator('[data-menu="edit"]')).toHaveClass(/active/);
     await expect(page.locator('.app-menu-popup button', { hasText: 'Undo' })).toBeVisible();
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('switches among all three modes from the View > Editing Mode submenu', async () => {
+  const running = await launchApp({ editMode: 'ir' });
+  try {
+    const { page, testRoot } = running;
+    await createNewTab(page);
+    const openEditingMode = async () => {
+      await page.locator('[data-menu="view"]').click();
+      await page
+        .locator('.app-menu-popup:not(.submenu) button.has-submenu', { hasText: 'Editing Mode' })
+        .hover();
+      await expect(page.locator('.app-menu-popup.submenu')).toBeVisible();
+    };
+
+    await openEditingMode();
+    await expect(
+      page.locator('.app-menu-popup.submenu button', { hasText: 'Instant Rendering Mode' }),
+    ).toContainText('✓');
+    await page.locator('.app-menu-popup.submenu button', { hasText: 'WYSIWYG Mode' }).click();
+    await expect(page.locator('.editor-host.active .vditor-wysiwyg')).toBeVisible();
+    await expect.poll(() => readSetting(testRoot, 'editor', 'editMode')).toBe('wysiwyg');
+
+    await openEditingMode();
+    await page
+      .locator('.app-menu-popup.submenu button', { hasText: 'Instant Rendering Mode' })
+      .click();
+    await expect(page.locator('.editor-host.active .vditor-ir')).toBeVisible();
+
+    await openEditingMode();
+    await page.locator('.app-menu-popup.submenu button', { hasText: 'Split Preview Mode' }).click();
+    await expect(page.locator('.editor-host.active .vditor-sv')).toBeVisible();
+    await expect(page.locator('.editor-host.active .vditor-preview')).toBeVisible();
+    await expect.poll(() => readSetting(testRoot, 'editor', 'editMode')).toBe('sv');
   } finally {
     await closeApp(running);
   }
@@ -160,29 +286,145 @@ test('switches to split view and renders source line numbers', async () => {
     await page.mouse.down();
     await page.mouse.move(resizerBox.x + 90, resizerBox.y + 20);
     await page.mouse.up();
-    const settingsPath = path.join(running.testRoot, 'config', 'settings.json');
-    await expect
-      .poll(() => JSON.parse(fs.readFileSync(settingsPath, 'utf8')).splitRatio)
-      .not.toBe(50);
+    await expect.poll(() => readSetting(running.testRoot, 'editor', 'splitRatio')).not.toBe(50);
     const contentBox = await page.locator('.editor-host.active .vditor-content').boundingBox();
     if (!contentBox) throw new Error('Split content has no bounding box');
     await page.mouse.move(resizerBox.x + 92, resizerBox.y + 20);
     await page.mouse.down();
     await page.mouse.move(contentBox.x + contentBox.width / 2 + 1, resizerBox.y + 20);
     await page.mouse.up();
-    await expect.poll(() => JSON.parse(fs.readFileSync(settingsPath, 'utf8')).splitRatio).toBe(50);
+    await expect.poll(() => readSetting(running.testRoot, 'editor', 'splitRatio')).toBe(50);
     await expect(resizer).toHaveClass(/snapped/);
 
-    await page.locator('.editor-host.active .sv-fold-toggle').first().click();
-    await expect(page.locator('.editor-host.active .vditor-sv [data-folded-heading]')).toHaveCount(
-      1,
-    );
-    await expect(page.locator('.editor-host.active .sv-line-number')).toHaveCount(1);
+    const content = page.locator('.editor-host.active .vditor-content');
+    const both = page.locator('#vditorToolbarMount button[data-type="both"]');
+    await both.click();
+    await expect(page.locator('.editor-host.active')).toHaveClass(/sv-editor-only/);
+    await expect(page.locator('.editor-host.active .vditor-preview')).toBeHidden();
+    await expect(resizer).toBeHidden();
+    await expect
+      .poll(async () => {
+        const sourceBox = await source.boundingBox();
+        const contentArea = await content.boundingBox();
+        return sourceBox && contentArea ? sourceBox.width / contentArea.width : 0;
+      })
+      .toBeGreaterThan(0.98);
 
-    await modeTrigger.click();
-    await page.locator('#vditorToolbarMount button[data-mode="ir"]').click();
+    await both.click();
+    await expect(page.locator('.editor-host.active')).toHaveClass(/sv-both/);
+    const previewToggle = page.locator('#vditorToolbarMount button[data-type="preview"]');
+    await previewToggle.click();
+    await expect(page.locator('.editor-host.active')).toHaveClass(/sv-preview-only/);
+    await expect(source).toBeHidden();
+    await expect(page.locator('.editor-host.active .sv-line-numbers')).toBeHidden();
+    await expect(resizer).toBeHidden();
+    await expect
+      .poll(async () => {
+        const previewBox = await page.locator('.editor-host.active .vditor-preview').boundingBox();
+        const contentArea = await content.boundingBox();
+        return previewBox && contentArea ? previewBox.width / contentArea.width : 0;
+      })
+      .toBeGreaterThan(0.98);
+    await previewToggle.click();
+    await expect(page.locator('.editor-host.active')).toHaveClass(/sv-both/);
+
+    await source.click();
+    await page.keyboard.press('Control+Alt+8');
     await expect(page.locator('.editor-host.active .vditor-ir')).toBeVisible();
     await expect(page.locator('.editor-host.active .sv-line-numbers')).toBeHidden();
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('satisfies the Vditor DOM integration contract', async () => {
+  const running = await launchApp({ editMode: 'sv' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    const contract = await page.locator('.editor-host.active').evaluate((host) => {
+      const adapter = window.VditorDesktopAdapter;
+      const mountedToolbar = document.querySelector('#vditorToolbarMount > .vditor-toolbar');
+      return adapter.validateHost(host, mountedToolbar);
+    });
+    expect(contract).toEqual({ valid: true, missing: [] });
+
+    const source = page.locator('.editor-host.active .vditor-sv');
+    await source.fill('- item\nnext');
+    await expect
+      .poll(() =>
+        source.evaluate((editor) => {
+          const adapter = window.VditorDesktopAdapter;
+          return (
+            adapter.sourceNewlines(editor).length >= 1 &&
+            Boolean(editor.querySelector(adapter.selectors.listMarker))
+          );
+        }),
+      )
+      .toBe(true);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('navigates outline headings in instant, WYSIWYG, and both split panes', async () => {
+  const running = await launchApp({ editMode: 'ir', sidebarVisible: true });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    const markdown = [
+      '# Top',
+      ...Array.from({ length: 70 }, (_, index) => `paragraph ${index + 1}`),
+      '## Target',
+      'target body',
+    ].join('\n');
+    const ir = page.locator('.editor-host.active .vditor-ir');
+    const scrollTop = (editor: ReturnType<Page['locator']>) =>
+      editor.evaluate((node) =>
+        Math.max(node.scrollTop, node.querySelector(':scope > .vditor-reset')?.scrollTop || 0),
+      );
+    await ir.locator('.vditor-reset').fill(markdown);
+    await expect(ir.locator('h2')).toHaveCount(1);
+    await page.locator('.sidebar-tabs [data-view="outline"]').click();
+    await expect(page.locator('#outlineView > .panel-heading')).toHaveCount(0);
+    const target = page.locator('#outlineTree button', { hasText: 'Target' });
+    await expect(target).toBeVisible();
+    const background = await target.evaluate((node) => getComputedStyle(node).backgroundColor);
+    await target.hover();
+    await expect
+      .poll(() => target.evaluate((node) => getComputedStyle(node).backgroundColor))
+      .not.toBe(background);
+    await target.click();
+    await expect.poll(() => scrollTop(ir)).toBeGreaterThan(0);
+
+    const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+    await modeTrigger.click();
+    await page.locator('#vditorToolbarMount button[data-mode="wysiwyg"]').click();
+    const wysiwyg = page.locator('.editor-host.active .vditor-wysiwyg');
+    await expect(wysiwyg.locator('h2')).toHaveCount(1);
+    await wysiwyg.evaluate((node) => {
+      node.scrollTop = 0;
+      const reset = node.querySelector(':scope > .vditor-reset');
+      if (reset) reset.scrollTop = 0;
+    });
+    await target.click();
+    await expect.poll(() => scrollTop(wysiwyg)).toBeGreaterThan(0);
+
+    await modeTrigger.click();
+    await page.locator('#vditorToolbarMount button[data-mode="sv"]').click();
+    const source = page.locator('.editor-host.active .vditor-sv');
+    const preview = page.locator('.editor-host.active .vditor-preview');
+    await expect(source.locator('[data-type="heading-marker"]')).toHaveCount(2);
+    await expect(preview.locator('h2')).toHaveCount(1);
+    await source.evaluate((node) => {
+      node.scrollTop = 0;
+    });
+    await preview.evaluate((node) => {
+      node.scrollTop = 0;
+    });
+    await target.click();
+    await expect.poll(() => source.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+    await expect.poll(() => preview.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
   } finally {
     await closeApp(running);
   }
@@ -198,6 +440,9 @@ test('hides the custom titlebar while Electron is fullscreen', async () => {
     await page.keyboard.press('Alt');
     await expect(page.locator('#app')).toHaveClass(/fullscreen-menu-visible/);
     await expect(page.locator('#windowTitlebar')).toBeVisible();
+    await page.keyboard.press('Alt');
+    await expect(page.locator('#app')).not.toHaveClass(/fullscreen-menu-visible/);
+    await expect(page.locator('#windowTitlebar')).toBeHidden();
     await page.keyboard.press('F11');
     await expect(page.locator('#app')).not.toHaveClass(/fullscreen/);
     await expect(page.locator('#windowTitlebar')).toBeVisible();
@@ -206,35 +451,49 @@ test('hides the custom titlebar while Electron is fullscreen', async () => {
   }
 });
 
-test('folds only the selected heading section and restores its content', async () => {
+test('shows the split editor scrollbar only at its edge or while scrolling', async () => {
   const running = await launchApp({ editMode: 'sv' });
   try {
     const { page } = running;
     await createNewTab(page);
     const source = page.locator('.editor-host.active .vditor-sv');
-    await typeMarkdown(source, [
-      '# Parent',
-      'intro',
-      '## Child A',
-      'hidden A',
-      '## Child B',
-      'visible B',
-    ]);
-    const toggles = page.locator('.editor-host.active .sv-fold-toggle');
-    await expect(toggles).toHaveCount(3);
-    const expandedLineCount = await page.locator('.editor-host.active .sv-line-number').count();
-    await toggles.nth(1).click();
-    await expect(source.locator('.h1[data-folded-heading]')).toHaveCount(0);
-    await expect(source.locator('.h2[data-folded-heading]')).toHaveCount(1);
-    await expect
-      .poll(() => page.locator('.editor-host.active .sv-line-number').count())
-      .toBeLessThan(expandedLineCount);
-    expect(await source.textContent()).toContain('hidden A');
-    await toggles.nth(1).click();
-    await expect(source.locator('[data-folded-heading]')).toHaveCount(0);
-    await expect(page.locator('.editor-host.active .sv-line-number')).toHaveCount(
-      expandedLineCount,
-    );
+
+    const sourceBox = await source.boundingBox();
+    if (!sourceBox) throw new Error('Split source editor has no bounds');
+    await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + 80);
+    await expect(source).not.toHaveClass(/scrollbar-visible/);
+    await page.mouse.move(sourceBox.x + sourceBox.width - 3, sourceBox.y + 80);
+    await expect(source).toHaveClass(/scrollbar-visible/);
+    await expect(source).not.toHaveClass(/scrollbar-visible/, { timeout: 1500 });
+
+    await source.evaluate((node) => {
+      node.dispatchEvent(new Event('scroll'));
+    });
+    await expect(source).toHaveClass(/scrollbar-visible/);
+    await expect(source).not.toHaveClass(/scrollbar-visible/, { timeout: 1500 });
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps list indentation actions available in split-view mode', async () => {
+  const running = await launchApp({ editMode: 'sv' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    const source = page.locator('.editor-host.active .vditor-sv');
+    const outdent = page.locator('#vditorToolbarMount button[data-type="outdent"]');
+    const indent = page.locator('#vditorToolbarMount button[data-type="indent"]');
+    await expect(outdent).toBeVisible();
+    await expect(indent).toBeVisible();
+    await source.fill('- item');
+    await source.press('Home');
+    await source.press('ArrowRight');
+    await source.press('ArrowRight');
+    await indent.click();
+    await expect.poll(() => source.textContent()).toMatch(/^\s+- item/);
+    await outdent.click();
+    await expect.poll(() => source.textContent()).toMatch(/^- item/);
   } finally {
     await closeApp(running);
   }
@@ -253,11 +512,87 @@ test('shows whitespace and applies Tab spaces and automatic indentation in split
     await createNewTab(page);
     const source = page.locator('.editor-host.active .vditor-sv');
     await source.fill('text  indented');
-    await expect(page.locator('.editor-host.active .sv-whitespace-layer')).toContainText('··');
+    const whitespaceCanvas = page.locator('.editor-host.active .sv-whitespace-canvas');
+    await expect(whitespaceCanvas).toHaveAttribute('data-marker-count', '2');
+    const firstPositions = await whitespaceCanvas.evaluate(
+      (canvas) => canvas.whitespaceMarkerPositions,
+    );
+    expect(firstPositions[1].x - firstPositions[0].x).toBeGreaterThan(5);
     await source.press('End');
     await source.press('Tab');
     await source.type('y');
     await expect.poll(() => source.textContent()).toMatch(/indented\s{4}y/);
+    await expect(whitespaceCanvas).toHaveAttribute('data-marker-count', '6');
+    await source.fill('## 1.1 Linux and Windows');
+    await expect(whitespaceCanvas).toHaveAttribute('data-marker-count', '4');
+    const canvasLeft = await whitespaceCanvas.evaluate(
+      (canvas) => canvas.getBoundingClientRect().left,
+    );
+    const markerCenters = await whitespaceCanvas.evaluate((canvas) =>
+      canvas.whitespaceMarkerPositions.map((marker) => marker.x),
+    );
+    const spaceCenters = await source.evaluate((node) => {
+      const centers = [];
+      const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+      let textNode = walker.nextNode();
+      while (textNode) {
+        for (let index = 0; index < textNode.data.length; index += 1) {
+          if (textNode.data[index] !== ' ') continue;
+          const range = document.createRange();
+          range.setStart(textNode, index);
+          range.setEnd(textNode, index + 1);
+          const rect = range.getBoundingClientRect();
+          if (rect.width > 0) centers.push(rect.left + rect.width / 2);
+        }
+        textNode = walker.nextNode();
+      }
+      return centers;
+    });
+    expect(markerCenters).toHaveLength(spaceCenters.length);
+    markerCenters.forEach((center, index) =>
+      expect(center + canvasLeft).toBeCloseTo(spaceCenters[index], 0),
+    );
+    await source.fill(
+      Array.from({ length: 80 }, (_value, index) => `line ${index + 1} value`).join('\n'),
+    );
+    await expect.poll(() => source.textContent()).toContain('line 80 value');
+    await source.evaluate((node) => {
+      node.style.flex = '0 0 160px';
+      node.style.height = '160px';
+    });
+    await expect
+      .poll(() => source.evaluate((node) => node.scrollHeight - node.clientHeight))
+      .toBeGreaterThan(0);
+    const liveTransforms = await source.evaluate((node) => {
+      const canvas = node.parentElement?.querySelector('.sv-whitespace-canvas');
+      const maximum = node.scrollHeight - node.clientHeight;
+      return [0.25, 0.5, 0.75, 1].map((ratio) => {
+        node.scrollTop = maximum * ratio;
+        node.dispatchEvent(new Event('scroll'));
+        const delta = Number(canvas?.dataset.scrollTop || 0) - node.scrollTop;
+        return { delta, transform: canvas?.style.transform || '' };
+      });
+    });
+    expect(liveTransforms.some(({ delta }) => delta !== 0)).toBe(true);
+    liveTransforms.forEach(({ delta, transform }) => {
+      const renderedDelta = Number(transform.match(/translateY\((-?[\d.]+)px\)/)?.[1]);
+      expect(renderedDelta).toBeCloseTo(delta, 2);
+    });
+    await expect
+      .poll(() => whitespaceCanvas.evaluate((canvas) => Number(canvas.dataset.markerCount || 0)))
+      .toBeGreaterThan(0);
+    await expect
+      .poll(() => whitespaceCanvas.evaluate((canvas) => canvas.style.transform))
+      .toMatch(/translateY\(0(?:px)?\)/);
+    const scrolledMarkers = await whitespaceCanvas.evaluate((canvas) => ({
+      height: canvas.clientHeight,
+      positions: canvas.whitespaceMarkerPositions,
+    }));
+    expect(
+      scrolledMarkers.positions.every(
+        (marker) => marker.y >= -30 && marker.y <= scrolledMarkers.height + 30,
+      ),
+    ).toBe(true);
     await source.fill('- item');
     await source.press('End');
     await source.press('Enter');
@@ -268,8 +603,43 @@ test('shows whitespace and applies Tab spaces and automatic indentation in split
   }
 });
 
+test('keeps whitespace canvases isolated between tabs', async () => {
+  const running = await launchApp({ editMode: 'sv', showWhitespace: true });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    await page.locator('.editor-host.active .vditor-sv').fill('first  tab');
+    await expect(page.locator('.editor-host.active .sv-whitespace-canvas')).toHaveAttribute(
+      'data-marker-count',
+      '2',
+    );
+
+    await createNewTab(page);
+    await page.locator('.editor-host.active .vditor-sv').fill('second   tab');
+    await expect(page.locator('.editor-host.active .sv-whitespace-canvas')).toHaveAttribute(
+      'data-marker-count',
+      '3',
+    );
+    await expect(page.locator('.editor-host:not(.active)')).toBeHidden();
+    await expect(page.locator('.editor-host:not(.active) .sv-whitespace-canvas')).toBeHidden();
+
+    await page.locator('.document-tab').first().click();
+    await expect(page.locator('.editor-host.active .sv-whitespace-canvas')).toHaveAttribute(
+      'data-marker-count',
+      '2',
+    );
+    await expect(page.locator('.editor-host:not(.active) .sv-whitespace-canvas')).toBeHidden();
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('shows only the workspace name and refresh action in the explorer header', async () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-workspace-'));
+  fs.mkdirSync(path.join(workspace, 'docs'));
+  fs.writeFileSync(path.join(workspace, 'docs', 'inside.md'), '# Inside');
+  const longFileName = 'abcdefghijklmnopqrstuvwx-document-ending.md';
+  fs.writeFileSync(path.join(workspace, longFileName), '# Note');
   const running = await launchApp({
     restoreWorkspace: true,
     sidebarVisible: true,
@@ -282,9 +652,74 @@ test('shows only the workspace name and refresh action in the explorer header', 
     await expect(running.page.locator('#fileSearch')).toHaveCount(0);
     await expect(running.page.locator('#newExplorerFile')).toHaveCount(0);
     await expect(running.page.locator('#workspaceLabel')).toHaveCount(0);
+    const treeRows = running.page.locator('#fileTree .tree-row');
+    await expect(treeRows).toHaveCount(3);
+    const directory = running.page.locator('#fileTree > .tree-dir').first();
+    const nestedFile = running.page.locator('#fileTree > .tree-children .tree-file').first();
+    await expect(directory).toHaveClass(/expanded/);
+    await expect(nestedFile).toBeVisible();
+    await directory.locator('.chevron').click();
+    await expect(directory).not.toHaveClass(/expanded/);
+    await expect(nestedFile).toBeHidden();
+    await directory.locator('.chevron').click();
+    await expect(directory).toHaveClass(/expanded/);
+    await expect(nestedFile).toBeVisible();
+    await expect(running.page.locator('#fileTree .tree-row[draggable="true"]')).toHaveCount(0);
+    expect(
+      await treeRows.evaluateAll((rows) =>
+        rows.every((row) => !row.draggable && !row.hasAttribute('draggable')),
+      ),
+    ).toBe(true);
+    const sidebar = running.page.locator('#sidebar');
+    const topFile = running.page.locator('#fileTree > .tree-file').first();
+    const chevronBefore = await topFile.locator('.chevron').boundingBox();
+    const iconBefore = await topFile.locator('.file-icon').boundingBox();
+    const sidebarBefore = await sidebar.boundingBox();
+    const divider = await running.page.locator('#sidebarResize').boundingBox();
+    if (!sidebarBefore || !divider) throw new Error('Sidebar resize handle has no bounds');
+    await running.page.mouse.move(divider.x + divider.width / 2, divider.y + 80);
+    await running.page.mouse.down();
+    await running.page.mouse.move(divider.x - 90, divider.y + 80, { steps: 5 });
+    await running.page.mouse.up();
+    const sidebarAfter = await sidebar.boundingBox();
+    expect(sidebarAfter?.width || 0).toBeLessThan(sidebarBefore.width);
+    const chevronAfter = await topFile.locator('.chevron').boundingBox();
+    const iconAfter = await topFile.locator('.file-icon').boundingBox();
+    expect(chevronAfter?.x).toBeCloseTo(chevronBefore?.x || 0, 0);
+    expect(iconAfter?.x).toBeCloseTo(iconBefore?.x || 0, 0);
+    await expect(topFile.locator('.tree-name')).toHaveAttribute('title', longFileName);
+    await expect
+      .poll(() => topFile.locator('.tree-name').textContent())
+      .toMatch(/^abc.+\.\.\..+\.md$/);
+    expect(
+      await treeRows.evaluateAll((rows) =>
+        rows.every((row) => !row.draggable && !row.hasAttribute('draggable')),
+      ),
+    ).toBe(true);
   } finally {
     await closeApp(running);
     fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('reveals the file explorer after opening a folder from the File menu', async () => {
+  const running = await launchApp({ sidebarVisible: false });
+  try {
+    const { app, page, testRoot } = running;
+    await app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+    }, testRoot);
+    await expect(page.locator('#sidebar')).toHaveClass(/collapsed/);
+    await page.locator('#appMenuBar [data-menu="file"]').click();
+    await page
+      .locator('.app-menu-popup button')
+      .filter({ hasText: /^Open Folder/ })
+      .click();
+    await expect(page.locator('#sidebar')).not.toHaveClass(/collapsed/);
+    await expect(page.locator('#workspaceName')).toHaveText(path.basename(testRoot));
+    await expect.poll(() => readSetting(testRoot, 'workspace', 'sidebarVisible')).toBe(true);
+  } finally {
+    await closeApp(running);
   }
 });
 
@@ -349,12 +784,238 @@ test('keeps the active edit mode after saving settings', async () => {
   }
 });
 
+test('hides multi-platform preview actions by default and exposes them from settings', async () => {
+  const running = await launchApp({ editMode: 'sv' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    const actions = page.locator('.editor-host.active .vditor-preview__action');
+    await expect(actions).toHaveCount(0);
+    await expect
+      .poll(() =>
+        page
+          .locator('.editor-host.active .vditor-preview > .vditor-reset')
+          .evaluate((node) => node.style.width),
+      )
+      .toMatch(/^(|auto)$/);
+
+    await page.locator('#statusSettings').click();
+    await page.locator('.settings-nav [data-panel="preview"]').click();
+    const markdownChecks = page.locator('[data-settings-panel="preview"] .check-grid label');
+    await expect(markdownChecks).toHaveCount(12);
+    await expect(page.locator('[name="lineNumbers"] + span')).toHaveText(
+      'Code block preview line numbers',
+    );
+    const checkLayout = await markdownChecks.evaluateAll((labels) => ({
+      rows: new Set(labels.map((label) => Math.round(label.getBoundingClientRect().top))).size,
+      aligned: labels.every((label) => {
+        const style = getComputedStyle(label);
+        return (
+          style.display === 'flex' && style.alignItems === 'center' && style.marginTop === '0px'
+        );
+      }),
+    }));
+    expect(checkLayout.rows).toBeLessThanOrEqual(4);
+    expect(checkLayout.aligned).toBe(true);
+    const setting = page.locator('[name="multiPlatformPreview"]');
+    await expect(setting).not.toBeChecked();
+    await setting.check();
+
+    await expect(actions).toBeVisible();
+    await expect(actions.locator('button')).toHaveCount(5);
+    await expect(actions.locator('[data-type="desktop"]')).toHaveClass(
+      /vditor-preview__action--current/,
+    );
+
+    await setting.uncheck();
+    await expect(actions).toHaveCount(0);
+    await expect
+      .poll(() =>
+        page
+          .locator('.editor-host.active .vditor-preview > .vditor-reset')
+          .evaluate((node) => node.style.width),
+      )
+      .toMatch(/^(|auto)$/);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('links Light and Dark content themes to the application theme', async () => {
+  const running = await launchApp({ theme: 'classic', contentTheme: 'light' });
+  try {
+    const { page, testRoot } = running;
+    await createNewTab(page);
+
+    await page.locator('.theme-switch span').click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect.poll(() => readSetting(testRoot, 'appearance', 'contentTheme')).toBe('dark');
+
+    await page.locator('.theme-switch span').click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'classic');
+    await expect.poll(() => readSetting(testRoot, 'appearance', 'contentTheme')).toBe('light');
+
+    await page.locator('#statusSettings').click();
+    await expect(page.locator('.settings-card > header h2')).toHaveText('Vditor Desktop Settings');
+    await expect(page.locator('.settings-nav button > svg')).toHaveCount(6);
+    await page.locator('[name="contentTheme"]').selectOption('ant-design');
+    await expect.poll(() => readSetting(testRoot, 'appearance', 'contentTheme')).toBe('ant-design');
+    await page.locator('#saveSettings').click();
+
+    await page.locator('.theme-switch span').click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect.poll(() => readSetting(testRoot, 'appearance', 'contentTheme')).toBe('ant-design');
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('remembers which dark theme the status toggle should restore', async () => {
+  const running = await launchApp({
+    theme: 'monokai-pro-dark',
+    lastDarkTheme: 'monokai-pro-dark',
+    contentTheme: 'dark',
+  });
+  try {
+    const { page, testRoot } = running;
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'monokai-pro-dark');
+    await expect(page.locator('#statusThemeToggle')).toBeChecked();
+
+    await page.locator('.theme-switch span').click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'classic');
+    await expect
+      .poll(() => readSetting(testRoot, 'appearance', 'lastDarkTheme'))
+      .toBe('monokai-pro-dark');
+
+    await page.locator('.theme-switch span').click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'monokai-pro-dark');
+    await expect.poll(() => readSetting(testRoot, 'appearance', 'theme')).toBe('monokai-pro-dark');
+
+    await page.locator('#statusSettings').click();
+    await page.locator('.theme-option-dark').click();
+    await expect.poll(() => readSetting(testRoot, 'appearance', 'lastDarkTheme')).toBe('dark');
+    await page.locator('#saveSettings').click();
+    await page.locator('.theme-switch span').click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'classic');
+    await page.locator('.theme-switch span').click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('colors all six rendered heading levels in Monokai Pro Dark', async () => {
+  const running = await launchApp({
+    theme: 'monokai-pro-dark',
+    lastDarkTheme: 'monokai-pro-dark',
+    editMode: 'ir',
+  });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    const markdown = '# H1\n## H2\n### H3\n#### H4\n##### H5\n###### H6';
+    const expected = [
+      'rgb(255, 97, 136)',
+      'rgb(255, 216, 102)',
+      'rgb(169, 220, 118)',
+      'rgb(120, 220, 232)',
+      'rgb(171, 157, 242)',
+      'rgb(252, 152, 103)',
+    ];
+    const headingColors = (root: string, prefix = '.') =>
+      page.evaluate(
+        ({ rootSelector, classPrefix }) =>
+          Array.from({ length: 6 }, (_, index) => {
+            const level = index + 1;
+            const heading = document.querySelector(`${rootSelector} ${classPrefix}h${level}`);
+            return heading ? getComputedStyle(heading).color : null;
+          }),
+        { rootSelector: root, classPrefix: prefix },
+      );
+
+    await page.locator('.editor-host.active .vditor-ir .vditor-reset').fill(markdown);
+    await expect.poll(() => headingColors('.editor-host.active .vditor-ir', '')).toEqual(expected);
+
+    const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+    await modeTrigger.click();
+    await page.locator('#vditorToolbarMount button[data-mode="wysiwyg"]').click();
+    await expect
+      .poll(() => headingColors('.editor-host.active .vditor-wysiwyg', ''))
+      .toEqual(expected);
+
+    await modeTrigger.click();
+    await page.locator('#vditorToolbarMount button[data-mode="sv"]').click();
+    await expect
+      .poll(() => headingColors('.editor-host.active .vditor-preview', ''))
+      .toEqual(expected);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+for (const theme of ['classic', 'dark', 'monokai-pro-dark'] as const) {
+  test(`keeps editor backgrounds stable across focus changes in ${theme}`, async () => {
+    const running = await launchApp({
+      theme,
+      lastDarkTheme: theme === 'monokai-pro-dark' ? 'monokai-pro-dark' : 'dark',
+      contentTheme: theme === 'classic' ? 'light' : 'dark',
+      editMode: 'sv',
+    });
+    try {
+      const { page } = running;
+      await createNewTab(page);
+      await page.locator('.editor-host.active .vditor-sv').fill('# Stable background');
+
+      const assertStableBackground = async (surfaceSelector: string) => {
+        const surface = page.locator(surfaceSelector);
+        await expect(surface).toBeVisible();
+        await page.locator('.document-tab.active').click();
+        const blurred = await surface.evaluate((node) => getComputedStyle(node).backgroundColor);
+        await surface.click();
+        const focused = await surface.evaluate((node) => getComputedStyle(node).backgroundColor);
+        const application = await page
+          .locator('#app')
+          .evaluate((node) => getComputedStyle(node).backgroundColor);
+        expect({ blurred, focused }).toEqual({ blurred: application, focused: application });
+      };
+
+      await assertStableBackground('.editor-host.active .vditor-sv');
+      const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+      await modeTrigger.click();
+      await page.locator('#vditorToolbarMount button[data-mode="ir"]').click();
+      await assertStableBackground('.editor-host.active .vditor-ir > .vditor-reset');
+      await modeTrigger.click();
+      await page.locator('#vditorToolbarMount button[data-mode="wysiwyg"]').click();
+      await assertStableBackground('.editor-host.active .vditor-wysiwyg > .vditor-reset');
+    } finally {
+      await closeApp(running);
+    }
+  });
+}
+
 test('saves settings live and keeps the enlarged settings dialog draggable', async () => {
   const running = await launchApp();
   try {
     const { page } = running;
     await page.locator('#statusSettings').click();
     const card = page.locator('.settings-card');
+    await expect(page.locator('.theme-preview')).toHaveCount(3);
+    await expect(page.locator('[name="theme"][value="classic"]')).toBeChecked();
+    await expect
+      .poll(() => card.evaluate((node) => getComputedStyle(node).transform))
+      .toBe('matrix(1, 0, 0, 1, 0, 0)');
+    const edgeChrome = await page.evaluate(() => {
+      const edge = document.querySelector('.settings-right-edge');
+      const header = document.querySelector('.settings-card > header');
+      if (!edge || !header) throw new Error('Settings chrome is incomplete');
+      return {
+        edge: getComputedStyle(edge).backgroundColor,
+        header: getComputedStyle(header).backgroundColor,
+        width: edge.getBoundingClientRect().width,
+      };
+    });
+    expect(edgeChrome.edge).toBe(edgeChrome.header);
+    expect(edgeChrome.width).toBe(10);
     const initial = await card.boundingBox();
     expect(initial?.width).toBeGreaterThan(900);
     const header = card.locator(':scope > header');
@@ -367,12 +1028,111 @@ test('saves settings live and keeps the enlarged settings dialog draggable', asy
     const moved = await card.boundingBox();
     expect(moved?.x).not.toBe(initial.x);
 
-    await page.locator('[name="theme"]').selectOption('dark');
-    const settingsPath = path.join(running.testRoot, 'config', 'settings.json');
-    await expect.poll(() => JSON.parse(fs.readFileSync(settingsPath, 'utf8')).theme).toBe('dark');
+    await page.locator('.theme-option-dark').click();
+    await expect.poll(() => readSetting(running.testRoot, 'appearance', 'theme')).toBe('dark');
+    await expect(page.locator('[name="theme"][value="dark"]')).toBeChecked();
+    await expect(page.locator('.theme-option-dark .theme-preview')).toHaveCSS(
+      'border-color',
+      'rgb(105, 162, 255)',
+    );
     await expect(page.locator('#settingsModal')).toBeVisible();
     await page.locator('#saveSettings').click();
     await expect(page.locator('#settingsModal')).toBeHidden();
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('resizes the settings dialog within its minimum size and 90% window limit', async () => {
+  const running = await launchApp({
+    settingsDialogSize: { width: 900, height: 600, customized: true },
+  });
+  try {
+    const { page } = running;
+    await page.locator('#statusSettings').click();
+    const card = page.locator('.settings-card');
+    const dragHandle = async (edge: string, deltaX: number, deltaY: number) => {
+      const handle = card.locator(`[data-settings-resize="${edge}"]`);
+      const box = await handle.boundingBox();
+      if (!box) throw new Error(`Settings ${edge} resize handle has no bounding box`);
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await page.mouse.move(x + deltaX, y + deltaY, { steps: 5 });
+      await page.mouse.up();
+    };
+
+    await expect(card.locator('[data-settings-resize]')).toHaveCount(8);
+    await expect(card.locator('[data-settings-resize="se"]')).toHaveCSS('cursor', 'nwse-resize');
+    await expect
+      .poll(() => card.evaluate((node) => getComputedStyle(node).transform))
+      .toBe('matrix(1, 0, 0, 1, 0, 0)');
+    const initial = await card.boundingBox();
+    expect(initial?.width).toBeCloseTo(900, 0);
+    expect(initial?.height).toBeCloseTo(600, 0);
+    await dragHandle('se', -180, -120);
+    const smaller = await card.boundingBox();
+    expect(smaller && initial ? smaller.width : 0).toBeLessThan(initial?.width || 0);
+    expect(smaller && initial ? smaller.height : 0).toBeLessThan(initial?.height || 0);
+    await expect
+      .poll(() => readSetting(running.testRoot, 'window', 'settingsDialog'))
+      .toMatchObject({
+        width: Math.round(smaller?.width || 0),
+        height: Math.round(smaller?.height || 0),
+      });
+
+    await page.locator('[data-close="settingsModal"]').click();
+    await expect(page.locator('#settingsModal')).toBeHidden();
+    await page.locator('#statusSettings').click();
+    await expect
+      .poll(() => card.evaluate((node) => getComputedStyle(node).transform))
+      .toBe('matrix(1, 0, 0, 1, 0, 0)');
+    const restored = await card.boundingBox();
+    expect(restored?.width).toBeCloseTo(smaller?.width || 0, 0);
+    expect(restored?.height).toBeCloseTo(smaller?.height || 0, 0);
+
+    await dragHandle('se', 2000, 2000);
+    const maximum = await card.boundingBox();
+    const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+    if (!maximum) throw new Error('Settings dialog has no bounds');
+    expect(maximum.width).toBeLessThanOrEqual(viewport.width * 0.9 + 1);
+    expect(maximum.height).toBeLessThanOrEqual(viewport.height * 0.9 + 1);
+
+    await dragHandle('nw', 2000, 2000);
+    const minimum = await card.boundingBox();
+    if (!minimum) throw new Error('Resized settings dialog has no bounds');
+    expect(minimum.width).toBeGreaterThanOrEqual(619);
+    expect(minimum.height).toBeGreaterThanOrEqual(419);
+    expect(minimum.x).toBeGreaterThanOrEqual(0);
+    expect(minimum.y).toBeGreaterThanOrEqual(0);
+    expect(minimum.x + minimum.width).toBeLessThanOrEqual(viewport.width + 1);
+    expect(minimum.y + minimum.height).toBeLessThanOrEqual(viewport.height + 1);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('animates the settings dialog with platform-aware native-style transitions', async () => {
+  const running = await launchApp();
+  try {
+    const { page } = running;
+    await page.locator('#statusSettings').click();
+    const modal = page.locator('#settingsModal');
+    const card = modal.locator('.settings-card');
+    await expect(modal).toHaveClass(/modal-open/);
+    await expect(page.locator('body')).toHaveAttribute('data-platform', /^(linux|win32|darwin)$/);
+    const motion = await card.evaluate((node) => ({
+      property: getComputedStyle(node).transitionProperty,
+      duration: getComputedStyle(node).transitionDuration,
+    }));
+    expect(motion.property).toContain('opacity');
+    expect(motion.property).toContain('transform');
+    expect(motion.duration).not.toBe('0s');
+
+    await modal.locator('[data-close="settingsModal"]').click();
+    await expect(modal).toHaveClass(/modal-closing/);
+    await expect(modal).toBeHidden();
   } finally {
     await closeApp(running);
   }
@@ -431,35 +1191,115 @@ test('applies the editor paragraph-width slider in WYSIWYG mode', async () => {
       )
       .toBeCloseTo(0.6, 1);
 
-    const settingsPath = path.join(running.testRoot, 'config', 'settings.json');
-    expect(JSON.parse(fs.readFileSync(settingsPath, 'utf8')).editorTextWidth).toBe(60);
+    expect(readSetting(running.testRoot, 'editor', 'editorTextWidth')).toBe(60);
   } finally {
     await closeApp(running);
   }
 });
 
-test('persists a code-block theme selected from the Vditor toolbar', async () => {
+test('filters and remembers code-block themes separately for light and dark modes', async () => {
+  const running = await launchApp({
+    theme: 'classic',
+    codeTheme: 'github',
+    lightCodeTheme: 'github',
+    darkCodeTheme: 'monokai',
+  });
+  try {
+    const { page, testRoot } = running;
+    await createNewTab(page);
+    const codeThemeButton = (name: RegExp) =>
+      page
+        .locator('#vditorToolbarMount button[data-type="code-theme"]')
+        .locator('xpath=..')
+        .locator('button')
+        .filter({ hasText: name });
+
+    await page.locator('#vditorToolbarMount button[data-type="code-theme"]').click();
+    await expect(codeThemeButton(/^github$/)).toBeVisible();
+    await expect(codeThemeButton(/^monokai$/)).toBeHidden();
+    await codeThemeButton(/^atom-one-light$/).click();
+
+    await expect
+      .poll(() => readSetting(testRoot, 'appearance', 'lightCodeTheme'))
+      .toBe('atom-one-light');
+
+    await page.locator('.theme-switch span').click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect.poll(() => readSetting(testRoot, 'appearance', 'codeTheme')).toBe('monokai');
+    await page.locator('#vditorToolbarMount button[data-type="code-theme"]').click();
+    await expect(codeThemeButton(/^github$/)).toBeHidden();
+    await expect(codeThemeButton(/^monokai$/)).toBeVisible();
+    await codeThemeButton(/^monokai-sublime$/).click();
+    await expect
+      .poll(() => readSetting(testRoot, 'appearance', 'darkCodeTheme'))
+      .toBe('monokai-sublime');
+
+    await page.locator('.theme-switch span').click();
+    await expect
+      .poll(() => readSetting(testRoot, 'appearance', 'codeTheme'))
+      .toBe('atom-one-light');
+    await page.locator('.theme-switch span').click();
+    await expect
+      .poll(() => readSetting(testRoot, 'appearance', 'codeTheme'))
+      .toBe('monokai-sublime');
+
+    await page.locator('#statusSettings').click();
+    await expect(page.locator('[name="codeTheme"]')).toHaveValue('monokai-sublime');
+    await expect(page.locator('[name="codeTheme"] option[value="github"]')).toHaveAttribute(
+      'disabled',
+      '',
+    );
+    await expect(page.locator('[name="codeTheme"] option[value="monokai"]')).not.toHaveAttribute(
+      'disabled',
+      '',
+    );
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps theme menus singular and clears their tooltip state after selection', async () => {
   const running = await launchApp();
   try {
     const { page } = running;
     await createNewTab(page);
-    const trigger = page.locator('#vditorToolbarMount button[data-type="code-theme"]');
-    await trigger.click();
-    await trigger
-      .locator('xpath=..')
-      .locator('button')
-      .filter({ hasText: /^monokai$/ })
-      .click();
+    const codeTrigger = page.locator('#vditorToolbarMount button[data-type="code-theme"]');
+    const contentTrigger = page.locator('#vditorToolbarMount button[data-type="content-theme"]');
+    await codeTrigger.click();
+    await contentTrigger.click();
+    const visiblePanels = page.locator('#vditorToolbarMount .vditor-hint:visible');
+    await expect(visiblePanels).toHaveCount(1);
+    await visiblePanels.locator('button:visible').first().click();
+    await expect(page.locator('#vditorToolbarMount .vditor-hint:visible')).toHaveCount(0);
+    await expect(page.locator('#vditorToolbarMount .app-submenu-open')).toHaveCount(0);
+  } finally {
+    await closeApp(running);
+  }
+});
 
-    const settingsPath = path.join(running.testRoot, 'config', 'settings.json');
+test('omits Vditor web fullscreen and applies the configured font to editable code blocks', async () => {
+  const running = await launchApp({
+    editMode: 'ir',
+    previewCodeFontFamily: '"Courier New", monospace',
+  });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    await expect(page.locator('#vditorToolbarMount button[data-type="fullscreen"]')).toHaveCount(0);
+    const editor = page.locator('.editor-host.active .vditor-ir');
+    await editor.locator('.vditor-reset').fill('```js\nconst value = 1;\n```');
+    const code = editor.locator('[data-type="code-block"] code').first();
+    await expect(code).toBeVisible();
     await expect
-      .poll(() => JSON.parse(fs.readFileSync(settingsPath, 'utf8')).codeTheme)
-      .toBe('monokai');
+      .poll(() => code.evaluate((node) => getComputedStyle(node).fontFamily))
+      .toContain('Courier New');
 
-    await page.reload();
-    await page.waitForSelector('#appMenuBar[data-ready="true"]');
-    await page.locator('#statusSettings').click();
-    await expect(page.locator('[name="codeTheme"]')).toHaveValue('monokai');
+    const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+    await modeTrigger.click();
+    await page.locator('#vditorToolbarMount button[data-mode="wysiwyg"]').click();
+    await expect(
+      page.locator('.editor-host.active .vditor-wysiwyg > .vditor-reset + .vditor-panel'),
+    ).toHaveCSS('display', 'none');
   } finally {
     await closeApp(running);
   }
@@ -485,6 +1325,230 @@ test('renders the redesigned status bar and scales titlebar menu text', async ()
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await page.locator('#statusSettings').click();
     await expect(page.locator('#settingsModal')).toBeVisible();
+    const widths = await page.evaluate(() => ({
+      app: document.querySelector('#app').getBoundingClientRect().width,
+      status: document.querySelector('.statusbar').getBoundingClientRect().width,
+      font: getComputedStyle(document.querySelector('.statusbar')).fontFamily,
+    }));
+    expect(Math.abs(widths.status - widths.app)).toBeLessThan(3);
+    expect(widths.font).toContain('Segoe UI');
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('shows the localized About page with project links and reset at the bottom', async () => {
+  const running = await launchApp({ locale: 'zh_Hans' });
+  try {
+    const { page } = running;
+    await page.locator('#statusSettings').click();
+    await expect(page.locator('.settings-card > header h2')).toHaveText('Vditor Desktop 设置');
+    const fontsNav = page.locator('.settings-nav [data-panel="fonts"]');
+    const navBackground = await fontsNav.evaluate((node) => getComputedStyle(node).backgroundColor);
+    await fontsNav.hover();
+    await expect
+      .poll(() => fontsNav.evaluate((node) => getComputedStyle(node).backgroundColor))
+      .not.toBe(navBackground);
+    await page.locator('.settings-nav [data-panel="about"]').click();
+    await expect(page.locator('#resetSettingsPage')).toBeHidden();
+    const about = page.locator('.about-panel');
+    await expect(about).toBeVisible();
+    await expect(about.locator('.about-logo')).toBeVisible();
+    await expect(about).toContainText('基于 Vditor 项目打造');
+    await expect(about.locator('[data-external]')).toHaveCount(7);
+    const panelBox = await about.boundingBox();
+    const logoBox = await about.locator('.about-logo').boundingBox();
+    const sourceBox = await about.locator('.about-source').boundingBox();
+    const resetBox = await about.locator('.about-reset').boundingBox();
+    const contentCenter =
+      logoBox && sourceBox ? (logoBox.y + sourceBox.y + sourceBox.height) / 2 : 0;
+    const availableCenter = panelBox && resetBox ? (panelBox.y + resetBox.y) / 2 : 0;
+    expect(contentCenter).toBeCloseTo(availableCenter, -1);
+    expect(panelBox && resetBox ? resetBox.y + resetBox.height : 0).toBeCloseTo(
+      panelBox ? panelBox.y + panelBox.height : 0,
+      0,
+    );
+    await page.locator('.settings-nav [data-panel="appearance"]').click();
+    await expect(page.locator('#resetSettingsPage')).toBeVisible();
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('shows the Traditional Chinese locale throughout settings', async () => {
+  const running = await launchApp({ locale: 'zh_Hant' });
+  try {
+    const { page } = running;
+    await expect(page.locator('html')).toHaveAttribute('lang', 'zh-Hant');
+    await page.locator('#statusSettings').click();
+    await expect(page.locator('.settings-card > header h2')).toHaveText('Vditor Desktop 設定');
+    await expect(page.locator('[name="locale"]')).toHaveValue('zh_Hant');
+    await expect(page.locator('[data-settings-panel="appearance"]')).toContainText('跟隨系統主題');
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('uses the file name in the title and matches all chrome background colors', async () => {
+  const running = await launchApp();
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    await expect(page.locator('#windowTitle')).toHaveText('Untitled 1 - Vditor Desktop');
+    await expect(page).toHaveTitle('Untitled 1 - Vditor Desktop');
+
+    const chromeColors = () =>
+      page.evaluate(() =>
+        ['#windowTitlebar', 'header.titlebar', '#tabBar', '.statusbar'].map(
+          (selector) => getComputedStyle(document.querySelector(selector)).backgroundColor,
+        ),
+      );
+    const lightColors = await chromeColors();
+    expect(new Set(lightColors).size).toBe(1);
+
+    await page.locator('.theme-switch span').click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    const darkColors = await chromeColors();
+    expect(new Set(darkColors).size).toBe(1);
+    expect(darkColors[0]).not.toBe(lightColors[0]);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('shows a localized themed dialog when closing a window with unsaved changes', async () => {
+  const running = await launchApp({ locale: 'zh_Hans', theme: 'dark', editMode: 'sv' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    await page.locator('.editor-host.active .vditor-sv').fill('未保存内容');
+    await page.locator('#appMenuBar [data-menu="file"]').click();
+    const quit = page.locator('.app-menu-popup button').filter({ hasText: /^退出/ });
+    await expect(quit).toBeVisible();
+    await quit.click();
+
+    const dialog = page.locator('#confirmModal');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator('#confirmTitle')).toHaveText('未保存的更改');
+    await expect(dialog.locator('#confirmMessage')).toHaveText('有 1 个文档包含未保存的更改。');
+    await expect(dialog.locator('#confirmDetail')).toContainText('Untitled 1');
+    await expect(dialog.locator('#confirmActions button')).toHaveText(['取消', '不保存', '保存']);
+    const colors = await dialog.evaluate((node) =>
+      ['header', '.confirm-content', 'footer'].map(
+        (selector) => getComputedStyle(node.querySelector(selector)).backgroundColor,
+      ),
+    );
+    expect(new Set(colors).size).toBe(1);
+    const dialogBox = await dialog.boundingBox();
+    const appBox = await page.locator('#app').boundingBox();
+    expect(dialogBox).toEqual(appBox);
+    await dialog.locator('button', { hasText: '取消' }).click();
+    await expect(dialog).toBeHidden();
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps the native application window resizable', async () => {
+  const running = await launchApp();
+  try {
+    const { app, page } = running;
+    await expect
+      .poll(() =>
+        app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isResizable()),
+      )
+      .toBe(true);
+    await expect(page.locator('[data-window-resize]')).toHaveCount(0);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('persists maximize and restored window states when they change', async () => {
+  const running = await launchApp({
+    windowMaximized: false,
+    windowBounds: { x: 80, y: 70, width: 1000, height: 700 },
+  });
+  try {
+    const { app, page, testRoot } = running;
+    await expect.poll(() => readSetting(testRoot, 'window', 'windowMaximized')).toBe(false);
+    await page.locator('#windowMaximize').click();
+    await expect
+      .poll(() =>
+        app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isMaximized()),
+      )
+      .toBe(true);
+    await expect.poll(() => readSetting(testRoot, 'window', 'windowMaximized')).toBe(true);
+    await expect(page.locator('body')).toHaveClass(/window-maximized/);
+
+    await page.locator('#windowMaximize').click();
+    await expect.poll(() => readSetting(testRoot, 'window', 'windowMaximized')).toBe(false);
+    await expect
+      .poll(() =>
+        app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isMaximized()),
+      )
+      .toBe(false);
+    await expect(page.locator('body')).not.toHaveClass(/window-maximized/);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('repairs maximized work-area bounds stored as a normal window', async () => {
+  const running = await launchApp({
+    windowMaximized: false,
+    windowBounds: { x: 0, y: 0, width: 10000, height: 10000 },
+  });
+  try {
+    const { app, testRoot } = running;
+    const bounds = await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].getBounds(),
+    );
+    expect(bounds.width).toBeLessThanOrEqual(1200);
+    expect(bounds.height).toBeLessThanOrEqual(800);
+    expect(readSetting(testRoot, 'window', 'windowMaximized')).toBe(false);
+    expect(readSetting(testRoot, 'window', 'bounds')).toMatchObject({
+      width: bounds.width,
+      height: bounds.height,
+    });
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('animates window control hover highlights', async () => {
+  const running = await launchApp();
+  try {
+    const { page } = running;
+    for (const selector of ['#windowMinimize', '#windowMaximize', '#windowClose']) {
+      const transitions = await page.locator(selector).evaluate((node) => ({
+        properties: getComputedStyle(node).transitionProperty,
+        durations: getComputedStyle(node).transitionDuration,
+      }));
+      expect(transitions.properties).toContain('background-color');
+      expect(transitions.properties).toContain('color');
+      expect(transitions.durations).toContain('0.16s');
+    }
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('uses native Linux window shadow while preserving settings-card corners', async () => {
+  const running = await launchApp();
+  try {
+    const { app, page } = running;
+    const chrome = await page.locator('#app').evaluate((node) => ({
+      radius: getComputedStyle(node).borderRadius,
+      shadow: getComputedStyle(node).boxShadow,
+      inset: node.getBoundingClientRect().left,
+    }));
+    expect(chrome).toEqual({ radius: '0px', shadow: 'none', inset: 0 });
+    await expect(
+      app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].hasShadow()),
+    ).resolves.toBe(true);
+    await page.locator('#statusSettings').click();
+    await expect(page.locator('.settings-card')).toHaveCSS('border-radius', '8px');
   } finally {
     await closeApp(running);
   }
@@ -525,5 +1589,105 @@ test('loads a relative local image from a restored Markdown document', async () 
   } finally {
     await closeApp(running);
     fs.rmSync(testRoot, { recursive: true, force: true });
+  }
+});
+
+test('loads relative images in raw HTML without changing the Markdown source', async () => {
+  const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-html-image-fixture-'));
+  const assetsDir = path.join(testRoot, 'assets');
+  const markdownPath = path.join(testRoot, 'README.md');
+  const markdown = [
+    '<div style="display: flex">',
+    '  <img src="assets/light.png" alt="Light">',
+    '  <img src="assets/dark.png" alt="Dark">',
+    '</div>',
+  ].join('\n');
+  const pixel = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64',
+  );
+  fs.mkdirSync(assetsDir);
+  fs.writeFileSync(markdownPath, markdown);
+  fs.writeFileSync(path.join(assetsDir, 'light.png'), pixel);
+  fs.writeFileSync(path.join(assetsDir, 'dark.png'), pixel);
+
+  const running = await launchApp({
+    editMode: 'sv',
+    restoreTabs: true,
+    session: {
+      workspacePath: '',
+      activeFilePath: markdownPath,
+      openFiles: [markdownPath],
+    },
+  });
+  try {
+    const { page } = running;
+    const expectImagesLoaded = async (selector: string) => {
+      const images = page.locator(selector);
+      await expect(images).toHaveCount(2);
+      await expect
+        .poll(() =>
+          images.evaluateAll((nodes: HTMLImageElement[]) =>
+            nodes.every((image) => image.naturalWidth === 1),
+          ),
+        )
+        .toBe(true);
+    };
+    await expectImagesLoaded('.editor-host.active .vditor-preview img');
+
+    const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+    await modeTrigger.click();
+    await page.locator('#vditorToolbarMount button[data-mode="ir"]').click();
+    await expectImagesLoaded('.editor-host.active .vditor-ir img');
+
+    await modeTrigger.click();
+    await page.locator('#vditorToolbarMount button[data-mode="wysiwyg"]').click();
+    await expectImagesLoaded('.editor-host.active .vditor-wysiwyg img');
+    await page.keyboard.press('Control+s');
+    await expect(page.locator('#statusMessage')).toContainText('Saved');
+    const saved = fs.readFileSync(markdownPath, 'utf8');
+    expect(saved.trimEnd()).toBe(markdown);
+    expect(saved).not.toContain('local-file://');
+  } finally {
+    await closeApp(running);
+    fs.rmSync(testRoot, { recursive: true, force: true });
+  }
+});
+
+test('loads HTTPS document images in IR, WYSIWYG, and split preview modes', async () => {
+  const running = await launchApp({ editMode: 'ir' });
+  try {
+    const { page } = running;
+    const pixel = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64',
+    );
+    await page.route('https://images.test/**', (route) =>
+      route.fulfill({ status: 200, contentType: 'image/png', body: pixel }),
+    );
+    await createNewTab(page);
+    await page
+      .locator('.editor-host.active .vditor-ir .vditor-reset')
+      .fill('![online](https://images.test/pixel.png)');
+
+    const expectLoaded = async (selector: string) => {
+      const image = page.locator(selector);
+      await expect(image).toBeVisible();
+      await expect
+        .poll(() => image.evaluate((node: HTMLImageElement) => node.naturalWidth))
+        .toBe(1);
+    };
+    await expectLoaded('.editor-host.active .vditor-ir img');
+
+    const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+    await modeTrigger.click();
+    await page.locator('#vditorToolbarMount button[data-mode="wysiwyg"]').click();
+    await expectLoaded('.editor-host.active .vditor-wysiwyg img');
+
+    await modeTrigger.click();
+    await page.locator('#vditorToolbarMount button[data-mode="sv"]').click();
+    await expectLoaded('.editor-host.active .vditor-preview img');
+  } finally {
+    await closeApp(running);
   }
 });

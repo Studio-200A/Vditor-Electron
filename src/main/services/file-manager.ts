@@ -82,14 +82,6 @@ export class FileManagerService {
     return destination;
   }
 
-  async moveItem(sourcePath: string, destinationDir: string): Promise<string> {
-    const source = path.resolve(sourcePath);
-    const destination = path.join(path.resolve(destinationDir), path.basename(source));
-    if (source === destination) return destination;
-    await fs.promises.rename(source, destination);
-    return destination;
-  }
-
   async writeBinaryFile(filePath: string, bytes: Uint8Array): Promise<void> {
     const resolved = path.resolve(filePath);
     await fs.promises.mkdir(path.dirname(resolved), { recursive: true });

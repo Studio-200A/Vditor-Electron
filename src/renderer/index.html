@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self' app: data: blob:; script-src 'self' app: 'unsafe-inline' 'unsafe-eval'; style-src 'self' app: 'unsafe-inline'; img-src 'self' app: local-file: data: blob:; media-src 'self' app: local-file: data: blob:; font-src 'self' app: data:; connect-src 'self' app: local-file:"
+      content="default-src 'self' app: data: blob:; script-src 'self' app: 'unsafe-inline' 'unsafe-eval'; style-src 'self' app: 'unsafe-inline'; img-src 'self' app: local-file: https: http: data: blob:; media-src 'self' app: local-file: https: http: data: blob:; font-src 'self' app: data:; connect-src 'self' app: local-file:"
     />
     <title>Vditor Desktop</title>
     <link rel="stylesheet" href="app://app/vditor/dist/index.css" />
@@ -22,13 +22,18 @@
         </nav>
         <div id="windowTitle" class="window-title">Vditor Desktop</div>
         <div class="window-controls">
-          <button id="windowMinimize" aria-label="Minimize">
+          <button id="windowMinimize" data-i18n-title="window.minimize" aria-label="Minimize">
             <svg viewBox="0 0 12 12"><path d="M1 8.5h10" /></svg>
           </button>
-          <button id="windowMaximize" aria-label="Maximize">
-            <svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="9" height="9" /></svg>
+          <button id="windowMaximize" data-i18n-title="window.maximize" aria-label="Maximize">
+            <svg class="window-maximize-icon" viewBox="0 0 12 12">
+              <rect x="1.5" y="1.5" width="9" height="9" />
+            </svg>
+            <svg class="window-restore-icon" viewBox="0 0 12 12">
+              <path d="M3.5 3.5V1.5h7v7h-2M1.5 3.5h7v7h-7z" />
+            </svg>
           </button>
-          <button id="windowClose" class="close" aria-label="Close">
+          <button id="windowClose" class="close" data-i18n-title="window.close" aria-label="Close">
             <svg viewBox="0 0 12 12"><path d="m2 2 8 8M10 2 2 10" /></svg>
           </button>
         </div>
@@ -107,7 +112,6 @@
             </div>
           </section>
           <section id="outlineView" class="sidebar-view">
-            <div class="panel-heading" data-i18n="sidebar.documentOutline">Document Outline</div>
             <nav id="outlineTree" class="outline-tree">
               <div class="empty" data-i18n="sidebar.noHeadings">No headings</div>
             </nav>
@@ -129,57 +133,132 @@
               </div>
             </div>
           </div>
-          <footer class="statusbar">
-            <div class="status-left">
-              <span id="statusPath"></span><span id="statusMessage"></span>
-            </div>
-            <div class="status-right">
-              <span id="statusMode">IR</span><span id="statusWords">0 词</span
-              ><span id="statusChars">0 字符</span><span id="statusLines">1 行</span>
-              <span id="statusEncoding">UTF-8</span><span id="statusLineEnding">LF</span>
-              <button
-                id="statusSettings"
-                class="status-icon"
-                data-i18n-title="toolbar.settings"
-                aria-label="Settings"
-              >
-                <svg viewBox="0 0 24 24">
-                  <circle cx="12" cy="12" r="3" />
-                  <path
-                    d="M9.6 3h4.8l.55 2.15 1.35.78 2.14-.63 2.4 4.15-1.6 1.52v1.56l1.6 1.52-2.4 4.15-2.14-.63-1.35.78L14.4 21H9.6l-.55-2.15-1.35-.78-2.14.63-2.4-4.15 1.6-1.52v-1.56l-1.6-1.52 2.4-4.15 2.14.63 1.35-.78z"
-                  />
-                </svg>
-              </button>
-              <label
-                class="theme-switch"
-                data-i18n-title="status.toggleTheme"
-                aria-label="Toggle color theme"
-              >
-                <input id="statusThemeToggle" type="checkbox" />
-                <span aria-hidden="true"></span>
-              </label>
-              <span id="statusVersion">v0.1.0</span>
-            </div>
-          </footer>
         </main>
       </div>
+      <footer class="statusbar">
+        <div class="status-left"><span id="statusPath"></span><span id="statusMessage"></span></div>
+        <div class="status-right">
+          <span id="statusMode">IR</span><span id="statusWords">0 词</span
+          ><span id="statusChars">0 字符</span><span id="statusLines">1 行</span>
+          <span id="statusEncoding">UTF-8</span><span id="statusLineEnding">LF</span>
+          <button
+            id="statusSettings"
+            class="status-icon"
+            data-i18n-title="toolbar.settings"
+            aria-label="Settings"
+          >
+            <svg viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="3" />
+              <path
+                d="M9.6 3h4.8l.55 2.15 1.35.78 2.14-.63 2.4 4.15-1.6 1.52v1.56l1.6 1.52-2.4 4.15-2.14-.63-1.35.78L14.4 21H9.6l-.55-2.15-1.35-.78-2.14.63-2.4-4.15 1.6-1.52v-1.56l-1.6-1.52 2.4-4.15 2.14.63 1.35-.78z"
+              />
+            </svg>
+          </button>
+          <label
+            class="theme-switch"
+            data-i18n-title="status.toggleTheme"
+            aria-label="Toggle color theme"
+          >
+            <input id="statusThemeToggle" type="checkbox" />
+            <span aria-hidden="true"></span>
+          </label>
+          <span id="statusVersion">v0.1.0</span>
+        </div>
+      </footer>
     </div>
 
-    <div id="settingsModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div id="settingsModal" class="modal settings-modal hidden" role="dialog" aria-modal="true">
       <div class="modal-card settings-card">
+        <div
+          class="settings-resize-handle settings-resize-n"
+          data-settings-resize="n"
+          aria-hidden="true"
+        ></div>
+        <div
+          class="settings-resize-handle settings-resize-e"
+          data-settings-resize="e"
+          aria-hidden="true"
+        ></div>
+        <div
+          class="settings-resize-handle settings-resize-s"
+          data-settings-resize="s"
+          aria-hidden="true"
+        ></div>
+        <div
+          class="settings-resize-handle settings-resize-w"
+          data-settings-resize="w"
+          aria-hidden="true"
+        ></div>
+        <div
+          class="settings-resize-handle settings-resize-ne"
+          data-settings-resize="ne"
+          aria-hidden="true"
+        ></div>
+        <div
+          class="settings-resize-handle settings-resize-se"
+          data-settings-resize="se"
+          aria-hidden="true"
+        ></div>
+        <div
+          class="settings-resize-handle settings-resize-sw"
+          data-settings-resize="sw"
+          aria-hidden="true"
+        ></div>
+        <div
+          class="settings-resize-handle settings-resize-nw"
+          data-settings-resize="nw"
+          aria-hidden="true"
+        ></div>
         <header>
-          <h2 data-i18n="settings.title">Settings</h2>
+          <h2 data-i18n="settings.title">Vditor Desktop Settings</h2>
           <button class="modal-close" data-close="settingsModal">×</button>
         </header>
         <div class="settings-layout">
           <nav class="settings-nav">
-            <button class="active" data-panel="appearance" data-i18n="settings.appearance">
-              Appearance</button
-            ><button data-panel="fonts" data-i18n="settings.fonts">Fonts</button
-            ><button data-panel="editor" data-i18n="settings.editor">Editor</button>
-            <button data-panel="preview" data-i18n="settings.preview">Preview</button
-            ><button data-panel="files" data-i18n="settings.files">Files & Session</button
-            ><button data-panel="advanced" data-i18n="settings.advanced">Advanced</button>
+            <button class="active" data-panel="appearance">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M12 22a10 10 0 1 1 10-10 4 4 0 0 1-4 4h-1.8a2 2 0 0 0-1.7 3l.2.3a1.8 1.8 0 0 1-1.5 2.7z"
+                ></path>
+                <circle cx="7.5" cy="10.5" r="0.8"></circle>
+                <circle cx="9.5" cy="6.8" r="0.8"></circle>
+                <circle cx="14" cy="6.8" r="0.8"></circle>
+                <circle cx="16.5" cy="10.5" r="0.8"></circle>
+              </svg>
+              <span data-i18n="settings.appearance">Appearance</span>
+            </button>
+            <button data-panel="fonts">
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M3.5 16.5L8.3 3.5h3.4l4.8 13M5.4 11.5h9.2"></path>
+              </svg>
+              <span data-i18n="settings.fonts">Fonts</span>
+            </button>
+            <button data-panel="editor">
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M5 2.5h7l3 3v12H5zM12 2.5v3h3M7.5 9h5M7.5 12h5M7.5 15h3"></path>
+              </svg>
+              <span data-i18n="settings.editor">Editor</span>
+            </button>
+            <button data-panel="preview">
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M2.5 10s2.8-5 7.5-5 7.5 5 7.5 5-2.8 5-7.5 5-7.5-5-7.5-5z"></path>
+                <circle cx="10" cy="10" r="2.25"></circle>
+              </svg>
+              <span data-i18n="settings.preview">Preview</span>
+            </button>
+            <button data-panel="files">
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M2.5 5.5h5l1.6 2h8.4v8.5h-15zM2.5 7.5v-3h5l1.6 2h8.4v1"></path>
+              </svg>
+              <span data-i18n="settings.files">Files &amp; Session</span>
+            </button>
+            <button data-panel="about">
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <circle cx="10" cy="10" r="7.5"></circle>
+                <path d="M10 9v5M10 6.2v.3"></path>
+              </svg>
+              <span data-i18n="settings.about">About</span>
+            </button>
           </nav>
           <form id="settingsForm" class="settings-content">
             <section data-settings-panel="appearance" class="active">
@@ -188,19 +267,98 @@
                 >Language<select name="locale">
                   <option value="system" data-i18n="locale.system">System</option>
                   <option value="en_US">English</option>
-                  <option value="zh_CN">简体中文</option>
+                  <option value="zh_Hans">简体中文</option>
+                  <option value="zh_Hant">繁體中文</option>
                 </select></label
               >
               <label class="check"
                 ><input name="systemTheme" type="checkbox" />
                 <span data-i18n="settings.followSystemTheme">Follow system theme</span></label
               >
-              <label data-i18n-label="settings.appTheme"
-                >App theme<select name="theme">
-                  <option value="classic" data-i18n="theme.light">Light</option>
-                  <option value="dark" data-i18n="theme.dark">Dark</option>
-                </select></label
-              >
+              <fieldset class="theme-setting">
+                <legend data-i18n="settings.appTheme">App theme</legend>
+                <div class="theme-picker">
+                  <label class="theme-option theme-option-light">
+                    <input class="theme-option-input" name="theme" type="radio" value="classic" />
+                    <span class="theme-preview">
+                      <svg viewBox="0 0 120 72" aria-hidden="true">
+                        <rect
+                          class="theme-preview-window"
+                          x="1"
+                          y="1"
+                          width="118"
+                          height="70"
+                          rx="6"
+                        />
+                        <path
+                          class="theme-preview-chrome"
+                          d="M1 7a6 6 0 0 1 6-6h106a6 6 0 0 1 6 6v12H1z"
+                        />
+                        <rect class="theme-preview-sidebar" x="1" y="19" width="29" height="52" />
+                        <path class="theme-preview-muted" d="M8 28h14M8 36h10M8 44h14" />
+                        <path class="theme-preview-heading" d="M39 29h42M39 39h64" />
+                        <path class="theme-preview-text" d="M39 49h53M39 57h42" />
+                      </svg>
+                    </span>
+                    <span data-i18n="theme.light">Light</span>
+                  </label>
+                  <label class="theme-option theme-option-dark">
+                    <input class="theme-option-input" name="theme" type="radio" value="dark" />
+                    <span class="theme-preview">
+                      <svg viewBox="0 0 120 72" aria-hidden="true">
+                        <rect
+                          class="theme-preview-window"
+                          x="1"
+                          y="1"
+                          width="118"
+                          height="70"
+                          rx="6"
+                        />
+                        <path
+                          class="theme-preview-chrome"
+                          d="M1 7a6 6 0 0 1 6-6h106a6 6 0 0 1 6 6v12H1z"
+                        />
+                        <rect class="theme-preview-sidebar" x="1" y="19" width="29" height="52" />
+                        <path class="theme-preview-muted" d="M8 28h14M8 36h10M8 44h14" />
+                        <path class="theme-preview-heading" d="M39 29h42M39 39h64" />
+                        <path class="theme-preview-text" d="M39 49h53M39 57h42" />
+                      </svg>
+                    </span>
+                    <span data-i18n="theme.dark">Dark</span>
+                  </label>
+                  <label class="theme-option theme-option-monokai">
+                    <input
+                      class="theme-option-input"
+                      name="theme"
+                      type="radio"
+                      value="monokai-pro-dark"
+                    />
+                    <span class="theme-preview">
+                      <svg viewBox="0 0 120 72" aria-hidden="true">
+                        <rect
+                          class="theme-preview-window"
+                          x="1"
+                          y="1"
+                          width="118"
+                          height="70"
+                          rx="6"
+                        />
+                        <path
+                          class="theme-preview-chrome"
+                          d="M1 7a6 6 0 0 1 6-6h106a6 6 0 0 1 6 6v12H1z"
+                        />
+                        <rect class="theme-preview-sidebar" x="1" y="19" width="29" height="52" />
+                        <path class="theme-preview-muted" d="M8 28h14M8 36h10M8 44h14" />
+                        <path class="theme-preview-h1" d="M39 27h35" />
+                        <path class="theme-preview-h2" d="M39 36h64" />
+                        <path class="theme-preview-h3" d="M39 45h53" />
+                        <path class="theme-preview-h4" d="M39 54h42" />
+                      </svg>
+                    </span>
+                    <span data-i18n="theme.monokaiProDark">Monokai Pro Dark</span>
+                  </label>
+                </div>
+              </fieldset>
               <label data-i18n-label="settings.contentTheme"
                 >Content theme<select name="contentTheme">
                   <option value="light">Light</option>
@@ -211,10 +369,10 @@
               >
               <label data-i18n-label="settings.codeTheme"
                 >Code theme<select name="codeTheme">
-                  <option value="github">GitHub</option>
-                  <option value="monokai">Monokai</option>
-                  <option value="dracula">Dracula</option>
-                  <option value="vs">Visual Studio</option>
+                  <option value="github" data-theme-tone="light">GitHub</option>
+                  <option value="vs" data-theme-tone="light">Visual Studio</option>
+                  <option value="monokai" data-theme-tone="dark">Monokai</option>
+                  <option value="base16/dracula" data-theme-tone="dark">Dracula</option>
                 </select></label
               >
               <h3 data-i18n="settings.zoom">Zoom</h3>
@@ -225,6 +383,8 @@
                   <option>90</option>
                   <option>100</option>
                   <option>110</option>
+                  <option>115</option>
+                  <option>120</option>
                   <option>125</option>
                   <option>150</option>
                   <option>175</option>
@@ -360,6 +520,12 @@
               <label data-i18n-label="settings.previewWidth"
                 >Preview max width<input name="previewMaxWidth" type="number" min="320" max="2400"
               /></label>
+              <label class="check"
+                ><input name="multiPlatformPreview" type="checkbox" />
+                <span data-i18n="settings.multiPlatformPreview"
+                  >Multi-platform layout preview</span
+                ></label
+              >
               <label data-i18n-label="settings.mathEngine"
                 >Math engine<select name="mathEngine">
                   <option>KaTeX</option>
@@ -372,7 +538,9 @@
                   <span data-i18n="settings.codeHighlight">Code highlighting</span></label
                 ><label
                   ><input name="lineNumbers" type="checkbox" />
-                  <span data-i18n="settings.lineNumbers">Line numbers</span></label
+                  <span data-i18n="settings.lineNumbers"
+                    >Code block preview line numbers</span
+                  ></label
                 >
                 <label
                   ><input name="enableAutoSpace" type="checkbox" />
@@ -446,14 +614,59 @@
                   step="0.05"
               /></label>
             </section>
-            <section data-settings-panel="advanced">
-              <h3 data-i18n="settings.advanced">Advanced</h3>
-              <button id="resetSettings" type="button" class="danger" data-i18n="settings.reset">
-                Restore defaults
-              </button>
-              <div id="versionInfo" class="version-info"></div>
+            <section data-settings-panel="about" class="about-panel">
+              <div class="about-main">
+                <img class="about-logo" src="app://app/assets/vditor-desktop.svg" alt="" />
+                <h3>Vditor Desktop</h3>
+                <p id="versionInfo" class="version-info"></p>
+                <p class="about-credit">
+                  <span data-i18n="about.basedOnPrefix">Based on the </span
+                  ><button
+                    type="button"
+                    class="about-link"
+                    data-external="https://github.com/Vanessa219/vditor"
+                  >
+                    Vditor</button
+                  ><span data-i18n="about.basedOnSuffix"> project</span>
+                </p>
+                <p class="about-credit">
+                  <span data-i18n="about.broughtByPrefix">Brought to you by </span
+                  ><button
+                    type="button"
+                    class="about-link"
+                    data-external="https://github.com/Studio-200A"
+                  >
+                    Studio 200A</button
+                  ><span data-i18n="about.broughtBySuffix"></span>
+                </p>
+                <h4 data-i18n="about.openSource">Powered by open-source projects</h4>
+                <div class="about-projects">
+                  <button type="button" data-external="https://www.electronjs.org/">
+                    Electron
+                  </button>
+                  <button type="button" data-external="https://github.com/Vanessa219/vditor">
+                    Vditor
+                  </button>
+                  <button type="button" data-external="https://playwright.dev/">Playwright</button>
+                  <button type="button" data-external="https://vitest.dev/">Vitest</button>
+                </div>
+                <button
+                  type="button"
+                  class="about-source"
+                  data-external="https://github.com/Studio-200A/Vditor-Electron"
+                  data-i18n="about.source"
+                >
+                  View Vditor Desktop source code
+                </button>
+              </div>
+              <div class="about-reset">
+                <button id="resetSettings" type="button" class="danger" data-i18n="settings.reset">
+                  Restore defaults
+                </button>
+              </div>
             </section>
           </form>
+          <div class="settings-right-edge" aria-hidden="true"></div>
         </div>
         <footer>
           <button id="openSettingsFolder" type="button" class="settings-path-button">
@@ -470,9 +683,30 @@
         </footer>
       </div>
     </div>
+    <div
+      id="confirmModal"
+      class="modal hidden"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="confirmTitle"
+      aria-describedby="confirmMessage confirmDetail"
+    >
+      <div class="modal-card confirm-card">
+        <header><h2 id="confirmTitle"></h2></header>
+        <div class="confirm-content">
+          <div class="confirm-icon" aria-hidden="true">!</div>
+          <div>
+            <p id="confirmMessage"></p>
+            <p id="confirmDetail"></p>
+          </div>
+        </div>
+        <footer id="confirmActions"></footer>
+      </div>
+    </div>
     <div id="contextMenu" class="context-menu hidden"></div>
     <script src="app://app/vditor/dist/index.min.js"></script>
     <script src="app://app/locales.js"></script>
+    <script src="app://app/vditor-adapter.js"></script>
     <script src="app://app/app.js"></script>
   </body>
 </html>

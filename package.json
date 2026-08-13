@@ -1,8 +1,10 @@
 {
   "name": "vditor-electron",
   "productName": "Vditor Desktop",
+  "desktopName": "com.github.studio-200a.vditor-electron",
   "version": "0.1.0",
-  "description": "Vditor Markdown Editor wrapped as Electron desktop application",
+  "description": "A local-first Markdown desktop editor powered by Electron and Vditor",
+  "author": "Studio 200A",
   "main": "dist/main/index.js",
   "scripts": {
     "format": "prettier . --write",
@@ -12,27 +14,32 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "npm run build && playwright test",
-    "check": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run build",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm run check:vditor && npm test && npm run build",
     "check:all": "npm run check && npm run test:e2e",
     "build:main": "tsc -p tsconfig.main.json",
     "build:assets": "node scripts/copy-vditor-assets.js",
+    "check:vditor": "node scripts/check-vditor-version.js",
     "build": "npm run build:main && npm run build:assets",
     "start": "npm run build && electron .",
     "dev": "npm run build:assets && npm run build:main && electron .",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
-    "dist:linux": "npm run build && electron-builder --linux"
+    "dist:linux": "npm run release:linux",
+    "release:linux": "npm run build && node scripts/release-linux.js all",
+    "release:linux:portable": "npm run build && node scripts/release-linux.js portable",
+    "release:linux:appimage": "npm run build && node scripts/release-linux.js appimage"
   },
   "dependencies": {
+    "@iarna/toml": "^2.2.5",
     "chokidar": "^4.0.3",
-    "vditor": "^3.11.3"
+    "vditor": "3.11.3"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.62.1",
     "@types/node": "^22.0.0",
-    "electron": "^42.3.0",
-    "electron-builder": "^25.1.8",
+    "electron": "^43.4.0",
+    "electron-builder": "^26.15.3",
     "eslint": "^10.8.1",
     "globals": "^17.10.0",
     "jsdom": "^30.0.1",
@@ -42,7 +49,7 @@
     "vitest": "^4.1.10"
   },
   "build": {
-    "appId": "com.vditor.desktop",
+    "appId": "com.github.studio-200a.vditor-electron",
     "productName": "Vditor Desktop",
     "directories": {
       "output": "release"
@@ -53,15 +60,32 @@
       "package.json"
     ],
     "linux": {
+      "syncDesktopName": true,
+      "executableName": "vditor-desktop",
       "target": [
         "AppImage",
         "deb",
         "rpm"
       ],
       "category": "Office"
-    }
+    },
+    "fileAssociations": [
+      {
+        "ext": [
+          "md",
+          "markdown",
+          "mdown",
+          "mkd",
+          "mkdn"
+        ],
+        "name": "Markdown Document",
+        "mimeType": "text/markdown",
+        "role": "Editor"
+      }
+    ]
   },
   "allowScripts": {
-    "electron@42.3.0": true
+    "electron@43.4.0": true,
+    "electron-winstaller@5.4.0": true
   }
 }

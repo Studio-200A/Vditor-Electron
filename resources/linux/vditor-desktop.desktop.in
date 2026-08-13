@@ -1,0 +1,20 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Vditor Desktop
+GenericName=Markdown Editor
+GenericName[zh_CN]=Markdown 编辑器
+GenericName[zh_TW]=Markdown 編輯器
+Comment=Create and edit Markdown documents with live preview
+Comment[zh_CN]=创建和编辑 Markdown 文档并实时预览
+Comment[zh_TW]=建立及編輯 Markdown 文件並即時預覽
+Exec=@EXEC@ %F
+Icon=@ICON@
+Terminal=false
+Categories=Office;TextEditor;
+MimeType=text/markdown;text/x-markdown;
+Keywords=Markdown;Editor;Writing;Notes;
+Keywords[zh_CN]=Markdown;编辑器;写作;笔记;
+Keywords[zh_TW]=Markdown;編輯器;寫作;筆記;
+StartupNotify=true
+StartupWMClass=com.github.studio-200a.vditor-electron
