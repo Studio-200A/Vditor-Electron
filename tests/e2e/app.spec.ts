@@ -206,6 +206,17 @@ test('opens the View > Layout submenu and toggles the unified toolbar', async ()
 
     await page.locator('[data-menu="file"]').click();
     await expect(page.locator('.app-menu-popup button', { hasText: 'New File' })).toBeVisible();
+    await page.locator('#toggleSidebar').hover();
+    await expect(page.locator('.app-menu-popup')).toHaveCount(0);
+    await page.locator('[data-menu="file"]').hover();
+    await expect(page.locator('.app-menu-popup button', { hasText: 'New File' })).toBeVisible();
+    await page.locator('[data-menu="file"]').click();
+    await expect(page.locator('.app-menu-popup')).toHaveCount(0);
+    await page.locator('#toggleSidebar').hover();
+    await page.locator('[data-menu="file"]').hover();
+    await expect(page.locator('.app-menu-popup')).toHaveCount(0);
+    await page.locator('[data-menu="file"]').click();
+    await expect(page.locator('.app-menu-popup button', { hasText: 'New File' })).toBeVisible();
     await page.locator('[data-menu="edit"]').hover();
     await expect(page.locator('[data-menu="edit"]')).toHaveClass(/active/);
     await expect(page.locator('.app-menu-popup button', { hasText: 'Undo' })).toBeVisible();

@@ -1672,6 +1672,7 @@ body.settings-card-resizing {
   background: transparent;
   color: var(--muted);
   line-height: 1;
+  transform: translate(2px, -1px);
 }
 .titlebar-sidebar-toggle:hover {
   background: var(--hover);
