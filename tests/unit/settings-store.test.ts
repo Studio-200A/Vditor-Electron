@@ -77,6 +77,10 @@ describe('SettingsStore', () => {
       lightCodeTheme: 'atom-one-light',
       darkCodeTheme: 'monokai-sublime',
       editorZoom: 125,
+      scrollbarMode: 'hidden',
+      workspaceTreeStates: [
+        { workspacePath: '/notes', expandedPaths: ['/notes/docs', '/notes/assets'] },
+      ],
     });
 
     expect(settings.theme).toBe('monokai-pro-dark');
@@ -84,6 +88,10 @@ describe('SettingsStore', () => {
     expect(settings.lightCodeTheme).toBe('atom-one-light');
     expect(settings.darkCodeTheme).toBe('monokai-sublime');
     expect(settings.editorZoom).toBe(125);
+    expect(settings.scrollbarMode).toBe('hidden');
+    expect(settings.workspaceTreeStates).toEqual([
+      { workspacePath: '/notes', expandedPaths: ['/notes/docs', '/notes/assets'] },
+    ]);
     expect(new SettingsStore(configDir).getAll()).toEqual(settings);
   });
 

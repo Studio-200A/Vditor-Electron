@@ -55,6 +55,7 @@
   let confirmResolver;
   let treeNameFrame;
   let treeNameMeasureContext;
+  const scrollAnimations = new WeakMap();
 
   function resolveLocale(locale) {
     if (locale && locale !== 'system' && LOCALES[locale]) return locale;
@@ -375,6 +376,11 @@
       '--editor-text-width',
       `${Math.min(100, Math.max(40, Number(s.editorTextWidth || 100)))}%`,
     );
+    document.documentElement.dataset.scrollbarMode = s.scrollbarMode || 'auto';
+    if (s.scrollbarMode !== 'auto')
+      $$('.app-scrollbar.scrollbar-visible').forEach((node) =>
+        node.classList.remove('scrollbar-visible'),
+      );
     $('#app').classList.toggle('toolbar-hidden', s.toolbarVisible === false);
     window.appAPI.setZoomFactor(uiZoom);
   }
@@ -418,12 +424,10 @@
     tab.lineResizeObserver?.disconnect();
     if (tab.lineNumberFrame) cancelAnimationFrame(tab.lineNumberFrame);
     if (tab.whitespaceFrame) cancelAnimationFrame(tab.whitespaceFrame);
-    if (tab.splitScrollbarTimer) clearTimeout(tab.splitScrollbarTimer);
     tab.lineObserver = null;
     tab.lineResizeObserver = null;
     tab.lineNumberFrame = null;
     tab.whitespaceFrame = null;
-    tab.splitScrollbarTimer = null;
   }
 
   function renderWhitespaceMarkers(tab, sv) {
@@ -631,19 +635,7 @@
     const sv = VDITOR.editorParts(tab.host).source;
     if (!sv || sv.dataset.desktopEnhancements === 'true') return;
     sv.dataset.desktopEnhancements = 'true';
-    const revealScrollbar = () => {
-      sv.classList.add('scrollbar-visible');
-      if (tab.splitScrollbarTimer) clearTimeout(tab.splitScrollbarTimer);
-      tab.splitScrollbarTimer = setTimeout(() => {
-        sv.classList.remove('scrollbar-visible');
-        tab.splitScrollbarTimer = null;
-      }, 1000);
-    };
-    sv.addEventListener('mousemove', (event) => {
-      const rect = sv.getBoundingClientRect();
-      if (rect.right - event.clientX <= 14) revealScrollbar();
-    });
-    sv.addEventListener('scroll', revealScrollbar, { passive: true });
+    setupAutoHideScrollbar(sv);
     sv.addEventListener(
       'keydown',
       (event) => {
@@ -685,6 +677,27 @@
       },
       true,
     );
+  }
+
+  function setupAutoHideScrollbar(element) {
+    if (!element || element.dataset.autoHideScrollbar === 'true') return;
+    element.dataset.autoHideScrollbar = 'true';
+    element.classList.add('app-scrollbar');
+    let timer;
+    const reveal = () => {
+      if (document.documentElement.dataset.scrollbarMode !== 'auto') {
+        element.classList.remove('scrollbar-visible');
+        return;
+      }
+      element.classList.add('scrollbar-visible');
+      clearTimeout(timer);
+      timer = setTimeout(() => element.classList.remove('scrollbar-visible'), 1000);
+    };
+    element.addEventListener('mousemove', (event) => {
+      const rect = element.getBoundingClientRect();
+      if (rect.right - event.clientX <= 14) reveal();
+    });
+    element.addEventListener('scroll', reveal, { passive: true });
   }
 
   function editorOptions(tab) {
@@ -758,6 +771,8 @@
           tab.host,
           tab.host.dataset.localResourceBase,
         );
+        setupDocumentAnchorNavigation(tab);
+        VDITOR.scrollContainers(tab.host).forEach(setupAutoHideScrollbar);
         const normalized = currentContent(tab);
         tab.content = normalized;
         tab.savedContent = wasModified ? savedBefore : normalized;
@@ -784,6 +799,7 @@
         setupSplitEditorEnhancements(tab);
         scheduleSplitLineNumbers(tab);
         setTimeout(() => tab.vditor && tab.vditor.focus(), 0);
+        restoreEditorScroll(tab);
       },
       input: (value) => onEditorInput(tab, value),
       blur: (value) => {
@@ -923,6 +939,42 @@
     }
   }
 
+  function captureEditorScroll(tab) {
+    if (!tab?.vditor) return null;
+    const parts = VDITOR.editorParts(tab.host);
+    const mode = tab.vditor.getCurrentMode();
+    const editor = parts[mode === 'sv' ? 'source' : mode === 'ir' ? 'instantRendering' : 'wysiwyg'];
+    const containers = [editor, editor?.querySelector(VDITOR.selectors.reset)].filter(Boolean);
+    return {
+      mode,
+      positions: containers.map((container) => ({
+        scrollTop: container.scrollTop,
+        scrollLeft: container.scrollLeft,
+      })),
+    };
+  }
+
+  function restoreEditorScroll(tab) {
+    const saved = tab.pendingScroll;
+    if (!saved) return;
+    tab.pendingScroll = null;
+    const restore = () => {
+      const parts = VDITOR.editorParts(tab.host);
+      const mode = tab.vditor?.getCurrentMode() || tab.mode;
+      const editor =
+        parts[mode === 'sv' ? 'source' : mode === 'ir' ? 'instantRendering' : 'wysiwyg'];
+      const containers = [editor, editor?.querySelector(VDITOR.selectors.reset)].filter(Boolean);
+      containers.forEach((container, index) => {
+        const position = saved.positions[index];
+        if (!position) return;
+        container.scrollTop = position.scrollTop;
+        container.scrollLeft = position.scrollLeft;
+      });
+      scheduleSplitLineNumbers(tab);
+    };
+    requestAnimationFrame(() => requestAnimationFrame(restore));
+  }
+
   function restoreEditorToolbar(tab) {
     if (tab && tab.toolbar && tab.toolbar.parentElement === $('#vditorToolbarMount')) {
       tab.host.insertBefore(tab.toolbar, tab.host.firstChild);
@@ -941,6 +993,7 @@
   }
 
   function rebuildEditor(tab, mode) {
+    tab.pendingScroll = captureEditorScroll(tab);
     disconnectSplitLineNumbers(tab);
     tab.resourceObserver?.disconnect();
     tab.resourceObserver = null;
@@ -991,6 +1044,7 @@
       lineResizeObserver: null,
       lineNumberFrame: null,
       whitespaceFrame: null,
+      outlineCollapsed: new Set(),
       resourceObserver: null,
       splitResizer: null,
       host: document.createElement('section'),
@@ -1274,10 +1328,37 @@
       $('#openFolderEmpty').onclick = chooseFolder;
       return;
     }
-    await appendDirectory(root, state.workspace, true);
+    await appendDirectory(root, state.workspace);
   }
 
-  async function appendDirectory(container, dirPath, expanded) {
+  function expandedWorkspacePaths() {
+    if (!state.settings.restoreWorkspace || !state.workspace) return new Set();
+    const saved = (state.settings.workspaceTreeStates || []).find(
+      (item) => item.workspacePath === state.workspace,
+    );
+    return new Set(saved?.expandedPaths || []);
+  }
+
+  function persistDirectoryExpansion(directoryPath, expanded) {
+    if (!state.settings.restoreWorkspace || !state.workspace) return;
+    const previous = state.settings.workspaceTreeStates || [];
+    const current = previous.find((item) => item.workspacePath === state.workspace);
+    const expandedPaths = new Set(current?.expandedPaths || []);
+    if (expanded) expandedPaths.add(directoryPath);
+    else expandedPaths.delete(directoryPath);
+    const workspaceState = {
+      workspacePath: state.workspace,
+      expandedPaths: Array.from(expandedPaths).slice(0, 500),
+    };
+    const workspaceTreeStates = [
+      workspaceState,
+      ...previous.filter((item) => item.workspacePath !== state.workspace),
+    ].slice(0, 20);
+    state.settings.workspaceTreeStates = workspaceTreeStates;
+    void window.appAPI.saveSettings({ workspaceTreeStates });
+  }
+
+  async function appendDirectory(container, dirPath) {
     let entries;
     try {
       entries = await window.fileAPI.listDir(dirPath);
@@ -1306,13 +1387,22 @@
         row.addEventListener('click', async () => {
           const open = row.classList.toggle('expanded');
           row.querySelector('.chevron').textContent = open ? '⌄' : '›';
+          row.setAttribute('aria-expanded', String(open));
+          persistDirectoryExpansion(entry.path, open);
           if (open && !children.dataset.loaded) {
             children.dataset.loaded = 'true';
-            await appendDirectory(children, entry.path, false);
+            await appendDirectory(children, entry.path);
           }
           scheduleTreeNameEllipses();
         });
-        if (expanded) row.click();
+        row.setAttribute('aria-expanded', 'false');
+        if (expandedWorkspacePaths().has(entry.path)) {
+          row.classList.add('expanded');
+          row.setAttribute('aria-expanded', 'true');
+          row.querySelector('.chevron').textContent = '⌄';
+          children.dataset.loaded = 'true';
+          await appendDirectory(children, entry.path);
+        }
       }
     }
     scheduleTreeNameEllipses();
@@ -1413,14 +1503,66 @@
       target.innerHTML = `<div class="empty">${escapeHTML(t('sidebar.noHeadings'))}</div>`;
       return;
     }
+    const roots = [];
+    const stack = [];
     headings.forEach((heading, index) => {
-      const button = document.createElement('button');
-      button.style.paddingLeft = `${10 + (heading.level - 1) * 14}px`;
-      button.textContent = heading.text;
-      button.title = t('outline.line', { line: heading.line + 1 });
-      button.onclick = () => scrollToHeading(tab, index);
-      target.appendChild(button);
+      const node = {
+        ...heading,
+        index,
+        key: `${heading.line}:${heading.level}:${heading.text}`,
+        children: [],
+      };
+      while (stack.length && stack.at(-1).level >= node.level) stack.pop();
+      if (stack.length) stack.at(-1).children.push(node);
+      else roots.push(node);
+      stack.push(node);
     });
+    const appendNode = (node, container) => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'outline-node';
+      const row = document.createElement('div');
+      row.className = 'outline-row';
+      if (node.children.length) {
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'outline-toggle';
+        toggle.setAttribute('aria-expanded', String(!tab.outlineCollapsed.has(node.key)));
+        toggle.title = t(
+          tab.outlineCollapsed.has(node.key) ? 'outline.expand' : 'outline.collapse',
+        );
+        toggle.textContent = tab.outlineCollapsed.has(node.key) ? '›' : '⌄';
+        toggle.onclick = () => {
+          const collapsed = wrapper.classList.toggle('collapsed');
+          if (collapsed) tab.outlineCollapsed.add(node.key);
+          else tab.outlineCollapsed.delete(node.key);
+          toggle.setAttribute('aria-expanded', String(!collapsed));
+          toggle.title = t(collapsed ? 'outline.expand' : 'outline.collapse');
+          toggle.textContent = collapsed ? '›' : '⌄';
+        };
+        row.appendChild(toggle);
+      } else {
+        const spacer = document.createElement('span');
+        spacer.className = 'outline-toggle-spacer';
+        row.appendChild(spacer);
+      }
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'outline-item';
+      button.textContent = node.text;
+      button.title = t('outline.line', { line: node.line + 1 });
+      button.onclick = () => scrollToHeading(tab, node.index);
+      row.appendChild(button);
+      wrapper.appendChild(row);
+      if (node.children.length) {
+        const children = document.createElement('div');
+        children.className = 'outline-children';
+        node.children.forEach((child) => appendNode(child, children));
+        wrapper.appendChild(children);
+        wrapper.classList.toggle('collapsed', tab.outlineCollapsed.has(node.key));
+      }
+      container.appendChild(wrapper);
+    };
+    roots.forEach((node) => appendNode(node, target));
   }
   function scrollHeadingIntoEditor(editor, heading) {
     if (!editor || !heading || !editor.getClientRects().length) return;
@@ -1436,12 +1578,48 @@
       headingRect.top -
       scrollerRect.top -
       Math.max(0, (scroller.clientHeight - headingRect.height) / 2);
-    scroller.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    const destination = Math.max(0, top);
+    const start = scroller.scrollTop;
+    const distance = destination - start;
+    const previousAnimation = scrollAnimations.get(scroller);
+    if (previousAnimation) cancelAnimationFrame(previousAnimation);
+    if (Math.abs(distance) < 1 || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      scroller.scrollTop = destination;
+      return;
+    }
+    const duration = Math.min(240, Math.max(140, Math.abs(distance) * 0.16));
+    const startedAt = performance.now();
+    const step = (now) => {
+      const progress = Math.min(1, (now - startedAt) / duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      scroller.scrollTop = start + distance * eased;
+      if (progress < 1) scrollAnimations.set(scroller, requestAnimationFrame(step));
+      else scrollAnimations.delete(scroller);
+    };
+    scrollAnimations.set(scroller, requestAnimationFrame(step));
   }
   function scrollToHeading(tab, headingIndex) {
     VDITOR.headingTargets(tab.host, headingIndex).forEach(({ editor, heading }) => {
       scrollHeadingIntoEditor(editor, heading);
     });
+  }
+
+  function setupDocumentAnchorNavigation(tab) {
+    if (tab.host.dataset.anchorNavigation === 'true') return;
+    tab.host.dataset.anchorNavigation = 'true';
+    tab.host.addEventListener(
+      'click',
+      (event) => {
+        const link = VDITOR.documentAnchor(event.target, tab.host);
+        if (!link) return;
+        const headingIndex = VDITOR.headingIndexForAnchor(tab.host, link.href);
+        if (headingIndex < 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        scrollToHeading(tab, headingIndex);
+      },
+      true,
+    );
   }
 
   async function handleImageUpload(tab, files) {
@@ -1566,21 +1744,26 @@
 
   function closeSettings({ applyPresentation = true } = {}) {
     const modal = $('#settingsModal');
-    if (modal.classList.contains('hidden') || modal.classList.contains('modal-closing')) return;
+    if (modal.classList.contains('hidden')) return Promise.resolve();
+    if (modal.classList.contains('modal-closing'))
+      return new Promise((resolve) => setTimeout(resolve, 190));
     clearTimeout(settingsCloseTimer);
     modal.classList.remove('modal-open');
     modal.classList.add('modal-closing');
     const duration = parseFloat(
       getComputedStyle(modal).getPropertyValue('--settings-exit-duration'),
     );
-    settingsCloseTimer = setTimeout(
-      () => {
-        modal.classList.add('hidden');
-        modal.classList.remove('modal-closing');
-        if (applyPresentation) applyPresentationSettings();
-      },
-      Number.isFinite(duration) ? duration + 30 : 190,
-    );
+    return new Promise((resolve) => {
+      settingsCloseTimer = setTimeout(
+        () => {
+          modal.classList.add('hidden');
+          modal.classList.remove('modal-closing');
+          if (applyPresentation) applyPresentationSettings();
+          resolve();
+        },
+        Number.isFinite(duration) ? duration + 30 : 190,
+      );
+    });
   }
   async function saveSettings(closeAfterSave = true) {
     clearTimeout(settingsSaveTimer);
@@ -1616,7 +1799,7 @@
     patch[codePreferenceKey] = patch.codeTheme;
     patch.toolbarConfig = state.settings.toolbarConfig;
     state.settings = await window.appAPI.saveSettings(patch);
-    if (closeAfterSave) closeSettings({ applyPresentation: false });
+    if (closeAfterSave) await closeSettings({ applyPresentation: false });
     applyLocale(state.settings.locale);
     applyPresentationSettings();
     await applyTheme(await resolveTheme());
@@ -1973,6 +2156,7 @@
     const close = () => {
       $$('.app-menu-popup').forEach((popup) => popup.remove());
       $$('.app-menu-bar button').forEach((b) => b.classList.remove('active'));
+      $('#windowTitlebar').classList.remove('app-menu-open');
     };
     const fillPopup = (popup, items) => {
       items.forEach((item) => {
@@ -1989,6 +2173,7 @@
             $$('.app-menu-popup.submenu').forEach((menu) => menu.remove());
             const submenu = document.createElement('div');
             submenu.className = 'app-menu-popup submenu';
+            submenu.dataset.keepOpen = item.label === 'menu.layout' ? 'true' : 'false';
             fillPopup(submenu, item.children);
             document.body.appendChild(submenu);
             const rect = button.getBoundingClientRect();
@@ -2003,19 +2188,31 @@
               $$('.app-menu-popup.submenu').forEach((menu) => menu.remove());
           };
           const checked = item[3] ? item[3]() : null;
+          button._appMenuItem = item;
           button.innerHTML = `<span><i class="checkmark">${checked === null ? '' : checked ? '✓' : ''}</i>${escapeHTML(t(item[0]))}</span><small>${escapeHTML(item[2] || '')}</small>`;
           button.onclick = (event) => {
             event.stopPropagation();
-            close();
             item[1]();
+            if (popup.dataset.keepOpen === 'true') {
+              popup.querySelectorAll('button').forEach((menuButton) => {
+                const menuItem = menuButton._appMenuItem;
+                if (!menuItem?.[3]) return;
+                const checkmark = menuButton.querySelector('.checkmark');
+                if (checkmark) checkmark.textContent = menuItem[3]() ? '✓' : '';
+              });
+            } else {
+              close();
+            }
           };
         }
         popup.appendChild(button);
       });
+      setupAutoHideScrollbar(popup);
     };
     const openMenu = (trigger) => {
       close();
       trigger.classList.add('active');
+      $('#windowTitlebar').classList.add('app-menu-open');
       const popup = document.createElement('div');
       popup.className = 'app-menu-popup';
       const menu = menus[trigger.dataset.menu];
@@ -2025,7 +2222,7 @@
       popup.style.left = `${rect.left}px`;
       popup.style.top = `${rect.bottom}px`;
     };
-    $$('.app-menu-bar > button').forEach((trigger) => {
+    $$('.app-menu-bar > button[data-menu]').forEach((trigger) => {
       trigger.onclick = (event) => {
         event.stopPropagation();
         if (trigger.classList.contains('active')) close();
@@ -2062,6 +2259,7 @@
       typeof force === 'boolean' ? force : $('#sidebar').classList.contains('collapsed');
     $('#sidebar').classList.toggle('collapsed', !visible);
     state.settings.sidebarVisible = visible;
+    $('#toggleSidebar')?.setAttribute('aria-pressed', String(visible));
     window.appAPI.saveSettings({ sidebarVisible: visible });
   }
 
@@ -2071,6 +2269,7 @@
     $('#windowMinimize').onclick = () => window.appAPI.minimize();
     $('#windowMaximize').onclick = () => window.appAPI.maximize();
     $('#windowClose').onclick = () => window.appAPI.closeWindow();
+    $('#windowTitle').onclick = () => appMenuCloseHandler?.();
     $('#confirmModal').onclick = (event) => {
       if (event.target === $('#confirmModal')) closeConfirmDialog('cancel');
     };
@@ -2084,7 +2283,6 @@
     $('#emptyNewFile').onclick = newTab;
     $('#emptyOpenFile').onclick = chooseFiles;
     $('#toggleSidebar').onclick = () => toggleSidebar();
-    $('#settingsButton').onclick = openSettings;
     $('#statusSettings').onclick = openSettings;
     $('#statusThemeToggle').onchange = async (event) => {
       const theme = event.target.checked ? darkThemePreference() : 'classic';
@@ -2220,6 +2418,11 @@
       }
     });
     new ResizeObserver(scheduleTreeNameEllipses).observe($('#sidebar'));
+    setupAutoHideScrollbar($('#fileTree'));
+    setupAutoHideScrollbar($('#outlineTree'));
+    setupAutoHideScrollbar($('#settingsForm'));
+    setupAutoHideScrollbar($('#tabBar'));
+    setupAutoHideScrollbar($('.confirm-content'));
     window.appAPI.onMenuAction(handleMenu);
     window.appAPI.onSystemThemeChanged((theme) => {
       if (state.settings.systemTheme) void applyTheme(mapSystemTheme(theme));
@@ -2286,6 +2489,14 @@
     const info = await window.appAPI.getInfo();
     $('#statusVersion').textContent = `v${info.app}`;
     $('#versionInfo').textContent = `Version ${info.app} · Electron ${info.electron}`;
+    if (info.commitShort) {
+      $('#commitSeparator').classList.remove('hidden');
+      const commit = $('#commitInfo');
+      commit.textContent = info.commitShort;
+      commit.title = info.commitTag ? `${info.commitTag} · ${info.commit}` : info.commit;
+      commit.dataset.external = info.commitUrl;
+      commit.classList.remove('hidden');
+    }
     const session = state.settings.session;
     if (state.settings.restoreWorkspace && session?.workspacePath)
       await setWorkspace(session.workspacePath);

@@ -26,7 +26,10 @@ describe('renderer shell', () => {
   });
 
   it('contains the merged menu/title bar and window controls', () => {
-    expect(document.querySelectorAll('#appMenuBar > button')).toHaveLength(4);
+    expect(document.querySelectorAll('#appMenuBar > button[data-menu]')).toHaveLength(4);
+    expect(document.querySelector('#toggleSidebar')).not.toBeNull();
+    expect(document.querySelector('#toggleSidebar')?.parentElement?.id).toBe('appMenuBar');
+    expect(document.querySelector('#settingsButton')).toBeNull();
     expect(document.querySelector('[data-menu="mode"]')).toBeNull();
     expect(document.querySelector('[data-menu="theme"]')).toBeNull();
     expect(document.querySelector('#windowTitle')).not.toBeNull();
@@ -38,6 +41,9 @@ describe('renderer shell', () => {
       /\.window-controls button\s*\{[^}]*transition:[^}]*color 0\.16s ease[^}]*background-color 0\.16s ease/s,
     );
     expect(css).toMatch(/\.window-titlebar\s*\{[^}]*background:\s*var\(--panel-2\)/s);
+    expect(css).toMatch(
+      /\.titlebar-sidebar-toggle\s*\{[^}]*display:\s*grid[^}]*place-items:\s*center/s,
+    );
     expect(css).toContain('--window-radius: 8px');
     expect(css).toMatch(/#app\s*\{[^}]*border-radius:\s*var\(--window-radius\)/s);
   });
@@ -111,6 +117,24 @@ describe('renderer shell', () => {
     expect(desktopTemplate).toContain('MimeType=text/markdown;text/x-markdown;');
     expect(desktopTemplate).toContain('StartupWMClass=com.github.studio-200a.vditor-electron');
     expect(appRun).toContain('usr/lib/vditor-desktop/vditor-desktop');
+  });
+
+  it('embeds Git build metadata for the linked About-page revision', () => {
+    const generator = fs.readFileSync(path.resolve('scripts/generate-build-info.js'), 'utf8');
+    expect(packageMetadata.scripts).toMatchObject({
+      'build:info': 'node scripts/generate-build-info.js',
+    });
+    expect(generator).toContain("['rev-parse', `${tag}^{commit}`]");
+    expect(generator).not.toContain("'HEAD'");
+    expect(mainScript).toContain('`${build.repository}/commit/${build.commit}`');
+    expect(document.querySelector('#commitInfo')).not.toBeNull();
+  });
+
+  it('auto-hides sidebar scrollbars and keeps status text unselectable', () => {
+    expect(rendererScript).toContain("setupAutoHideScrollbar($('#fileTree'))");
+    expect(rendererScript).toContain("setupAutoHideScrollbar($('#outlineTree'))");
+    expect(css).toMatch(/\.statusbar\s*\{[^}]*user-select:\s*none/s);
+    expect(css).toContain("html[data-scrollbar-mode='auto'] .app-scrollbar.scrollbar-visible");
   });
 
   it('routes desktop-launcher files into the initialized renderer', () => {
@@ -232,7 +256,9 @@ describe('renderer shell', () => {
   it('renders the outline without a redundant heading and highlights items on hover', () => {
     expect(document.querySelector('#outlineView > .panel-heading')).toBeNull();
     expect(document.querySelector('#outlineTree')).not.toBeNull();
-    expect(css).toMatch(/\.outline-tree button:hover\s*\{[^}]*background:\s*var\(--hover\)/s);
+    expect(css).toMatch(/\.outline-row:hover\s*\{[^}]*background:\s*var\(--hover\)/s);
+    expect(rendererScript).toContain("toggle.className = 'outline-toggle'");
+    expect(css).toContain('color-mix(in srgb, var(--text) 78%, var(--muted))');
     expect(rendererScript).toContain('function scrollHeadingIntoEditor');
     expect(vditorAdapterScript).toContain('sourceHeading: \'[data-type="heading-marker"]\'');
   });
@@ -263,8 +289,10 @@ describe('renderer shell', () => {
     const codeThemes = Array.from(
       document.querySelectorAll<HTMLOptionElement>('[name="codeTheme"] option'),
     );
-    expect(codeThemes.filter((option) => option.dataset.themeTone === 'light')).toHaveLength(2);
-    expect(codeThemes.filter((option) => option.dataset.themeTone === 'dark')).toHaveLength(2);
+    expect(codeThemes.filter((option) => option.dataset.themeTone === 'light')).toHaveLength(81);
+    expect(codeThemes.filter((option) => option.dataset.themeTone === 'dark')).toHaveLength(168);
+    expect(codeThemes.map((option) => option.value)).toContain('monokai-sublime');
+    expect(codeThemes.map((option) => option.value)).toContain('base16/atelier-cave-light');
     expect(rendererScript).toContain('lightCodeTheme');
     expect(rendererScript).toContain('darkCodeTheme');
     expect(vditorAdapterScript).toContain("name === 'ant-design'");
@@ -319,6 +347,12 @@ describe('renderer shell', () => {
     );
   });
 
+  it('applies the configured rendered font to all preview heading levels', () => {
+    expect(css).toMatch(
+      /\.editor-host \.vditor-preview \.vditor-reset :is\(h1, h2, h3, h4, h5, h6\)\s*\{[^}]*font-family:\s*var\(--rendered-font\) !important/s,
+    );
+  });
+
   it('offers split-view indentation and whitespace controls', () => {
     expect(document.querySelector('[name="tabString"]')).toBeNull();
     expect(document.querySelector('[name="tabInsertSpaces"]')).not.toBeNull();
@@ -335,16 +369,42 @@ describe('renderer shell', () => {
   });
 
   it('auto-hides the split editor scrollbar after interaction', () => {
-    expect(rendererScript).toContain("sv.classList.add('scrollbar-visible')");
-    expect(rendererScript).toMatch(/splitScrollbarTimer = setTimeout\([\s\S]*?1000\)/);
+    expect(rendererScript).toContain('setupAutoHideScrollbar(sv)');
+    expect(rendererScript).toContain("element.classList.add('scrollbar-visible')");
+    expect(rendererScript).toMatch(/timer = setTimeout\([\s\S]*?1000\)/);
     expect(rendererScript).toContain('rect.right - event.clientX <= 14');
-    expect(rendererScript).not.toContain("sv.addEventListener('mouseenter', revealScrollbar)");
+    expect(css).toMatch(/\.app-scrollbar::-webkit-scrollbar-thumb\s*\{[^}]*transition:/s);
+    expect(css).toContain("html[data-scrollbar-mode='always']");
+    expect(css).toContain("html[data-scrollbar-mode='hidden']");
+    expect(css).toContain('background-color 320ms');
+  });
+
+  it('adds theme-aware top shadows to the content boundaries', () => {
+    expect(css).toContain('--top-surface-shadow:');
+    expect(css).toMatch(/\.sidebar-tabs\s*\{[^}]*box-shadow:\s*var\(--top-surface-shadow\)/s);
     expect(css).toMatch(
-      /\.editor-host \.vditor-sv::-webkit-scrollbar-thumb\s*\{[^}]*background:\s*transparent/s,
+      /#app:not\(\.tabbar-hidden\) \.tabbar\s*\{[^}]*box-shadow:\s*var\(--top-surface-shadow\)/s,
     );
     expect(css).toMatch(
-      /\.editor-host \.vditor-sv\.scrollbar-visible::-webkit-scrollbar-thumb\s*\{[^}]*background:\s*color-mix/s,
+      /#app\.tabbar-hidden \.titlebar,[\s\S]*?box-shadow:\s*var\(--top-surface-shadow\)/s,
     );
+  });
+
+  it('prevents accidental text selection in settings while keeping fields selectable', () => {
+    expect(css).toMatch(/\.settings-card\s*\{[^}]*user-select:\s*none/s);
+    expect(css).toMatch(
+      /\.settings-card input,[\s\S]*?\.settings-card textarea,[\s\S]*?user-select:\s*text/s,
+    );
+  });
+
+  it('offers all localized global scrollbar visibility modes', () => {
+    expect(
+      Array.from(document.querySelectorAll('[name="scrollbarMode"] option')).map(
+        (option) => (option as HTMLOptionElement).value,
+      ),
+    ).toEqual(['always', 'auto', 'hidden']);
+    expect(localesScript).toContain("'settings.scrollbarMode': '滚动条显示状态'");
+    expect(rendererScript).toContain('document.documentElement.dataset.scrollbarMode');
   });
 
   it('offers an opt-in multi-platform layout preview', () => {

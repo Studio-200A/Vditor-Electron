@@ -31,7 +31,7 @@ describe('Vditor DOM compatibility adapter', () => {
       </div>
       <div class="vditor-content">
         <pre class="vditor-sv vditor-reset"><span data-type="heading-marker">#</span><span data-type="newline">\n</span></pre>
-        <pre class="vditor-ir"><h1>IR</h1></pre>
+        <pre class="vditor-ir"><h1><span data-type="heading-marker"># </span>IR</h1><span data-type="a"><span class="vditor-ir__link">Jump</span><span class="vditor-ir__marker--link">#ir</span></span></pre>
         <pre class="vditor-wysiwyg"><h1>WYSIWYG</h1></pre>
         <div class="vditor-preview"><h1>Preview</h1></div>
       </div>`;
@@ -44,6 +44,7 @@ describe('Vditor DOM compatibility adapter', () => {
     expect(adapter.validateHost(host)).toEqual({ valid: true, missing: [] });
     expect(adapter.sourceNewlines(adapter.editorParts(host).source)).toHaveLength(1);
     expect(adapter.headingTargets(host, 0).every(({ heading }: any) => heading)).toBe(true);
+    expect(adapter.scrollContainers(host).length).toBeGreaterThanOrEqual(4);
   });
 
   it('classifies the Vditor 3.11 code-theme menu at its light-theme boundary', () => {
@@ -68,5 +69,18 @@ describe('Vditor DOM compatibility adapter', () => {
     const context = adapter.listContext(marker?.firstChild);
     expect(context.marker).toBe(marker);
     expect(context.padding?.dataset.type).toBe('padding');
+  });
+
+  it('maps document hash links to rendered heading indexes', () => {
+    const host = createHost();
+    const preview = adapter.editorParts(host).preview;
+    preview.innerHTML = '<h1 id="intro">Intro</h1><h2>Target Section</h2>';
+    expect(adapter.headingIndexForAnchor(host, '#intro')).toBe(0);
+    expect(adapter.headingIndexForAnchor(host, '#target-section')).toBe(1);
+    expect(adapter.headingIndexForAnchor(host, '#missing')).toBe(-1);
+    const instantLink = adapter
+      .editorParts(host)
+      .instantRendering.querySelector('.vditor-ir__link');
+    expect(adapter.documentAnchor(instantLink, host).href).toBe('#ir');
   });
 });

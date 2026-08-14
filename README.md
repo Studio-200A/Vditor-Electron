@@ -149,8 +149,8 @@ Portable 压缩包中的 `vditor-desktop.desktop` 使用 `/path/to/vditor-deskto
 
 ### 常用操作
 
-| 操作       | 快捷键                   |
-| ---------- | ------------------------ |
+| 操作       | 快捷键                 |
+| ---------- | ---------------------- |
 | 新建文件   | `Ctrl/Cmd + N`         |
 | 打开文件   | `Ctrl/Cmd + O`         |
 | 保存       | `Ctrl/Cmd + S`         |
@@ -174,8 +174,8 @@ Portable 压缩包中的 `vditor-desktop.desktop` 使用 `/path/to/vditor-deskto
 
 - 配置文件与 Chromium 用户数据相互分离：
 
-| 平台    | 配置文件                                                                                    | Chromium 用户数据                                                                  |
-| ------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| 平台    | 配置文件                                                                                  | Chromium 用户数据                                                                |
+| ------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
 | Linux   | `${XDG_CONFIG_HOME:-~/.config}/vditor-desktop/config.toml`                                | `${XDG_DATA_HOME:-~/.local/share}/vditor-desktop/chromium/`                      |
 | Windows | `%APPDATA%\vditor-desktop\config.toml`                                                    | `%LOCALAPPDATA%\vditor-desktop\chromium\`                                        |
 | macOS   | `~/Library/Application Support/com.github.studio-200a.vditor-electron/Config/config.toml` | `~/Library/Application Support/com.github.studio-200a.vditor-electron/Chromium/` |
@@ -186,8 +186,8 @@ Portable 压缩包中的 `vditor-desktop.desktop` 使用 `/path/to/vditor-deskto
 
 常用命令：
 
-| 命令                  | 用途                                                  |
-| --------------------- | ----------------------------------------------------- |
+| 命令                | 用途                                                  |
+| ------------------- | ----------------------------------------------------- |
 | `npm run dev`       | 构建资源并启动开发版本                                |
 | `npm run format`    | 使用 Prettier 格式化项目                              |
 | `npm run lint`      | 执行 ESLint                                           |
@@ -195,7 +195,7 @@ Portable 压缩包中的 `vditor-desktop.desktop` 使用 `/path/to/vditor-deskto
 | `npm test`          | 运行 Vitest 单元测试                                  |
 | `npm run test:e2e`  | 构建并运行 Playwright Electron 测试                   |
 | `npm run check`     | 执行格式、Lint、类型、Vditor 版本、单元测试和构建检查 |
-| `npm run check:all` | 在 `check` 基础上运行全部 Electron 端到端测试       |
+| `npm run check:all` | 在 `check` 基础上运行全部 Electron 端到端测试         |
 
 - Vditor 被固定为精确版本。升级前请阅读 [Vditor 升级说明](docs/VDITOR-UPGRADE.md)，检查私有 DOM选择器、适配层契约及真实 Electron 回归测试。
 
@@ -221,8 +221,8 @@ Vditor-Electron/
 
 ### 核心运行时与直接依赖
 
-| 项目                                                        | 用途                              | 许可证          |
-| ----------------------------------------------------------- | --------------------------------- | --------------- |
+| 项目                                                           | 用途                              | 许可证          |
+| -------------------------------------------------------------- | --------------------------------- | --------------- |
 | [Electron](https://github.com/electron/electron)               | 跨平台桌面运行时                  | MIT             |
 | [Chromium](https://github.com/chromium/chromium)               | Electron 内置网页渲染引擎         | BSD-3-Clause 等 |
 | [Node.js](https://github.com/nodejs/node)                      | Electron 主进程 JavaScript 运行时 | MIT 等          |
@@ -234,31 +234,31 @@ Vditor-Electron/
 <details>
 <summary>Vditor 随包 Markdown 渲染组件</summary>
 
-| 项目                                                                                     | 用途                  |
-| ---------------------------------------------------------------------------------------- | --------------------- |
-| [abcjs](https://github.com/paulrosen/abcjs)                                                 | ABC 乐谱渲染          |
-| [Apache ECharts](https://github.com/apache/echarts)                                         | 图表渲染              |
-| [flowchart.js](https://github.com/adrai/flowchart.js)                                       | 流程图渲染            |
+| 项目                                                                                           | 用途                  |
+| ---------------------------------------------------------------------------------------------- | --------------------- |
+| [abcjs](https://github.com/paulrosen/abcjs)                                                    | ABC 乐谱渲染          |
+| [Apache ECharts](https://github.com/apache/echarts)                                            | 图表渲染              |
+| [flowchart.js](https://github.com/adrai/flowchart.js)                                          | 流程图渲染            |
 | [Viz.js](https://github.com/mdaines/viz-js) / [Graphviz](https://gitlab.com/graphviz/graphviz) | Graphviz 图形渲染     |
-| [highlight.js](https://github.com/highlightjs/highlight.js)                                 | 代码语法高亮          |
-| [KaTeX](https://github.com/KaTeX/KaTeX)                                                     | 数学公式渲染          |
-| [Lute](https://github.com/88250/lute)                                                       | Markdown 解析与格式化 |
-| [markmap](https://github.com/markmap/markmap)                                               | Markdown 思维导图     |
-| [MathJax](https://github.com/mathjax/MathJax)                                               | 数学公式渲染          |
-| [Mermaid](https://github.com/mermaid-js/mermaid)                                            | 图表与流程图渲染      |
-| [plantuml-encoder](https://github.com/markushedvall/plantuml-encoder)                       | PlantUML 文本编码     |
-| [SmilesDrawer](https://github.com/reymond-group/smilesDrawer)                               | SMILES 化学结构渲染   |
-| [WaveDrom](https://github.com/wavedrom/wavedrom)                                            | 数字时序图渲染        |
-| [Ant Design Icons](https://github.com/ant-design/ant-design-icons)                          | Vditor 工具栏图标集   |
-| [Material Design Icons](https://github.com/google/material-design-icons)                    | Vditor 工具栏图标集   |
+| [highlight.js](https://github.com/highlightjs/highlight.js)                                    | 代码语法高亮          |
+| [KaTeX](https://github.com/KaTeX/KaTeX)                                                        | 数学公式渲染          |
+| [Lute](https://github.com/88250/lute)                                                          | Markdown 解析与格式化 |
+| [markmap](https://github.com/markmap/markmap)                                                  | Markdown 思维导图     |
+| [MathJax](https://github.com/mathjax/MathJax)                                                  | 数学公式渲染          |
+| [Mermaid](https://github.com/mermaid-js/mermaid)                                               | 图表与流程图渲染      |
+| [plantuml-encoder](https://github.com/markushedvall/plantuml-encoder)                          | PlantUML 文本编码     |
+| [SmilesDrawer](https://github.com/reymond-group/smilesDrawer)                                  | SMILES 化学结构渲染   |
+| [WaveDrom](https://github.com/wavedrom/wavedrom)                                               | 数字时序图渲染        |
+| [Ant Design Icons](https://github.com/ant-design/ant-design-icons)                             | Vditor 工具栏图标集   |
+| [Material Design Icons](https://github.com/google/material-design-icons)                       | Vditor 工具栏图标集   |
 
 </details>
 
 <details>
 <summary>开发、测试与构建工具</summary>
 
-| 项目                                                                             | 用途                           | 许可证     |
-| -------------------------------------------------------------------------------- | ------------------------------ | ---------- |
+| 项目                                                                                | 用途                           | 许可证     |
+| ----------------------------------------------------------------------------------- | ------------------------------ | ---------- |
 | [TypeScript](https://github.com/microsoft/TypeScript)                               | 主进程类型系统与编译           | Apache-2.0 |
 | [ESLint](https://github.com/eslint/eslint)                                          | JavaScript/TypeScript 静态检查 | MIT        |
 | [typescript-eslint](https://github.com/typescript-eslint/typescript-eslint)         | ESLint TypeScript 支持         | MIT        |
@@ -290,4 +290,3 @@ Vditor-Electron/
 - Vditor Desktop 以 [MIT License](LICENSE) 发布。
 
 - 项目依赖和随包资源可能采用 MIT、Apache-2.0、ISC、BSD 及其他兼容许可证；它们不因本项目采用MIT License 而改变各自的版权归属和许可条件。分发构建产物前，请同时遵守 Electron、Chromium、Vditor 及所有第三方组件的许可证与署名要求。
-

@@ -23,6 +23,8 @@
     listMarker: '[data-type="li-marker"]',
     listPadding: '[data-type="padding"]',
     renderedHeading: 'h1,h2,h3,h4,h5,h6',
+    instantLink: '[data-type="a"]',
+    instantLinkDestination: '.vditor-ir__marker--link',
   });
 
   function editorParts(host) {
@@ -108,6 +110,80 @@
 
   function innerScroller(node) {
     return node?.closest(selectors.reset) || null;
+  }
+
+  function scrollContainers(host) {
+    const parts = editorParts(host);
+    const candidates = [parts.source, parts.instantRendering, parts.wysiwyg, parts.preview];
+    [parts.instantRendering, parts.wysiwyg, parts.preview].forEach((editor) => {
+      const reset = editor?.querySelector(selectors.reset);
+      if (reset) candidates.push(reset);
+    });
+    return Array.from(new Set(candidates.filter(Boolean)));
+  }
+
+  function normalizedAnchor(value) {
+    const fragment = String(value || '').replace(/^#/, '');
+    try {
+      return decodeURIComponent(fragment).trim().toLowerCase();
+    } catch (_) {
+      return fragment.trim().toLowerCase();
+    }
+  }
+
+  function headingSlug(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^\p{Letter}\p{Number}\s_-]/gu, '')
+      .trim()
+      .replace(/\s+/g, '-');
+  }
+
+  function headingText(heading) {
+    const copy = heading.cloneNode(true);
+    copy.querySelectorAll(selectors.sourceHeading).forEach((marker) => marker.remove());
+    return copy.textContent || '';
+  }
+
+  function documentAnchor(target, host) {
+    const element = target?.nodeType === Node.TEXT_NODE ? target.parentElement : target;
+    if (!element || !host?.contains(element)) return null;
+    const link = element.closest?.('a[href^="#"]');
+    if (link) return { element: link, href: link.getAttribute('href') || '' };
+    const instantLink = element.closest?.(selectors.instantLink);
+    if (!instantLink || !host.contains(instantLink)) return null;
+    const href = instantLink.querySelector(selectors.instantLinkDestination)?.textContent?.trim();
+    return href?.startsWith('#') ? { element: instantLink, href } : null;
+  }
+
+  function headingIndexForAnchor(host, href) {
+    const anchor = normalizedAnchor(href);
+    if (!anchor) return -1;
+    const parts = editorParts(host);
+    for (const editor of [parts.instantRendering, parts.wysiwyg, parts.preview]) {
+      const headings = Array.from(editor?.querySelectorAll(selectors.renderedHeading) || []);
+      const exactTarget = Array.from(
+        editor?.querySelectorAll('[id], [name], [data-id]') || [],
+      ).find((node) =>
+        [node.id, node.getAttribute('name'), node.getAttribute('data-id')]
+          .filter(Boolean)
+          .some((value) => normalizedAnchor(value) === anchor),
+      );
+      if (exactTarget) {
+        const heading = exactTarget.matches(selectors.renderedHeading)
+          ? exactTarget
+          : exactTarget.closest(selectors.renderedHeading);
+        const index = headings.indexOf(heading);
+        if (index >= 0) return index;
+      }
+      const index = headings.findIndex((heading) => {
+        const text = headingText(heading);
+        return normalizedAnchor(text) === anchor || headingSlug(text) === anchor;
+      });
+      if (index >= 0) return index;
+    }
+    return -1;
   }
 
   function isRelativeImageSource(source) {
@@ -210,6 +286,9 @@
     listContext,
     headingTargets,
     innerScroller,
+    scrollContainers,
+    documentAnchor,
+    headingIndexForAnchor,
     resolveRelativeImageSources,
     observeRelativeImageSources,
     withOriginalImageSources,

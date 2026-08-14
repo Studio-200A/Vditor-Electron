@@ -185,11 +185,24 @@ test('opens the View > Layout submenu and toggles the unified toolbar', async ()
     await layoutMenu().hover();
     await page.locator('.app-menu-popup.submenu button', { hasText: 'Show Toolbar' }).click();
     await expect(page.locator('#app')).toHaveClass(/toolbar-hidden/);
+    await expect(page.locator('.app-menu-popup.submenu')).toBeVisible();
+    await expect(
+      page
+        .locator('.app-menu-popup.submenu button', { hasText: 'Show Toolbar' })
+        .locator('.checkmark'),
+    ).toHaveText('');
 
-    await page.locator('[data-menu="view"]').click();
-    await layoutMenu().hover();
     await page.locator('.app-menu-popup.submenu button', { hasText: 'Show Toolbar' }).click();
     await expect(page.locator('#app')).not.toHaveClass(/toolbar-hidden/);
+    await expect(page.locator('.app-menu-popup.submenu')).toBeVisible();
+    await expect(
+      page
+        .locator('.app-menu-popup.submenu button', { hasText: 'Show Toolbar' })
+        .locator('.checkmark'),
+    ).toHaveText('✓');
+
+    await page.locator('#windowTitle').click();
+    await expect(page.locator('.app-menu-popup.submenu')).toHaveCount(0);
 
     await page.locator('[data-menu="file"]').click();
     await expect(page.locator('.app-menu-popup button', { hasText: 'New File' })).toBeVisible();
@@ -374,6 +387,7 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
     await createNewTab(page);
     const markdown = [
       '# Top',
+      '[Jump to target](#target)',
       ...Array.from({ length: 70 }, (_, index) => `paragraph ${index + 1}`),
       '## Target',
       'target body',
@@ -385,15 +399,25 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
       );
     await ir.locator('.vditor-reset').fill(markdown);
     await expect(ir.locator('h2')).toHaveCount(1);
+    await ir.locator('[data-type="a"] .vditor-ir__link').click();
+    await expect.poll(() => scrollTop(ir)).toBeGreaterThan(0);
+    await ir.evaluate((node) => {
+      node.scrollTop = 0;
+      const reset = node.querySelector(':scope > .vditor-reset');
+      if (reset) reset.scrollTop = 0;
+    });
     await page.locator('.sidebar-tabs [data-view="outline"]').click();
     await expect(page.locator('#outlineView > .panel-heading')).toHaveCount(0);
     const target = page.locator('#outlineTree button', { hasText: 'Target' });
     await expect(target).toBeVisible();
-    const background = await target.evaluate((node) => getComputedStyle(node).backgroundColor);
-    await target.hover();
-    await expect
-      .poll(() => target.evaluate((node) => getComputedStyle(node).backgroundColor))
-      .not.toBe(background);
+    const topOutline = page.locator('#outlineTree > .outline-node').first();
+    const topToggle = topOutline.locator(':scope > .outline-row > .outline-toggle');
+    await expect(topToggle).toHaveAttribute('aria-expanded', 'true');
+    await topToggle.click();
+    await expect(target).toBeHidden();
+    await expect(topToggle).toHaveAttribute('aria-expanded', 'false');
+    await topToggle.click();
+    await expect(target).toBeVisible();
     await target.click();
     await expect.poll(() => scrollTop(ir)).toBeGreaterThan(0);
 
@@ -402,6 +426,13 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
     await page.locator('#vditorToolbarMount button[data-mode="wysiwyg"]').click();
     const wysiwyg = page.locator('.editor-host.active .vditor-wysiwyg');
     await expect(wysiwyg.locator('h2')).toHaveCount(1);
+    await wysiwyg.evaluate((node) => {
+      node.scrollTop = 0;
+      const reset = node.querySelector(':scope > .vditor-reset');
+      if (reset) reset.scrollTop = 0;
+    });
+    await wysiwyg.locator('a[href="#target"]').click();
+    await expect.poll(() => scrollTop(wysiwyg)).toBeGreaterThan(0);
     await wysiwyg.evaluate((node) => {
       node.scrollTop = 0;
       const reset = node.querySelector(':scope > .vditor-reset');
@@ -416,6 +447,14 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
     const preview = page.locator('.editor-host.active .vditor-preview');
     await expect(source.locator('[data-type="heading-marker"]')).toHaveCount(2);
     await expect(preview.locator('h2')).toHaveCount(1);
+    await source.evaluate((node) => {
+      node.scrollTop = 0;
+    });
+    await preview.evaluate((node) => {
+      node.scrollTop = 0;
+    });
+    await preview.locator('a[href="#target"]').click();
+    await expect.poll(() => preview.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
     await source.evaluate((node) => {
       node.scrollTop = 0;
     });
@@ -469,6 +508,76 @@ test('shows the split editor scrollbar only at its edge or while scrolling', asy
     await source.evaluate((node) => {
       node.dispatchEvent(new Event('scroll'));
     });
+    await expect(source).toHaveClass(/scrollbar-visible/);
+    await expect(source).not.toHaveClass(/scrollbar-visible/, { timeout: 1500 });
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('shows the outline scrollbar only at its edge or while scrolling', async () => {
+  const running = await launchApp({ editMode: 'ir', sidebarVisible: true });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    const ir = page.locator('.editor-host.active .vditor-ir .vditor-reset');
+    await ir.fill(Array.from({ length: 60 }, (_, index) => `## Section ${index + 1}`).join('\n'));
+    await page.locator('.sidebar-tabs [data-view="outline"]').click();
+    const outline = page.locator('#outlineTree');
+    await expect(outline.locator('.outline-item')).toHaveCount(60);
+    const box = await outline.boundingBox();
+    if (!box) throw new Error('Outline has no bounds');
+    await page.mouse.move(box.x + box.width / 2, box.y + 80);
+    await expect(outline).not.toHaveClass(/scrollbar-visible/);
+    await page.mouse.move(box.x + box.width - 8, box.y + 80);
+    await expect(outline).toHaveClass(/scrollbar-visible/);
+    await expect(outline).not.toHaveClass(/scrollbar-visible/, { timeout: 1500 });
+    await outline.evaluate((node) => {
+      node.scrollTop = 100;
+      node.dispatchEvent(new Event('scroll'));
+    });
+    await expect(outline).toHaveClass(/scrollbar-visible/);
+    await expect(outline).not.toHaveClass(/scrollbar-visible/, { timeout: 1500 });
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('applies always, automatic, and hidden scrollbar modes across the application', async () => {
+  const running = await launchApp({ editMode: 'sv', scrollbarMode: 'auto' });
+  try {
+    const { page, testRoot } = running;
+    await createNewTab(page);
+    const source = page.locator('.editor-host.active .vditor-sv');
+    await expect(page.locator('html')).toHaveAttribute('data-scrollbar-mode', 'auto');
+    await expect(source).toHaveClass(/app-scrollbar/);
+    await expect(page.locator('#fileTree')).toHaveClass(/app-scrollbar/);
+    await expect(page.locator('#outlineTree')).toHaveClass(/app-scrollbar/);
+    await page.locator('#statusSettings').click();
+    const setting = page.locator('[name="scrollbarMode"]');
+    await expect(setting).toHaveValue('auto');
+
+    await setting.selectOption('always');
+    await expect(page.locator('html')).toHaveAttribute('data-scrollbar-mode', 'always');
+    await expect.poll(() => readSetting(testRoot, 'appearance', 'scrollbarMode')).toBe('always');
+    await expect
+      .poll(() => source.evaluate((node) => getComputedStyle(node, '::-webkit-scrollbar').width))
+      .toBe('9px');
+
+    await setting.selectOption('hidden');
+    await expect(page.locator('html')).toHaveAttribute('data-scrollbar-mode', 'hidden');
+    await expect.poll(() => readSetting(testRoot, 'appearance', 'scrollbarMode')).toBe('hidden');
+    await expect
+      .poll(() => source.evaluate((node) => getComputedStyle(node, '::-webkit-scrollbar').width))
+      .toBe('0px');
+
+    await setting.selectOption('auto');
+    await expect(page.locator('html')).toHaveAttribute('data-scrollbar-mode', 'auto');
+    await page.locator('#saveSettings').click();
+    await expect(page.locator('#settingsModal')).toBeHidden();
+    const box = await source.boundingBox();
+    if (!box) throw new Error('Split source editor has no bounds');
+    await page.mouse.move(box.x + box.width - 8, box.y + 80);
     await expect(source).toHaveClass(/scrollbar-visible/);
     await expect(source).not.toHaveClass(/scrollbar-visible/, { timeout: 1500 });
   } finally {
@@ -653,8 +762,11 @@ test('shows only the workspace name and refresh action in the explorer header', 
     await expect(running.page.locator('#newExplorerFile')).toHaveCount(0);
     await expect(running.page.locator('#workspaceLabel')).toHaveCount(0);
     const treeRows = running.page.locator('#fileTree .tree-row');
-    await expect(treeRows).toHaveCount(3);
+    await expect(treeRows).toHaveCount(2);
     const directory = running.page.locator('#fileTree > .tree-dir').first();
+    await expect(directory).not.toHaveClass(/expanded/);
+    await expect(directory).toHaveAttribute('aria-expanded', 'false');
+    await directory.locator('.chevron').click();
     const nestedFile = running.page.locator('#fileTree > .tree-children .tree-file').first();
     await expect(directory).toHaveClass(/expanded/);
     await expect(nestedFile).toBeVisible();
@@ -699,6 +811,71 @@ test('shows only the workspace name and refresh action in the explorer header', 
   } finally {
     await closeApp(running);
     fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('restores directory expansion separately for each workspace after refreshes and switches', async () => {
+  const workspaceA = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-workspace-a-'));
+  const workspaceB = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-workspace-b-'));
+  fs.mkdirSync(path.join(workspaceA, 'docs'));
+  fs.mkdirSync(path.join(workspaceB, 'other'));
+  fs.writeFileSync(path.join(workspaceA, 'docs', 'one.md'), '# One');
+  fs.writeFileSync(path.join(workspaceB, 'other', 'two.md'), '# Two');
+  const running = await launchApp({
+    restoreWorkspace: true,
+    sidebarVisible: true,
+    session: { workspacePath: workspaceA, activeFilePath: null, openFiles: [] },
+  });
+  const openFolderFromMenu = async () => {
+    await running.page.locator('#appMenuBar [data-menu="file"]').click();
+    await running.page
+      .locator('.app-menu-popup button')
+      .filter({ hasText: /^Open Folder/ })
+      .click();
+  };
+  try {
+    const directoryA = running.page.locator('#fileTree > .tree-dir').filter({ hasText: 'docs' });
+    await expect(directoryA).not.toHaveClass(/expanded/);
+    await directoryA.click();
+    await expect(directoryA).toHaveClass(/expanded/);
+    await expect(
+      running.page.locator('#fileTree .tree-file').filter({ hasText: 'one.md' }),
+    ).toBeVisible();
+    await expect
+      .poll(() => readSetting(running.testRoot, 'workspace', 'workspaceTreeStates'))
+      .toEqual([{ workspacePath: workspaceA, expandedPaths: [path.join(workspaceA, 'docs')] }]);
+
+    fs.writeFileSync(path.join(workspaceA, 'docs', 'added.md'), '# Added');
+    await expect(
+      running.page.locator('#fileTree .tree-file').filter({ hasText: 'added.md' }),
+    ).toBeVisible();
+    await expect(directoryA).toHaveClass(/expanded/);
+
+    await running.app.evaluate(
+      ({ dialog }, folders) => {
+        let index = 0;
+        dialog.showOpenDialog = async () => ({
+          canceled: false,
+          filePaths: [folders[index++]],
+        });
+      },
+      [workspaceB, workspaceA],
+    );
+    await openFolderFromMenu();
+    await expect(running.page.locator('#workspaceName')).toHaveText(path.basename(workspaceB));
+    await expect(
+      running.page.locator('#fileTree > .tree-dir').filter({ hasText: 'other' }),
+    ).not.toHaveClass(/expanded/);
+    await openFolderFromMenu();
+    await expect(running.page.locator('#workspaceName')).toHaveText(path.basename(workspaceA));
+    await expect(directoryA).toHaveClass(/expanded/);
+    await expect(
+      running.page.locator('#fileTree .tree-file').filter({ hasText: 'added.md' }),
+    ).toBeVisible();
+  } finally {
+    await closeApp(running);
+    fs.rmSync(workspaceA, { recursive: true, force: true });
+    fs.rmSync(workspaceB, { recursive: true, force: true });
   }
 });
 
@@ -1133,6 +1310,46 @@ test('animates the settings dialog with platform-aware native-style transitions'
     await modal.locator('[data-close="settingsModal"]').click();
     await expect(modal).toHaveClass(/modal-closing/);
     await expect(modal).toBeHidden();
+
+    await page.locator('#statusSettings').click();
+    await page.locator('#saveSettings').click();
+    await expect(modal).toHaveClass(/modal-closing/);
+    await expect(modal).toBeHidden();
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('preserves the editor scroll position when settings rebuild the editor', async () => {
+  const running = await launchApp({ editMode: 'ir' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    const markdown = Array.from({ length: 100 }, (_, index) => `paragraph ${index + 1}`).join('\n');
+    const reset = page.locator('.editor-host.active .vditor-ir .vditor-reset');
+    await reset.fill(markdown);
+    await expect(reset).toContainText('paragraph 100');
+    await reset.evaluate((node) => {
+      node.scrollTop = 420;
+      node.parentElement.scrollTop = 420;
+    });
+    const before = await reset.evaluate((node) =>
+      Math.max(node.scrollTop, node.parentElement?.scrollTop || 0),
+    );
+    expect(before).toBeGreaterThan(300);
+
+    await page.locator('#statusSettings').click();
+    await page.locator('.settings-nav [data-panel="fonts"]').click();
+    await page.locator('[name="editorFontSize"]').fill('18');
+    await page.locator('#saveSettings').click();
+    await expect(page.locator('#settingsModal')).toBeHidden();
+    await expect
+      .poll(() =>
+        page
+          .locator('.editor-host.active .vditor-ir .vditor-reset')
+          .evaluate((node) => Math.max(node.scrollTop, node.parentElement?.scrollTop || 0)),
+      )
+      .toBeGreaterThan(300);
   } finally {
     await closeApp(running);
   }
@@ -1355,7 +1572,16 @@ test('shows the localized About page with project links and reset at the bottom'
     await expect(about).toBeVisible();
     await expect(about.locator('.about-logo')).toBeVisible();
     await expect(about).toContainText('基于 Vditor 项目打造');
-    await expect(about.locator('[data-external]')).toHaveCount(7);
+    await expect(about.locator('[data-external]')).toHaveCount(8);
+    await expect(about.locator('#commitInfo')).toHaveText(/^[0-9a-f]{12}$/);
+    await expect(about.locator('#commitInfo')).toHaveAttribute(
+      'title',
+      '0.1.0 · 8cb3786e70dc50c84327d5510206514661534b4e',
+    );
+    await expect(about.locator('#commitInfo')).toHaveAttribute(
+      'data-external',
+      /github\.com\/Studio-200A\/Vditor-Electron\/commit\/[0-9a-f]{40}$/,
+    );
     const panelBox = await about.boundingBox();
     const logoBox = await about.locator('.about-logo').boundingBox();
     const sourceBox = await about.locator('.about-source').boundingBox();

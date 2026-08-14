@@ -19,6 +19,7 @@ type SettingsDocument = {
     | 'uiZoom'
     | 'editorZoom'
     | 'previewZoom'
+    | 'scrollbarMode'
   >;
   fonts: Pick<
     AppSettings,
@@ -86,7 +87,7 @@ type SettingsDocument = {
   >;
   workspace: Pick<
     AppSettings,
-    'sidebarWidth' | 'sidebarVisible' | 'toolbarVisible' | 'fileExplorer'
+    'sidebarWidth' | 'sidebarVisible' | 'toolbarVisible' | 'fileExplorer' | 'workspaceTreeStates'
   >;
   window: Pick<AppSettings, 'windowMaximized'> & {
     bounds: AppSettings['windowBounds'];
@@ -193,6 +194,7 @@ export class SettingsStore {
         'uiZoom',
         'editorZoom',
         'previewZoom',
+        'scrollbarMode',
       ]),
       fonts: pick(settings, [
         'uiFontFamily',
@@ -259,6 +261,7 @@ export class SettingsStore {
         'sidebarVisible',
         'toolbarVisible',
         'fileExplorer',
+        'workspaceTreeStates',
       ]),
       window: {
         windowMaximized: settings.windowMaximized,

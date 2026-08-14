@@ -15,6 +15,18 @@
     <div id="app">
       <div id="windowTitlebar" class="window-titlebar">
         <nav id="appMenuBar" class="app-menu-bar">
+          <button
+            id="toggleSidebar"
+            class="titlebar-sidebar-toggle"
+            data-i18n-title="toolbar.toggleSidebar"
+            aria-label="Toggle Sidebar"
+            aria-pressed="true"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="16" rx="4" />
+              <path d="M9 4v16M5.5 8h1.5M5.5 11.5h1.5M5.5 15h1.5M5.5 18h1.5" />
+            </svg>
+          </button>
           <button data-menu="file" data-i18n="menu.file">File</button>
           <button data-menu="edit" data-i18n="menu.edit">Edit</button>
           <button data-menu="view" data-i18n="menu.view">View</button>
@@ -41,14 +53,6 @@
       <header class="titlebar" aria-label="应用工具栏">
         <div class="app-tools">
           <button
-            id="toggleSidebar"
-            class="icon-btn"
-            data-i18n-title="toolbar.toggleSidebar"
-            aria-label="Toggle Sidebar"
-          >
-            <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
-          </button>
-          <button
             id="newFile"
             class="icon-btn"
             data-i18n-title="toolbar.newFile"
@@ -62,7 +66,9 @@
             data-i18n-title="toolbar.openFile"
             aria-label="Open File"
           >
-            <svg viewBox="0 0 24 24"><path d="M3 7h7l2 2h9l-3 10H5zM3 7v12h2" /></svg>
+            <svg viewBox="0 0 24 24">
+              <path d="M3.5 7.5h6l1.8 2h9.2v9h-17zM3.5 7.5V5.5h6l1.8 2" />
+            </svg>
           </button>
           <button
             id="saveFile"
@@ -71,19 +77,6 @@
             aria-label="Save File"
           >
             <svg viewBox="0 0 24 24"><path d="M5 3h12l2 2v16H5zM8 3v6h8V3M8 21v-7h8v7" /></svg>
-          </button>
-          <button
-            id="settingsButton"
-            class="icon-btn"
-            data-i18n-title="toolbar.settings"
-            aria-label="Settings"
-          >
-            <svg viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="3" />
-              <path
-                d="M9.6 3h4.8l.55 2.15 1.35.78 2.14-.63 2.4 4.15-1.6 1.52v1.56l1.6 1.52-2.4 4.15-2.14-.63-1.35.78L14.4 21H9.6l-.55-2.15-1.35-.78-2.14.63-2.4-4.15 1.6-1.52v-1.56l-1.6-1.52 2.4-4.15 2.14.63 1.35-.78z"
-              />
-            </svg>
           </button>
         </div>
         <div id="vditorToolbarMount" class="vditor-toolbar-mount"></div>
@@ -369,10 +362,493 @@
               >
               <label data-i18n-label="settings.codeTheme"
                 >Code theme<select name="codeTheme">
-                  <option value="github" data-theme-tone="light">GitHub</option>
-                  <option value="vs" data-theme-tone="light">Visual Studio</option>
-                  <option value="monokai" data-theme-tone="dark">Monokai</option>
-                  <option value="base16/dracula" data-theme-tone="dark">Dracula</option>
+                  +
+                  <option value="a11y-dark" data-theme-tone="dark">a11y-dark</option>
+                  <option value="agate" data-theme-tone="dark">agate</option>
+                  <option value="an-old-hope" data-theme-tone="dark">an-old-hope</option>
+                  <option value="androidstudio" data-theme-tone="dark">androidstudio</option>
+                  <option value="arta" data-theme-tone="dark">arta</option>
+                  <option value="atom-one-dark" data-theme-tone="dark">atom-one-dark</option>
+                  <option value="atom-one-dark-reasonable" data-theme-tone="dark">
+                    atom-one-dark-reasonable
+                  </option>
+                  <option value="base16/3024" data-theme-tone="dark">base16/3024</option>
+                  <option value="base16/apathy" data-theme-tone="dark">base16/apathy</option>
+                  <option value="base16/apprentice" data-theme-tone="dark">
+                    base16/apprentice
+                  </option>
+                  <option value="base16/ashes" data-theme-tone="dark">base16/ashes</option>
+                  <option value="base16/atelier-cave" data-theme-tone="dark">
+                    base16/atelier-cave
+                  </option>
+                  <option value="base16/atelier-dune" data-theme-tone="dark">
+                    base16/atelier-dune
+                  </option>
+                  <option value="base16/atelier-estuary" data-theme-tone="dark">
+                    base16/atelier-estuary
+                  </option>
+                  <option value="base16/atelier-forest" data-theme-tone="dark">
+                    base16/atelier-forest
+                  </option>
+                  <option value="base16/atelier-heath" data-theme-tone="dark">
+                    base16/atelier-heath
+                  </option>
+                  <option value="base16/atelier-lakeside" data-theme-tone="dark">
+                    base16/atelier-lakeside
+                  </option>
+                  <option value="base16/atelier-plateau" data-theme-tone="dark">
+                    base16/atelier-plateau
+                  </option>
+                  <option value="base16/atelier-savanna" data-theme-tone="dark">
+                    base16/atelier-savanna
+                  </option>
+                  <option value="base16/atelier-seaside" data-theme-tone="dark">
+                    base16/atelier-seaside
+                  </option>
+                  <option value="base16/atelier-sulphurpool" data-theme-tone="dark">
+                    base16/atelier-sulphurpool
+                  </option>
+                  <option value="base16/atlas" data-theme-tone="dark">base16/atlas</option>
+                  <option value="base16/bespin" data-theme-tone="dark">base16/bespin</option>
+                  <option value="base16/black-metal" data-theme-tone="dark">
+                    base16/black-metal
+                  </option>
+                  <option value="base16/black-metal-bathory" data-theme-tone="dark">
+                    base16/black-metal-bathory
+                  </option>
+                  <option value="base16/black-metal-burzum" data-theme-tone="dark">
+                    base16/black-metal-burzum
+                  </option>
+                  <option value="base16/black-metal-dark-funeral" data-theme-tone="dark">
+                    base16/black-metal-dark-funeral
+                  </option>
+                  <option value="base16/black-metal-gorgoroth" data-theme-tone="dark">
+                    base16/black-metal-gorgoroth
+                  </option>
+                  <option value="base16/black-metal-immortal" data-theme-tone="dark">
+                    base16/black-metal-immortal
+                  </option>
+                  <option value="base16/black-metal-khold" data-theme-tone="dark">
+                    base16/black-metal-khold
+                  </option>
+                  <option value="base16/black-metal-marduk" data-theme-tone="dark">
+                    base16/black-metal-marduk
+                  </option>
+                  <option value="base16/black-metal-mayhem" data-theme-tone="dark">
+                    base16/black-metal-mayhem
+                  </option>
+                  <option value="base16/black-metal-nile" data-theme-tone="dark">
+                    base16/black-metal-nile
+                  </option>
+                  <option value="base16/black-metal-venom" data-theme-tone="dark">
+                    base16/black-metal-venom
+                  </option>
+                  <option value="base16/brewer" data-theme-tone="dark">base16/brewer</option>
+                  <option value="base16/bright" data-theme-tone="dark">base16/bright</option>
+                  <option value="base16/brogrammer" data-theme-tone="dark">
+                    base16/brogrammer
+                  </option>
+                  <option value="base16/brush-trees-dark" data-theme-tone="dark">
+                    base16/brush-trees-dark
+                  </option>
+                  <option value="base16/chalk" data-theme-tone="dark">base16/chalk</option>
+                  <option value="base16/circus" data-theme-tone="dark">base16/circus</option>
+                  <option value="base16/classic-dark" data-theme-tone="dark">
+                    base16/classic-dark
+                  </option>
+                  <option value="base16/codeschool" data-theme-tone="dark">
+                    base16/codeschool
+                  </option>
+                  <option value="base16/colors" data-theme-tone="dark">base16/colors</option>
+                  <option value="base16/danqing" data-theme-tone="dark">base16/danqing</option>
+                  <option value="base16/darcula" data-theme-tone="dark">base16/darcula</option>
+                  <option value="base16/dark-violet" data-theme-tone="dark">
+                    base16/dark-violet
+                  </option>
+                  <option value="base16/darkmoss" data-theme-tone="dark">base16/darkmoss</option>
+                  <option value="base16/darktooth" data-theme-tone="dark">base16/darktooth</option>
+                  <option value="base16/decaf" data-theme-tone="dark">base16/decaf</option>
+                  <option value="base16/default-dark" data-theme-tone="dark">
+                    base16/default-dark
+                  </option>
+                  <option value="base16/dracula" data-theme-tone="dark">base16/dracula</option>
+                  <option value="base16/edge-dark" data-theme-tone="dark">base16/edge-dark</option>
+                  <option value="base16/eighties" data-theme-tone="dark">base16/eighties</option>
+                  <option value="base16/embers" data-theme-tone="dark">base16/embers</option>
+                  <option value="base16/equilibrium-dark" data-theme-tone="dark">
+                    base16/equilibrium-dark
+                  </option>
+                  <option value="base16/equilibrium-gray-dark" data-theme-tone="dark">
+                    base16/equilibrium-gray-dark
+                  </option>
+                  <option value="base16/espresso" data-theme-tone="dark">base16/espresso</option>
+                  <option value="base16/eva" data-theme-tone="dark">base16/eva</option>
+                  <option value="base16/eva-dim" data-theme-tone="dark">base16/eva-dim</option>
+                  <option value="base16/flat" data-theme-tone="dark">base16/flat</option>
+                  <option value="base16/framer" data-theme-tone="dark">base16/framer</option>
+                  <option value="base16/gigavolt" data-theme-tone="dark">base16/gigavolt</option>
+                  <option value="base16/google-dark" data-theme-tone="dark">
+                    base16/google-dark
+                  </option>
+                  <option value="base16/grayscale-dark" data-theme-tone="dark">
+                    base16/grayscale-dark
+                  </option>
+                  <option value="base16/green-screen" data-theme-tone="dark">
+                    base16/green-screen
+                  </option>
+                  <option value="base16/gruvbox-dark-hard" data-theme-tone="dark">
+                    base16/gruvbox-dark-hard
+                  </option>
+                  <option value="base16/gruvbox-dark-medium" data-theme-tone="dark">
+                    base16/gruvbox-dark-medium
+                  </option>
+                  <option value="base16/gruvbox-dark-pale" data-theme-tone="dark">
+                    base16/gruvbox-dark-pale
+                  </option>
+                  <option value="base16/gruvbox-dark-soft" data-theme-tone="dark">
+                    base16/gruvbox-dark-soft
+                  </option>
+                  <option value="base16/hardcore" data-theme-tone="dark">base16/hardcore</option>
+                  <option value="base16/harmonic16-dark" data-theme-tone="dark">
+                    base16/harmonic16-dark
+                  </option>
+                  <option value="base16/heetch-dark" data-theme-tone="dark">
+                    base16/heetch-dark
+                  </option>
+                  <option value="base16/helios" data-theme-tone="dark">base16/helios</option>
+                  <option value="base16/hopscotch" data-theme-tone="dark">base16/hopscotch</option>
+                  <option value="base16/horizon-dark" data-theme-tone="dark">
+                    base16/horizon-dark
+                  </option>
+                  <option value="base16/humanoid-dark" data-theme-tone="dark">
+                    base16/humanoid-dark
+                  </option>
+                  <option value="base16/ia-dark" data-theme-tone="dark">base16/ia-dark</option>
+                  <option value="base16/icy-dark" data-theme-tone="dark">base16/icy-dark</option>
+                  <option value="base16/ir-black" data-theme-tone="dark">base16/ir-black</option>
+                  <option value="base16/isotope" data-theme-tone="dark">base16/isotope</option>
+                  <option value="base16/kimber" data-theme-tone="dark">base16/kimber</option>
+                  <option value="base16/london-tube" data-theme-tone="dark">
+                    base16/london-tube
+                  </option>
+                  <option value="base16/macintosh" data-theme-tone="dark">base16/macintosh</option>
+                  <option value="base16/marrakesh" data-theme-tone="dark">base16/marrakesh</option>
+                  <option value="base16/materia" data-theme-tone="dark">base16/materia</option>
+                  <option value="base16/material" data-theme-tone="dark">base16/material</option>
+                  <option value="base16/material-darker" data-theme-tone="dark">
+                    base16/material-darker
+                  </option>
+                  <option value="base16/material-palenight" data-theme-tone="dark">
+                    base16/material-palenight
+                  </option>
+                  <option value="base16/material-vivid" data-theme-tone="dark">
+                    base16/material-vivid
+                  </option>
+                  <option value="base16/mellow-purple" data-theme-tone="dark">
+                    base16/mellow-purple
+                  </option>
+                  <option value="base16/mocha" data-theme-tone="dark">base16/mocha</option>
+                  <option value="base16/monokai" data-theme-tone="dark">base16/monokai</option>
+                  <option value="base16/nebula" data-theme-tone="dark">base16/nebula</option>
+                  <option value="base16/nord" data-theme-tone="dark">base16/nord</option>
+                  <option value="base16/nova" data-theme-tone="dark">base16/nova</option>
+                  <option value="base16/ocean" data-theme-tone="dark">base16/ocean</option>
+                  <option value="base16/oceanicnext" data-theme-tone="dark">
+                    base16/oceanicnext
+                  </option>
+                  <option value="base16/onedark" data-theme-tone="dark">base16/onedark</option>
+                  <option value="base16/outrun-dark" data-theme-tone="dark">
+                    base16/outrun-dark
+                  </option>
+                  <option value="base16/papercolor-dark" data-theme-tone="dark">
+                    base16/papercolor-dark
+                  </option>
+                  <option value="base16/paraiso" data-theme-tone="dark">base16/paraiso</option>
+                  <option value="base16/pasque" data-theme-tone="dark">base16/pasque</option>
+                  <option value="base16/phd" data-theme-tone="dark">base16/phd</option>
+                  <option value="base16/pico" data-theme-tone="dark">base16/pico</option>
+                  <option value="base16/pop" data-theme-tone="dark">base16/pop</option>
+                  <option value="base16/porple" data-theme-tone="dark">base16/porple</option>
+                  <option value="base16/qualia" data-theme-tone="dark">base16/qualia</option>
+                  <option value="base16/railscasts" data-theme-tone="dark">
+                    base16/railscasts
+                  </option>
+                  <option value="base16/rebecca" data-theme-tone="dark">base16/rebecca</option>
+                  <option value="base16/ros-pine" data-theme-tone="dark">base16/ros-pine</option>
+                  <option value="base16/ros-pine-moon" data-theme-tone="dark">
+                    base16/ros-pine-moon
+                  </option>
+                  <option value="base16/sandcastle" data-theme-tone="dark">
+                    base16/sandcastle
+                  </option>
+                  <option value="base16/seti-ui" data-theme-tone="dark">base16/seti-ui</option>
+                  <option value="base16/silk-dark" data-theme-tone="dark">base16/silk-dark</option>
+                  <option value="base16/snazzy" data-theme-tone="dark">base16/snazzy</option>
+                  <option value="base16/solar-flare" data-theme-tone="dark">
+                    base16/solar-flare
+                  </option>
+                  <option value="base16/solarized-dark" data-theme-tone="dark">
+                    base16/solarized-dark
+                  </option>
+                  <option value="base16/spacemacs" data-theme-tone="dark">base16/spacemacs</option>
+                  <option value="base16/summercamp" data-theme-tone="dark">
+                    base16/summercamp
+                  </option>
+                  <option value="base16/summerfruit-dark" data-theme-tone="dark">
+                    base16/summerfruit-dark
+                  </option>
+                  <option value="base16/synth-midnight-terminal-dark" data-theme-tone="dark">
+                    base16/synth-midnight-terminal-dark
+                  </option>
+                  <option value="base16/tango" data-theme-tone="dark">base16/tango</option>
+                  <option value="base16/tender" data-theme-tone="dark">base16/tender</option>
+                  <option value="base16/tomorrow-night" data-theme-tone="dark">
+                    base16/tomorrow-night
+                  </option>
+                  <option value="base16/twilight" data-theme-tone="dark">base16/twilight</option>
+                  <option value="base16/unikitty-dark" data-theme-tone="dark">
+                    base16/unikitty-dark
+                  </option>
+                  <option value="base16/vulcan" data-theme-tone="dark">base16/vulcan</option>
+                  <option value="base16/windows-10" data-theme-tone="dark">
+                    base16/windows-10
+                  </option>
+                  <option value="base16/windows-95" data-theme-tone="dark">
+                    base16/windows-95
+                  </option>
+                  <option value="base16/windows-high-contrast" data-theme-tone="dark">
+                    base16/windows-high-contrast
+                  </option>
+                  <option value="base16/windows-nt" data-theme-tone="dark">
+                    base16/windows-nt
+                  </option>
+                  <option value="base16/woodland" data-theme-tone="dark">base16/woodland</option>
+                  <option value="base16/xcode-dusk" data-theme-tone="dark">
+                    base16/xcode-dusk
+                  </option>
+                  <option value="base16/zenburn" data-theme-tone="dark">base16/zenburn</option>
+                  <option value="codepen-embed" data-theme-tone="dark">codepen-embed</option>
+                  <option value="dark" data-theme-tone="dark">dark</option>
+                  <option value="devibeans" data-theme-tone="dark">devibeans</option>
+                  <option value="far" data-theme-tone="dark">far</option>
+                  <option value="felipec" data-theme-tone="dark">felipec</option>
+                  <option value="github-dark" data-theme-tone="dark">github-dark</option>
+                  <option value="github-dark-dimmed" data-theme-tone="dark">
+                    github-dark-dimmed
+                  </option>
+                  <option value="gml" data-theme-tone="dark">gml</option>
+                  <option value="gradient-dark" data-theme-tone="dark">gradient-dark</option>
+                  <option value="hybrid" data-theme-tone="dark">hybrid</option>
+                  <option value="ir-black" data-theme-tone="dark">ir-black</option>
+                  <option value="isbl-editor-dark" data-theme-tone="dark">isbl-editor-dark</option>
+                  <option value="kimbie-dark" data-theme-tone="dark">kimbie-dark</option>
+                  <option value="lioshi" data-theme-tone="dark">lioshi</option>
+                  <option value="monokai" data-theme-tone="dark">monokai</option>
+                  <option value="monokai-sublime" data-theme-tone="dark">monokai-sublime</option>
+                  <option value="night-owl" data-theme-tone="dark">night-owl</option>
+                  <option value="nnfx-dark" data-theme-tone="dark">nnfx-dark</option>
+                  <option value="nord" data-theme-tone="dark">nord</option>
+                  <option value="obsidian" data-theme-tone="dark">obsidian</option>
+                  <option value="panda-syntax-dark" data-theme-tone="dark">
+                    panda-syntax-dark
+                  </option>
+                  <option value="paraiso-dark" data-theme-tone="dark">paraiso-dark</option>
+                  <option value="pojoaque" data-theme-tone="dark">pojoaque</option>
+                  <option value="qtcreator-dark" data-theme-tone="dark">qtcreator-dark</option>
+                  <option value="rainbow" data-theme-tone="dark">rainbow</option>
+                  <option value="shades-of-purple" data-theme-tone="dark">shades-of-purple</option>
+                  <option value="srcery" data-theme-tone="dark">srcery</option>
+                  <option value="stackoverflow-dark" data-theme-tone="dark">
+                    stackoverflow-dark
+                  </option>
+                  <option value="sunburst" data-theme-tone="dark">sunburst</option>
+                  <option value="tomorrow-night-blue" data-theme-tone="dark">
+                    tomorrow-night-blue
+                  </option>
+                  <option value="tomorrow-night-bright" data-theme-tone="dark">
+                    tomorrow-night-bright
+                  </option>
+                  <option value="tokyo-night-dark" data-theme-tone="dark">tokyo-night-dark</option>
+                  <option value="vs2015" data-theme-tone="dark">vs2015</option>
+                  <option value="xt256" data-theme-tone="dark">xt256</option>
+                  <option value="ant-design" data-theme-tone="light">ant-design</option>
+                  <option value="a11y-light" data-theme-tone="light">a11y-light</option>
+                  <option value="arduino-light" data-theme-tone="light">arduino-light</option>
+                  <option value="ascetic" data-theme-tone="light">ascetic</option>
+                  <option value="atom-one-light" data-theme-tone="light">atom-one-light</option>
+                  <option value="base16/atelier-cave-light" data-theme-tone="light">
+                    base16/atelier-cave-light
+                  </option>
+                  <option value="base16/atelier-dune-light" data-theme-tone="light">
+                    base16/atelier-dune-light
+                  </option>
+                  <option value="base16/atelier-estuary-light" data-theme-tone="light">
+                    base16/atelier-estuary-light
+                  </option>
+                  <option value="base16/atelier-forest-light" data-theme-tone="light">
+                    base16/atelier-forest-light
+                  </option>
+                  <option value="base16/atelier-heath-light" data-theme-tone="light">
+                    base16/atelier-heath-light
+                  </option>
+                  <option value="base16/atelier-lakeside-light" data-theme-tone="light">
+                    base16/atelier-lakeside-light
+                  </option>
+                  <option value="base16/atelier-plateau-light" data-theme-tone="light">
+                    base16/atelier-plateau-light
+                  </option>
+                  <option value="base16/atelier-savanna-light" data-theme-tone="light">
+                    base16/atelier-savanna-light
+                  </option>
+                  <option value="base16/atelier-seaside-light" data-theme-tone="light">
+                    base16/atelier-seaside-light
+                  </option>
+                  <option value="base16/atelier-sulphurpool-light" data-theme-tone="light">
+                    base16/atelier-sulphurpool-light
+                  </option>
+                  <option value="base16/brush-trees" data-theme-tone="light">
+                    base16/brush-trees
+                  </option>
+                  <option value="base16/classic-light" data-theme-tone="light">
+                    base16/classic-light
+                  </option>
+                  <option value="base16/cupcake" data-theme-tone="light">base16/cupcake</option>
+                  <option value="base16/cupertino" data-theme-tone="light">base16/cupertino</option>
+                  <option value="base16/default-light" data-theme-tone="light">
+                    base16/default-light
+                  </option>
+                  <option value="base16/dirtysea" data-theme-tone="light">base16/dirtysea</option>
+                  <option value="base16/edge-light" data-theme-tone="light">
+                    base16/edge-light
+                  </option>
+                  <option value="base16/equilibrium-gray-light" data-theme-tone="light">
+                    base16/equilibrium-gray-light
+                  </option>
+                  <option value="base16/equilibrium-light" data-theme-tone="light">
+                    base16/equilibrium-light
+                  </option>
+                  <option value="base16/fruit-soda" data-theme-tone="light">
+                    base16/fruit-soda
+                  </option>
+                  <option value="base16/github" data-theme-tone="light">base16/github</option>
+                  <option value="base16/google-light" data-theme-tone="light">
+                    base16/google-light
+                  </option>
+                  <option value="base16/grayscale-light" data-theme-tone="light">
+                    base16/grayscale-light
+                  </option>
+                  <option value="base16/gruvbox-light-hard" data-theme-tone="light">
+                    base16/gruvbox-light-hard
+                  </option>
+                  <option value="base16/gruvbox-light-medium" data-theme-tone="light">
+                    base16/gruvbox-light-medium
+                  </option>
+                  <option value="base16/gruvbox-light-soft" data-theme-tone="light">
+                    base16/gruvbox-light-soft
+                  </option>
+                  <option value="base16/harmonic16-light" data-theme-tone="light">
+                    base16/harmonic16-light
+                  </option>
+                  <option value="base16/heetch-light" data-theme-tone="light">
+                    base16/heetch-light
+                  </option>
+                  <option value="base16/humanoid-light" data-theme-tone="light">
+                    base16/humanoid-light
+                  </option>
+                  <option value="base16/horizon-light" data-theme-tone="light">
+                    base16/horizon-light
+                  </option>
+                  <option value="base16/ia-light" data-theme-tone="light">base16/ia-light</option>
+                  <option value="base16/material-lighter" data-theme-tone="light">
+                    base16/material-lighter
+                  </option>
+                  <option value="base16/mexico-light" data-theme-tone="light">
+                    base16/mexico-light
+                  </option>
+                  <option value="base16/one-light" data-theme-tone="light">base16/one-light</option>
+                  <option value="base16/papercolor-light" data-theme-tone="light">
+                    base16/papercolor-light
+                  </option>
+                  <option value="base16/ros-pine-dawn" data-theme-tone="light">
+                    base16/ros-pine-dawn
+                  </option>
+                  <option value="base16/sagelight" data-theme-tone="light">base16/sagelight</option>
+                  <option value="base16/shapeshifter" data-theme-tone="light">
+                    base16/shapeshifter
+                  </option>
+                  <option value="base16/silk-light" data-theme-tone="light">
+                    base16/silk-light
+                  </option>
+                  <option value="base16/solar-flare-light" data-theme-tone="light">
+                    base16/solar-flare-light
+                  </option>
+                  <option value="base16/solarized-light" data-theme-tone="light">
+                    base16/solarized-light
+                  </option>
+                  <option value="base16/summerfruit-light" data-theme-tone="light">
+                    base16/summerfruit-light
+                  </option>
+                  <option value="base16/synth-midnight-terminal-light" data-theme-tone="light">
+                    base16/synth-midnight-terminal-light
+                  </option>
+                  <option value="base16/tomorrow" data-theme-tone="light">base16/tomorrow</option>
+                  <option value="base16/unikitty-light" data-theme-tone="light">
+                    base16/unikitty-light
+                  </option>
+                  <option value="base16/windows-10-light" data-theme-tone="light">
+                    base16/windows-10-light
+                  </option>
+                  <option value="base16/windows-95-light" data-theme-tone="light">
+                    base16/windows-95-light
+                  </option>
+                  <option value="base16/windows-high-contrast-light" data-theme-tone="light">
+                    base16/windows-high-contrast-light
+                  </option>
+                  <option value="brown-paper" data-theme-tone="light">brown-paper</option>
+                  <option value="base16/windows-nt-light" data-theme-tone="light">
+                    base16/windows-nt-light
+                  </option>
+                  <option value="color-brewer" data-theme-tone="light">color-brewer</option>
+                  <option value="docco" data-theme-tone="light">docco</option>
+                  <option value="foundation" data-theme-tone="light">foundation</option>
+                  <option value="github" data-theme-tone="light">github</option>
+                  <option value="googlecode" data-theme-tone="light">googlecode</option>
+                  <option value="gradient-light" data-theme-tone="light">gradient-light</option>
+                  <option value="grayscale" data-theme-tone="light">grayscale</option>
+                  <option value="idea" data-theme-tone="light">idea</option>
+                  <option value="intellij-light" data-theme-tone="light">intellij-light</option>
+                  <option value="isbl-editor-light" data-theme-tone="light">
+                    isbl-editor-light
+                  </option>
+                  <option value="kimbie-light" data-theme-tone="light">kimbie-light</option>
+                  <option value="lightfair" data-theme-tone="light">lightfair</option>
+                  <option value="magula" data-theme-tone="light">magula</option>
+                  <option value="mono-blue" data-theme-tone="light">mono-blue</option>
+                  <option value="nnfx-light" data-theme-tone="light">nnfx-light</option>
+                  <option value="panda-syntax-light" data-theme-tone="light">
+                    panda-syntax-light
+                  </option>
+                  <option value="paraiso-light" data-theme-tone="light">paraiso-light</option>
+                  <option value="purebasic" data-theme-tone="light">purebasic</option>
+                  <option value="qtcreator-light" data-theme-tone="light">qtcreator-light</option>
+                  <option value="routeros" data-theme-tone="light">routeros</option>
+                  <option value="school-book" data-theme-tone="light">school-book</option>
+                  <option value="stackoverflow-light" data-theme-tone="light">
+                    stackoverflow-light
+                  </option>
+                  <option value="tokyo-night-light" data-theme-tone="light">
+                    tokyo-night-light
+                  </option>
+                  <option value="vs" data-theme-tone="light">vs</option>
+                  <option value="xcode" data-theme-tone="light">xcode</option>
+                  <option value="default" data-theme-tone="light">default</option>
+                </select></label
+              >
+              <label data-i18n-label="settings.scrollbarMode"
+                >Scrollbar visibility<select name="scrollbarMode">
+                  <option value="always" data-i18n="settings.scrollbarAlways">Always show</option>
+                  <option value="auto" data-i18n="settings.scrollbarAuto">Auto hide</option>
+                  <option value="hidden" data-i18n="settings.scrollbarHidden">Always hide</option>
                 </select></label
               >
               <h3 data-i18n="settings.zoom">Zoom</h3>
@@ -618,7 +1094,16 @@
               <div class="about-main">
                 <img class="about-logo" src="app://app/assets/vditor-desktop.svg" alt="" />
                 <h3>Vditor Desktop</h3>
-                <p id="versionInfo" class="version-info"></p>
+                <p class="version-info">
+                  <span id="versionInfo"></span>
+                  <span id="commitSeparator" class="hidden"> · </span>
+                  <button
+                    id="commitInfo"
+                    type="button"
+                    class="about-link hidden"
+                    data-external=""
+                  ></button>
+                </p>
                 <p class="about-credit">
                   <span data-i18n="about.basedOnPrefix">Based on the </span
                   ><button

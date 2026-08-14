@@ -20,6 +20,7 @@ export interface AppSettings {
   uiZoom: number;
   editorZoom: number;
   previewZoom: number;
+  scrollbarMode: 'always' | 'auto' | 'hidden';
   editMode: 'wysiwyg' | 'ir' | 'sv';
   previewMode: 'both' | 'editor';
   placeholder: string;
@@ -72,7 +73,13 @@ export interface AppSettings {
   recentPaths: string[];
   recentFiles: RecentFile[];
   fileExplorer: { visibleExtensions: string[] };
+  workspaceTreeStates: WorkspaceTreeState[];
   session: AppSession;
+}
+
+export interface WorkspaceTreeState {
+  workspacePath: string;
+  expandedPaths: string[];
 }
 
 export interface AppSession {
@@ -109,6 +116,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   uiZoom: 100,
   editorZoom: 100,
   previewZoom: 100,
+  scrollbarMode: 'auto',
   editMode: 'ir',
   previewMode: 'both',
   placeholder: '',
@@ -161,5 +169,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   recentPaths: [],
   recentFiles: [],
   fileExplorer: { visibleExtensions: ['md'] },
+  workspaceTreeStates: [],
   session: { workspacePath: '', activeFilePath: null, openFiles: [] },
 };
