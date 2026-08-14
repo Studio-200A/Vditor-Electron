@@ -25,6 +25,7 @@
 - **fix(editor state):** Preserved the document scroll position when settings changes rebuild the editor.
 - **fix(scrollbars):** Slowed scrollbar show/hide transitions for a smoother animation.
 - **fix(about page):** Corrected the commit hash and GitHub link to reference the intended release tag.
+- **fix(app menus):** Automatically close open menus when the application window loses focus.
 
 ### Project Maintenance
 

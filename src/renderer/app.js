@@ -50,6 +50,7 @@
   ];
   let messageTimer;
   let appMenuCloseHandler;
+  let appMenuBlurHandler;
   let settingsSaveTimer;
   let settingsCloseTimer;
   let confirmResolver;
@@ -2060,6 +2061,7 @@
   function setupAppMenus() {
     $$('.app-menu-popup').forEach((popup) => popup.remove());
     if (appMenuCloseHandler) document.removeEventListener('click', appMenuCloseHandler);
+    if (appMenuBlurHandler) window.removeEventListener('blur', appMenuBlurHandler);
     $('#appMenuBar').dataset.ready = 'true';
     const run = (action, value) => () => handleMenu(action, value);
     const edit = (command) => () => {
@@ -2153,10 +2155,12 @@
         ],
       ],
     };
+    let reopenMenuOnHover = false;
     const close = () => {
       $$('.app-menu-popup').forEach((popup) => popup.remove());
       $$('.app-menu-bar button').forEach((b) => b.classList.remove('active'));
       $('#windowTitlebar').classList.remove('app-menu-open');
+      reopenMenuOnHover = false;
     };
     const fillPopup = (popup, items) => {
       items.forEach((item) => {
@@ -2230,11 +2234,24 @@
       };
       trigger.onmouseenter = () => {
         const active = $('.app-menu-bar > button.active');
-        if (active && active !== trigger) openMenu(trigger);
+        if (reopenMenuOnHover || (active && active !== trigger)) {
+          reopenMenuOnHover = false;
+          openMenu(trigger);
+        }
       };
     });
+    $('#toggleSidebar').onmouseenter = () => {
+      if ($('.app-menu-bar > button.active')) {
+        close();
+        reopenMenuOnHover = true;
+      }
+    };
     appMenuCloseHandler = close;
     document.addEventListener('click', appMenuCloseHandler);
+    appMenuBlurHandler = () => {
+      if ($('.app-menu-popup')) close();
+    };
+    window.addEventListener('blur', appMenuBlurHandler);
   }
 
   function setLayoutPart(part) {
