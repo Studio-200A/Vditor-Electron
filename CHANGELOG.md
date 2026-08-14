@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3
+
+### Bug Fixes
+
+- **fix(dark content themes):** Corrected Ant Design and WeChat rendering colors in Dark and Monokai Pro Dark themes, including inline code, tables, links, blockquotes, and heading text across all three editing modes.
+
 ## 0.1.2
 
 ### New Features
