@@ -313,6 +313,12 @@
     syncCodeThemeMenus(dark);
   }
 
+  function syncContentThemeHosts(contentTheme) {
+    state.tabs.forEach((tab) => {
+      if (tab.host) tab.host.dataset.contentTheme = contentTheme;
+    });
+  }
+
   async function resolveTheme() {
     return state.settings.systemTheme
       ? mapSystemTheme(await window.appAPI.getSystemTheme())
@@ -329,6 +335,7 @@
         ? 'dark'
         : 'light'
       : state.settings.contentTheme;
+    syncContentThemeHosts(contentTheme);
     const settingsPatch = {};
     if (linkedContentTheme && contentTheme !== state.settings.contentTheme) {
       state.settings.contentTheme = contentTheme;
@@ -767,6 +774,7 @@
           return;
         }
         tab.host.dataset.localResourceBase = localResourceBase(tab.baseDir);
+        tab.host.dataset.contentTheme = state.settings.contentTheme;
         tab.resourceObserver?.disconnect();
         tab.resourceObserver = VDITOR.observeRelativeImageSources(
           tab.host,
@@ -898,6 +906,7 @@
       window.appAPI.saveSettings({ codeTheme, [preferenceKey]: codeTheme });
     } else if (type === 'content-theme' && button.dataset.type) {
       state.settings.contentTheme = button.dataset.type;
+      syncContentThemeHosts(button.dataset.type);
       window.appAPI.saveSettings({ contentTheme: button.dataset.type });
       if (button.dataset.type === 'light' || button.dataset.type === 'dark') {
         setTimeout(

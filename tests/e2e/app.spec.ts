@@ -1058,6 +1058,61 @@ test('links Light and Dark content themes to the application theme', async () =>
   }
 });
 
+for (const appTheme of ['dark', 'monokai-pro-dark'] as const) {
+  for (const contentTheme of ['ant-design', 'wechat'] as const) {
+    test(`keeps ${contentTheme} content readable in ${appTheme}`, async () => {
+      const running = await launchApp({
+        theme: appTheme,
+        lastDarkTheme: appTheme,
+        contentTheme,
+        editMode: 'ir',
+      });
+      try {
+        const { page } = running;
+        await createNewTab(page);
+        await page
+          .locator('.editor-host.active .vditor-ir .vditor-reset')
+          .fill('Inline `code`\n\n| Head | Value |\n| --- | --- |\n| A | B |');
+        await expect(page.locator('#vditorContentTheme')).toHaveAttribute(
+          'href',
+          new RegExp(`${contentTheme}\\.css$`),
+        );
+
+        const assertReadable = async (modeSelector: string) => {
+          const colors = await page.locator(`${modeSelector} .vditor-reset`).evaluate((root) => {
+            const code = root.querySelector('code:not(.hljs):not(.highlight-chroma)');
+            const cell = root.querySelector('td');
+            const heading = root.querySelector('h1');
+            const read = (node: Element | null) =>
+              node
+                ? {
+                    color: getComputedStyle(node).color,
+                    background: getComputedStyle(node).backgroundColor,
+                  }
+                : null;
+            return { code: read(code), cell: read(cell), heading: read(heading) };
+          });
+          expect(colors.code?.color).not.toBe('rgb(51, 51, 51)');
+          expect(colors.cell?.color).not.toBe('rgb(255, 255, 255)');
+          expect(colors.cell?.background).not.toBe('rgb(255, 255, 255)');
+          expect(colors.heading?.color).not.toBe('rgb(0, 0, 0)');
+        };
+
+        await assertReadable('.editor-host.active .vditor-ir');
+        const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+        await modeTrigger.click();
+        await page.locator('#vditorToolbarMount button[data-mode="wysiwyg"]').click();
+        await assertReadable('.editor-host.active .vditor-wysiwyg');
+        await modeTrigger.click();
+        await page.locator('#vditorToolbarMount button[data-mode="sv"]').click();
+        await assertReadable('.editor-host.active .vditor-preview');
+      } finally {
+        await closeApp(running);
+      }
+    });
+  }
+}
+
 test('remembers which dark theme the status toggle should restore', async () => {
   const running = await launchApp({
     theme: 'monokai-pro-dark',
