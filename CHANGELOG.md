@@ -2,6 +2,17 @@
 
 ## 0.1.3
 
+### New Features
+
+- **feat(find and replace):** Added a full find and replace experience for the active document. Vditor does not provide a complete built-in find and replace tool, so Vditor Desktop now supplies the missing desktop-editor experience while keeping your Markdown content unchanged.
+  - Press `Ctrl/Cmd + F` to open a compact VS Code-style find panel. It is also available from the Edit menu.
+  - See the current result and total result count, jump forward or backward through matches with buttons, `Enter`, `Shift+Enter`, `F3`, or `Shift+F3`, and wrap around at the beginning or end of the document.
+  - All matches are highlighted in the editor, while the current match is shown more clearly and scrolled into view.
+  - Expand the replace row when needed, then replace the current match or replace every match in the active document.
+  - Search results and replacements stay consistent across WYSIWYG, Instant Rendering, and Split Preview modes.
+  - The find field keeps keyboard focus while you type, and `Esc` returns focus to the current match so you can continue editing immediately.
+  - `Ctrl/Cmd + S` continues to save the document even while the find or replace field is active.
+
 ### Bug Fixes
 
 - **fix(dark content themes):** Corrected Ant Design and WeChat rendering colors in Dark and Monokai Pro Dark themes, including inline code, tables, links, blockquotes, and heading text across all three editing modes.

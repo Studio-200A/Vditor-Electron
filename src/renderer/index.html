@@ -118,6 +118,60 @@
             </button>
           </div>
           <div id="editorArea" class="editor-area">
+            <section id="findWidget" class="find-widget hidden" aria-label="Find and replace">
+              <div class="find-row">
+                <button
+                  id="findToggleReplace"
+                  class="find-toggle"
+                  data-i18n-title="find.toggleReplace"
+                  aria-expanded="false"
+                >
+                  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5" /></svg>
+                </button>
+                <div class="find-input-wrap">
+                  <input
+                    id="findInput"
+                    type="text"
+                    autocomplete="off"
+                    spellcheck="false"
+                    data-i18n-placeholder="find.placeholder"
+                  />
+                  <span id="findCount" class="find-count">0 / 0</span>
+                </div>
+                <button id="findPrevious" data-i18n-title="find.previous" aria-label="Previous">
+                  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 10 5-5 5 5" /></svg>
+                </button>
+                <button id="findNext" data-i18n-title="find.next" aria-label="Next">
+                  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 6 5 5 5-5" /></svg>
+                </button>
+                <button id="findClose" data-i18n-title="find.close" aria-label="Close">
+                  <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="m3.5 3.5 9 9m0-9-9 9" />
+                  </svg>
+                </button>
+              </div>
+              <div id="replaceRow" class="find-row replace-row hidden">
+                <span class="find-toggle-spacer"></span>
+                <input
+                  id="replaceInput"
+                  type="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  data-i18n-placeholder="find.replacePlaceholder"
+                />
+                <button id="replaceOne" data-i18n-title="find.replace" aria-label="Replace">
+                  <span class="find-replace-icon find-replace-one-icon" aria-hidden="true"></span>
+                </button>
+                <button
+                  id="replaceAll"
+                  class="replace-all"
+                  data-i18n-title="find.replaceAll"
+                  aria-label="Replace All"
+                >
+                  <span class="find-replace-icon find-replace-all-icon" aria-hidden="true"></span>
+                </button>
+              </div>
+            </section>
             <div id="noTabs" class="no-tabs hidden">
               <div data-i18n="empty.noTabs">No opened tabs</div>
               <div class="no-tabs-actions">

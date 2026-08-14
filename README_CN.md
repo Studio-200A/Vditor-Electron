@@ -63,6 +63,7 @@ Vditor Desktop 是一款基于 [Electron](https://github.com/electron/electron) 
 - 读取 H1–H6 文档大纲，并在三种编辑模式中跳转到对应标题。
 - 在多个编号的未命名标签页中同时编辑文档，每个标签页拥有独立的撤销历史和修改状态。
 - 支持保存、另存为、导出 HTML 或 PDF，并恢复上次工作区和窗口状态。
+- 使用 `Ctrl/Cmd + F` 打开紧凑面板，在当前文档中查找和替换文本。
 - 粘贴或上传图片到可配置的相对资源目录；相对路径图片和在线图片可以在三种模式中预览。
 
 ## 主题与语言
@@ -120,6 +121,7 @@ Portable 压缩包中的 desktop 文件使用 `/path/to/vditor-desktop` 作为�
 | 打开文件       | `Ctrl/Cmd + O`         |
 | 保存           | `Ctrl/Cmd + S`         |
 | 另存为         | `Ctrl/Cmd + Shift + S` |
+| 查找和替换     | `Ctrl/Cmd + F`         |
 | 关闭标签页     | `Ctrl/Cmd + W`         |
 | 切换资源管理器 | `Ctrl/Cmd + B`         |
 | 打开设置       | `Ctrl/Cmd + ,`         |

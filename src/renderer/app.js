@@ -56,6 +56,10 @@
   let confirmResolver;
   let treeNameFrame;
   let treeNameMeasureContext;
+  let findMatches = [];
+  let findIndex = -1;
+  let findQuery = '';
+  let findRefreshTimer;
   const scrollAnimations = new WeakMap();
 
   function resolveLocale(locale) {
@@ -257,6 +261,135 @@
       target.textContent = '';
       target.classList.remove('error');
     }, 4500);
+  }
+
+  function findWidgetVisible() {
+    return !$('#findWidget').classList.contains('hidden');
+  }
+
+  function collectFindMatches(content, query) {
+    if (!query) return [];
+    const matches = [];
+    const haystack = content.toLocaleLowerCase();
+    const needle = query.toLocaleLowerCase();
+    let offset = 0;
+    while (offset <= haystack.length - needle.length) {
+      const start = haystack.indexOf(needle, offset);
+      if (start < 0) break;
+      matches.push({ start, end: start + query.length });
+      offset = start + Math.max(query.length, 1);
+    }
+    return matches;
+  }
+
+  function revealFindMatch() {
+    const tab = activeTab();
+    const query = $('#findInput').value;
+    if (!tab?.vditor || findIndex < 0 || !query) return;
+    const mode = tab.vditor.getCurrentMode();
+    VDITOR.revealTextMatch(tab.host, mode, query, findIndex);
+    const highlightIndex = findIndex;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (
+          activeTab() !== tab ||
+          $('#findInput').value !== query ||
+          findIndex !== highlightIndex ||
+          !findWidgetVisible()
+        )
+          return;
+        VDITOR.highlightTextMatches(
+          tab.host,
+          tab.vditor?.getCurrentMode() || mode,
+          query,
+          findIndex,
+        );
+      });
+    });
+  }
+
+  function refreshFind({ preserveIndex = true, reveal = true, content, index } = {}) {
+    const tab = activeTab();
+    const query = $('#findInput').value;
+    findQuery = query;
+    const previousIndex = findIndex;
+    findMatches = tab ? collectFindMatches(content ?? tab.content, query) : [];
+    if (!findMatches.length) findIndex = -1;
+    else if (typeof index === 'number') findIndex = Math.min(index, findMatches.length - 1);
+    else if (preserveIndex && previousIndex >= 0)
+      findIndex = Math.min(previousIndex, findMatches.length - 1);
+    else findIndex = 0;
+    $('#findCount').textContent = `${findIndex < 0 ? 0 : findIndex + 1} / ${findMatches.length}`;
+    if (reveal) revealFindMatch();
+  }
+
+  function moveFindMatch(direction) {
+    if (!findMatches.length) return;
+    findIndex = (findIndex + direction + findMatches.length) % findMatches.length;
+    $('#findCount').textContent = `${findIndex + 1} / ${findMatches.length}`;
+    revealFindMatch();
+  }
+
+  function openFind() {
+    if (!activeTab()) return;
+    const selection = window.getSelection()?.toString() || '';
+    const input = $('#findInput');
+    $('#findWidget').classList.remove('hidden');
+    if (!findWidgetVisible()) return;
+    if (selection && !selection.includes('\n')) input.value = selection;
+    refreshFind({ preserveIndex: false, reveal: false });
+    input.focus();
+    input.select();
+  }
+
+  function closeFind() {
+    clearTimeout(findRefreshTimer);
+    const tab = activeTab();
+    const query = $('#findInput').value;
+    if (tab?.vditor && findIndex >= 0 && query) {
+      VDITOR.selectTextMatch(tab.host, tab.vditor.getCurrentMode(), query, findIndex);
+    }
+    $('#findWidget').classList.add('hidden');
+    VDITOR.clearFindHighlights();
+    tab?.vditor?.focus();
+  }
+
+  function toggleReplace() {
+    const expanded = $('#replaceRow').classList.toggle('hidden') === false;
+    $('#findToggleReplace').setAttribute('aria-expanded', String(expanded));
+    if (expanded) $('#replaceInput').focus();
+  }
+
+  function applyFindContent(tab, content) {
+    tab.pendingEditorContent = true;
+    tab.vditor?.setValue(content);
+    onEditorInput(tab, content);
+  }
+
+  function replaceFindMatch() {
+    const tab = activeTab();
+    const match = findMatches[findIndex];
+    if (!tab || !match) return;
+    const replacedIndex = findIndex;
+    const content = tab.content;
+    const replacement = $('#replaceInput').value;
+    const nextContent = `${content.slice(0, match.start)}${replacement}${content.slice(match.end)}`;
+    applyFindContent(tab, nextContent);
+    refreshFind({ content: nextContent, index: replacedIndex });
+  }
+
+  function replaceAllFindMatches() {
+    const tab = activeTab();
+    if (!tab || !findMatches.length) return;
+    const content = tab.content;
+    const replacement = $('#replaceInput').value;
+    let nextContent = content;
+    for (let index = findMatches.length - 1; index >= 0; index -= 1) {
+      const match = findMatches[index];
+      nextContent = `${nextContent.slice(0, match.start)}${replacement}${nextContent.slice(match.end)}`;
+    }
+    applyFindContent(tab, nextContent);
+    refreshFind({ preserveIndex: false, content: nextContent });
   }
 
   function isDarkTheme(theme) {
@@ -1133,6 +1266,7 @@
     renderTabs();
     updateActiveUI();
     renderOutline();
+    if (findWidgetVisible()) refreshFind({ preserveIndex: false });
     persistSession();
   }
 
@@ -1194,6 +1328,7 @@
   }
 
   function onEditorInput(tab, value) {
+    if (value !== tab.content) tab.pendingEditorContent = false;
     tab.content = value;
     tab.modified = value !== tab.savedContent;
     renderTabs();
@@ -1226,7 +1361,7 @@
       destination = await window.fileAPI.saveFileDialog(destination || `${tab.title}.md`);
     if (!destination) return false;
     try {
-      const content = currentContent(tab);
+      const content = tab.pendingEditorContent ? tab.content : currentContent(tab);
       const diskContent =
         tab.lineEnding === 'CRLF'
           ? content.replace(/\r?\n/g, '\r\n')
@@ -2035,6 +2170,7 @@
       save: () => saveTab(),
       'save-as': () => saveTab(activeTab(), true),
       'close-tab': () => activeTab() && closeTab(activeTab().id),
+      find: openFind,
       quit: () => window.appAPI.closeWindow(),
       'toggle-sidebar': toggleSidebar,
       settings: openSettings,
@@ -2106,6 +2242,8 @@
         ['menu.copy', edit('copy'), 'Ctrl+C'],
         ['menu.paste', edit('paste'), 'Ctrl+V'],
         ['menu.selectAll', edit('selectAll'), 'Ctrl+A'],
+        null,
+        ['menu.find', run('find'), 'Ctrl+F'],
       ],
       view: [
         {
@@ -2306,6 +2444,51 @@
     $('#addTab').onclick = newTab;
     $('#openFile').onclick = chooseFiles;
     $('#saveFile').onclick = () => saveTab();
+    $('#findToggleReplace').onclick = toggleReplace;
+    $('#findPrevious').onclick = () => moveFindMatch(-1);
+    $('#findNext').onclick = () => moveFindMatch(1);
+    $('#findClose').onclick = closeFind;
+    $('#replaceOne').onclick = replaceFindMatch;
+    $('#replaceAll').onclick = replaceAllFindMatches;
+    $('#findInput').addEventListener('input', () => {
+      const queryChanged = $('#findInput').value !== findQuery;
+      refreshFind({ preserveIndex: !queryChanged, reveal: false });
+      clearTimeout(findRefreshTimer);
+      findRefreshTimer = setTimeout(() => {
+        if (findWidgetVisible() && $('#findInput').value === findQuery) revealFindMatch();
+      }, 120);
+    });
+    $('#findWidget').addEventListener('focusout', () => {
+      requestAnimationFrame(() => {
+        if (findWidgetVisible() && !$('#findWidget').contains(document.activeElement)) {
+          $('#findInput').focus({ preventScroll: true });
+        }
+      });
+    });
+    window.addEventListener(
+      'keydown',
+      (event) => {
+        if (!findWidgetVisible() || !$('#findWidget').contains(event.target)) return;
+        event.stopImmediatePropagation();
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+          event.preventDefault();
+          void saveTab();
+        } else if (event.key === 'F3') {
+          event.preventDefault();
+          moveFindMatch(event.shiftKey ? -1 : 1);
+        } else if (event.key === 'Enter' && event.target === $('#findInput')) {
+          event.preventDefault();
+          moveFindMatch(event.shiftKey ? -1 : 1);
+        } else if (event.key === 'Enter' && event.target === $('#replaceInput')) {
+          event.preventDefault();
+          replaceFindMatch();
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          closeFind();
+        }
+      },
+      true,
+    );
     $('#emptyNewFile').onclick = newTab;
     $('#emptyOpenFile').onclick = chooseFiles;
     $('#toggleSidebar').onclick = () => toggleSidebar();
@@ -2391,6 +2574,16 @@
         return;
       }
       if (event.key === 'Escape') $('#app').classList.remove('fullscreen-menu-visible');
+      if (event.key === 'Escape' && findWidgetVisible()) {
+        event.preventDefault();
+        closeFind();
+        return;
+      }
+      if (event.key === 'F3' && findWidgetVisible()) {
+        event.preventDefault();
+        moveFindMatch(event.shiftKey ? -1 : 1);
+        return;
+      }
       if (event.key === 'F11') {
         event.preventDefault();
         window.appAPI.toggleFullscreen();
@@ -2410,6 +2603,9 @@
       } else if (key === 'b') {
         event.preventDefault();
         toggleSidebar();
+      } else if (key === 'f') {
+        event.preventDefault();
+        openFind();
       } else if (key === ',') {
         event.preventDefault();
         openSettings();

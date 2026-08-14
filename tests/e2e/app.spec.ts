@@ -114,6 +114,71 @@ test('opens a Markdown file supplied by the desktop launcher on cold start', asy
   }
 });
 
+test('finds, navigates, and replaces text in the active document', async () => {
+  const running = await launchApp({}, { 'find.md': 'alpha beta alpha\nalpha' });
+  try {
+    const { page, testRoot } = running;
+    await page.keyboard.press('Control+f');
+    await expect(page.locator('#findWidget')).toBeVisible();
+    await expect(page.locator('#findInput')).toBeFocused();
+    await page.locator('#findInput').pressSequentially('alpha');
+    await expect(page.locator('#findInput')).toBeFocused();
+    await expect(page.locator('#findInput')).toHaveValue('alpha');
+    await expect(page.locator('#findCount')).toHaveText('1 / 3');
+    await expect
+      .poll(() =>
+        page.evaluate(() => ({
+          active: CSS.highlights.has('vditor-desktop-find-active'),
+          matches: CSS.highlights.has('vditor-desktop-find'),
+          activeText: Array.from(CSS.highlights.get('vditor-desktop-find-active') || []).map(
+            (range) => range.toString(),
+          ),
+        })),
+      )
+      .toEqual({ active: true, matches: true, activeText: ['alpha'] });
+    await page.locator('#findInput').press('Enter');
+    await expect(page.locator('#findCount')).toHaveText('2 / 3');
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          Array.from(CSS.highlights.get('vditor-desktop-find-active') || []).map((range) =>
+            range.toString(),
+          ),
+        ),
+      )
+      .toEqual(['alpha']);
+
+    await page.locator('#findInput').press('Escape');
+    await expect(page.locator('#findWidget')).toBeHidden();
+    await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe('alpha');
+    await page.keyboard.press('Control+f');
+    await expect(page.locator('#findInput')).toHaveValue('alpha');
+
+    await page.locator('#findToggleReplace').click();
+    await page.locator('#replaceInput').fill('omega');
+    await page.locator('#replaceOne').click();
+    await expect(page.locator('#findCount')).toHaveText('1 / 2');
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          Array.from(CSS.highlights.get('vditor-desktop-find-active') || []).map((range) =>
+            range.toString(),
+          ),
+        ),
+      )
+      .toEqual(['alpha']);
+    await expect(page.locator('.document-tab.active .dirty')).toHaveText('●');
+    await page.locator('#replaceAll').click();
+    await expect(page.locator('#findCount')).toHaveText('0 / 0');
+    await page.keyboard.press('Control+s');
+    await expect
+      .poll(() => fs.readFileSync(path.join(testRoot, 'find.md'), 'utf8'))
+      .toBe('omega beta omega\nomega\n');
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('forwards Markdown files from a second application invocation', async () => {
   const running = await launchApp();
   try {
@@ -1624,6 +1689,13 @@ test('shows the localized About page with project links and reset at the bottom'
   const running = await launchApp({ locale: 'zh_Hans' });
   try {
     const { page } = running;
+    const buildInfo = JSON.parse(
+      fs.readFileSync(path.join(projectRoot, 'dist/build-info.json'), 'utf8'),
+    ) as {
+      commit: string;
+      commitShort: string;
+      tag: string;
+    };
     await page.locator('#statusSettings').click();
     await expect(page.locator('.settings-card > header h2')).toHaveText('Vditor Desktop 设置');
     const fontsNav = page.locator('.settings-nav [data-panel="fonts"]');
@@ -1639,10 +1711,10 @@ test('shows the localized About page with project links and reset at the bottom'
     await expect(about.locator('.about-logo')).toBeVisible();
     await expect(about).toContainText('基于 Vditor 项目打造');
     await expect(about.locator('[data-external]')).toHaveCount(8);
-    await expect(about.locator('#commitInfo')).toHaveText(/^[0-9a-f]{12}$/);
+    await expect(about.locator('#commitInfo')).toHaveText(buildInfo.commitShort);
     await expect(about.locator('#commitInfo')).toHaveAttribute(
       'title',
-      '0.1.0 · 8cb3786e70dc50c84327d5510206514661534b4e',
+      `${buildInfo.tag} · ${buildInfo.commit}`,
     );
     await expect(about.locator('#commitInfo')).toHaveAttribute(
       'data-external',

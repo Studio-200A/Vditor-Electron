@@ -185,6 +185,39 @@ describe('renderer shell', () => {
     expect(document.querySelector('#emptyOpenFile')).not.toBeNull();
   });
 
+  it('provides a localized document find and replace widget', () => {
+    const nativeMenu = fs.readFileSync(path.resolve('src/main/menu.ts'), 'utf8');
+    expect(document.querySelector('#findWidget.hidden')).not.toBeNull();
+    expect(
+      document.querySelector('#findInput[data-i18n-placeholder="find.placeholder"]'),
+    ).not.toBeNull();
+    expect(
+      document.querySelector('#replaceInput[data-i18n-placeholder="find.replacePlaceholder"]'),
+    ).not.toBeNull();
+    expect(document.querySelector('#findCount')).not.toBeNull();
+    expect(rendererScript).toContain("else if (key === 'f')");
+    expect(rendererScript).toContain("['menu.find', run('find'), 'Ctrl+F']");
+    expect(nativeMenu).toContain("accelerator: 'CmdOrCtrl+F'");
+    expect(vditorAdapterScript).toContain('function selectTextMatch');
+    expect(vditorAdapterScript).toContain('function highlightTextMatches');
+    expect(css).toContain('::highlight(vditor-desktop-find-active)');
+    expect(document.querySelectorAll('#findWidget button svg')).toHaveLength(4);
+    expect(document.querySelector('#replaceOne .find-replace-one-icon')).not.toBeNull();
+    expect(document.querySelector('#replaceAll .find-replace-all-icon')).not.toBeNull();
+    expect(css).toContain("mask-image: url('../assets/replace.svg')");
+    expect(css).toContain("mask-image: url('../assets/replace-all.svg')");
+    expect(css).toContain('background: currentColor');
+    expect(rendererScript).toContain('VDITOR.revealTextMatch(tab.host, mode, query, findIndex)');
+    expect(rendererScript).toContain("$('#findWidget').addEventListener('focusout'");
+    expect(rendererScript).toContain('event.stopImmediatePropagation()');
+    expect(rendererScript).toContain("event.key === 'Enter' && event.target === $('#findInput')");
+    expect(rendererScript).toContain("event.key.toLowerCase() === 's'");
+    expect(rendererScript).not.toContain(
+      'moveFindMatch(event.shiftKey ? -1 : 1);\n        }\n      },\n      true,',
+    );
+    expect(css).toMatch(/\.find-widget\s*\{[^}]*position:\s*absolute[^}]*z-index:\s*12/s);
+  });
+
   it('keeps explorer entries non-draggable', () => {
     expect(rendererScript).not.toContain('text/x-vditor-path');
     expect(rendererScript).not.toMatch(/row\.draggable\s*=/);

@@ -73,6 +73,12 @@ export function createAppMenu(locale: string = 'en_US', editMode: EditMode = 'ir
         { role: 'copy' },
         { role: 'paste' },
         { role: 'selectAll' },
+        { type: 'separator' },
+        {
+          label: tr('Find and Replace', '查找和替换', '尋找和取代'),
+          accelerator: 'CmdOrCtrl+F',
+          click: (_i, w) => emit(w, 'find'),
+        },
       ],
     },
     {

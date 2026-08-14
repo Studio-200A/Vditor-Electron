@@ -63,6 +63,7 @@ Switch modes from the unified toolbar or **View → Editing Mode**. Split Previe
 - Read an H1–H6 document outline and jump to headings from any editing mode.
 - Keep multiple documents open in numbered untitled tabs, with independent undo history and modified state.
 - Save, Save As, export HTML or PDF, and recover the last workspace and window state.
+- Find and replace text in the active document with a compact `Ctrl/Cmd + F` panel.
 - Paste or upload images to a configurable relative assets directory. Relative local images and online images can be previewed in all three modes.
 
 ## Themes and languages
@@ -120,6 +121,7 @@ Linux is the primary development and validation platform at present. Windows and
 | Open file         | `Ctrl/Cmd + O`         |
 | Save              | `Ctrl/Cmd + S`         |
 | Save As           | `Ctrl/Cmd + Shift + S` |
+| Find and replace  | `Ctrl/Cmd + F`         |
 | Close tab         | `Ctrl/Cmd + W`         |
 | Toggle explorer   | `Ctrl/Cmd + B`         |
 | Open settings     | `Ctrl/Cmd + ,`         |

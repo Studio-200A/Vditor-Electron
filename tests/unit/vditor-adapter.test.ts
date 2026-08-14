@@ -83,4 +83,18 @@ describe('Vditor DOM compatibility adapter', () => {
       .instantRendering.querySelector('.vditor-ir__link');
     expect(adapter.documentAnchor(instantLink, host).href).toBe('#ir');
   });
+
+  it('creates reusable text-match ranges for the active editor without searching the preview', () => {
+    const host = createHost();
+    window.document.body.append(host);
+    const source = adapter.editorParts(host).source;
+    source.innerHTML = '<span>alpha </span><span>beta alpha</span>';
+    expect(adapter.activeEditor(host, 'sv')).toBe(source);
+    expect(adapter.textMatches(host, 'sv', 'alpha')).toHaveLength(2);
+    expect(adapter.revealTextMatch(host, 'sv', 'alpha', 1)).toBe(true);
+    expect(window.getSelection()?.toString()).toBe('');
+    expect(adapter.selectTextMatch(host, 'sv', 'alpha', 1)).toBe(true);
+    expect(window.getSelection()?.toString()).toBe('alpha');
+    expect(adapter.selectTextMatch(host, 'sv', 'missing', 0)).toBe(false);
+  });
 });
