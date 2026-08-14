@@ -44,6 +44,30 @@ The release commit is the resulting commit on `master`:
 - with squash merging, it is the squash commit;
 - with rebase merging, it is the final rebased commit.
 
+## Keeping `dev` in sync with `master`
+
+After a pull request is merged, `master` gains a commit (for example a merge
+commit) that does not exist on `dev`. GitHub then reports that `dev` is behind
+`master`. This is expected and does not mean `dev` has lost any work: the merge
+commit only records that `dev`'s changes were integrated, so `dev` already
+contains the content.
+
+Development can continue on `dev` without syncing; the behind count only grows
+by one per merged pull request and does not affect the next diff. When you want
+the count to reset, merge the remote `master` into `dev`:
+
+```bash
+git fetch origin
+git switch dev
+git merge origin/master
+git push
+```
+
+Fetching `origin` first is required because the merge commit was created on
+GitHub, not in the local `master` branch. Merging the stale local `master` (or
+pushing without fetching) reports "already up to date" while GitHub still shows
+`dev` as behind.
+
 ## Creating the GitHub release
 
 After the pull request is merged:
