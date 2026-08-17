@@ -114,6 +114,71 @@ test('opens a Markdown file supplied by the desktop launcher on cold start', asy
   }
 });
 
+test('finds, navigates, and replaces text in the active document', async () => {
+  const running = await launchApp({}, { 'find.md': 'alpha beta alpha\nalpha' });
+  try {
+    const { page, testRoot } = running;
+    await page.keyboard.press('Control+f');
+    await expect(page.locator('#findWidget')).toBeVisible();
+    await expect(page.locator('#findInput')).toBeFocused();
+    await page.locator('#findInput').fill('alpha');
+    await expect(page.locator('#findInput')).toBeFocused();
+    await expect(page.locator('#findInput')).toHaveValue('alpha');
+    await expect(page.locator('#findCount')).toHaveText('1 / 3');
+    await expect
+      .poll(() =>
+        page.evaluate(() => ({
+          active: CSS.highlights.has('vditor-desktop-find-active'),
+          matches: CSS.highlights.has('vditor-desktop-find'),
+          activeText: Array.from(CSS.highlights.get('vditor-desktop-find-active') || []).map(
+            (range) => range.toString(),
+          ),
+        })),
+      )
+      .toEqual({ active: true, matches: true, activeText: ['alpha'] });
+    await page.locator('#findInput').press('Enter');
+    await expect(page.locator('#findCount')).toHaveText('2 / 3');
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          Array.from(CSS.highlights.get('vditor-desktop-find-active') || []).map((range) =>
+            range.toString(),
+          ),
+        ),
+      )
+      .toEqual(['alpha']);
+
+    await page.locator('#findInput').press('Escape');
+    await expect(page.locator('#findWidget')).toBeHidden();
+    await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe('alpha');
+    await page.keyboard.press('Control+f');
+    await expect(page.locator('#findInput')).toHaveValue('alpha');
+
+    await page.locator('#findToggleReplace').click();
+    await page.locator('#replaceInput').fill('omega');
+    await page.locator('#replaceOne').click();
+    await expect(page.locator('#findCount')).toHaveText('1 / 2');
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          Array.from(CSS.highlights.get('vditor-desktop-find-active') || []).map((range) =>
+            range.toString(),
+          ),
+        ),
+      )
+      .toEqual(['alpha']);
+    await expect(page.locator('.document-tab.active .dirty')).toHaveText('●');
+    await page.locator('#replaceAll').click();
+    await expect(page.locator('#findCount')).toHaveText('0 / 0');
+    await page.keyboard.press('Control+s');
+    await expect
+      .poll(() => fs.readFileSync(path.join(testRoot, 'find.md'), 'utf8'))
+      .toBe('omega beta omega\nomega\n');
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('forwards Markdown files from a second application invocation', async () => {
   const running = await launchApp();
   try {
@@ -145,15 +210,31 @@ test('creates numbered tabs and shows the empty state after closing all tabs', a
     const { page } = running;
     await expect(page.locator('.document-tab')).toHaveCount(0);
     await expect(page.locator('#noTabs')).toBeVisible();
-    await page.locator('[data-menu="file"]').click();
+    await expect(page.locator('#app')).toHaveClass(/toolbar-unavailable/);
+    await expect(page.locator('#vditorToolbarMount')).toBeHidden();
+    await expect
+      .poll(() =>
+        page
+          .locator('#tabBar .tabbar-drag-fill')
+          .evaluate((node) => getComputedStyle(node).getPropertyValue('-webkit-app-region')),
+      )
+      .toBe('drag');
+    await page.locator('[data-menu="main"]').click();
     await expect(page.locator('.app-menu-popup button', { hasText: 'Close Tab' })).toHaveCount(0);
-    await page.locator('[data-menu="file"]').click();
+    await page.locator('.app-menu-popup button.has-submenu', { hasText: 'Layout' }).click();
+    const toolbarItem = page.locator('.app-menu-popup.submenu button', { hasText: 'Show Toolbar' });
+    await expect(toolbarItem).toBeDisabled();
+    await expect(toolbarItem.locator('.checkmark')).toHaveText('');
+    await page.locator('[data-menu="main"]').click();
+    await expect(page.locator('.app-menu-popup')).toHaveCount(0);
 
     await page.locator('#addTab').click();
     await expect(page.locator('.document-tab span')).toHaveText(['Untitled 1']);
-    await page.locator('[data-menu="file"]').click();
+    await expect(page.locator('#app')).not.toHaveClass(/toolbar-unavailable/);
+    await expect(page.locator('#vditorToolbarMount')).toBeVisible();
+    await page.locator('[data-menu="main"]').click();
     await expect(page.locator('.app-menu-popup button', { hasText: 'Close Tab' })).toBeVisible();
-    await page.locator('[data-menu="file"]').click();
+    await page.locator('[data-menu="main"]').click();
     await page.locator('#addTab').click();
     await expect(page.locator('.document-tab span')).toHaveText(['Untitled 1', 'Untitled 2']);
 
@@ -163,63 +244,158 @@ test('creates numbered tabs and shows the empty state after closing all tabs', a
     await expect(page.locator('#noTabs')).toBeVisible();
     await expect(page.locator('#emptyNewFile')).toBeVisible();
     await expect(page.locator('#emptyOpenFile')).toBeVisible();
-    await page.locator('[data-menu="file"]').click();
+    await page.locator('[data-menu="main"]').click();
     await expect(page.locator('.app-menu-popup button', { hasText: 'Close Tab' })).toHaveCount(0);
   } finally {
     await closeApp(running);
   }
 });
 
-test('opens the View > Layout submenu and toggles the unified toolbar', async () => {
+test('uses a unified workbench bar and links sidebar visibility to file actions', async () => {
+  const running = await launchApp({ sidebarVisible: true });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    await expect(page.locator('#windowTitlebar #tabBar')).toBeVisible();
+    await expect(page.locator('.main-area > #tabBar')).toHaveCount(0);
+    await expect(page.locator('#windowTitlebar .titlebar-file-actions')).toBeVisible();
+    await expect(page.locator('header.titlebar .toolbar-sidebar-tabs')).toBeVisible();
+    await expect(page.locator('#appMenuBar [data-menu="main"]')).toHaveCount(1);
+    await expect(page.locator('#appMenuBar .app-menu-logo')).toBeVisible();
+    await expect(page.locator('.titlebar-drag-region')).toHaveCSS('width', '44px');
+    await expect
+      .poll(() =>
+        page
+          .locator('.toolbar-sidebar-tabs [data-view="files"]')
+          .evaluate((node) => getComputedStyle(node).backgroundColor),
+      )
+      .not.toBe('rgba(0, 0, 0, 0)');
+    const alignedDividers = await page.evaluate(() => {
+      const tabs = document.querySelector('#tabBar').getBoundingClientRect();
+      const sidebarTabs = document.querySelector('.toolbar-sidebar-tabs').getBoundingClientRect();
+      return Math.abs(tabs.left - sidebarTabs.right);
+    });
+    expect(alignedDividers).toBeLessThan(1);
+    await page.locator('#sidebar').evaluate((node) => (node.style.width = '440px'));
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const sidebar = document.querySelector('#sidebar').getBoundingClientRect();
+          const tabs = document.querySelector('#tabBar').getBoundingClientRect();
+          const sidebarTabs = document
+            .querySelector('.toolbar-sidebar-tabs')
+            .getBoundingClientRect();
+          return Math.max(
+            Math.abs(sidebar.right - tabs.left),
+            Math.abs(sidebar.right - sidebarTabs.right),
+          );
+        }),
+      )
+      .toBeLessThan(1);
+    await expect(page.locator('.toolbar-sidebar-tabs button').first()).toHaveCSS(
+      'white-space',
+      'nowrap',
+    );
+    for (let index = 0; index < 8; index += 1) await page.locator('#addTab').click();
+    const chromeLayout = await page.evaluate(() => {
+      const menu = document.querySelector('#appMenuBar').getBoundingClientRect();
+      const actions = document.querySelector('.titlebar-file-actions').getBoundingClientRect();
+      const tabs = document.querySelector('#tabBar').getBoundingClientRect();
+      const controls = document.querySelector('.window-controls').getBoundingClientRect();
+      const tabBar = document.querySelector('#tabBar');
+      return {
+        menuRight: menu.right,
+        actionsLeft: actions.left,
+        actionsRight: actions.right,
+        tabsLeft: tabs.left,
+        tabsRight: tabs.right,
+        controlsLeft: controls.left,
+        scrollHeight: tabBar.scrollHeight,
+        clientHeight: tabBar.clientHeight,
+      };
+    });
+    expect(chromeLayout.actionsLeft).toBeGreaterThanOrEqual(chromeLayout.menuRight - 1);
+    expect(chromeLayout.tabsLeft).toBeGreaterThanOrEqual(chromeLayout.actionsRight - 1);
+    expect(chromeLayout.tabsRight).toBeLessThanOrEqual(chromeLayout.controlsLeft + 1);
+    expect(chromeLayout.scrollHeight).toBe(chromeLayout.clientHeight);
+
+    const editorBefore = await page.locator('#editorArea').boundingBox();
+    await page.locator('#toggleSidebar').click();
+    await expect(page.locator('#app')).toHaveClass(/sidebar-collapsed/);
+    await expect(page.locator('#sidebar')).toHaveClass(/collapsed/);
+    await expect(
+      page.locator('#windowTitlebar .titlebar-file-actions > #toggleSidebar'),
+    ).toBeVisible();
+    await expect
+      .poll(async () => (await page.locator('#windowTitlebar #newFile').boundingBox())?.width || 0)
+      .toBeLessThan(2);
+    await expect
+      .poll(
+        async () =>
+          (await page.locator('header.titlebar .toolbar-sidebar-tabs').boundingBox())?.width || 0,
+      )
+      .toBeLessThan(2);
+    await expect
+      .poll(async () => (await page.locator('#editorArea').boundingBox())?.width || 0)
+      .toBeGreaterThan(editorBefore?.width || 0);
+
+    await page.locator('#toggleSidebar').click();
+    await expect(page.locator('#app')).not.toHaveClass(/sidebar-collapsed/);
+    await expect(page.locator('#windowTitlebar .titlebar-file-actions')).toBeVisible();
+    await expect(page.locator('header.titlebar .toolbar-sidebar-tabs')).toBeVisible();
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('reorders tabs by dragging within the unified workbench bar', async () => {
   const running = await launchApp();
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    await createNewTab(page);
+    await createNewTab(page);
+    await expect(page.locator('#windowTitlebar .document-tab span')).toHaveText([
+      'Untitled 1',
+      'Untitled 2',
+      'Untitled 3',
+    ]);
+    const first = page.locator('#windowTitlebar .document-tab').first();
+    const third = page.locator('#windowTitlebar .document-tab').nth(2);
+    await first.dragTo(third);
+    await expect(page.locator('#windowTitlebar .document-tab span')).toHaveText([
+      'Untitled 2',
+      'Untitled 1',
+      'Untitled 3',
+    ]);
+    await expect(page.locator('#windowTitlebar .document-tab.active span')).toHaveText(
+      'Untitled 3',
+    );
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('opens the View > Layout submenu and toggles the unified toolbar', async () => {
+  const running = await launchApp({ sidebarVisible: true });
   try {
     const { page } = running;
     await createNewTab(page);
     const layoutMenu = () =>
       page.locator('.app-menu-popup:not(.submenu) button.has-submenu', { hasText: 'Layout' });
-    await page.locator('[data-menu="view"]').click();
-    await layoutMenu().hover();
+    await page.locator('[data-menu="main"]').click();
+    await layoutMenu().click();
     await expect(page.locator('.app-menu-popup.submenu')).toBeVisible();
-    await page.locator('.app-menu-popup:not(.submenu) button', { hasText: 'Settings' }).hover();
-    await expect(page.locator('.app-menu-popup.submenu')).toHaveCount(0);
-    await layoutMenu().hover();
     await page.locator('.app-menu-popup.submenu button', { hasText: 'Show Toolbar' }).click();
     await expect(page.locator('#app')).toHaveClass(/toolbar-hidden/);
-    await expect(page.locator('.app-menu-popup.submenu')).toBeVisible();
-    await expect(
-      page
-        .locator('.app-menu-popup.submenu button', { hasText: 'Show Toolbar' })
-        .locator('.checkmark'),
-    ).toHaveText('');
+    await expect(page.locator('header.titlebar .toolbar-sidebar-tabs')).toBeVisible();
+    await expect(page.locator('#vditorToolbarMount')).toBeHidden();
+    const titlebarBox = await page.locator('#windowTitlebar').boundingBox();
+    const editorBox = await page.locator('#editorArea').boundingBox();
+    expect(editorBox?.y || 0).toBeCloseTo((titlebarBox?.y || 0) + (titlebarBox?.height || 0), 0);
 
-    await page.locator('.app-menu-popup.submenu button', { hasText: 'Show Toolbar' }).click();
-    await expect(page.locator('#app')).not.toHaveClass(/toolbar-hidden/);
-    await expect(page.locator('.app-menu-popup.submenu')).toBeVisible();
-    await expect(
-      page
-        .locator('.app-menu-popup.submenu button', { hasText: 'Show Toolbar' })
-        .locator('.checkmark'),
-    ).toHaveText('✓');
-
-    await page.locator('#windowTitle').click();
-    await expect(page.locator('.app-menu-popup.submenu')).toHaveCount(0);
-
-    await page.locator('[data-menu="file"]').click();
-    await expect(page.locator('.app-menu-popup button', { hasText: 'New File' })).toBeVisible();
-    await page.locator('#toggleSidebar').hover();
-    await expect(page.locator('.app-menu-popup')).toHaveCount(0);
-    await page.locator('[data-menu="file"]').hover();
-    await expect(page.locator('.app-menu-popup button', { hasText: 'New File' })).toBeVisible();
-    await page.locator('[data-menu="file"]').click();
-    await expect(page.locator('.app-menu-popup')).toHaveCount(0);
-    await page.locator('#toggleSidebar').hover();
-    await page.locator('[data-menu="file"]').hover();
-    await expect(page.locator('.app-menu-popup')).toHaveCount(0);
-    await page.locator('[data-menu="file"]').click();
-    await expect(page.locator('.app-menu-popup button', { hasText: 'New File' })).toBeVisible();
-    await page.locator('[data-menu="edit"]').hover();
-    await expect(page.locator('[data-menu="edit"]')).toHaveClass(/active/);
-    await expect(page.locator('.app-menu-popup button', { hasText: 'Undo' })).toBeVisible();
+    await expect(page.locator('#appMenuBar [data-menu="file"]')).toHaveCount(0);
+    await expect(page.locator('#appMenuBar [data-menu="view"]')).toHaveCount(0);
   } finally {
     await closeApp(running);
   }
@@ -231,7 +407,7 @@ test('switches among all three modes from the View > Editing Mode submenu', asyn
     const { page, testRoot } = running;
     await createNewTab(page);
     const openEditingMode = async () => {
-      await page.locator('[data-menu="view"]').click();
+      await page.locator('[data-menu="main"]').click();
       await page
         .locator('.app-menu-popup:not(.submenu) button.has-submenu', { hasText: 'Editing Mode' })
         .hover();
@@ -312,10 +488,11 @@ test('switches to split view and renders source line numbers', async () => {
     await page.mouse.up();
     await expect.poll(() => readSetting(running.testRoot, 'editor', 'splitRatio')).not.toBe(50);
     const contentBox = await page.locator('.editor-host.active .vditor-content').boundingBox();
-    if (!contentBox) throw new Error('Split content has no bounding box');
-    await page.mouse.move(resizerBox.x + 92, resizerBox.y + 20);
+    const movedResizerBox = await resizer.boundingBox();
+    if (!contentBox || !movedResizerBox) throw new Error('Split content has no bounding box');
+    await page.mouse.move(movedResizerBox.x + movedResizerBox.width / 2, movedResizerBox.y + 20);
     await page.mouse.down();
-    await page.mouse.move(contentBox.x + contentBox.width / 2 + 1, resizerBox.y + 20);
+    await page.mouse.move(contentBox.x + contentBox.width / 2 + 1, movedResizerBox.y + 20);
     await page.mouse.up();
     await expect.poll(() => readSetting(running.testRoot, 'editor', 'splitRatio')).toBe(50);
     await expect(resizer).toHaveClass(/snapped/);
@@ -838,7 +1015,7 @@ test('restores directory expansion separately for each workspace after refreshes
     session: { workspacePath: workspaceA, activeFilePath: null, openFiles: [] },
   });
   const openFolderFromMenu = async () => {
-    await running.page.locator('#appMenuBar [data-menu="file"]').click();
+    await running.page.locator('#appMenuBar [data-menu="main"]').click();
     await running.page
       .locator('.app-menu-popup button')
       .filter({ hasText: /^Open Folder/ })
@@ -898,7 +1075,7 @@ test('reveals the file explorer after opening a folder from the File menu', asyn
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
     }, testRoot);
     await expect(page.locator('#sidebar')).toHaveClass(/collapsed/);
-    await page.locator('#appMenuBar [data-menu="file"]').click();
+    await page.locator('#appMenuBar [data-menu="main"]').click();
     await page
       .locator('.app-menu-popup button')
       .filter({ hasText: /^Open Folder/ })
@@ -908,6 +1085,51 @@ test('reveals the file explorer after opening a folder from the File menu', asyn
     await expect.poll(() => readSetting(testRoot, 'workspace', 'sidebarVisible')).toBe(true);
   } finally {
     await closeApp(running);
+  }
+});
+
+test('reloads clean workspace files and protects local edits from external changes', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-external-change-'));
+  const cleanPath = path.join(workspace, 'clean.md');
+  const modifiedPath = path.join(workspace, 'modified.md');
+  fs.writeFileSync(cleanPath, 'Initial content');
+  fs.writeFileSync(modifiedPath, 'Original modified content');
+  const running = await launchApp({
+    autoSave: true,
+    autoSaveDelay: 5_000,
+    editMode: 'sv',
+    restoreTabs: true,
+    restoreWorkspace: true,
+    session: {
+      workspacePath: workspace,
+      activeFilePath: cleanPath,
+      openFiles: [cleanPath, modifiedPath],
+    },
+  });
+  try {
+    const { page } = running;
+    const editor = page.locator('.editor-host.active .vditor-sv');
+    await expect(editor).toContainText('Initial content');
+
+    fs.writeFileSync(cleanPath, 'Reloaded from disk');
+    await expect(editor).toContainText('Reloaded from disk');
+    await expect(page.locator('#externalChangeBanner')).toBeHidden();
+
+    await page.locator('.document-tab').filter({ hasText: 'modified.md' }).click();
+    await editor.fill('Local changes');
+    await expect(page.locator('.document-tab.active .dirty')).toHaveText('●');
+    fs.writeFileSync(modifiedPath, 'External changes');
+    await expect(page.locator('#externalChangeBanner')).toBeVisible();
+    await expect(page.locator('.document-tab.active .conflict')).toHaveText('!');
+    await expect.poll(() => fs.readFileSync(modifiedPath, 'utf8')).toBe('External changes');
+
+    await page.locator('#externalIgnore').click();
+    await expect(page.locator('#externalChangeBanner')).toBeHidden();
+    await page.keyboard.press('Control+s');
+    await expect.poll(() => fs.readFileSync(modifiedPath, 'utf8')).toContain('Local changes');
+  } finally {
+    await closeApp(running);
+    fs.rmSync(workspace, { recursive: true, force: true });
   }
 });
 
@@ -1624,6 +1846,13 @@ test('shows the localized About page with project links and reset at the bottom'
   const running = await launchApp({ locale: 'zh_Hans' });
   try {
     const { page } = running;
+    const buildInfo = JSON.parse(
+      fs.readFileSync(path.join(projectRoot, 'dist/build-info.json'), 'utf8'),
+    ) as {
+      commit: string;
+      commitShort: string;
+      tag: string;
+    };
     await page.locator('#statusSettings').click();
     await expect(page.locator('.settings-card > header h2')).toHaveText('Vditor Desktop 设置');
     const fontsNav = page.locator('.settings-nav [data-panel="fonts"]');
@@ -1639,15 +1868,17 @@ test('shows the localized About page with project links and reset at the bottom'
     await expect(about.locator('.about-logo')).toBeVisible();
     await expect(about).toContainText('基于 Vditor 项目打造');
     await expect(about.locator('[data-external]')).toHaveCount(8);
-    await expect(about.locator('#commitInfo')).toHaveText(/^[0-9a-f]{12}$/);
-    await expect(about.locator('#commitInfo')).toHaveAttribute(
-      'title',
-      '0.1.0 · 8cb3786e70dc50c84327d5510206514661534b4e',
-    );
-    await expect(about.locator('#commitInfo')).toHaveAttribute(
-      'data-external',
-      /github\.com\/Studio-200A\/Vditor-Electron\/commit\/[0-9a-f]{40}$/,
-    );
+    const commitInfo = about.locator('#commitInfo');
+    if (buildInfo.commit) {
+      await expect(commitInfo).toHaveText(buildInfo.commitShort);
+      await expect(commitInfo).toHaveAttribute('title', `${buildInfo.tag} · ${buildInfo.commit}`);
+      await expect(commitInfo).toHaveAttribute(
+        'data-external',
+        /github\.com\/Studio-200A\/Vditor-Electron\/commit\/[0-9a-f]{40}$/,
+      );
+    } else {
+      await expect(commitInfo).toBeHidden();
+    }
     const panelBox = await about.boundingBox();
     const logoBox = await about.locator('.about-logo').boundingBox();
     const sourceBox = await about.locator('.about-source').boundingBox();
@@ -1691,12 +1922,13 @@ test('uses the file name in the title and matches all chrome background colors',
 
     const chromeColors = () =>
       page.evaluate(() =>
-        ['#windowTitlebar', 'header.titlebar', '#tabBar', '.statusbar'].map(
+        ['#windowTitlebar', 'header.titlebar', '.statusbar'].map(
           (selector) => getComputedStyle(document.querySelector(selector)).backgroundColor,
         ),
       );
     const lightColors = await chromeColors();
     expect(new Set(lightColors).size).toBe(1);
+    await expect(page.locator('#tabBar')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 
     await page.locator('.theme-switch span').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
@@ -1714,7 +1946,7 @@ test('shows a localized themed dialog when closing a window with unsaved changes
     const { page } = running;
     await createNewTab(page);
     await page.locator('.editor-host.active .vditor-sv').fill('未保存内容');
-    await page.locator('#appMenuBar [data-menu="file"]').click();
+    await page.locator('#appMenuBar [data-menu="main"]').click();
     const quit = page.locator('.app-menu-popup button').filter({ hasText: /^退出/ });
     await expect(quit).toBeVisible();
     await quit.click();
@@ -1812,14 +2044,19 @@ test('animates window control hover highlights', async () => {
   const running = await launchApp();
   try {
     const { page } = running;
+    const titlebarHeight = await page
+      .locator('#windowTitlebar')
+      .evaluate((node) => node.getBoundingClientRect().height);
     for (const selector of ['#windowMinimize', '#windowMaximize', '#windowClose']) {
       const transitions = await page.locator(selector).evaluate((node) => ({
         properties: getComputedStyle(node).transitionProperty,
         durations: getComputedStyle(node).transitionDuration,
+        height: node.getBoundingClientRect().height,
       }));
       expect(transitions.properties).toContain('background-color');
       expect(transitions.properties).toContain('color');
       expect(transitions.durations).toContain('0.16s');
+      expect(Math.abs(transitions.height - titlebarHeight)).toBeLessThan(1);
     }
   } finally {
     await closeApp(running);

@@ -1,4 +1,4 @@
-import { BrowserWindow, Menu, MenuItemConstructorOptions, shell } from 'electron';
+import { BrowserWindow, Menu, MenuItemConstructorOptions } from 'electron';
 
 function emit(win: Electron.BaseWindow | undefined, action: string, value?: string): void {
   if (win instanceof BrowserWindow) win.webContents.send('menu:action', action, value);
@@ -64,18 +64,6 @@ export function createAppMenu(locale: string = 'en_US', editMode: EditMode = 'ir
       ],
     },
     {
-      label: tr('Edit', '编辑', '編輯'),
-      submenu: [
-        { role: 'undo' },
-        { role: 'redo' },
-        { type: 'separator' },
-        { role: 'cut' },
-        { role: 'copy' },
-        { role: 'paste' },
-        { role: 'selectAll' },
-      ],
-    },
-    {
       label: tr('View', '视图', '檢視'),
       submenu: [
         {
@@ -113,39 +101,12 @@ export function createAppMenu(locale: string = 'en_US', editMode: EditMode = 'ir
           click: (_i, w) => emit(w, 'settings'),
         },
         { type: 'separator' },
-        { role: 'togglefullscreen' },
+        { role: 'togglefullscreen', accelerator: 'F11' },
         { role: 'zoomIn' },
         { role: 'zoomOut' },
         { role: 'resetZoom' },
         { type: 'separator' },
         { role: 'toggleDevTools', accelerator: 'F12' },
-      ],
-    },
-    {
-      label: tr('Theme', '主题', '主題'),
-      submenu: [
-        {
-          label: tr('Classic', '浅色', '淺色'),
-          click: (_i, w) => emit(w, 'theme', 'classic'),
-        },
-        { label: tr('Dark', '深色', '深色'), click: (_i, w) => emit(w, 'theme', 'dark') },
-        {
-          label: 'Monokai Pro Dark',
-          click: (_i, w) => emit(w, 'theme', 'monokai-pro-dark'),
-        },
-      ],
-    },
-    {
-      label: tr('Help', '帮助', '說明'),
-      submenu: [
-        {
-          label: tr('About Vditor Desktop', '关于 Vditor Desktop', '關於 Vditor Desktop'),
-          click: (_i, w) => emit(w, 'about'),
-        },
-        {
-          label: 'Vditor on GitHub',
-          click: () => void shell.openExternal('https://github.com/Vanessa219/vditor'),
-        },
       ],
     },
   ];

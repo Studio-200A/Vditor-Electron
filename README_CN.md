@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Studio-200A/Vditor-Electron/releases"><img src="https://img.shields.io/badge/version-0.1.2-blue" alt="版本 0.1.2" /></a>
+  <a href="https://github.com/Studio-200A/Vditor-Electron/releases"><img src="https://img.shields.io/badge/version-0.1.3-blue" alt="版本 0.1.3" /></a>
   <a href="https://github.com/Studio-200A/Vditor-Electron/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT 许可证" /></a>
   <a href="https://github.com/Studio-200A/Vditor-Electron"><img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey" alt="Linux、Windows 和 macOS" /></a>
 </p>
@@ -42,7 +42,8 @@ Vditor Desktop 是一款基于 [Electron](https://github.com/electron/electron) 
 - **Markdown 不被锁定。** 直接打开和保存普通 `.md` 文件，不需要账号、云同步、专有文档格式或在线服务。
 - **三种写作方式。** 在所见即所得、即时渲染和分栏预览之间切换，不离开当前文档。
 - **完整的桌面文件体验。** 支持从命令行或文件管理器打开文件，以目录作为工作区，并在会话之间恢复标签页和窗口状态。
-- **专注而克制的界面。** 自定义标题栏、统一工具栏、标签栏、资源管理器、文档大纲和状态栏让控制项触手可及，同时避免界面变成复杂的仪表盘。
+- **面向工作区的文件操作。** 支持创建编号的未命名文档、在文件树中直接新建和重命名文件、从资源管理器右键菜单打开工作区，以及将文件移入回收站。
+- **专注而克制的界面。** 紧凑的工作区顶部栏将菜单、文件操作、标签页和窗口控制汇集在一起，编辑工具栏仅在需要时显示，避免界面变成复杂的仪表盘。
 - **丰富的 Markdown 能力。** 保留 Vditor 对公式、图表、流程图、脚注、代码高亮、目录和媒体预览等内容的支持。
 - **本地优先。** 配置和 Chromium 数据存放在各平台对应的本地目录，软件不会上传你的文档。
 
@@ -62,8 +63,14 @@ Vditor Desktop 是一款基于 [Electron](https://github.com/electron/electron) 
 - 展开或收起目录、按扩展名过滤、新建和重命名文件、将项目移到回收站，或在系统文件管理器中定位。
 - 读取 H1–H6 文档大纲，并在三种编辑模式中跳转到对应标题。
 - 在多个编号的未命名标签页中同时编辑文档，每个标签页拥有独立的撤销历史和修改状态。
+- 可拖动标签页，按适合自己的顺序排列文档。
+- 收起资源管理器可扩大编辑空间；新建、打开、保存按钮会随之收起，但菜单和快捷键始终可用。
 - 支持保存、另存为、导出 HTML 或 PDF，并恢复上次工作区和窗口状态。
+- 使用 `Ctrl/Cmd + F` 打开紧凑面板，在当前文档中查找和替换文本。
+- 监控当前工作区中的文件变化；没有本地修改的文档会自动重载，有本地修改的文档会显示持久冲突横幅，并在处理前暂停自动保存。
 - 粘贴或上传图片到可配置的相对资源目录；相对路径图片和在线图片可以在三种模式中预览。
+
+当前外部文件监控覆盖活动工作区中的文件，以及工作区中出现预期保存路径的未命名文档。工作区外文件、文件删除后的恢复、目录移动、原子保存和跨应用重启的冲突恢复仍属于后续可靠性工作；重要文档请保留备份。
 
 ## 主题与语言
 
@@ -120,6 +127,7 @@ Portable 压缩包中的 desktop 文件使用 `/path/to/vditor-desktop` 作为�
 | 打开文件       | `Ctrl/Cmd + O`         |
 | 保存           | `Ctrl/Cmd + S`         |
 | 另存为         | `Ctrl/Cmd + Shift + S` |
+| 查找和替换     | `Ctrl/Cmd + F`         |
 | 关闭标签页     | `Ctrl/Cmd + W`         |
 | 切换资源管理器 | `Ctrl/Cmd + B`         |
 | 打开设置       | `Ctrl/Cmd + ,`         |
@@ -152,7 +160,7 @@ Vditor 依赖固定为 3.11.3。升级前请先阅读 [Vditor 升级说明](docs
 
 ## 参与贡献
 
-项目开发在 `dev` 分支进行，完成后通过 Pull Request 合并到 `master`。欢迎参与：
+项目开发在按版本或功能建立的 `dev-*` / `feat-*` 分支进行，完成后通过 Pull Request 合并到 `master`。欢迎参与：
 
 - 提供包含操作系统、桌面环境、显示协议、版本和复现步骤的可复现问题报告；
 - 为编辑器、文件、工作区和跨平台行为提交修复与测试；

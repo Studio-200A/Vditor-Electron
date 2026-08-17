@@ -53,9 +53,19 @@
   let appMenuBlurHandler;
   let settingsSaveTimer;
   let settingsCloseTimer;
+  let sidebarTransitionTimer;
+  let sidebarTransitionEndHandler;
   let confirmResolver;
   let treeNameFrame;
   let treeNameMeasureContext;
+  let findMatches = [];
+  let findIndex = -1;
+  let findQuery = '';
+  let findRefreshTimer;
+  let draggedTabId = null;
+  let tabDragPointerId = null;
+  let tabDragGhost = null;
+  let tabDragMoved = false;
   const scrollAnimations = new WeakMap();
 
   function resolveLocale(locale) {
@@ -189,6 +199,15 @@
   function fileName(filePath) {
     return filePath ? filePath.replace(/\\/g, '/').split('/').pop() : '';
   }
+  function normalizedFilePath(filePath) {
+    return String(filePath || '')
+      .replace(/\\/g, '/')
+      .toLocaleLowerCase();
+  }
+  function tabTargetPath(tab) {
+    if (tab.filePath) return tab.filePath;
+    return state.workspace ? `${state.workspace.replace(/[\\/]$/, '')}/${tab.title}.md` : '';
+  }
   function stripExtension(name) {
     return name.replace(/\.(md|markdown)$/i, '');
   }
@@ -234,12 +253,10 @@
   function updateTreeNameEllipses() {
     treeNameFrame = null;
     $$('.tree-name', $('#fileTree')).forEach((name) => {
+      const fullName = name.dataset.fullName || '';
+      name.textContent = fullName;
       if (!name.clientWidth) return;
-      name.textContent = middleEllipsis(
-        name.dataset.fullName || '',
-        name.clientWidth,
-        getComputedStyle(name),
-      );
+      name.textContent = middleEllipsis(fullName, name.clientWidth, getComputedStyle(name));
     });
   }
 
@@ -257,6 +274,135 @@
       target.textContent = '';
       target.classList.remove('error');
     }, 4500);
+  }
+
+  function findWidgetVisible() {
+    return !$('#findWidget').classList.contains('hidden');
+  }
+
+  function collectFindMatches(content, query) {
+    if (!query) return [];
+    const matches = [];
+    const haystack = content.toLocaleLowerCase();
+    const needle = query.toLocaleLowerCase();
+    let offset = 0;
+    while (offset <= haystack.length - needle.length) {
+      const start = haystack.indexOf(needle, offset);
+      if (start < 0) break;
+      matches.push({ start, end: start + query.length });
+      offset = start + Math.max(query.length, 1);
+    }
+    return matches;
+  }
+
+  function revealFindMatch() {
+    const tab = activeTab();
+    const query = $('#findInput').value;
+    if (!tab?.vditor || findIndex < 0 || !query) return;
+    const mode = tab.vditor.getCurrentMode();
+    VDITOR.revealTextMatch(tab.host, mode, query, findIndex);
+    const highlightIndex = findIndex;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (
+          activeTab() !== tab ||
+          $('#findInput').value !== query ||
+          findIndex !== highlightIndex ||
+          !findWidgetVisible()
+        )
+          return;
+        VDITOR.highlightTextMatches(
+          tab.host,
+          tab.vditor?.getCurrentMode() || mode,
+          query,
+          findIndex,
+        );
+      });
+    });
+  }
+
+  function refreshFind({ preserveIndex = true, reveal = true, content, index } = {}) {
+    const tab = activeTab();
+    const query = $('#findInput').value;
+    findQuery = query;
+    const previousIndex = findIndex;
+    findMatches = tab ? collectFindMatches(content ?? tab.content, query) : [];
+    if (!findMatches.length) findIndex = -1;
+    else if (typeof index === 'number') findIndex = Math.min(index, findMatches.length - 1);
+    else if (preserveIndex && previousIndex >= 0)
+      findIndex = Math.min(previousIndex, findMatches.length - 1);
+    else findIndex = 0;
+    $('#findCount').textContent = `${findIndex < 0 ? 0 : findIndex + 1} / ${findMatches.length}`;
+    if (reveal) revealFindMatch();
+  }
+
+  function moveFindMatch(direction) {
+    if (!findMatches.length) return;
+    findIndex = (findIndex + direction + findMatches.length) % findMatches.length;
+    $('#findCount').textContent = `${findIndex + 1} / ${findMatches.length}`;
+    revealFindMatch();
+  }
+
+  function openFind() {
+    if (!activeTab()) return;
+    const selection = window.getSelection()?.toString() || '';
+    const input = $('#findInput');
+    $('#findWidget').classList.remove('hidden');
+    if (!findWidgetVisible()) return;
+    if (selection && !selection.includes('\n')) input.value = selection;
+    refreshFind({ preserveIndex: false, reveal: false });
+    input.focus();
+    input.select();
+  }
+
+  function closeFind() {
+    clearTimeout(findRefreshTimer);
+    const tab = activeTab();
+    const query = $('#findInput').value;
+    if (tab?.vditor && findIndex >= 0 && query) {
+      VDITOR.selectTextMatch(tab.host, tab.vditor.getCurrentMode(), query, findIndex);
+    }
+    $('#findWidget').classList.add('hidden');
+    VDITOR.clearFindHighlights();
+    tab?.vditor?.focus();
+  }
+
+  function toggleReplace() {
+    const expanded = $('#replaceRow').classList.toggle('hidden') === false;
+    $('#findToggleReplace').setAttribute('aria-expanded', String(expanded));
+    if (expanded) $('#replaceInput').focus();
+  }
+
+  function applyFindContent(tab, content) {
+    tab.pendingEditorContent = true;
+    tab.vditor?.setValue(content);
+    onEditorInput(tab, content);
+  }
+
+  function replaceFindMatch() {
+    const tab = activeTab();
+    const match = findMatches[findIndex];
+    if (!tab || !match) return;
+    const replacedIndex = findIndex;
+    const content = tab.content;
+    const replacement = $('#replaceInput').value;
+    const nextContent = `${content.slice(0, match.start)}${replacement}${content.slice(match.end)}`;
+    applyFindContent(tab, nextContent);
+    refreshFind({ content: nextContent, index: replacedIndex });
+  }
+
+  function replaceAllFindMatches() {
+    const tab = activeTab();
+    if (!tab || !findMatches.length) return;
+    const content = tab.content;
+    const replacement = $('#replaceInput').value;
+    let nextContent = content;
+    for (let index = findMatches.length - 1; index >= 0; index -= 1) {
+      const match = findMatches[index];
+      nextContent = `${nextContent.slice(0, match.start)}${replacement}${nextContent.slice(match.end)}`;
+    }
+    applyFindContent(tab, nextContent);
+    refreshFind({ preserveIndex: false, content: nextContent });
   }
 
   function isDarkTheme(theme) {
@@ -1027,6 +1173,7 @@
     encoding = 'utf-8',
     baseDir = '',
     activate = true,
+    untitledNumber = null,
   } = {}) {
     if (state.tabs.length >= 20) {
       showMessage(t('message.maxTabs'), true);
@@ -1034,7 +1181,7 @@
     }
     const title = filePath
       ? fileName(filePath)
-      : t('tab.untitled', { number: ++state.untitledCounter });
+      : t('tab.untitled', { number: untitledNumber ?? ++state.untitledCounter });
     const tab = {
       id: uid(),
       filePath,
@@ -1057,6 +1204,8 @@
       outlineCollapsed: new Set(),
       resourceObserver: null,
       splitResizer: null,
+      externalConflict: null,
+      externalChangeIgnored: false,
       host: document.createElement('section'),
     };
     tab.host.className = 'editor-host';
@@ -1094,8 +1243,17 @@
   }
 
   async function openPath(filePath, activate = true) {
-    const existing = state.tabs.find((tab) => tab.filePath === filePath);
+    const normalizedPath = normalizedFilePath(filePath);
+    const existing = state.tabs.find(
+      (tab) => normalizedFilePath(tabTargetPath(tab)) === normalizedPath,
+    );
     if (existing) {
+      if (!existing.filePath) {
+        clearTimeout(existing.saveTimer);
+        existing.externalConflict = { kind: 'modified', path: filePath };
+        existing.externalChangeIgnored = false;
+        renderTabs();
+      }
       if (activate) switchTab(existing.id);
       return existing;
     }
@@ -1118,7 +1276,23 @@
   }
 
   async function newTab() {
-    createTab();
+    let entries = [];
+    if (state.workspace) {
+      try {
+        entries = await window.fileAPI.listDir(state.workspace);
+      } catch (_) {}
+    }
+    let number = state.untitledCounter + 1;
+    while (
+      entries.some(
+        (entry) =>
+          entry.name.toLocaleLowerCase() ===
+          `${t('tab.untitled', { number })}.md`.toLocaleLowerCase(),
+      )
+    )
+      number++;
+    state.untitledCounter = number;
+    createTab({ untitledNumber: number });
   }
 
   function switchTab(id) {
@@ -1133,13 +1307,14 @@
     renderTabs();
     updateActiveUI();
     renderOutline();
+    if (findWidgetVisible()) refreshFind({ preserveIndex: false });
     persistSession();
   }
 
-  async function closeTab(id) {
+  async function closeTab(id, { discard = false } = {}) {
     const tab = state.tabs.find((item) => item.id === id);
     if (!tab) return;
-    if (tab.modified) {
+    if (tab.modified && !discard) {
       const action = await showUnsavedDialog(
         t('confirm.closeDirty', { title: tab.title }),
         t('confirm.closeDirtyDetail'),
@@ -1182,18 +1357,81 @@
       button.className = `document-tab${tab.id === state.activeId ? ' active' : ''}`;
       button.dataset.id = tab.id;
       button.title = tab.filePath || tab.title;
-      button.innerHTML = `<span>${escapeHTML(tab.title)}</span><i class="dirty">${tab.modified ? '●' : ''}</i><b title="${escapeHTML(t('tab.close'))}">×</b>`;
-      button.addEventListener('click', (event) =>
-        event.target.tagName === 'B' ? closeTab(tab.id) : switchTab(tab.id),
-      );
+      button.innerHTML = `<span>${escapeHTML(tab.title)}</span>${tab.externalConflict ? `<i class="conflict" title="${escapeHTML(t('external.changed', { name: tab.title }))}">!</i>` : ''}<i class="dirty">${tab.modified ? '●' : ''}</i><b title="${escapeHTML(t('tab.close'))}">×</b>`;
+      button.addEventListener('click', (event) => {
+        if (tabDragMoved) return;
+        if (event.target.tagName === 'B') closeTab(tab.id);
+        else switchTab(tab.id);
+      });
       button.addEventListener('auxclick', (event) => {
         if (event.button === 1) closeTab(tab.id);
       });
+      button.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0 || event.target.closest('b')) return;
+        draggedTabId = tab.id;
+        tabDragPointerId = event.pointerId;
+        button.setPointerCapture(event.pointerId);
+      });
+      button.addEventListener('pointermove', (event) => {
+        if (!draggedTabId || event.pointerId !== tabDragPointerId) return;
+        if (!tabDragMoved && Math.abs(event.movementX) + Math.abs(event.movementY) > 3) {
+          tabDragMoved = true;
+          button.classList.add('dragging');
+          tabDragGhost = button.cloneNode(true);
+          tabDragGhost.className = 'document-tab tab-drag-ghost';
+          document.body.append(tabDragGhost);
+        }
+        if (tabDragGhost) {
+          tabDragGhost.style.left = `${event.clientX}px`;
+          tabDragGhost.style.top = `${event.clientY}px`;
+        }
+        const target = document
+          .elementFromPoint(event.clientX, event.clientY)
+          ?.closest('.document-tab');
+        $$('.document-tab.drag-over', $('#tabBar')).forEach((node) =>
+          node.classList.remove('drag-over'),
+        );
+        if (target && target.dataset.id !== draggedTabId) {
+          const bounds = target.getBoundingClientRect();
+          target.dataset.dropSide =
+            event.clientX < bounds.left + bounds.width / 2 ? 'before' : 'after';
+          target.classList.add('drag-over');
+        }
+      });
+      button.addEventListener('pointerup', (event) => {
+        if (!draggedTabId || event.pointerId !== tabDragPointerId) return;
+        const target = document
+          .elementFromPoint(event.clientX, event.clientY)
+          ?.closest('.document-tab');
+        const from = state.tabs.findIndex((item) => item.id === draggedTabId);
+        const to = state.tabs.findIndex((item) => item.id === target?.dataset.id);
+        if (from >= 0 && to >= 0 && from !== to) {
+          const [moved] = state.tabs.splice(from, 1);
+          const targetIndex = target?.dataset.dropSide === 'after' ? to + 1 : to;
+          state.tabs.splice(targetIndex > from ? targetIndex - 1 : targetIndex, 0, moved);
+          renderTabs();
+          persistSession();
+        }
+        draggedTabId = null;
+        tabDragPointerId = null;
+        if (tabDragGhost) tabDragGhost.remove();
+        tabDragGhost = null;
+        $$('.document-tab.dragging, .document-tab.drag-over', $('#tabBar')).forEach((node) =>
+          node.classList.remove('dragging', 'drag-over'),
+        );
+        setTimeout(() => {
+          tabDragMoved = false;
+        }, 0);
+      });
       $('#tabBar').insertBefore(button, add);
     });
+    requestAnimationFrame(() =>
+      $('#tabBar .document-tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }),
+    );
   }
 
   function onEditorInput(tab, value) {
+    if (value !== tab.content) tab.pendingEditorContent = false;
     tab.content = value;
     tab.modified = value !== tab.savedContent;
     renderTabs();
@@ -1202,7 +1440,13 @@
       scheduleOutline();
     }
     scheduleSplitLineNumbers(tab);
-    if (state.settings.autoSave && tab.filePath && tab.modified) {
+    if (
+      state.settings.autoSave &&
+      tab.filePath &&
+      tab.modified &&
+      !tab.externalConflict &&
+      !tab.externalChangeIgnored
+    ) {
       clearTimeout(tab.saveTimer);
       tab.saveTimer = setTimeout(() => saveTab(tab), state.settings.autoSaveDelay);
     }
@@ -1223,10 +1467,13 @@
     if (!tab) return false;
     let destination = tab.filePath;
     if (!destination || saveAs)
-      destination = await window.fileAPI.saveFileDialog(destination || `${tab.title}.md`);
+      destination = await window.fileAPI.saveFileDialog(
+        destination || `${tab.title}.md`,
+        destination ? undefined : state.workspace || undefined,
+      );
     if (!destination) return false;
     try {
-      const content = currentContent(tab);
+      const content = tab.pendingEditorContent ? tab.content : currentContent(tab);
       const diskContent =
         tab.lineEnding === 'CRLF'
           ? content.replace(/\r?\n/g, '\r\n')
@@ -1239,6 +1486,8 @@
       tab.content = content;
       tab.savedContent = content;
       tab.modified = false;
+      tab.externalConflict = null;
+      tab.externalChangeIgnored = false;
       tab.encoding = 'utf-8';
       tab.baseDir = await window.fileAPI.dirname(destination);
       if (previousBaseDir !== tab.baseDir) rebuildEditor(tab);
@@ -1257,7 +1506,11 @@
   function updateActiveUI() {
     updateEmptyState();
     const tab = activeTab();
+    $('#app').classList.toggle('toolbar-unavailable', !tab);
+    syncTopControlsWidth();
     if (!tab) {
+      updateExternalChangeBanner(null);
+      $('#saveFile').disabled = true;
       document.title = 'Vditor Desktop';
       $('#windowTitle').textContent = 'Vditor Desktop';
       $('#statusPath').textContent = '';
@@ -1269,6 +1522,8 @@
       $('#statusLineEnding').textContent = '—';
       return;
     }
+    updateExternalChangeBanner(tab);
+    $('#saveFile').disabled = false;
     const content = currentContent(tab);
     tab.content = content;
     document.title = `${tab.title} - Vditor Desktop`;
@@ -1295,7 +1550,59 @@
 
   function updateEmptyState() {
     const empty = $('#noTabs');
-    if (empty) empty.classList.toggle('hidden', state.tabs.length > 0);
+    const hasTabs = state.tabs.length > 0;
+    if (empty) empty.classList.toggle('hidden', hasTabs);
+    $('#tabBar').classList.toggle('empty', !hasTabs);
+  }
+
+  function updateExternalChangeBanner(tab) {
+    const banner = $('#externalChangeBanner');
+    const conflict = tab?.externalConflict;
+    banner.classList.toggle('hidden', !conflict);
+    if (!conflict) return;
+    $('#externalChangeMessage').textContent = t('external.changed', {
+      name: fileName(conflict.path),
+    });
+  }
+
+  async function reloadExternalChange(tab) {
+    const conflict = tab?.externalConflict;
+    if (!conflict) return;
+    try {
+      const result = await window.fileAPI.readFile(conflict.path);
+      clearTimeout(tab.saveTimer);
+      const previousBaseDir = tab.baseDir;
+      tab.filePath = conflict.path;
+      tab.title = fileName(conflict.path);
+      tab.content = result.content;
+      tab.savedContent = result.content;
+      tab.modified = false;
+      tab.encoding = result.encoding;
+      tab.lineEnding = detectLineEnding(result.content);
+      tab.baseDir = await window.fileAPI.dirname(conflict.path);
+      tab.externalConflict = null;
+      tab.externalChangeIgnored = false;
+      if (tab.vditor) tab.vditor.setValue(result.content, true);
+      if (previousBaseDir !== tab.baseDir) rebuildEditor(tab);
+      renderTabs();
+      if (tab.id === state.activeId) {
+        updateActiveUI();
+        renderOutline();
+      }
+      persistSession();
+      showMessage(t('external.reloaded', { name: tab.title }));
+    } catch (error) {
+      showMessage(t('message.openFailed', { error: error.message }), true);
+    }
+  }
+
+  function ignoreExternalChange(tab) {
+    if (!tab?.externalConflict) return;
+    tab.externalConflict = null;
+    tab.externalChangeIgnored = true;
+    renderTabs();
+    if (tab.id === state.activeId) updateExternalChangeBanner(tab);
+    showMessage(t('external.ignored', { name: tab.title }));
   }
 
   async function chooseFiles() {
@@ -1307,7 +1614,7 @@
     if (folder) {
       await setWorkspace(folder);
       toggleSidebar(true);
-      const filesTab = $('.sidebar-tabs [data-view="files"]');
+      const filesTab = $('.toolbar-sidebar-tabs [data-view="files"]');
       if (filesTab && !filesTab.classList.contains('active')) filesTab.click();
     }
   }
@@ -1388,7 +1695,7 @@
       row.dataset.path = entry.path;
       row.innerHTML = `<span class="chevron">${entry.type === 'directory' ? '›' : ''}</span><span class="file-icon">${treeIcon(entry.type)}</span><span class="tree-name" data-full-name="${escapeHTML(entry.name)}" title="${escapeHTML(entry.name)}">${escapeHTML(entry.name)}</span>`;
       container.appendChild(row);
-      row.addEventListener('contextmenu', (event) => showTreeMenu(event, entry));
+      row.addEventListener('contextmenu', (event) => showTreeMenu(event, entry, row));
       if (entry.type === 'file') row.addEventListener('click', () => openPath(entry.path));
       else {
         const children = document.createElement('div');
@@ -1418,7 +1725,7 @@
     scheduleTreeNameEllipses();
   }
 
-  function showTreeMenu(event, entry) {
+  function showTreeMenu(event, entry, row) {
     event.preventDefault();
     const menu = $('#contextMenu');
     menu.innerHTML = '';
@@ -1430,7 +1737,7 @@
           ]
         : [];
     actions.push(
-      [t('context.rename'), () => renameExplorerItem(entry)],
+      [t('context.rename'), () => renameExplorerItem(entry, row)],
       [t('context.trash'), () => deleteExplorerItem(entry)],
       [t('context.reveal'), () => window.appAPI.showItemInFolder(entry.path)],
     );
@@ -1448,6 +1755,48 @@
     menu.classList.remove('hidden');
   }
 
+  function showWorkspaceTreeMenu(event) {
+    event.preventDefault();
+    const menu = $('#contextMenu');
+    menu.innerHTML = '';
+    const actions = [
+      [t('context.changeWorkspace'), chooseFolder],
+      [t('context.newFile'), createWorkspaceUntitledFile, !state.workspace],
+      [
+        t('context.openWorkspace'),
+        () => window.appAPI.openDirectory(state.workspace),
+        !state.workspace,
+      ],
+    ];
+    actions.forEach(([label, fn, disabled]) => {
+      const button = document.createElement('button');
+      button.textContent = label;
+      button.disabled = Boolean(disabled);
+      button.onclick = () => {
+        menu.classList.add('hidden');
+        void fn();
+      };
+      menu.appendChild(button);
+    });
+    menu.style.left = `${event.clientX}px`;
+    menu.style.top = `${event.clientY}px`;
+    menu.classList.remove('hidden');
+  }
+
+  async function createWorkspaceUntitledFile() {
+    if (!state.workspace) return;
+    const number = state.untitledCounter + 1;
+    const name = `${t('tab.untitled', { number })}.md`;
+    try {
+      const created = await window.fileAPI.createItem(state.workspace, name, 'file');
+      state.untitledCounter = number;
+      await refreshTree();
+      await openPath(created);
+    } catch (error) {
+      showMessage(error.message, true);
+    }
+  }
+
   async function createExplorerItem(parent, type) {
     const name = prompt(type === 'file' ? t('workspace.fileName') : t('workspace.folderName'));
     if (!name) return;
@@ -1459,23 +1808,69 @@
       showMessage(error.message, true);
     }
   }
-  async function renameExplorerItem(entry) {
-    const name = prompt(t('workspace.rename'), entry.name);
-    if (!name || name === entry.name) return;
-    try {
-      const destination = await window.fileAPI.renameItem(entry.path, name);
-      state.tabs
-        .filter((tab) => tab.filePath === entry.path)
-        .forEach((tab) => {
-          tab.filePath = destination;
-          tab.title = name;
-        });
-      renderTabs();
-      refreshTree();
-      persistSession();
-    } catch (error) {
-      showMessage(error.message, true);
-    }
+  function renameExplorerItem(entry, row) {
+    const label = row.querySelector('.tree-name');
+    if (!label) return;
+    const input = document.createElement('input');
+    input.className = 'tree-rename-input';
+    input.value = entry.name;
+    label.replaceWith(input);
+    let settled = false;
+    let submitting = false;
+    const finish = async (commit) => {
+      if (settled || submitting) return;
+      let name = input.value.trim();
+      const extensionStart = entry.type === 'file' ? entry.name.lastIndexOf('.') : -1;
+      if (extensionStart > 0) {
+        const extension = entry.name.slice(extensionStart);
+        const keepsExtension = name.toLocaleLowerCase().endsWith(extension.toLocaleLowerCase());
+        const proposedExtensionStart = name.lastIndexOf('.');
+        const stem = keepsExtension
+          ? name.slice(0, -extension.length)
+          : proposedExtensionStart > 0
+            ? name.slice(0, proposedExtensionStart)
+            : name;
+        if (!stem) name = '';
+        else name = `${stem}${extension}`;
+      }
+      if (!commit || !name || name === entry.name) {
+        settled = true;
+        if (input.isConnected) input.replaceWith(label);
+        return;
+      }
+      submitting = true;
+      settled = true;
+      try {
+        const destination = await window.fileAPI.renameItem(entry.path, name);
+        state.tabs
+          .filter((tab) => tab.filePath === entry.path)
+          .forEach((tab) => {
+            tab.filePath = destination;
+            tab.title = name;
+          });
+        renderTabs();
+        await refreshTree();
+        persistSession();
+      } catch (error) {
+        if (input.isConnected) input.replaceWith(label);
+        showMessage(error.message, true);
+      }
+    };
+    input.addEventListener('click', (event) => event.stopPropagation());
+    input.addEventListener('keydown', (event) => {
+      event.stopPropagation();
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        void finish(true);
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        void finish(false);
+      }
+    });
+    input.addEventListener('blur', () => void finish(true));
+    input.focus();
+    const extensionStart = entry.type === 'file' ? entry.name.lastIndexOf('.') : -1;
+    input.setSelectionRange(0, extensionStart > 0 ? extensionStart : entry.name.length);
   }
   async function deleteExplorerItem(entry) {
     const proceed = await confirmDialog({
@@ -1484,6 +1879,11 @@
     if (!proceed) return;
     try {
       await window.fileAPI.deleteItem(entry.path);
+      if (entry.type === 'file') {
+        for (const tab of state.tabs.filter((item) => item.filePath === entry.path)) {
+          await closeTab(tab.id, { discard: true });
+        }
+      }
       await refreshTree();
     } catch (error) {
       showMessage(error.message, true);
@@ -1997,6 +2397,7 @@
 
     window.addEventListener('resize', () => {
       if (card.style.position === 'fixed') setSettingsCardBounds(settingsCardBounds());
+      syncTopControlsWidth();
     });
   }
 
@@ -2006,25 +2407,36 @@
       state.treeTimer = setTimeout(refreshTree, 300);
     }
     if ((state.ignoredChanges.get(change.path) || 0) > Date.now()) return;
-    if (!['change', 'unlink'].includes(change.event)) return;
-    const tab = state.tabs.find((item) => item.filePath === change.path);
-    if (!tab) return;
-    if (change.event === 'unlink') {
-      showMessage(`${tab.title} 已在外部删除`, true);
-      return;
+    if (!['add', 'change', 'unlink'].includes(change.event)) return;
+    const normalizedPath = normalizedFilePath(change.path);
+    const tabs = state.tabs.filter(
+      (tab) => normalizedFilePath(tabTargetPath(tab)) === normalizedPath,
+    );
+    for (const tab of tabs) {
+      if (change.event === 'unlink') {
+        if (tab.filePath) showMessage(t('external.deleted', { name: tab.title }), true);
+        continue;
+      }
+      if (tab.filePath && !tab.modified && !tab.externalChangeIgnored) {
+        try {
+          const result = await window.fileAPI.readFile(change.path);
+          tab.lineEnding = detectLineEnding(result.content);
+          tab.content = tab.savedContent = result.content;
+          tab.encoding = result.encoding;
+          tab.externalConflict = null;
+          tab.externalChangeIgnored = false;
+          if (tab.vditor) tab.vditor.setValue(result.content, true);
+          if (tab.id === state.activeId) updateActiveUI();
+          showMessage(t('external.reloaded', { name: tab.title }));
+        } catch (_) {}
+        continue;
+      }
+      clearTimeout(tab.saveTimer);
+      tab.externalConflict = { kind: 'modified', path: change.path };
+      tab.externalChangeIgnored = false;
     }
-    if (tab.modified) {
-      showMessage(`${tab.title} 已在外部修改；当前有未保存内容，未自动重载`, true);
-      return;
-    }
-    try {
-      const result = await window.fileAPI.readFile(change.path);
-      tab.lineEnding = detectLineEnding(result.content);
-      tab.content = tab.savedContent = result.content;
-      if (tab.vditor) tab.vditor.setValue(result.content, true);
-      updateActiveUI();
-      showMessage(`${tab.title} 已从磁盘重新载入`);
-    } catch (_) {}
+    renderTabs();
+    updateExternalChangeBanner(activeTab());
   }
 
   function handleMenu(action, value) {
@@ -2035,6 +2447,7 @@
       save: () => saveTab(),
       'save-as': () => saveTab(activeTab(), true),
       'close-tab': () => activeTab() && closeTab(activeTab().id),
+      find: openFind,
       quit: () => window.appAPI.closeWindow(),
       'toggle-sidebar': toggleSidebar,
       settings: openSettings,
@@ -2073,10 +2486,6 @@
     if (appMenuBlurHandler) window.removeEventListener('blur', appMenuBlurHandler);
     $('#appMenuBar').dataset.ready = 'true';
     const run = (action, value) => () => handleMenu(action, value);
-    const edit = (command) => () => {
-      document.execCommand(command);
-      activeTab()?.vditor?.focus();
-    };
     const currentEditorMode = () => {
       const tab = activeTab();
       return tab?.vditor && tab.ready
@@ -2084,7 +2493,7 @@
         : tab?.mode || state.settings.editMode;
     };
     const menus = {
-      file: () => [
+      main: () => [
         ['menu.new', run('new'), 'Ctrl+N'],
         ['menu.open', run('open'), 'Ctrl+O'],
         ['menu.openFolder', run('open-folder')],
@@ -2096,18 +2505,6 @@
         ['menu.exportPdf', run('export-pdf')],
         ...(state.tabs.length ? [null, ['menu.closeTab', run('close-tab'), 'Ctrl+W']] : []),
         null,
-        ['menu.quit', run('quit'), 'Ctrl+Q'],
-      ],
-      edit: [
-        ['menu.undo', edit('undo'), 'Ctrl+Z'],
-        ['menu.redo', edit('redo'), 'Ctrl+Y'],
-        null,
-        ['menu.cut', edit('cut'), 'Ctrl+X'],
-        ['menu.copy', edit('copy'), 'Ctrl+C'],
-        ['menu.paste', edit('paste'), 'Ctrl+V'],
-        ['menu.selectAll', edit('selectAll'), 'Ctrl+A'],
-      ],
-      view: [
         {
           label: 'menu.editMode',
           children: [
@@ -2129,6 +2526,7 @@
               () => setLayoutPart('toolbar'),
               '',
               () => state.settings.toolbarVisible !== false,
+              () => !activeTab(),
             ],
             [
               'menu.layoutSidebar',
@@ -2137,31 +2535,17 @@
               () => state.settings.sidebarVisible,
             ],
             [
-              'menu.layoutTabbar',
-              () => setLayoutPart('tabbar'),
-              '',
-              () => !$('#app').classList.contains('tabbar-hidden'),
-            ],
-            [
               'menu.layoutStatusbar',
-              () => setLayoutPart('statusbar'),
+              () => $('#app').classList.toggle('statusbar-hidden'),
               '',
               () => !$('#app').classList.contains('statusbar-hidden'),
             ],
-            null,
-            ['menu.resetLayout', () => resetLayout()],
           ],
         },
         null,
         ['menu.settings', run('settings'), 'Ctrl+,'],
-        ['menu.fullscreen', () => window.appAPI.toggleFullscreen(), 'F11'],
-      ],
-      help: [
-        ['menu.about', run('about')],
-        [
-          'menu.vditorGithub',
-          () => window.appAPI.openExternal('https://github.com/Vanessa219/vditor'),
-        ],
+        null,
+        ['menu.quit', run('quit'), 'Ctrl+Q'],
       ],
     };
     let reopenMenuOnHover = false;
@@ -2200,7 +2584,9 @@
             if (!popup.classList.contains('submenu'))
               $$('.app-menu-popup.submenu').forEach((menu) => menu.remove());
           };
-          const checked = item[3] ? item[3]() : null;
+          const disabled = item[4] ? item[4]() : false;
+          const checked = disabled ? null : item[3] ? item[3]() : null;
+          button.disabled = disabled;
           button._appMenuItem = item;
           button.innerHTML = `<span><i class="checkmark">${checked === null ? '' : checked ? '✓' : ''}</i>${escapeHTML(t(item[0]))}</span><small>${escapeHTML(item[2] || '')}</small>`;
           button.onclick = (event) => {
@@ -2264,29 +2650,94 @@
   }
 
   function setLayoutPart(part) {
-    if (part === 'toolbar') {
-      state.settings.toolbarVisible = state.settings.toolbarVisible === false;
-      $('#app').classList.toggle('toolbar-hidden', !state.settings.toolbarVisible);
-      window.appAPI.saveSettings({ toolbarVisible: state.settings.toolbarVisible });
-    } else if (part === 'tabbar') $('#app').classList.toggle('tabbar-hidden');
-    else if (part === 'statusbar') $('#app').classList.toggle('statusbar-hidden');
+    if (part !== 'toolbar') return;
+    state.settings.toolbarVisible = state.settings.toolbarVisible === false;
+    $('#app').classList.toggle('toolbar-hidden', !state.settings.toolbarVisible);
+    window.appAPI.saveSettings({ toolbarVisible: state.settings.toolbarVisible });
   }
 
-  function resetLayout() {
-    state.settings.toolbarVisible = true;
-    state.settings.sidebarVisible = true;
-    $('#app').classList.remove('toolbar-hidden', 'tabbar-hidden', 'statusbar-hidden');
-    $('#sidebar').classList.remove('collapsed');
-    window.appAPI.saveSettings({ toolbarVisible: true, sidebarVisible: true });
+  function syncTopControlsWidth() {
+    const app = $('#app');
+    const sidebar = $('#sidebar');
+    const menu = $('#appMenuBar');
+    const actions = $('.titlebar-file-actions');
+    if (
+      !app ||
+      !sidebar ||
+      !menu ||
+      !actions ||
+      sidebar.classList.contains('collapsed') ||
+      app.classList.contains('sidebar-transitioning')
+    )
+      return;
+    const appLeft = app.getBoundingClientRect().left;
+    const sidebarWidth = sidebar.getBoundingClientRect().right - appLeft;
+    applyTopControlsWidth(sidebarWidth, menu.getBoundingClientRect().width);
+  }
+
+  function applyTopControlsWidth(sidebarWidth, menuWidth) {
+    const app = $('#app');
+    const actions = $('.titlebar-file-actions');
+    app.style.setProperty('--top-controls-width', `${sidebarWidth}px`);
+    app.style.setProperty('--sidebar-current', `${sidebarWidth}px`);
+    actions.style.flexBasis = `${Math.max(0, sidebarWidth - menuWidth)}px`;
+  }
+
+  function sidebarMinimumWidth() {
+    const appLeft = $('#app').getBoundingClientRect().left;
+    const saveRight = $('#saveFile').getBoundingClientRect().right;
+    const actionStyle = getComputedStyle($('.titlebar-file-actions'));
+    return Math.ceil(
+      saveRight -
+        appLeft +
+        parseFloat(actionStyle.paddingRight) +
+        parseFloat(actionStyle.borderRightWidth),
+    );
+  }
+
+  function finishSidebarTransition() {
+    const sidebar = $('#sidebar');
+    clearTimeout(sidebarTransitionTimer);
+    sidebarTransitionTimer = undefined;
+    if (sidebarTransitionEndHandler) {
+      sidebar.removeEventListener('transitionend', sidebarTransitionEndHandler);
+      sidebarTransitionEndHandler = undefined;
+    }
+    $('#app').classList.remove('sidebar-transitioning');
+    syncTopControlsWidth();
   }
 
   function toggleSidebar(force) {
     const visible =
       typeof force === 'boolean' ? force : $('#sidebar').classList.contains('collapsed');
-    $('#sidebar').classList.toggle('collapsed', !visible);
+    const app = $('#app');
+    const sidebar = $('#sidebar');
+    const wasVisible = !sidebar.classList.contains('collapsed');
+    if (wasVisible === visible) {
+      state.settings.sidebarVisible = visible;
+      $('#toggleSidebar')?.setAttribute('aria-pressed', String(visible));
+      syncTopControlsWidth();
+      return;
+    }
+    finishSidebarTransition();
+    app.classList.add('sidebar-transitioning');
+    if (visible) {
+      const menuWidth = $('#appMenuBar').getBoundingClientRect().width;
+      applyTopControlsWidth(state.settings.sidebarWidth, menuWidth);
+    } else {
+      $('.titlebar-file-actions').style.flexBasis = 'auto';
+    }
+    sidebar.classList.toggle('collapsed', !visible);
+    app.classList.toggle('sidebar-collapsed', !visible);
     state.settings.sidebarVisible = visible;
     $('#toggleSidebar')?.setAttribute('aria-pressed', String(visible));
     window.appAPI.saveSettings({ sidebarVisible: visible });
+    sidebarTransitionEndHandler = (event) => {
+      if (event.target !== sidebar || event.propertyName !== 'width') return;
+      finishSidebarTransition();
+    };
+    sidebar.addEventListener('transitionend', sidebarTransitionEndHandler);
+    sidebarTransitionTimer = setTimeout(finishSidebarTransition, 220);
   }
 
   function setupEvents() {
@@ -2295,7 +2746,6 @@
     $('#windowMinimize').onclick = () => window.appAPI.minimize();
     $('#windowMaximize').onclick = () => window.appAPI.maximize();
     $('#windowClose').onclick = () => window.appAPI.closeWindow();
-    $('#windowTitle').onclick = () => appMenuCloseHandler?.();
     $('#confirmModal').onclick = (event) => {
       if (event.target === $('#confirmModal')) closeConfirmDialog('cancel');
     };
@@ -2306,6 +2756,53 @@
     $('#addTab').onclick = newTab;
     $('#openFile').onclick = chooseFiles;
     $('#saveFile').onclick = () => saveTab();
+    $('#findToggleReplace').onclick = toggleReplace;
+    $('#findPrevious').onclick = () => moveFindMatch(-1);
+    $('#findNext').onclick = () => moveFindMatch(1);
+    $('#findClose').onclick = closeFind;
+    $('#externalReload').onclick = () => void reloadExternalChange(activeTab());
+    $('#externalIgnore').onclick = () => ignoreExternalChange(activeTab());
+    $('#replaceOne').onclick = replaceFindMatch;
+    $('#replaceAll').onclick = replaceAllFindMatches;
+    $('#findInput').addEventListener('input', () => {
+      const queryChanged = $('#findInput').value !== findQuery;
+      refreshFind({ preserveIndex: !queryChanged, reveal: false });
+      clearTimeout(findRefreshTimer);
+      findRefreshTimer = setTimeout(() => {
+        if (findWidgetVisible() && $('#findInput').value === findQuery) revealFindMatch();
+      }, 120);
+    });
+    $('#findWidget').addEventListener('focusout', () => {
+      requestAnimationFrame(() => {
+        if (findWidgetVisible() && !$('#findWidget').contains(document.activeElement)) {
+          $('#findInput').focus({ preventScroll: true });
+        }
+      });
+    });
+    window.addEventListener(
+      'keydown',
+      (event) => {
+        if (!findWidgetVisible() || !$('#findWidget').contains(event.target)) return;
+        event.stopImmediatePropagation();
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+          event.preventDefault();
+          void saveTab();
+        } else if (event.key === 'F3') {
+          event.preventDefault();
+          moveFindMatch(event.shiftKey ? -1 : 1);
+        } else if (event.key === 'Enter' && event.target === $('#findInput')) {
+          event.preventDefault();
+          moveFindMatch(event.shiftKey ? -1 : 1);
+        } else if (event.key === 'Enter' && event.target === $('#replaceInput')) {
+          event.preventDefault();
+          replaceFindMatch();
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          closeFind();
+        }
+      },
+      true,
+    );
     $('#emptyNewFile').onclick = newTab;
     $('#emptyOpenFile').onclick = chooseFiles;
     $('#toggleSidebar').onclick = () => toggleSidebar();
@@ -2322,14 +2819,18 @@
       await applyTheme(theme);
     };
     $('#refreshTree').onclick = refreshTree;
+    $('#fileTree').addEventListener('contextmenu', (event) => {
+      if (event.target.closest('.tree-row, button')) return;
+      showWorkspaceTreeMenu(event);
+    });
     $('#workspaceHeading').onclick = () => {
       if (!state.workspace) chooseFolder();
     };
     $('#openFolderEmpty').onclick = chooseFolder;
-    $$('.sidebar-tabs button').forEach(
+    $$('.toolbar-sidebar-tabs button').forEach(
       (button) =>
         (button.onclick = () => {
-          $$('.sidebar-tabs button').forEach((item) =>
+          $$('.toolbar-sidebar-tabs button').forEach((item) =>
             item.classList.toggle('active', item === button),
           );
           $$('.sidebar-view').forEach((view) =>
@@ -2391,6 +2892,16 @@
         return;
       }
       if (event.key === 'Escape') $('#app').classList.remove('fullscreen-menu-visible');
+      if (event.key === 'Escape' && findWidgetVisible()) {
+        event.preventDefault();
+        closeFind();
+        return;
+      }
+      if (event.key === 'F3' && findWidgetVisible()) {
+        event.preventDefault();
+        moveFindMatch(event.shiftKey ? -1 : 1);
+        return;
+      }
       if (event.key === 'F11') {
         event.preventDefault();
         window.appAPI.toggleFullscreen();
@@ -2398,7 +2909,10 @@
       }
       if (!(event.ctrlKey || event.metaKey)) return;
       const key = event.key.toLowerCase();
-      if (key === 's') {
+      if (key === 'i' && event.shiftKey) {
+        event.preventDefault();
+        window.appAPI.toggleDevTools();
+      } else if (key === 's') {
         event.preventDefault();
         saveTab(activeTab(), event.shiftKey);
       } else if (key === 'o') {
@@ -2410,6 +2924,9 @@
       } else if (key === 'b') {
         event.preventDefault();
         toggleSidebar();
+      } else if (key === 'f') {
+        event.preventDefault();
+        openFind();
       } else if (key === ',') {
         event.preventDefault();
         openSettings();
@@ -2424,26 +2941,44 @@
     });
     const resize = $('#sidebarResize');
     let resizing = false;
-    resize.onmousedown = () => {
+    let resizeMinimum = 0;
+    let resizeMenuWidth = 0;
+    let resizeAppLeft = 0;
+    const startSidebarResize = () => {
       resizing = true;
+      resizeMinimum = sidebarMinimumWidth();
+      resizeMenuWidth = $('#appMenuBar').getBoundingClientRect().width;
+      resizeAppLeft = $('#app').getBoundingClientRect().left;
+      $('#app').style.setProperty('--sidebar-min-width', `${resizeMinimum}px`);
       document.body.classList.add('resizing');
     };
+    resize.onmousedown = startSidebarResize;
     window.addEventListener('mousemove', (event) => {
       if (resizing) {
-        const width = Math.max(180, Math.min(500, event.clientX));
+        const width = Math.max(resizeMinimum, Math.min(500, event.clientX - resizeAppLeft));
         $('#sidebar').style.width = `${width}px`;
+        applyTopControlsWidth(width, resizeMenuWidth);
         state.settings.sidebarWidth = width;
-        scheduleTreeNameEllipses();
       }
     });
     window.addEventListener('mouseup', () => {
       if (resizing) {
         resizing = false;
         document.body.classList.remove('resizing');
+        scheduleTreeNameEllipses();
+        syncTopControlsWidth();
         window.appAPI.saveSettings({ sidebarWidth: state.settings.sidebarWidth });
       }
     });
-    new ResizeObserver(scheduleTreeNameEllipses).observe($('#sidebar'));
+    new ResizeObserver(() => {
+      if (!resizing) scheduleTreeNameEllipses();
+    }).observe($('#sidebar'));
+    new ResizeObserver(scheduleTreeNameEllipses).observe($('#fileTree'));
+    const topControlsObserver = new ResizeObserver(() => {
+      if (!resizing) syncTopControlsWidth();
+    });
+    topControlsObserver.observe($('#sidebar'));
+    topControlsObserver.observe($('#appMenuBar'));
     setupAutoHideScrollbar($('#fileTree'));
     setupAutoHideScrollbar($('#outlineTree'));
     setupAutoHideScrollbar($('#settingsForm'));
@@ -2505,7 +3040,14 @@
     state.defaultSettings = await window.appAPI.getDefaultSettings();
     applyLocale(state.settings.locale);
     setupEvents();
+    const minimumSidebarWidth = sidebarMinimumWidth();
+    state.settings.sidebarWidth = Math.max(
+      minimumSidebarWidth,
+      Number(state.settings.sidebarWidth) || minimumSidebarWidth,
+    );
+    $('#app').style.setProperty('--sidebar-min-width', `${minimumSidebarWidth}px`);
     $('#sidebar').style.width = `${state.settings.sidebarWidth}px`;
+    $('#app').style.setProperty('--sidebar-current', `${state.settings.sidebarWidth}px`);
     toggleSidebar(state.settings.sidebarVisible);
     $('#app').classList.toggle('fullscreen', await window.appAPI.isFullscreen());
     updateMaximizedState(await window.appAPI.isMaximized());
@@ -2532,6 +3074,7 @@
       if (active) switchTab(active.id);
     }
     if (!state.tabs.length) updateActiveUI();
+    syncTopControlsWidth();
     window.appAPI.rendererReady();
   }
 

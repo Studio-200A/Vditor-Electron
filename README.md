@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Studio-200A/Vditor-Electron/releases"><img src="https://img.shields.io/badge/version-0.1.2-blue" alt="Version 0.1.2" /></a>
+  <a href="https://github.com/Studio-200A/Vditor-Electron/releases"><img src="https://img.shields.io/badge/version-0.1.3-blue" alt="Version 0.1.3" /></a>
   <a href="https://github.com/Studio-200A/Vditor-Electron/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License" /></a>
   <a href="https://github.com/Studio-200A/Vditor-Electron"><img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey" alt="Linux, Windows and macOS" /></a>
 </p>
@@ -42,7 +42,8 @@ Vditor Desktop is a local Markdown writing app built with [Electron](https://git
 - **Markdown without lock-in.** Open and save regular `.md` files directly. There is no account, cloud sync, proprietary document format, or required service.
 - **Three ways to write.** Move between WYSIWYG, instant rendering, and split preview mode without leaving the document.
 - **Desktop-grade file handling.** Open files from the command line or a file manager, work with a folder as a workspace, and recover tabs and window state between sessions.
-- **A focused interface.** A custom title bar, unified toolbar, tabs, explorer, outline, and status bar keep the controls close without turning the editor into a dashboard.
+- **Workspace-aware file operations.** Create numbered untitled documents, create and rename files inline, open a workspace from the explorer context menu, and move files to the trash without leaving the editor.
+- **A focused interface.** A compact workbench bar keeps menus, file actions, tabs, and window controls together, while the editor toolbar appears only when needed.
 - **Rich Markdown.** Keep Vditor's support for formulas, diagrams, charts, footnotes, syntax highlighting, tables of contents, and media previews.
 - **Local-first by design.** Configuration and Chromium data are stored locally in platform-appropriate directories. The application does not upload your documents.
 
@@ -62,8 +63,14 @@ Switch modes from the unified toolbar or **View → Editing Mode**. Split Previe
 - Expand and collapse directories, filter by extension, create and rename files, move items to the trash, or reveal them in the system file manager.
 - Read an H1–H6 document outline and jump to headings from any editing mode.
 - Keep multiple documents open in numbered untitled tabs, with independent undo history and modified state.
+- Drag tabs to arrange them in the order that fits your work.
+- Collapse the explorer to give the editor more room; its file actions fold away with it while menus and shortcuts remain available.
 - Save, Save As, export HTML or PDF, and recover the last workspace and window state.
+- Find and replace text in the active document with a compact `Ctrl/Cmd + F` panel.
+- Detect changes to files in the active workspace. Clean documents reload automatically; documents with local edits show a persistent conflict banner and pause autosave until you choose how to proceed.
 - Paste or upload images to a configurable relative assets directory. Relative local images and online images can be previewed in all three modes.
+
+External file monitoring currently covers files in the active workspace and Untitled documents whose expected workspace path appears. Files opened outside the workspace, file deletion recovery, directory moves, atomic saves, and conflict recovery across application restarts remain planned reliability work; keep backups of important documents.
 
 ## Themes and languages
 
@@ -120,6 +127,7 @@ Linux is the primary development and validation platform at present. Windows and
 | Open file         | `Ctrl/Cmd + O`         |
 | Save              | `Ctrl/Cmd + S`         |
 | Save As           | `Ctrl/Cmd + Shift + S` |
+| Find and replace  | `Ctrl/Cmd + F`         |
 | Close tab         | `Ctrl/Cmd + W`         |
 | Toggle explorer   | `Ctrl/Cmd + B`         |
 | Open settings     | `Ctrl/Cmd + ,`         |
@@ -152,7 +160,7 @@ The Vditor dependency is intentionally pinned to 3.11.3. Before upgrading it, re
 
 ## Contributing
 
-Development happens on the `dev` branch and is merged into `master` through pull requests. Useful contributions include:
+Development happens on version- or feature-specific `dev-*` / `feat-*` branches and is merged into `master` through pull requests. Useful contributions include:
 
 - reproducible bug reports with OS, desktop environment, display protocol, version, and steps;
 - fixes and tests for editor, file, workspace, and platform behavior;

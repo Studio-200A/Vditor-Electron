@@ -26,9 +26,10 @@ describe('renderer shell', () => {
   });
 
   it('contains the merged menu/title bar and window controls', () => {
-    expect(document.querySelectorAll('#appMenuBar > button[data-menu]')).toHaveLength(4);
+    expect(document.querySelectorAll('#appMenuBar > button[data-menu]')).toHaveLength(1);
+    expect(document.querySelector('#appMenuBar [data-menu="main"]')).not.toBeNull();
     expect(document.querySelector('#toggleSidebar')).not.toBeNull();
-    expect(document.querySelector('#toggleSidebar')?.parentElement?.id).toBe('appMenuBar');
+    expect(document.querySelector('.titlebar-file-actions > #toggleSidebar')).not.toBeNull();
     expect(document.querySelector('#settingsButton')).toBeNull();
     expect(document.querySelector('[data-menu="mode"]')).toBeNull();
     expect(document.querySelector('[data-menu="theme"]')).toBeNull();
@@ -36,6 +37,19 @@ describe('renderer shell', () => {
     expect(document.querySelector('#windowMinimize')).not.toBeNull();
     expect(document.querySelector('#windowMaximize')).not.toBeNull();
     expect(document.querySelector('#windowClose')).not.toBeNull();
+    expect(rendererScript).toContain("app.classList.toggle('sidebar-collapsed', !visible)");
+    expect(rendererScript).toContain("app.classList.add('sidebar-transitioning')");
+    expect(css).toContain('.titlebar-file-actions');
+    expect(css).toContain('.toolbar-sidebar-tabs');
+    expect(css).toMatch(/\.titlebar-file-actions svg\s*\{[^}]*stroke-width:\s*1\.7/s);
+    expect(document.querySelector('.app-menu-logo path:first-child')).not.toBeNull();
+    expect(css).toContain('.app-menu-logo path:first-child');
+    expect(css).toContain("mask-image: url('../assets/titlebar-sidebar.svg')");
+    expect(css).toContain("mask-image: url('../assets/titlebar-new.svg')");
+    expect(css).toContain("mask-image: url('../assets/titlebar-open.svg')");
+    expect(css).toContain("mask-image: url('../assets/titlebar-save.svg')");
+    expect(css).toMatch(/background:\s*linear-gradient\(\s*120deg/s);
+    expect(css).toContain('.tabbar.app-scrollbar::-webkit-scrollbar');
     expect(css).toMatch(/\.window-controls button:hover\s*\{[^}]*background:/s);
     expect(css).toMatch(
       /\.window-controls button\s*\{[^}]*transition:[^}]*color 0\.16s ease[^}]*background-color 0\.16s ease/s,
@@ -183,6 +197,39 @@ describe('renderer shell', () => {
     expect(document.querySelector('#noTabs')).not.toBeNull();
     expect(document.querySelector('#emptyNewFile')).not.toBeNull();
     expect(document.querySelector('#emptyOpenFile')).not.toBeNull();
+  });
+
+  it('provides a localized document find and replace widget', () => {
+    const nativeMenu = fs.readFileSync(path.resolve('src/main/menu.ts'), 'utf8');
+    expect(document.querySelector('#findWidget.hidden')).not.toBeNull();
+    expect(
+      document.querySelector('#findInput[data-i18n-placeholder="find.placeholder"]'),
+    ).not.toBeNull();
+    expect(
+      document.querySelector('#replaceInput[data-i18n-placeholder="find.replacePlaceholder"]'),
+    ).not.toBeNull();
+    expect(document.querySelector('#findCount')).not.toBeNull();
+    expect(rendererScript).toContain("else if (key === 'f')");
+    expect(rendererScript).toContain("else if (key === 'f')");
+    expect(nativeMenu).not.toContain("accelerator: 'CmdOrCtrl+F'");
+    expect(vditorAdapterScript).toContain('function selectTextMatch');
+    expect(vditorAdapterScript).toContain('function highlightTextMatches');
+    expect(css).toContain('::highlight(vditor-desktop-find-active)');
+    expect(document.querySelectorAll('#findWidget button svg')).toHaveLength(4);
+    expect(document.querySelector('#replaceOne .find-replace-one-icon')).not.toBeNull();
+    expect(document.querySelector('#replaceAll .find-replace-all-icon')).not.toBeNull();
+    expect(css).toContain("mask-image: url('../assets/replace.svg')");
+    expect(css).toContain("mask-image: url('../assets/replace-all.svg')");
+    expect(css).toContain('background: currentColor');
+    expect(rendererScript).toContain('VDITOR.revealTextMatch(tab.host, mode, query, findIndex)');
+    expect(rendererScript).toContain("$('#findWidget').addEventListener('focusout'");
+    expect(rendererScript).toContain('event.stopImmediatePropagation()');
+    expect(rendererScript).toContain("event.key === 'Enter' && event.target === $('#findInput')");
+    expect(rendererScript).toContain("event.key.toLowerCase() === 's'");
+    expect(rendererScript).not.toContain(
+      'moveFindMatch(event.shiftKey ? -1 : 1);\n        }\n      },\n      true,',
+    );
+    expect(css).toMatch(/\.find-widget\s*\{[^}]*position:\s*absolute[^}]*z-index:\s*12/s);
   });
 
   it('keeps explorer entries non-draggable', () => {
@@ -379,15 +426,10 @@ describe('renderer shell', () => {
     expect(css).toContain('background-color 320ms');
   });
 
-  it('adds theme-aware top shadows to the content boundaries', () => {
+  it('adds theme-aware top shadows to the sidebar and editor toolbar boundaries', () => {
     expect(css).toContain('--top-surface-shadow:');
     expect(css).toMatch(/\.sidebar-tabs\s*\{[^}]*box-shadow:\s*var\(--top-surface-shadow\)/s);
-    expect(css).toMatch(
-      /#app:not\(\.tabbar-hidden\) \.tabbar\s*\{[^}]*box-shadow:\s*var\(--top-surface-shadow\)/s,
-    );
-    expect(css).toMatch(
-      /#app\.tabbar-hidden \.titlebar,[\s\S]*?box-shadow:\s*var\(--top-surface-shadow\)/s,
-    );
+    expect(css).toMatch(/\.titlebar\s*\{[^}]*border-bottom:\s*1px solid var\(--border\)/s);
   });
 
   it('prevents accidental text selection in settings while keeping fields selectable', () => {

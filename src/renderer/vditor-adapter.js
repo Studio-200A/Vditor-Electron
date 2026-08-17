@@ -122,6 +122,109 @@
     return Array.from(new Set(candidates.filter(Boolean)));
   }
 
+  function activeEditor(host, mode) {
+    const parts = editorParts(host);
+    if (mode === 'sv') return parts.source;
+    if (mode === 'wysiwyg') return parts.wysiwyg;
+    return parts.instantRendering;
+  }
+
+  const findHighlightName = 'vditor-desktop-find';
+  const activeFindHighlightName = 'vditor-desktop-find-active';
+
+  function textMatches(host, mode, query, caseSensitive = false) {
+    const editor = activeEditor(host, mode);
+    if (!editor || !query) return [];
+    const nodes = [];
+    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      if (node.nodeValue) nodes.push(node);
+    }
+    const text = nodes.map((item) => item.nodeValue).join('');
+    const haystack = caseSensitive ? text : text.toLocaleLowerCase();
+    const needle = caseSensitive ? query : query.toLocaleLowerCase();
+    const matches = [];
+    let from = 0;
+    while (from <= haystack.length - needle.length) {
+      const start = haystack.indexOf(needle, from);
+      if (start < 0) break;
+      from = start + Math.max(needle.length, 1);
+      const end = start + query.length;
+      let offset = 0;
+      let startNode = null;
+      let endNode = null;
+      let startOffset = 0;
+      let endOffset = 0;
+      for (const textNode of nodes) {
+        const next = offset + textNode.nodeValue.length;
+        if (!startNode && start >= offset && start <= next) {
+          startNode = textNode;
+          startOffset = start - offset;
+        }
+        if (end >= offset && end <= next) {
+          endNode = textNode;
+          endOffset = end - offset;
+          break;
+        }
+        offset = next;
+      }
+      if (!startNode || !endNode) continue;
+      const range = document.createRange();
+      range.setStart(startNode, startOffset);
+      range.setEnd(endNode, endOffset);
+      matches.push({ start, end, range });
+    }
+    return matches;
+  }
+
+  function clearFindHighlights() {
+    if (!globalThis.CSS?.highlights) return;
+    globalThis.CSS.highlights.delete(findHighlightName);
+    globalThis.CSS.highlights.delete(activeFindHighlightName);
+  }
+
+  function highlightTextMatches(host, mode, query, activeIndex, caseSensitive = false) {
+    const matches = textMatches(host, mode, query, caseSensitive);
+    clearFindHighlights();
+    if (!globalThis.CSS?.highlights || typeof globalThis.Highlight !== 'function') return matches;
+    if (matches.length) {
+      globalThis.CSS.highlights.set(
+        findHighlightName,
+        new globalThis.Highlight(...matches.map((match) => match.range)),
+      );
+    }
+    const active = matches[activeIndex];
+    if (active)
+      globalThis.CSS.highlights.set(
+        activeFindHighlightName,
+        new globalThis.Highlight(active.range),
+      );
+    return matches;
+  }
+
+  function revealTextMatch(host, mode, query, occurrence = 0, caseSensitive = false) {
+    const matches = highlightTextMatches(host, mode, query, occurrence, caseSensitive);
+    const match = matches[occurrence];
+    if (!match) return false;
+    const target =
+      (match.range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+        ? match.range.commonAncestorContainer
+        : match.range.commonAncestorContainer.parentElement) || activeEditor(host, mode);
+    target.scrollIntoView?.({ block: 'center', inline: 'nearest' });
+    return true;
+  }
+
+  function selectTextMatch(host, mode, query, occurrence = 0, caseSensitive = false) {
+    const matches = highlightTextMatches(host, mode, query, occurrence, caseSensitive);
+    const match = matches[occurrence];
+    if (!match) return false;
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(match.range);
+    return true;
+  }
+
   function normalizedAnchor(value) {
     const fragment = String(value || '').replace(/^#/, '');
     try {
@@ -287,6 +390,12 @@
     headingTargets,
     innerScroller,
     scrollContainers,
+    activeEditor,
+    textMatches,
+    clearFindHighlights,
+    highlightTextMatches,
+    revealTextMatch,
+    selectTextMatch,
     documentAnchor,
     headingIndexForAnchor,
     resolveRelativeImageSources,

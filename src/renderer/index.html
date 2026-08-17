@@ -15,6 +15,15 @@
     <div id="app">
       <div id="windowTitlebar" class="window-titlebar">
         <nav id="appMenuBar" class="app-menu-bar">
+          <button data-menu="main">
+            <svg class="app-menu-logo" viewBox="0 0 128 128" aria-hidden="true">
+              <path d="M25 34 59 54v48L25 82z" />
+              <path d="m69 54 34-20v48l-34 20z" />
+            </svg>
+            <span data-i18n="menu.app">Vditor Desktop</span>
+          </button>
+        </nav>
+        <div class="titlebar-file-actions" aria-label="File actions">
           <button
             id="toggleSidebar"
             class="titlebar-sidebar-toggle"
@@ -27,12 +36,37 @@
               <path d="M9 4v16M5.5 8h1.5M5.5 11.5h1.5M5.5 15h1.5M5.5 18h1.5" />
             </svg>
           </button>
-          <button data-menu="file" data-i18n="menu.file">File</button>
-          <button data-menu="edit" data-i18n="menu.edit">Edit</button>
-          <button data-menu="view" data-i18n="menu.view">View</button>
-          <button data-menu="help" data-i18n="menu.help">Help</button>
-        </nav>
-        <div id="windowTitle" class="window-title">Vditor Desktop</div>
+          <button
+            id="newFile"
+            class="icon-btn"
+            data-i18n-title="toolbar.newFile"
+            aria-label="New File"
+          >
+            <svg viewBox="0 0 24"><path d="M6 3h8l4 4v14H6zM14 3v5h5M12 11v6M9 14h6" /></svg>
+          </button>
+          <button
+            id="openFile"
+            class="icon-btn"
+            data-i18n-title="toolbar.openFile"
+            aria-label="Open File"
+          >
+            <svg viewBox="0 0 24"><path d="M3.5 7.5h6l1.8 2h9.2v9h-17zM3.5 7.5V5.5h6l1.8 2" /></svg>
+          </button>
+          <button
+            id="saveFile"
+            class="icon-btn"
+            data-i18n-title="toolbar.saveFile"
+            aria-label="Save File"
+          >
+            <svg viewBox="0 0 24"><path d="M5 3h12l2 2v16H5zM8 3v6h8V3M8 21v-7h8v7" /></svg>
+          </button>
+        </div>
+        <div id="tabBar" class="tabbar">
+          <button id="addTab" class="add-tab" data-i18n-title="tab.new" title="New Tab">＋</button>
+          <div class="tabbar-drag-fill" aria-hidden="true"></div>
+        </div>
+        <div class="titlebar-drag-region" aria-hidden="true"></div>
+        <div id="windowTitle" class="window-title" aria-hidden="true">Vditor Desktop</div>
         <div class="window-controls">
           <button id="windowMinimize" data-i18n-title="window.minimize" aria-label="Minimize">
             <svg viewBox="0 0 12 12"><path d="M1 8.5h10" /></svg>
@@ -50,18 +84,14 @@
           </button>
         </div>
       </div>
-      <header class="titlebar" aria-label="应用工具栏">
-        <div class="app-tools">
+      <header class="titlebar" aria-label="Editor toolbar">
+        <div class="toolbar-sidebar-tabs sidebar-tabs" aria-label="Sidebar view">
+          <button data-view="files" class="active" data-i18n="sidebar.files">Files</button
+          ><button data-view="outline" data-i18n="sidebar.outline">Outline</button>
+        </div>
+        <div class="legacy-file-actions hidden" aria-hidden="true">
           <button
-            id="newFile"
-            class="icon-btn"
-            data-i18n-title="toolbar.newFile"
-            aria-label="New File"
-          >
-            <svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v5h5M12 11v6M9 14h6" /></svg>
-          </button>
-          <button
-            id="openFile"
+            id="obsoleteLegacyOpenFile"
             class="icon-btn"
             data-i18n-title="toolbar.openFile"
             aria-label="Open File"
@@ -71,7 +101,7 @@
             </svg>
           </button>
           <button
-            id="saveFile"
+            id="obsoleteLegacySaveFile"
             class="icon-btn"
             data-i18n-title="toolbar.saveFile"
             aria-label="Save File"
@@ -83,10 +113,6 @@
       </header>
       <div class="workbench">
         <aside id="sidebar" class="sidebar">
-          <div class="sidebar-tabs">
-            <button data-view="files" class="active" data-i18n="sidebar.files">Files</button
-            ><button data-view="outline" data-i18n="sidebar.outline">Outline</button>
-          </div>
           <section id="filesView" class="sidebar-view active">
             <div class="side-toolbar">
               <button id="workspaceHeading" class="workspace-heading" title="Open Folder">
@@ -112,12 +138,72 @@
           <div id="sidebarResize" class="sidebar-resize"></div>
         </aside>
         <main class="main-area">
-          <div id="tabBar" class="tabbar">
-            <button id="addTab" class="add-tab" data-i18n-title="tab.new" title="New Tab">
-              ＋
-            </button>
-          </div>
           <div id="editorArea" class="editor-area">
+            <section id="externalChangeBanner" class="external-change-banner hidden" role="status">
+              <span id="externalChangeMessage"></span>
+              <div class="external-change-actions">
+                <button id="externalReload" type="button" data-i18n="external.reload">
+                  Discard Tab Changes and Reload
+                </button>
+                <button id="externalIgnore" type="button" data-i18n="external.ignore">
+                  Ignore External Change
+                </button>
+              </div>
+            </section>
+            <section id="findWidget" class="find-widget hidden" aria-label="Find and replace">
+              <div class="find-row">
+                <button
+                  id="findToggleReplace"
+                  class="find-toggle"
+                  data-i18n-title="find.toggleReplace"
+                  aria-expanded="false"
+                >
+                  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5" /></svg>
+                </button>
+                <div class="find-input-wrap">
+                  <input
+                    id="findInput"
+                    type="text"
+                    autocomplete="off"
+                    spellcheck="false"
+                    data-i18n-placeholder="find.placeholder"
+                  />
+                  <span id="findCount" class="find-count">0 / 0</span>
+                </div>
+                <button id="findPrevious" data-i18n-title="find.previous" aria-label="Previous">
+                  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 10 5-5 5 5" /></svg>
+                </button>
+                <button id="findNext" data-i18n-title="find.next" aria-label="Next">
+                  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3 6 5 5 5-5" /></svg>
+                </button>
+                <button id="findClose" data-i18n-title="find.close" aria-label="Close">
+                  <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="m3.5 3.5 9 9m0-9-9 9" />
+                  </svg>
+                </button>
+              </div>
+              <div id="replaceRow" class="find-row replace-row hidden">
+                <span class="find-toggle-spacer"></span>
+                <input
+                  id="replaceInput"
+                  type="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  data-i18n-placeholder="find.replacePlaceholder"
+                />
+                <button id="replaceOne" data-i18n-title="find.replace" aria-label="Replace">
+                  <span class="find-replace-icon find-replace-one-icon" aria-hidden="true"></span>
+                </button>
+                <button
+                  id="replaceAll"
+                  class="replace-all"
+                  data-i18n-title="find.replaceAll"
+                  aria-label="Replace All"
+                >
+                  <span class="find-replace-icon find-replace-all-icon" aria-hidden="true"></span>
+                </button>
+              </div>
+            </section>
             <div id="noTabs" class="no-tabs hidden">
               <div data-i18n="empty.noTabs">No opened tabs</div>
               <div class="no-tabs-actions">

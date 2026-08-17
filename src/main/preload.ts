@@ -9,7 +9,8 @@ const on = (channel: string, callback: (...args: any[]) => void) => {
 contextBridge.exposeInMainWorld('fileAPI', {
   openFileDialog: () => ipcRenderer.invoke('file:openDialog'),
   openFolderDialog: () => ipcRenderer.invoke('file:openFolderDialog'),
-  saveFileDialog: (defaultPath?: string) => ipcRenderer.invoke('file:saveDialog', defaultPath),
+  saveFileDialog: (defaultPath?: string, defaultDirectory?: string) =>
+    ipcRenderer.invoke('file:saveDialog', defaultPath, defaultDirectory),
   exportDialog: (type: 'html' | 'pdf', defaultPath?: string) =>
     ipcRenderer.invoke('file:exportDialog', type, defaultPath),
   readFile: (filePath: string) => ipcRenderer.invoke('file:read', filePath),
@@ -50,6 +51,7 @@ contextBridge.exposeInMainWorld('appAPI', {
   setZoomFactor: (zoom: number) => ipcRenderer.invoke('app:setZoomFactor', zoom),
   openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
   showItemInFolder: (filePath: string) => ipcRenderer.invoke('app:showItemInFolder', filePath),
+  openDirectory: (dirPath: string) => ipcRenderer.invoke('app:openDirectory', dirPath),
   exportPDF: (html: string, defaultPath?: string) =>
     ipcRenderer.invoke('app:exportPDF', html, defaultPath),
   toggleFullscreen: () => ipcRenderer.send('app:toggleFullscreen'),
@@ -67,4 +69,5 @@ contextBridge.exposeInMainWorld('appAPI', {
   minimize: () => ipcRenderer.send('window:minimize'),
   maximize: () => ipcRenderer.send('window:maximize'),
   closeWindow: () => ipcRenderer.send('window:close'),
+  toggleDevTools: () => ipcRenderer.send('app:toggleDevTools'),
 });
