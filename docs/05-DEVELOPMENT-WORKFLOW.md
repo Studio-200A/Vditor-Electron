@@ -5,16 +5,16 @@ building, and publishing Vditor Desktop releases.
 
 ## Branch model
 
-- `dev` is the active development branch.
+- Version- or feature-specific `dev-*` / `feat-*` branches are active development branches. For example, `dev-0.1.3` carries the 0.1.3 release work.
 - `master` is release-oriented and should receive completed work through a
   GitHub pull request.
 - Official version tags must be created on the final commit on `master` after
   the pull request has been merged.
 
-Do not create an official release tag on `dev`. The commit on `dev` may differ
+Do not create an official release tag on a development branch. The commit on a development branch may differ
 from the commit that is ultimately created on `master` by the merge strategy.
 
-## Preparing a release on `dev`
+## Preparing a release on a development branch
 
 Before opening a pull request:
 
@@ -27,14 +27,14 @@ Before opening a pull request:
 5. Run the required checks, including formatting, linting, type checking,
    Vditor consistency checks, unit tests, build, and applicable Electron E2E
    tests.
-6. Commit the ready release changes on `dev` and push the branch.
+6. Commit the ready release changes on the development branch and push it.
 
 Keep the release preparation changes in the pull request reviewable and avoid
 changing source files after the release tag has been created.
 
 ## Pull request and merge
 
-Create a pull request from `dev` to `master` on GitHub. Review the diff and
+Create a pull request from the release branch, such as `dev-0.1.3`, to `master` on GitHub. Review the diff and
 confirm that the required checks pass. Merge the pull request using the
 project's chosen GitHub merge strategy.
 
@@ -43,30 +43,6 @@ The release commit is the resulting commit on `master`:
 - with a merge commit, it is the merge commit;
 - with squash merging, it is the squash commit;
 - with rebase merging, it is the final rebased commit.
-
-## Keeping `dev` in sync with `master`
-
-After a pull request is merged, `master` gains a commit (for example a merge
-commit) that does not exist on `dev`. GitHub then reports that `dev` is behind
-`master`. This is expected and does not mean `dev` has lost any work: the merge
-commit only records that `dev`'s changes were integrated, so `dev` already
-contains the content.
-
-Development can continue on `dev` without syncing; the behind count only grows
-by one per merged pull request and does not affect the next diff. When you want
-the count to reset, merge the remote `master` into `dev`:
-
-```bash
-git fetch origin
-git switch dev
-git merge origin/master
-git push
-```
-
-Fetching `origin` first is required because the merge commit was created on
-GitHub, not in the local `master` branch. Merging the stale local `master` (or
-pushing without fetching) reports "already up to date" while GitHub still shows
-`dev` as behind.
 
 ## Creating the GitHub release
 
@@ -129,10 +105,11 @@ After the artifacts and notes have been reviewed, publish the GitHub release.
 Then return to the normal development flow:
 
 ```bash
-git switch dev
-git pull --ff-only origin dev
+git switch dev-0.1.3
+git pull --ff-only origin dev-0.1.3
 ```
 
-Start subsequent work on `dev`; keep `master` aligned with published release
-history. If a post-release fix is needed, develop it on `dev` and use a new
-version tag rather than moving an existing release tag.
+Start subsequent work on a new version- or feature-specific development branch;
+keep `master` aligned with published release history. If a post-release fix is
+needed, develop it on a new branch and use a new version tag rather than moving
+an existing release tag.

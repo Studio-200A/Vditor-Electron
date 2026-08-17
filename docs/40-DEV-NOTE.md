@@ -5,7 +5,7 @@
 搜索与替换已实现，用于多个 agent 和对话之间同步实现边界，不是待开发 issue。
 
 - `Ctrl/Cmd + F` 打开当前文档的搜索/替换浮层。
-- 自绘 Edit 菜单和 macOS 原生 Edit 菜单使用相同的 `find` action。
+- 搜索/替换通过 `Ctrl/Cmd + F` 触达；当前新版菜单不再提供独立的 Edit 顶部菜单。
 - `Enter` / `Shift+Enter`、`F3` / `Shift+F3`、上下按钮循环导航匹配项。
 - `Escape` 关闭浮层，并将当前匹配作为 Vditor Selection 交还编辑器。
 - 替换行默认折叠，支持单项替换和全部替换。
@@ -97,10 +97,59 @@ Vditor 的 `setValue()` 异步重渲染，`getValue()` 可能暂时返回旧 DOM
 - `npm run typecheck` 通过。
 - `npm run check:vditor` 通过。
 - Vitest `74/74` 通过。
-- Electron E2E `54/54` 通过。
+- Electron E2E `56/56` 通过。
 
 ## 后续约束
 
 - 不直接包装、注入或改写 Vditor contenteditable DOM 来实现高亮。
 - 后续加入大小写、全词或正则选项时，先扩展纯字符串匹配和测试；正则必须拒绝非法或可空匹配。
 - 若增加 tab 独立搜索 session，应将 query、matches、index 和 tab ID 收束为一个对象，不能让旧 tab 的 Range descriptor 复用到新 tab。
+
+---
+
+# 功能实现：0.1.3 工作区 UI 改版
+
+## 当前状态
+
+核心工作区 UI 已在 0.1.3 实现并通过自动化回归。文件保存原子化、工作区外 watcher、删除/目录移动恢复和跨重启冲突恢复不属于本轮已交付范围，见 `docs/11-0.2.0-DEVELOPMENT-PLAN.md`。
+
+## 顶部结构
+
+新版界面将原本独立的窗口标题栏、文件操作栏和标签栏收束为统一顶部工作区栏：
+
+```text
+Vditor Desktop menu | Sidebar | New / Open / Save | Tabs / New Tab | Window controls
+Files / Outline | Fixed Vditor toolbar
+Sidebar | Editor
+Status bar
+```
+
+- `#windowTitlebar` 是应用菜单、侧边栏开关、文件操作、标签栏和窗口控制的唯一顶部栏。
+- `#tabBar` 已移入 `#windowTitlebar`，文档标签和新建标签按钮在左右控制组之间弹性排列。
+- `header.titlebar` 保留为第二行，只包含 Files/Outline 视图切换与 `#vditorToolbarMount`。
+- Vditor 固定工具栏可通过现有 `toolbarVisible` 隐藏；隐藏后编辑区直接向上扩展。
+
+## 侧边栏与标签
+
+- `sidebarVisible` 是侧边栏、顶部文件操作组和第二行 Files/Outline 切换组的单一状态来源。
+- 收起侧边栏时，`#app.sidebar-collapsed` 让侧边栏宽度、顶部文件操作组和第二行切换组同步收起；菜单和快捷键仍可访问文件操作。
+- 标签渲染仍由 `renderTabs()` 负责。每个 `.document-tab` 启用原生 drag-and-drop，拖放时仅重排 `state.tabs`，再调用 `renderTabs()` 和 `persistSession()`；不销毁或重建 Vditor。
+- 每次渲染标签后，活动标签通过 `scrollIntoView()` 保持在横向滚动区可见。
+- 文件树支持工作区内新建、内联重命名、回收站删除和从空白区右键菜单打开工作区；Untitled 标签会避开工作区中已存在的同名默认文件。
+- 工作区 watcher 对干净标签自动重载，对有本地修改的标签显示持久冲突横幅并暂停自动保存；当前机制不是完整的文件一致性或恢复系统。
+
+## 菜单与平台
+
+- renderer 自绘顶部菜单收束为一个 Vditor Desktop 下拉菜单，按文件、编辑模式、设置和退出分组。
+- macOS 原生菜单删除 Edit、Theme、Help，保留 File、View 及原生 `F11` fullscreen。
+- 搜索/替换仅通过 `Ctrl/Cmd + F` 触达。
+- 顶部交互元素都使用 `-webkit-app-region: no-drag`；窗口栏保留空白拖拽区域。macOS 继续为原生 traffic lights 预留左侧安全区。
+
+## 实现模块
+
+- 结构：`src/renderer/index.html`
+- 布局、三主题、收放动画、拖拽视觉状态：`src/renderer/styles/app.css`
+- 侧边栏联动、标签排序、菜单和快捷键：`src/renderer/app.js`
+- macOS 原生菜单：`src/main/menu.ts`
+- 文案：`src/renderer/locales.js`
+- 回归：`tests/unit/renderer-shell.test.ts`、`tests/e2e/app.spec.ts`

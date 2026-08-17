@@ -309,10 +309,12 @@ function registerIpcHandlers(): void {
     });
     return result.canceled ? null : result.filePaths[0];
   });
-  ipcMain.handle('file:saveDialog', (_event, defaultPath?: string) =>
+  ipcMain.handle('file:saveDialog', (_event, defaultPath?: string, defaultDirectory?: string) =>
     chooseSavePath(
       tr('Save Markdown File', '保存 Markdown 文件', '儲存 Markdown 檔案'),
-      defaultPath || 'untitled.md',
+      defaultDirectory
+        ? path.join(defaultDirectory, defaultPath || 'untitled.md')
+        : defaultPath || 'untitled.md',
       [
         { name: 'Markdown', extensions: ['md', 'markdown'] },
         { name: 'All Files', extensions: ['*'] },
@@ -426,6 +428,9 @@ function registerIpcHandlers(): void {
   ipcMain.handle('app:showItemInFolder', (_event, filePath: string) =>
     shell.showItemInFolder(path.resolve(filePath)),
   );
+  ipcMain.handle('app:openDirectory', (_event, dirPath: string) =>
+    shell.openPath(path.resolve(dirPath)),
+  );
   ipcMain.handle('app:exportPDF', async (_event, html: string, defaultPath?: string) => {
     const output = await chooseSavePath('Export PDF', defaultPath || 'document.pdf', [
       { name: 'PDF', extensions: ['pdf'] },
@@ -450,6 +455,7 @@ function registerIpcHandlers(): void {
     toggleWindowMaximized();
   });
   ipcMain.on('window:close', () => mainWindow?.close());
+  ipcMain.on('app:toggleDevTools', () => mainWindow?.webContents.toggleDevTools());
   ipcMain.on('app:closeConfirmed', () => {
     closeConfirmed = true;
     mainWindow?.close();
