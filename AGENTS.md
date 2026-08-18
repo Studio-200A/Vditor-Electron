@@ -5,8 +5,9 @@
 Vditor-Electron is a local-first desktop Markdown editor powered by
 Electron and Vditor. It edits ordinary Markdown files directly.
 
-Do not expand it into a knowledge-base, cloud-sync, account-based,
-or proprietary-document-format application.
+Do not expand it into a knowledge base, a cloud-sync service, an
+account-based service, or an application using a proprietary document
+format.
 
 The product is a desktop host and experience layer for Vditor. Keep
 Markdown editing, rendering, and the three editing modes delegated to
@@ -16,7 +17,7 @@ and platform behavior in the application layer.
 ## Architecture Boundaries
 
 - Keep Vditor pinned to 3.11.3 unless a task explicitly authorizes an upgrade.
-- Centralize all Vditor private DOM access in
+- Centralize all of Vditor's private DOM access in
   src/renderer/vditor-adapter.js.
 - Do not introduce React, Vue, or another UI framework.
 - Do not add Monaco, CodeMirror, or another competing editor engine to
@@ -81,7 +82,8 @@ unit tests.
 
 ## Branches and release workflow
 
-- Develop feature and fix work on `dev`, `dev-<version number>` or `feat-<feat name>`, based on developer's preferences.
+- Develop feature work and fix work on `dev`, `dev-<version number>`, or
+  `feat-<feat name>` branches, based on the developer's preferences.
 - Keep `master` release-oriented; merge completed work through a GitHub pull
   request rather than developing directly on `master`.
 - Do not move an existing release tag to include a follow-up fix unless the
