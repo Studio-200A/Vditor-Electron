@@ -81,7 +81,7 @@ unit tests.
 
 ## Branches and release workflow
 
-- Develop feature and fix work on `dev`.
+- Develop feature and fix work on `dev`, `dev-<version number>` or `feat-<feat name>`, based on developer's preferences.
 - Keep `master` release-oriented; merge completed work through a GitHub pull
   request rather than developing directly on `master`.
 - Do not move an existing release tag to include a follow-up fix unless the
