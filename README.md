@@ -12,8 +12,10 @@
 
 <p align="center">
   <a href="https://github.com/Studio-200A/Vditor-Electron/releases"><img src="https://img.shields.io/badge/version-0.1.3-blue" alt="Version 0.1.3" /></a>
-  <a href="https://github.com/Studio-200A/Vditor-Electron/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License" /></a>
+  <a href="https://github.com/Studio-200A/Vditor-Electron/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License" /></a>
   <a href="https://github.com/Studio-200A/Vditor-Electron"><img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey" alt="Linux, Windows and macOS" /></a>
+  <a href="https://github.com/prettier/prettier"><img src="https://img.shields.io/badge/code_style-prettier-ff69b4.svg" alt="code style: prettier" /></a>
+
 </p>
 
 Vditor Desktop is a local Markdown writing app built with [Electron](https://github.com/electron/electron) and [Vditor](https://github.com/Vanessa219/vditor). Your files remain ordinary Markdown files on your computer, while the app adds the details that make a desktop editor feel complete: tabs, workspaces, a file explorer, document outline, themes, session recovery, and native file associations.
@@ -160,7 +162,7 @@ The Vditor dependency is intentionally pinned to 3.11.3. Before upgrading it, re
 
 ## Contributing
 
-Development happens on version- or feature-specific `dev-*` / `feat-*` branches and is merged into `master` through pull requests. Useful contributions include:
+Development happens on version- or feature-specific `dev-*` / `feat-*` branches and is merged into `main` through pull requests. Useful contributions include:
 
 - reproducible bug reports with OS, desktop environment, display protocol, version, and steps;
 - fixes and tests for editor, file, workspace, and platform behavior;

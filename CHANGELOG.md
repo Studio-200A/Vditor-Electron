@@ -1,36 +1,44 @@
 # Changelog
 
+## 0.1.5 - Editing Experience Improvement
+
+### New Features
+
+### Bug Fixes
+
+### Project Maintenance
+
 ## 0.1.3
 
 ### New Features
 
 - **feat(workbench layout):** Reworked the desktop workbench into a compact two-row layout.
-  - Moved file actions and document tabs into the window workbench bar, reducing the editor's fixed top chrome.
-  - Made the explorer toggle fold its related file-action buttons away with a smooth layout transition, leaving more room for the editor.
-  - Added drag-and-drop tab reordering and kept the active tab visible in an overflowing tab strip.
-  - Moved Files and Outline switching beside the fixed editor toolbar, simplified the application menus, and retained `F11` fullscreen.
+   - Moved file actions and document tabs into the window workbench bar, reducing the editor's fixed top chrome.
+   - Made the explorer toggle fold its related file-action buttons away with a smooth layout transition, leaving more room for the editor.
+   - Added drag-and-drop tab reordering and kept the active tab visible in an overflowing tab strip.
+   - Moved Files and Outline switching beside the fixed editor toolbar, simplified the application menus, and retained `F11` fullscreen.
 - **feat(workspace explorer):** Extended the workspace file workflow.
-  - Create numbered Untitled tabs without colliding with existing `Untitled N.md` files in the workspace.
-  - Save an Untitled document through a dialog that opens in the active workspace by default.
-  - Replace prompt-based file renaming with inline rename, preserving the original extension.
-  - Add a workspace context-menu action to open the current folder in the system file manager.
-  - Close tabs for files moved to the trash and refresh the explorer after file operations.
+   - Create numbered Untitled tabs without colliding with existing `Untitled N.md` files in the workspace.
+   - Save an Untitled document through a dialog that opens in the active workspace by default.
+   - Replace prompt-based file renaming with inline rename, preserving the original extension.
+   - Add a workspace context-menu action to open the current folder in the system file manager.
+   - Close tabs for files moved to the trash and refresh the explorer after file operations.
 - **feat(find and replace):** Added a full find and replace experience for the active document. Vditor does not provide a complete built-in find and replace tool, so Vditor Desktop now supplies the missing desktop-editor experience while keeping your Markdown content unchanged.
-  - Press `Ctrl/Cmd + F` to open a compact VS Code-style find panel.
-  - See the current result and total result count, jump forward or backward through matches with buttons, `Enter`, `Shift+Enter`, `F3`, or `Shift+F3`, and wrap around at the beginning or end of the document.
-  - All matches are highlighted in the editor, while the current match is shown more clearly and scrolled into view.
-  - Expand the replace row when needed, then replace the current match or replace every match in the active document.
-  - Search results and replacements stay consistent across WYSIWYG, Instant Rendering, and Split Preview modes.
-  - The find field keeps keyboard focus while you type, and `Esc` returns focus to the current match so you can continue editing immediately.
-  - `Ctrl/Cmd + S` continues to save the document even while the find or replace field is active.
+   - Press `Ctrl/Cmd + F` to open a compact VS Code-style find panel.
+   - See the current result and total result count, jump forward or backward through matches with buttons, `Enter`, `Shift+Enter`, `F3`, or `Shift+F3`, and wrap around at the beginning or end of the document.
+   - All matches are highlighted in the editor, while the current match is shown more clearly and scrolled into view.
+   - Expand the replace row when needed, then replace the current match or replace every match in the active document.
+   - Search results and replacements stay consistent across WYSIWYG, Instant Rendering, and Split Preview modes.
+   - The find field keeps keyboard focus while you type, and `Esc` returns focus to the current match so you can continue editing immediately.
+   - `Ctrl/Cmd + S` continues to save the document even while the find or replace field is active.
 
 ### Bug Fixes
 
 - **fix(dark content themes):** Corrected Ant Design and WeChat rendering colors in Dark and Monokai Pro Dark themes, including inline code, tables, links, blockquotes, and heading text across all three editing modes.
 - **fix(external changes):** Added workspace file-change handling that reloads clean open documents, marks locally modified documents with a persistent conflict indicator and banner, and pauses autosave until the conflict is addressed.
-  - “Reload” discards the local tab content and reads the current disk version.
-  - “Ignore” keeps the tab content and requires an explicit manual save to overwrite the file; autosave remains paused.
-  - Untitled tabs whose expected workspace path is created now enter the same conflict flow instead of being blocked by explorer naming rules.
+   - “Reload” discards the local tab content and reads the current disk version.
+   - “Ignore” keeps the tab content and requires an explicit manual save to overwrite the file; autosave remains paused.
+   - Untitled tabs whose expected workspace path is created now enter the same conflict flow instead of being blocked by explorer naming rules.
 - **fix(hidden toolbar layout):** Removed the empty top gap when fullscreen is used with the fixed toolbar hidden or unavailable, and improved sidebar/file-action collapse transitions.
 
 ### Known Limitations

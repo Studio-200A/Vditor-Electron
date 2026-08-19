@@ -6,13 +6,13 @@ building, and publishing Vditor Desktop releases.
 ## Branch model
 
 - Version- or feature-specific `dev-*` / `feat-*` branches are active development branches. For example, `dev-0.1.3` carries the 0.1.3 release work.
-- `master` is release-oriented and should receive completed work through a
+- `main` is release-oriented and should receive completed work through a
   GitHub pull request.
-- Official version tags must be created on the final commit on `master` after
+- Official version tags must be created on the final commit on `main` after
   the pull request has been merged.
 
 Do not create an official release tag on a development branch. The commit on a development branch may differ
-from the commit that is ultimately created on `master` by the merge strategy.
+from the commit that is ultimately created on `main` by the merge strategy.
 
 ## Preparing a release on a development branch
 
@@ -34,11 +34,11 @@ changing source files after the release tag has been created.
 
 ## Pull request and merge
 
-Create a pull request from the release branch, such as `dev-0.1.3`, to `master` on GitHub. Review the diff and
+Create a pull request from the release branch, such as `dev-0.1.3`, to `main` on GitHub. Review the diff and
 confirm that the required checks pass. Merge the pull request using the
 project's chosen GitHub merge strategy.
 
-The release commit is the resulting commit on `master`:
+The release commit is the resulting commit on `main`:
 
 - with a merge commit, it is the merge commit;
 - with squash merging, it is the squash commit;
@@ -51,7 +51,7 @@ After the pull request is merged:
 1. Open GitHub's **New release** page.
 2. Create a new tag, such as `0.1.3` or `v0.1.3`, using the repository's
    established tag convention.
-3. Set the tag target to the final merged commit on `master`.
+3. Set the tag target to the final merged commit on `main`.
 4. Enter the release title and copy the corresponding version section from
    `CHANGELOG.md` into the release notes.
 5. Save the release as a draft.
@@ -96,7 +96,7 @@ the renderer source and does not create a self-referential follow-up commit.
 The required order is therefore:
 
 ```text
-dev commit → pull request merge → master release commit → version tag → build
+dev commit → pull request merge → main release commit → version tag → build
 ```
 
 ## Publishing and post-release cleanup
@@ -110,6 +110,6 @@ git pull --ff-only origin dev-0.1.3
 ```
 
 Start subsequent work on a new version- or feature-specific development branch;
-keep `master` aligned with published release history. If a post-release fix is
+keep `main` aligned with published release history. If a post-release fix is
 needed, develop it on a new branch and use a new version tag rather than moving
 an existing release tag.

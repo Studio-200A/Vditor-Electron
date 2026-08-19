@@ -11,9 +11,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Studio-200A/Vditor-Electron/releases"><img src="https://img.shields.io/badge/version-0.1.3-blue" alt="版本 0.1.3" /></a>
-  <a href="https://github.com/Studio-200A/Vditor-Electron/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT 许可证" /></a>
-  <a href="https://github.com/Studio-200A/Vditor-Electron"><img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey" alt="Linux、Windows 和 macOS" /></a>
+  <a href="https://github.com/Studio-200A/Vditor-Electron/releases"><img src="https://img.shields.io/badge/version-0.1.3-blue" alt="Version 0.1.3" /></a>
+  <a href="https://github.com/Studio-200A/Vditor-Electron/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License" /></a>
+  <a href="https://github.com/Studio-200A/Vditor-Electron"><img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey" alt="Linux, Windows and macOS" /></a>
+  <a href="https://github.com/prettier/prettier"><img src="https://img.shields.io/badge/code_style-prettier-ff69b4.svg" alt="code style: prettier" /></a>
+
 </p>
 
 Vditor Desktop 是一款基于 [Electron](https://github.com/electron/electron) 和 [Vditor](https://github.com/Vanessa219/vditor) 构建的本地 Markdown 写作软件。你的文档始终是电脑上的普通 Markdown 文件；同时，软件补充了桌面编辑器应有的完整体验：多标签、工作区、资源管理器、文档大纲、主题、本地图片、会话恢复和桌面文件关联。
@@ -160,7 +162,7 @@ Vditor 依赖固定为 3.11.3。升级前请先阅读 [Vditor 升级说明](docs
 
 ## 参与贡献
 
-项目开发在按版本或功能建立的 `dev-*` / `feat-*` 分支进行，完成后通过 Pull Request 合并到 `master`。欢迎参与：
+项目开发在按版本或功能建立的 `dev-*` / `feat-*` 分支进行，完成后通过 Pull Request 合并到 `main`。欢迎参与：
 
 - 提供包含操作系统、桌面环境、显示协议、版本和复现步骤的可复现问题报告；
 - 为编辑器、文件、工作区和跨平台行为提交修复与测试；
