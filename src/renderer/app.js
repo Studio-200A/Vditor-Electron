@@ -3057,14 +3057,6 @@
     const info = await window.appAPI.getInfo();
     $('#statusVersion').textContent = `v${info.app}`;
     $('#versionInfo').textContent = `Version ${info.app} · Electron ${info.electron}`;
-    if (info.commitShort) {
-      $('#commitSeparator').classList.remove('hidden');
-      const commit = $('#commitInfo');
-      commit.textContent = info.commitShort;
-      commit.title = info.commitTag ? `${info.commitTag} · ${info.commit}` : info.commit;
-      commit.dataset.external = info.commitUrl;
-      commit.classList.remove('hidden');
-    }
     const session = state.settings.session;
     if (state.settings.restoreWorkspace && session?.workspacePath)
       await setWorkspace(session.workspacePath);

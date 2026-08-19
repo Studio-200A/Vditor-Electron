@@ -78,26 +78,13 @@ and AppImage. If only one artifact is needed, use the corresponding
 Before uploading, verify that:
 
 - the package version matches the release tag;
-- the About page displays the expected version and commit link;
+- the About page displays the expected version;
 - the application starts and the main editing workflows work;
 - the artifact names and checksums are correct.
 
 Upload the artifacts to the draft GitHub release. Do not modify the source or
-move the tag after building; otherwise the artifacts and About-page metadata
-will no longer describe the same commit.
-
-## About-page commit metadata
-
-The About page obtains the short commit hash and GitHub commit URL from build
-metadata generated at build time. The generator resolves the version tag in
-the local Git repository, so the hash does not need to be manually edited in
-the renderer source and does not create a self-referential follow-up commit.
-
-The required order is therefore:
-
-```text
-dev commit → pull request merge → main release commit → version tag → build
-```
+move the tag after building; otherwise the artifacts will no longer correspond
+to the tagged release.
 
 ## Publishing and post-release cleanup
 

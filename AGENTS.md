@@ -185,8 +185,6 @@ unit tests.
   request rather than developing directly on `main`.
 - Do not move an existing release tag to include a follow-up fix unless the
   release process explicitly calls for a new tag.
-- Build metadata and the About page may resolve a version tag to its commit;
-  preserve that relationship when preparing a release.
 
 ## Repository and artifact hygiene
 

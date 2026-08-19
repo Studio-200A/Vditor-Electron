@@ -133,17 +133,6 @@ describe('renderer shell', () => {
     expect(appRun).toContain('usr/lib/vditor-desktop/vditor-desktop');
   });
 
-  it('embeds Git build metadata for the linked About-page revision', () => {
-    const generator = fs.readFileSync(path.resolve('scripts/generate-build-info.js'), 'utf8');
-    expect(packageMetadata.scripts).toMatchObject({
-      'build:info': 'node scripts/generate-build-info.js',
-    });
-    expect(generator).toContain("['rev-parse', `${tag}^{commit}`]");
-    expect(generator).not.toContain("'HEAD'");
-    expect(mainScript).toContain('`${build.repository}/commit/${build.commit}`');
-    expect(document.querySelector('#commitInfo')).not.toBeNull();
-  });
-
   it('auto-hides sidebar scrollbars and keeps status text unselectable', () => {
     expect(rendererScript).toContain("setupAutoHideScrollbar($('#fileTree'))");
     expect(rendererScript).toContain("setupAutoHideScrollbar($('#outlineTree'))");

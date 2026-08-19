@@ -1846,13 +1846,6 @@ test('shows the localized About page with project links and reset at the bottom'
   const running = await launchApp({ locale: 'zh_Hans' });
   try {
     const { page } = running;
-    const buildInfo = JSON.parse(
-      fs.readFileSync(path.join(projectRoot, 'dist/build-info.json'), 'utf8'),
-    ) as {
-      commit: string;
-      commitShort: string;
-      tag: string;
-    };
     await page.locator('#statusSettings').click();
     await expect(page.locator('.settings-card > header h2')).toHaveText('Vditor Desktop 设置');
     const fontsNav = page.locator('.settings-nav [data-panel="fonts"]');
@@ -1867,18 +1860,7 @@ test('shows the localized About page with project links and reset at the bottom'
     await expect(about).toBeVisible();
     await expect(about.locator('.about-logo')).toBeVisible();
     await expect(about).toContainText('基于 Vditor 项目打造');
-    await expect(about.locator('[data-external]')).toHaveCount(8);
-    const commitInfo = about.locator('#commitInfo');
-    if (buildInfo.commit) {
-      await expect(commitInfo).toHaveText(buildInfo.commitShort);
-      await expect(commitInfo).toHaveAttribute('title', `${buildInfo.tag} · ${buildInfo.commit}`);
-      await expect(commitInfo).toHaveAttribute(
-        'data-external',
-        /github\.com\/Studio-200A\/Vditor-Electron\/commit\/[0-9a-f]{40}$/,
-      );
-    } else {
-      await expect(commitInfo).toBeHidden();
-    }
+    await expect(about.locator('[data-external]')).toHaveCount(7);
     const panelBox = await about.boundingBox();
     const logoBox = await about.locator('.about-logo').boundingBox();
     const sourceBox = await about.locator('.about-source').boundingBox();
