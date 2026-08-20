@@ -6,6 +6,8 @@ import { resolveApplicationPaths } from './app-paths';
 import { registerAppProtocol } from './protocol';
 import { createAppMenu } from './menu';
 import { extractOpenFilePaths } from './open-files';
+import { allowedExternalUrl } from './external-url';
+import { resolveRelativeMarkdownLink } from './resolve-markdown-link';
 import { FileManagerService } from './services/file-manager';
 import { SettingsStore } from './services/settings-store';
 import { AppSettings, DEFAULT_SETTINGS } from './services/app-state';
@@ -343,6 +345,9 @@ function registerIpcHandlers(): void {
   ipcMain.handle('file:relative', (_event, from: string, to: string) =>
     path.relative(from, to).split(path.sep).join('/'),
   );
+  ipcMain.handle('file:resolveMarkdownLink', (_event, sourceFile: unknown, href: unknown) =>
+    resolveRelativeMarkdownLink(sourceFile, href),
+  );
   ipcMain.handle('file:watch', async (_event, rootPath?: string) => {
     if (watcher) await watcher.close();
     watcher = null;
@@ -402,11 +407,10 @@ function registerIpcHandlers(): void {
     mainWindow?.webContents.setZoomFactor(factor);
     return factor;
   });
-  ipcMain.handle('app:openExternal', (_event, url: string) => {
-    const parsed = new URL(url);
-    if (!['https:', 'http:', 'mailto:'].includes(parsed.protocol))
-      throw new Error('Unsupported URL protocol');
-    return shell.openExternal(url);
+  ipcMain.handle('app:openExternal', (_event, url: unknown) => {
+    const externalUrl = allowedExternalUrl(url);
+    if (!externalUrl) throw new Error('Unsupported URL protocol');
+    return shell.openExternal(externalUrl);
   });
   ipcMain.handle('app:showItemInFolder', (_event, filePath: string) =>
     shell.showItemInFolder(path.resolve(filePath)),
@@ -493,13 +497,14 @@ app.on('before-quit', () => {
 });
 app.on('web-contents-created', (_event, contents) => {
   contents.on('will-navigate', (event, navigationUrl) => {
-    if (new URL(navigationUrl).protocol !== 'app:') {
-      event.preventDefault();
-      void shell.openExternal(navigationUrl);
-    }
+    if (new URL(navigationUrl).protocol === 'app:') return;
+    event.preventDefault();
+    const externalUrl = allowedExternalUrl(navigationUrl);
+    if (externalUrl) void shell.openExternal(externalUrl);
   });
   contents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url);
+    const externalUrl = allowedExternalUrl(url);
+    if (externalUrl) void shell.openExternal(externalUrl);
     return { action: 'deny' };
   });
 });

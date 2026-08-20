@@ -6,18 +6,33 @@
 
 - **feat(status bar):** Added a compact mode picker for switching between WYSIWYG, IR, and SV directly from the current editor-mode indicator.
 - **feat(devtools):** Added a persisted Chrome DevTools switch in Settings > About; disabled shortcuts cannot open DevTools.
+- **feat(relative Markdown links):** Ctrl/Cmd-click relative Markdown links now opens the destination in a new or existing tab, supports `../`, percent-encoded file names, and optional heading fragments, and safely rejects unsupported or missing targets.
 
 ### Bug Fixes
+
+#### Workbench and toolbar
 
 - **fix(workbench chrome):** Kept the sidebar controls aligned while resizing the explorer, including when no document is open or the editor toolbar is hidden.
 - **fix(title bar):** Kept the sidebar toggle fixed in place as related file actions fold away, and limited title-bar shadows to the visible editor-toolbar boundary.
 - **fix(menus):** Kept unavailable layout commands visually disabled when hovered or focused.
 - **fix(tabs):** Improved light-theme tab hover feedback and made close controls use an accent-only hover state.
+- **fix(toolbar layout):** Let the editor toolbar expand vertically when its controls wrap in narrower windows, without adding empty space above the sidebar or shifting the editor when a toolbar menu opens; kept toolbar, sidebar-tab, and hidden-toolbar shadows aligned with their visible boundaries.
+
+#### Editor and document navigation
+
 - **fix(document navigation):** Smoothed find-result navigation and prevented unnecessary movement when jumping between nearby outline headings.
 - **fix(editor position):** Kept the current document position for regular Markdown documents when changing editing modes, without returning to the top.
-- **fix(settings):** New documents now use the configured default editing mode instead of inheriting the last mode used by another document.
 - **fix(editor layout):** Kept full-width paragraphs and editor markers within the visible editing area in WYSIWYG and Instant Rendering modes.
-- **fix(toolbar layout):** Let the editor toolbar expand vertically when its controls wrap in narrower windows, without adding empty space above the sidebar, and kept both toolbar and sidebar-tab shadows aligned with their visible boundaries.
+
+#### Links and local resources
+
+- **fix(in-document links):** Unified hash-link and table-of-contents navigation across all editor modes: ordinary clicks retain editing context and show a platform-aware Ctrl/Cmd-click hint; Ctrl/Cmd-click scrolls smoothly to the target heading.
+- **fix(external links):** Unified `http(s)` and `mailto:` link handling across all editor modes: ordinary clicks remain editable and Ctrl/Cmd-click opens the link through the validated system handler. Navigation and new-window requests use the same protocol allowlist. Link hover uses a text cursor normally and a hand cursor while the navigation modifier is held.
+- **fix(relative images):** Resolved Markdown-relative image paths against the active document directory even when Vditor first converts them to app-protocol URLs.
+
+#### Settings and themes
+
+- **fix(settings):** New documents now use the configured default editing mode instead of inheriting the last mode used by another document.
 - **fix(settings controls):** Matched settings select focus, checkbox, and range accents to the active application theme, and enabled Escape to close the settings dialog.
 - **fix(monokai theme):** Prevented raw HTML blocks in Instant Rendering mode from being painted as Monokai code blocks and aligned its link color with WYSIWYG and Split Preview.
 

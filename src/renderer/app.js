@@ -66,6 +66,7 @@
   let tabDragPointerId = null;
   let tabDragGhost = null;
   let tabDragMoved = false;
+  let hoveredDocumentLink = null;
 
   function resolveLocale(locale) {
     if (locale && locale !== 'system' && LOCALES[locale]) return locale;
@@ -878,6 +879,9 @@
       // The Vditor toolbar is mounted into the application toolbar. Its visibility
       // is controlled as one layout part from View > Layout.
       toolbarConfig: { hide: false, pin: false },
+      // Application-level capture owns modifier-click navigation. Normal clicks
+      // must still reach Vditor so IR can place its caret and expand link Markdown.
+      link: { isOpen: false },
       cache: { enable: false },
       undoDelay: 500,
       preview: {
@@ -903,7 +907,6 @@
           gfmAutoLink: s.gfmAutoLink,
           listStyle: s.listStyle,
           sanitize: s.sanitize,
-          linkBase: localResourceBase(tab.baseDir),
           codeBlockPreview: true,
           mathBlockPreview: true,
         },
@@ -954,6 +957,7 @@
         scheduleSplitLineNumbers(tab);
         setTimeout(() => tab.vditor && tab.vditor.focus(), 0);
         restoreEditorScroll(tab);
+        requestAnimationFrame(() => scrollToPendingAnchor(tab));
       },
       input: (value) => onEditorInput(tab, value),
       blur: (value) => {
@@ -1175,6 +1179,7 @@
     baseDir = '',
     activate = true,
     untitledNumber = null,
+    pendingAnchor = '',
   } = {}) {
     if (state.tabs.length >= 20) {
       showMessage(t('message.maxTabs'), true);
@@ -1207,6 +1212,7 @@
       splitResizer: null,
       externalConflict: null,
       externalChangeIgnored: false,
+      pendingAnchor,
       host: document.createElement('section'),
     };
     tab.host.className = 'editor-host';
@@ -1241,7 +1247,15 @@
     if (tab) switchTab(tab.id);
   }
 
-  async function openPath(filePath, activate = true) {
+  function scrollToPendingAnchor(tab) {
+    if (!tab.pendingAnchor || tab.id !== state.activeId || !tab.ready) return;
+    const href = `#${tab.pendingAnchor}`;
+    tab.pendingAnchor = '';
+    const headingIndex = VDITOR.headingIndexForAnchor(tab.host, href);
+    if (headingIndex >= 0) scrollToHeading(tab, headingIndex);
+  }
+
+  async function openPath(filePath, activate = true, pendingAnchor = '') {
     const normalizedPath = normalizedFilePath(filePath);
     const existing = state.tabs.find(
       (tab) => normalizedFilePath(tabTargetPath(tab)) === normalizedPath,
@@ -1254,6 +1268,10 @@
         renderTabs();
       }
       if (activate) switchTab(existing.id);
+      if (pendingAnchor) {
+        existing.pendingAnchor = pendingAnchor;
+        requestAnimationFrame(() => scrollToPendingAnchor(existing));
+      }
       return existing;
     }
     try {
@@ -1265,6 +1283,7 @@
         encoding: result.encoding,
         baseDir,
         activate,
+        pendingAnchor,
       });
       rememberRecent(filePath);
       return tab;
@@ -1301,6 +1320,7 @@
     state.activeId = id;
     state.tabs.forEach((item) => item.host.classList.toggle('active', item.id === id));
     ensureEditor(tab);
+    requestAnimationFrame(() => scrollToPendingAnchor(tab));
     if (tab.toolbar) mountEditorToolbar(tab);
     scheduleSplitLineNumbers(tab);
     renderTabs();
@@ -2029,19 +2049,156 @@
     });
   }
 
+  function documentNavigationTooltip() {
+    return t('link.followWithModifier', {
+      modifier: window.appAPI.platform === 'darwin' ? 'Cmd' : 'Ctrl',
+    });
+  }
+
+  function hasDocumentNavigationModifier(event) {
+    return window.appAPI.platform === 'darwin' ? event.metaKey : event.ctrlKey;
+  }
+
+  function isSupportedExternalLink(href) {
+    try {
+      return ['https:', 'http:', 'mailto:'].includes(new URL(href).protocol);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function isPotentialRelativeMarkdownLink(href) {
+    const rawPath = href.split('#', 1)[0].trim();
+    if (!rawPath || rawPath.startsWith('/') || rawPath.startsWith('\\')) return false;
+    if (/^[a-z][a-z\d+.-]*:/i.test(rawPath)) return false;
+    try {
+      return /\.(?:md|markdown|mdown|mkd|mkdn)$/i.test(decodeURIComponent(rawPath));
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function documentLinkTarget(tab, target) {
+    const link = VDITOR.documentLink(target, tab.host);
+    if (!link) return null;
+    if (link.href.startsWith('#')) {
+      const headingIndex = VDITOR.headingIndexForAnchor(tab.host, link.href);
+      return headingIndex < 0 ? null : { link, headingIndex };
+    }
+    if (isSupportedExternalLink(link.href)) return { link, headingIndex: null, external: true };
+    return isPotentialRelativeMarkdownLink(link.href)
+      ? { link, headingIndex: null, external: false }
+      : null;
+  }
+
+  async function openRelativeMarkdownLink(tab, href) {
+    if (!tab.filePath) {
+      showMessage(t('message.linkSaveFirst'), true);
+      return;
+    }
+    let resolution;
+    try {
+      resolution = await window.fileAPI.resolveMarkdownLink(tab.filePath, href);
+    } catch (_) {
+      showMessage(t('message.linkTargetMissing'), true);
+      return;
+    }
+    if (resolution.kind !== 'resolved') {
+      const key =
+        resolution.code === 'not-found' ? 'message.linkTargetMissing' : 'message.linkUnsupported';
+      showMessage(t(key), true);
+      return;
+    }
+    await openPath(resolution.filePath, true, resolution.fragment);
+  }
+
+  function setHoveredDocumentLink(target, event) {
+    if (hoveredDocumentLink?.link.element !== target.link.element) {
+      clearHoveredDocumentLink();
+      hoveredDocumentLink = target;
+    }
+    VDITOR.setDocumentLinkHint(
+      target.link,
+      documentNavigationTooltip(),
+      hasDocumentNavigationModifier(event) ? 'pointer' : 'text',
+    );
+    showDocumentLinkTooltip(event);
+  }
+
+  function clearHoveredDocumentLink() {
+    if (!hoveredDocumentLink) return;
+    VDITOR.clearDocumentLinkHint(hoveredDocumentLink.link);
+    hoveredDocumentLink = null;
+    $('#documentLinkTooltip').hidden = true;
+  }
+
+  function updateHoveredDocumentLinkCursor(event) {
+    if (!hoveredDocumentLink) return;
+    VDITOR.setDocumentLinkHint(
+      hoveredDocumentLink.link,
+      documentNavigationTooltip(),
+      hasDocumentNavigationModifier(event) ? 'pointer' : 'text',
+    );
+  }
+
+  function showDocumentLinkTooltip(event) {
+    const tooltip = $('#documentLinkTooltip');
+    tooltip.textContent = documentNavigationTooltip();
+    tooltip.hidden = false;
+    const left = Math.min(window.innerWidth - tooltip.offsetWidth - 8, event.clientX + 12);
+    tooltip.style.left = `${Math.max(8, left)}px`;
+    tooltip.style.top = `${Math.min(window.innerHeight - tooltip.offsetHeight - 8, event.clientY + 18)}px`;
+  }
+
   function setupDocumentAnchorNavigation(tab) {
     if (tab.host.dataset.anchorNavigation === 'true') return;
     tab.host.dataset.anchorNavigation = 'true';
     tab.host.addEventListener(
+      'mouseover',
+      (event) => {
+        const target = documentLinkTarget(tab, event.target);
+        if (target) setHoveredDocumentLink(target, event);
+      },
+      true,
+    );
+    tab.host.addEventListener(
+      'mouseout',
+      (event) => {
+        if (!hoveredDocumentLink || hoveredDocumentLink.link.element.contains(event.relatedTarget))
+          return;
+        clearHoveredDocumentLink();
+      },
+      true,
+    );
+    tab.host.addEventListener(
+      'mousemove',
+      (event) => {
+        if (hoveredDocumentLink) showDocumentLinkTooltip(event);
+      },
+      true,
+    );
+    tab.host.addEventListener(
       'click',
       (event) => {
-        const link = VDITOR.documentAnchor(event.target, tab.host);
-        if (!link) return;
-        const headingIndex = VDITOR.headingIndexForAnchor(tab.host, link.href);
-        if (headingIndex < 0) return;
-        event.preventDefault();
-        event.stopPropagation();
-        scrollToHeading(tab, headingIndex);
+        const target = documentLinkTarget(tab, event.target);
+        if (!target) return;
+        setHoveredDocumentLink(target, event);
+        if (hasDocumentNavigationModifier(event) || target.link.kind === 'toc') {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        if (hasDocumentNavigationModifier(event)) {
+          if (target.headingIndex !== null) scrollToHeading(tab, target.headingIndex);
+          else if (target.external) void window.appAPI.openExternal(target.link.href);
+          else void openRelativeMarkdownLink(tab, target.link.href);
+          return;
+        }
+        if (VDITOR.expandInstantLinkForEditing(target.link)) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        if (target.link.kind === 'toc') VDITOR.focusDocumentLink(target.link);
       },
       true,
     );
@@ -2694,10 +2851,10 @@
     const toolbar = activeTab()?.toolbar;
     const hidden =
       app.classList.contains('toolbar-hidden') || app.classList.contains('toolbar-unavailable');
+    // Vditor menus are absolutely positioned but contribute to scrollHeight.
+    // Only the toolbar's rendered box represents wrapped control rows.
     const toolbarHeight =
-      !hidden && toolbar?.parentElement === mount
-        ? Math.max(toolbar.getBoundingClientRect().height, toolbar.scrollHeight)
-        : 0;
+      !hidden && toolbar?.parentElement === mount ? toolbar.getBoundingClientRect().height : 0;
     const extraHeight = Math.max(0, Math.ceil(toolbarHeight - 38));
     app.classList.toggle('toolbar-wrapped', extraHeight > 0);
     app.style.setProperty('--toolbar-wrap-height', `${extraHeight}px`);
@@ -2926,6 +3083,9 @@
       $('#contextMenu').classList.add('hidden');
       closeStatusModeMenu();
     });
+    document.addEventListener('keydown', updateHoveredDocumentLinkCursor, true);
+    document.addEventListener('keyup', updateHoveredDocumentLinkCursor, true);
+    window.addEventListener('blur', clearHoveredDocumentLink);
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape' && !$('#confirmModal').classList.contains('hidden')) {
         event.preventDefault();

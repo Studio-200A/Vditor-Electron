@@ -401,6 +401,67 @@ test('opens the View > Layout submenu and toggles the unified toolbar', async ()
   }
 });
 
+test('keeps wrapped toolbar menus out of editor geometry and retains the hidden-toolbar shadow', async () => {
+  const running = await launchApp({ sidebarVisible: true });
+  try {
+    const { app, page } = running;
+    await createNewTab(page);
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(760, 700));
+    await expect(page.locator('#app')).toHaveClass(/toolbar-wrapped/);
+    const codeTheme = page.locator('#vditorToolbarMount button[data-type="code-theme"]');
+    const geometry = () =>
+      page.evaluate(() => {
+        const toolbar = document.querySelector('#vditorToolbarMount > .vditor-toolbar');
+        const main = document.querySelector('.main-area');
+        if (!toolbar || !main) throw new Error('Toolbar layout is unavailable');
+        return {
+          toolbarHeight: toolbar.getBoundingClientRect().height,
+          mainTop: main.getBoundingClientRect().top,
+          mainPaddingTop: getComputedStyle(main).paddingTop,
+        };
+      });
+    const beforeMenu = await geometry();
+
+    await codeTheme.click();
+    await expect(page.locator('#vditorToolbarMount .vditor-hint:visible')).toHaveCount(1);
+    expect(await geometry()).toEqual(beforeMenu);
+
+    const layoutMenu = () =>
+      page.locator('.app-menu-popup:not(.submenu) button.has-submenu', { hasText: 'Layout' });
+    await page.locator('[data-menu="main"]').click();
+    await layoutMenu().click();
+    await page.locator('.app-menu-popup.submenu button', { hasText: 'Show Toolbar' }).click();
+    await expect(page.locator('#app')).toHaveClass(/toolbar-hidden/);
+    const titlebarShadow = () =>
+      page.locator('#windowTitlebar').evaluate((node) => {
+        const style = getComputedStyle(node, '::after');
+        return {
+          height: Number.parseFloat(style.height),
+          left: Number.parseFloat(style.left),
+          shadow: style.boxShadow,
+        };
+      });
+    await expect
+      .poll(async () => {
+        const shadow = await titlebarShadow();
+        return shadow.shadow !== 'none' && shadow.shadow !== '' && shadow.height > 30;
+      })
+      .toBe(true);
+    const visibleSidebarShadow = await titlebarShadow();
+    const sidebarWidth = await page
+      .locator('#sidebar')
+      .evaluate((node) => node.getBoundingClientRect().width);
+    expect(visibleSidebarShadow.left).toBeCloseTo(sidebarWidth, 0);
+
+    await page.locator('#toggleSidebar').click();
+    await expect(page.locator('#app')).toHaveClass(/sidebar-collapsed/);
+    await expect.poll(async () => (await titlebarShadow()).left).toBe(0);
+    expect((await titlebarShadow()).height).toBeGreaterThan(30);
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('switches among all three modes from the View > Editing Mode submenu', async () => {
   const running = await launchApp({ editMode: 'ir' });
   try {
@@ -581,13 +642,30 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
       'target body',
     ].join('\n');
     const ir = page.locator('.editor-host.active .vditor-ir');
+    const linkModifier = (
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control'
+    ) as 'Control' | 'Meta';
+    const modifierLabel = linkModifier === 'Meta' ? 'Cmd' : 'Ctrl';
     const scrollTop = (editor: ReturnType<Page['locator']>) =>
       editor.evaluate((node) =>
         Math.max(node.scrollTop, node.querySelector(':scope > .vditor-reset')?.scrollTop || 0),
       );
     await ir.locator('.vditor-reset').fill(markdown);
     await expect(ir.locator('h2')).toHaveCount(1);
-    await ir.locator('[data-type="a"] .vditor-ir__link').click();
+    const irLink = ir.locator('[data-type="a"] .vditor-ir__link');
+    await irLink.hover();
+    await expect(irLink.locator('..')).not.toHaveAttribute('title');
+    await expect(page.locator('#documentLinkTooltip')).toBeVisible();
+    await expect(page.locator('#documentLinkTooltip')).toHaveText(
+      `${modifierLabel}+Click to follow link`,
+    );
+    await expect(irLink).toHaveCSS('cursor', 'text');
+    await page.keyboard.down(linkModifier);
+    await expect(irLink).toHaveCSS('cursor', 'pointer');
+    await page.keyboard.up(linkModifier);
+    await irLink.click();
+    await expect.poll(() => scrollTop(ir)).toBe(0);
+    await irLink.click({ modifiers: [linkModifier] });
     await expect.poll(() => scrollTop(ir)).toBeGreaterThan(0);
     await ir.evaluate((node) => {
       node.scrollTop = 0;
@@ -619,7 +697,7 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
       const reset = node.querySelector(':scope > .vditor-reset');
       if (reset) reset.scrollTop = 0;
     });
-    await wysiwyg.locator('a[href="#target"]').click();
+    await wysiwyg.locator('a[href="#target"]').click({ modifiers: [linkModifier] });
     await expect.poll(() => scrollTop(wysiwyg)).toBeGreaterThan(0);
     await wysiwyg.evaluate((node) => {
       node.scrollTop = 0;
@@ -641,7 +719,7 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
     await preview.evaluate((node) => {
       node.scrollTop = 0;
     });
-    await preview.locator('a[href="#target"]').click();
+    await preview.locator('a[href="#target"]').click({ modifiers: [linkModifier] });
     await expect.poll(() => preview.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
     await source.evaluate((node) => {
       node.scrollTop = 0;
@@ -652,6 +730,99 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
     await target.click();
     await expect.poll(() => source.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
     await expect.poll(() => preview.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+
+    await source.evaluate((node) => {
+      node.scrollTop = 0;
+    });
+    await preview.evaluate((node) => {
+      node.scrollTop = 0;
+    });
+    await preview.evaluate((node) => {
+      const heading = node.querySelector('h2');
+      if (!heading?.id) throw new Error('Vditor preview heading is missing its target id');
+      const toc = document.createElement('div');
+      toc.className = 'vditor-toc';
+      const tocTarget = document.createElement('span');
+      tocTarget.dataset.targetId = heading.id;
+      tocTarget.textContent = heading.textContent || '';
+      toc.append(tocTarget);
+      node.prepend(toc);
+    });
+    const tocTarget = preview.locator('.vditor-toc [data-target-id]');
+    await expect(tocTarget).toBeVisible();
+    await tocTarget.hover();
+    await expect(page.locator('#documentLinkTooltip')).toHaveText(
+      `${modifierLabel}+Click to follow link`,
+    );
+    await tocTarget.click();
+    await expect.poll(() => preview.evaluate((node) => node.scrollTop)).toBe(0);
+    await tocTarget.click({ modifiers: [linkModifier] });
+    await expect.poll(() => source.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+    await expect.poll(() => preview.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('opens relative Markdown links from every editor mode and follows their fragments', async () => {
+  const running = await launchApp(
+    { editMode: 'ir' },
+    { 'source.md': '[Open target](target.md#target)' },
+  );
+  try {
+    const { page, testRoot } = running;
+    fs.writeFileSync(
+      path.join(testRoot, 'target.md'),
+      [
+        '# Top',
+        ...Array.from({ length: 70 }, (_, index) => `paragraph ${index + 1}`),
+        '## Target',
+      ].join('\n'),
+    );
+    await page.waitForSelector('.editor-host.active .vditor-ir');
+    const linkModifier = (
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control'
+    ) as 'Control' | 'Meta';
+    const targetScrollTop = () =>
+      page.locator('.editor-host.active .vditor-ir').evaluate((node) => {
+        const reset = node.querySelector(':scope > .vditor-reset');
+        return Math.max(node.scrollTop, reset?.scrollTop || 0);
+      });
+    const follow = async (link: ReturnType<Page['locator']>) => {
+      await link.click({ modifiers: [linkModifier] });
+      await expect(page.locator('.document-tab', { hasText: 'target.md' })).toHaveCount(1);
+      await expect(page.locator('.editor-host.active .vditor-ir h2')).toHaveText(/Target$/);
+      await expect.poll(targetScrollTop).toBeGreaterThan(0);
+      await page.locator('.document-tab', { hasText: 'source.md' }).click();
+    };
+
+    await follow(page.locator('.editor-host.active .vditor-ir .vditor-ir__link'));
+
+    const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+    await modeTrigger.click();
+    await page.locator('#vditorToolbarMount button[data-mode="wysiwyg"]').click();
+    await follow(page.locator('.editor-host.active .vditor-wysiwyg a[href="target.md#target"]'));
+
+    await modeTrigger.click();
+    await page.locator('#vditorToolbarMount button[data-mode="sv"]').click();
+    await follow(page.locator('.editor-host.active .vditor-preview a[href="target.md#target"]'));
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('rejects unsafe external URL protocols at the privileged IPC boundary', async () => {
+  const running = await launchApp();
+  try {
+    const message = await running.page.evaluate(async () => {
+      try {
+        await window.appAPI.openExternal('javascript:alert(1)');
+        return '';
+      } catch (error) {
+        return error instanceof Error ? error.message : String(error);
+      }
+    });
+    expect(message).toContain('Unsupported URL protocol');
   } finally {
     await closeApp(running);
   }

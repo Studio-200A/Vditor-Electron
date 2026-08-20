@@ -28,6 +28,8 @@ contextBridge.exposeInMainWorld('fileAPI', {
   basename: (filePath: string) => ipcRenderer.invoke('file:basename', filePath),
   dirname: (filePath: string) => ipcRenderer.invoke('file:dirname', filePath),
   relative: (from: string, to: string) => ipcRenderer.invoke('file:relative', from, to),
+  resolveMarkdownLink: (sourceFile: string, href: string) =>
+    ipcRenderer.invoke('file:resolveMarkdownLink', sourceFile, href),
   watch: (rootPath?: string) => ipcRenderer.invoke('file:watch', rootPath),
   onChanged: (callback: (event: { event: string; path: string }) => void) =>
     on('file:changed', callback),

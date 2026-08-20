@@ -3,7 +3,7 @@
 - **生成时间：** 2026-08-20
 - **基于的工作区：** `dev-0.1.5`（0.1.5 设置相关修复完成，待提交）
 - **文档版本：** v1.1
-- **对应 package.json 版本号：** 0.1.3（发布版本号将在 0.1.5 发布准备阶段更新）
+- **对应 package.json 版本号：** 0.1.5
 
 ---
 
@@ -72,9 +72,11 @@ Vditor-Electron/
 │   │   ├── index.ts               # 主入口，应用生命周期、所有 IPC handler 注册
 │   │   ├── preload.ts             # preload 脚本，contextBridge 暴露 API
 │   │   ├── protocol.ts            # app:// 与 local-file:// 协议注册
+│   │   ├── external-url.ts         # 外部 URL 协议白名单校验
 │   │   ├── menu.ts                # macOS 原生菜单构建（Menu.buildFromTemplate）
 │   │   ├── app-paths.ts           # 平台路径解析（config / chromium 数据目录）
 │   │   ├── open-files.ts          # CLI / OS 文件关联参数解析
+│   │   ├── resolve-markdown-link.ts # 相对 Markdown 链接安全解析
 │   │   ├── ipc/                   # （空目录，预留 IPC handler 分层）
 │   │   └── services/              # 主进程服务层
 │   │       ├── file-manager.ts    # 文件读写、目录操作、编码探测
@@ -82,7 +84,7 @@ Vditor-Electron/
 │   │       └── app-state.ts       # AppSettings 接口与默认值定义
 ├── src/renderer/                  # 渲染进程（纯 JavaScript + HTML + CSS）
 │   ├── index.html                 # 应用壳 HTML（标题栏、侧栏、编辑区、对话框）
-│   ├── app.js                     # 集中式应用控制器（~3075 行）
+│   ├── app.js                     # 集中式应用控制器（3301 行，随源码变化）
 │   ├── vditor-adapter.js          # Vditor 私有 DOM 适配层（集中选择器与结构假设）
 │   ├── locales.js                 # 三语字典（en_US / zh_Hans / zh_Hant）
 │   ├── styles/
@@ -120,7 +122,7 @@ Vditor-Electron/
 
 **入口：** `dist/main/index.js`（编译自 `src/main/index.ts`）
 
-启动流程（`src/main/index.ts:432-471`）：
+启动流程（单实例锁定从 `src/main/index.ts:460` 开始，`app.whenReady()` 位于 `:476`）：
 
 ```
 1. app.requestSingleInstanceLock()
@@ -143,7 +145,7 @@ Vditor-Electron/
 
 ### 4.2 窗口创建逻辑
 
-**函数：** `createWindow()`（`src/main/index.ts:190-257`）
+**函数：** `createWindow()`（`src/main/index.ts:205-276`）
 
 ```typescript
 const options: BrowserWindowConstructorOptions = {
@@ -179,7 +181,7 @@ const options: BrowserWindowConstructorOptions = {
 | `second-instance`      | 解析 CLI 参数中的文件路径，入队 `pendingOpenFiles`，唤醒主窗口         |
 | `open-file`（macOS）   | 阻止默认行为，将文件路径入队并唤醒主窗口                               |
 | `window.close`         | 拦截关闭，向渲染进程发送 `app:requestClose`，等待 `app:closeConfirmed` |
-| `web-contents-created` | 拦截非 `app:` 协议的导航，转发到 `shell.openExternal()`                |
+| `web-contents-created` | 阻止非 `app:` 导航与新窗口；仅白名单 `http(s)` / `mailto:` 才转发到 `shell.openExternal()` |
 
 ### 4.4 系统菜单
 
@@ -221,14 +223,14 @@ if (!ownsSingleInstanceLock) {
 
 | 对话框             | 触发 IPC 通道           | 实现                                        |
 | ------------------ | ----------------------- | ------------------------------------------- |
-| 打开文件           | `file:openDialog`       | `dialog.showOpenDialog`，多选 Markdown 文件 |
+| 打开文件           | `file:openDialog`       | `dialog.showOpenDialog`，多选文件（Markdown + All Files 过滤器） |
 | 打开文件夹         | `file:openFolderDialog` | `dialog.showOpenDialog`（openDirectory）    |
 | 另存为             | `file:saveDialog`       | `dialog.showSaveDialog`                     |
 | 导出对话框         | `file:exportDialog`     | `dialog.showSaveDialog`（HTML/PDF）         |
 | 文件移至回收站     | `file:delete`           | `shell.trashItem()`                         |
 | 在文件管理器中显示 | `app:showItemInFolder`  | `shell.showItemInFolder()`                  |
 | 打开目录           | `app:openDirectory`     | `shell.openPath()`                          |
-| 打开外部 URL       | `app:openExternal`      | `shell.openExternal()`（仅 http(s)/mailto） |
+| 打开外部 URL       | `app:openExternal`      | `allowedExternalUrl()` 白名单后 `shell.openExternal()` |
 
 ---
 
@@ -265,10 +267,11 @@ webPreferences: {
 | `listDir(dirPath)`                                | `file:listDir`          | invoke     | `string`                              | `DirEntry[]`                            |
 | `createItem(parent, name, type)`                  | `file:create`           | invoke     | `string, string, 'file'\|'directory'` | `string`                                |
 | `renameItem(oldPath, newName)`                    | `file:rename`           | invoke     | `string, string`                      | `string`                                |
-| `deleteItem(filePath)`                            | `file:delete`           | invoke     | `string`                              | `boolean`                               |
+| `deleteItem(filePath)`                            | `file:delete`           | invoke     | `string`                              | `void`                                  |
 | `basename(filePath)`                              | `file:basename`         | invoke     | `string`                              | `string`                                |
 | `dirname(filePath)`                               | `file:dirname`          | invoke     | `string`                              | `string`                                |
 | `relative(from, to)`                              | `file:relative`         | invoke     | `string, string`                      | `string`                                |
+| `resolveMarkdownLink(sourceFile, href)`           | `file:resolveMarkdownLink` | invoke  | `string, string`                      | `MarkdownLinkResolution`                |
 | `watch(rootPath?)`                                | `file:watch`            | invoke     | `string?`                             | `boolean`                               |
 | `onChanged(callback)`                             | `file:changed`          | on（订阅） | `{ event: string, path: string }`     | 取消订阅函数                            |
 | `getDroppedPath(file)`                            | _(webUtils)_            | 直接调用   | `File`                                | `string`                                |
@@ -329,7 +332,7 @@ webPreferences: {
 4. app.js（IIFE，DOMContentLoaded 时执行 init()）
 ```
 
-`init()` 函数（`app.js:3032-3074`）：
+`init()` 函数（`app.js:3258-3300`）：
 
 1. 校验 `Vditor`、`VditorDesktopAdapter`、`fileAPI`、`appAPI` 均可用
 2. 设置 `body.dataset.platform`
@@ -392,6 +395,7 @@ const state = {
   rtl: settings.rtl,
   toolbar: settings.toolbarItems.length ? settings.toolbarItems : DEFAULT_TOOLBAR,
   toolbarConfig: { hide: false, pin: false },  // 内嵌工具栏始终显示；可见性由应用菜单控制
+  link: { isOpen: false },                     // 普通点击保留给 Vditor 编辑；应用仅接管 Ctrl/Cmd 跳转
   cache: { enable: false },
   undoDelay: 500,
   preview: {
@@ -404,7 +408,7 @@ const state = {
     markdown: {
       autoSpace, callout, footnotes, imageCaption, mark, sub, sup, toc,
       paragraphBeginningSpace, fixTermTypo, gfmAutoLink, listStyle,
-      sanitize, linkBase: localResourceBase(tab.baseDir),
+      sanitize,
       codeBlockPreview: true, mathBlockPreview: true
     },
     theme: { current: contentTheme, path: 'app://app/vditor/dist/css/content-theme' }
@@ -504,7 +508,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 
 **设计意图：** 将 Vditor 3.11.x 的私有 DOM 选择器和非公开行为集中于此文件，使 `app.js` 仅依赖语义化的适配器 API，降低 Vditor 升级时的审计面。
 
-以下为 `window.VditorDesktopAdapter` 冻结对象导出的全部 32 个 API，按职能分组。
+以下为 `window.VditorDesktopAdapter` 冻结对象导出的 API，按职能分组。
 
 #### DOM 结构查询
 
@@ -561,14 +565,19 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 
 | 函数                                | 入参                | 返回值                      | 用途                                                                  |
 | ----------------------------------- | ------------------- | --------------------------- | --------------------------------------------------------------------- |
-| `documentAnchor(target, host)`      | `eventTarget, host` | `{ element, href } \| null` | 检测点击目标是否为文档内部锚点（`a[href^="#"]` 或 IR 内部链接）       |
+| `documentAnchor(target, host)`      | `eventTarget, host` | `{ element, href } \| null` | 检测文档内部锚点，包括 `a[href^="#"]`、IR 内部链接及 Vditor TOC 的 `data-target-id`       |
+| `documentLink(target, host)`        | `eventTarget, host` | `{ element, href } \| null` | 统一提取上述锚点以及 WYSIWYG / 预览原生链接、IR 内部链接，供应用层决定允许的跳转类型 |
+| `setDocumentLinkHint(link, hint, cursor)` | `{ element, href }, string, string` | `boolean` | 暂存原始标题/光标，抑制原生 tooltip 并设置文本或手形光标 |
+| `clearDocumentLinkHint(link)`       | `{ element, href }` | `boolean`                   | 恢复 Markdown 作者指定的标题与原始光标 |
+| `expandInstantLinkForEditing(link)` | `{ element, href }` | `boolean`                   | 补足 Vditor 3.11.x 未展开 IR 链接点击的早退路径：保留点击选区并展开 Markdown 标记；已展开节点交回 Vditor 以编辑链接文字或 URL |
+| `focusDocumentLink(link)`           | `{ element, href }` | `boolean`                   | 将 IR / WYSIWYG 中的普通单击链接定位为可编辑选区；预览 TOC 返回 `false` |
 | `headingIndexForAnchor(host, href)` | `host, href`        | `number`                    | 将 anchor 链接映射到标题 DOM 索引（先查 id/name，再按文本/slug 匹配） |
 
 #### 相对图片资源
 
 | 函数                                         | 入参                      | 返回值             | 用途                                                                                                |
 | -------------------------------------------- | ------------------------- | ------------------ | --------------------------------------------------------------------------------------------------- |
-| `resolveRelativeImageSources(host, baseUrl)` | `host, localResourceBase` | `void`             | 将相对路径图片 src 替换为 `local-file://` URL，记录原始路径到 `data-vditor-desktop-original-src`    |
+| `resolveRelativeImageSources(host, baseUrl)` | `host, localResourceBase` | `void`             | 将相对路径图片（包括 Vditor 提前转成的 `app://app/` 路径）替换为 `local-file://` URL，记录原始路径到 `data-vditor-desktop-original-src` |
 | `observeRelativeImageSources(host, baseUrl)` | 同上                      | `MutationObserver` | 安装 MutationObserver 持续监听新插入的图片并执行替换                                                |
 | `withOriginalImageSources(host, callback)`   | `host, () => T`           | `T`                | 临时还原所有图片为原始相对路径后执行 callback（用于 `getValue()` 序列化），完成后重新替换回绝对 URL |
 
@@ -582,7 +591,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 
 | 通道名                       | 入参                              | 返回值                                      | 处理逻辑                                     |
 | ---------------------------- | --------------------------------- | ------------------------------------------- | -------------------------------------------- |
-| `file:openDialog`            | 无                                | `string[]`                                  | 多选 Markdown 文件对话框                     |
+| `file:openDialog`            | 无                                | `string[]`                                  | 多选文件对话框（Markdown + All Files 过滤器） |
 | `file:openFolderDialog`      | 无                                | `string \| null`                            | 选择工作目录                                 |
 | `file:saveDialog`            | `defaultPath?, defaultDirectory?` | `string \| null`                            | 保存对话框                                   |
 | `file:exportDialog`          | `type, defaultPath?`              | `string \| null`                            | 导出对话框                                   |
@@ -593,10 +602,11 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `file:listDir`               | `dirPath`                         | `DirEntry[]`                                | 目录列表（目录优先，自然排序）               |
 | `file:create`                | `parent, name, type`              | `string`                                    | 创建文件或目录                               |
 | `file:rename`                | `oldPath, newName`                | `string`                                    | 重命名（不允许跨目录）                       |
-| `file:delete`                | `filePath`                        | `boolean`                                   | `shell.trashItem` 移至回收站                 |
+| `file:delete`                | `filePath`                        | `void`                                      | `shell.trashItem` 移至回收站                 |
 | `file:basename`              | `filePath`                        | `string`                                    | `path.basename`                              |
 | `file:dirname`               | `filePath`                        | `string`                                    | `path.dirname`                               |
 | `file:relative`              | `from, to`                        | `string`                                    | 斜杠归一化的相对路径                         |
+| `file:resolveMarkdownLink`   | `sourceFile, href`                | `MarkdownLinkResolution`                    | 仅解析已保存文件的相对 Markdown 链接，验证普通文件并返回规范目标路径与片段 |
 | `file:watch`                 | `rootPath?`                       | `boolean`                                   | 替换单例 chokidar watcher                    |
 | `app:getSettings`            | 无                                | `AppSettings`                               | 返回完整配置副本（structuredClone）          |
 | `app:getDefaultSettings`     | 无                                | `AppSettings`                               | 返回默认配置副本                             |
@@ -610,7 +620,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `app:isMaximized`            | 无                                | `boolean`                                   | 内部 `windowMaximizedState`                  |
 | `app:getInfo`                | 无                                | `{ app, electron, node, platform, vditor }` | 版本信息                                     |
 | `app:setZoomFactor`          | `zoom: number`                    | `number`                                    | 夹紧为 0.75–2.0 后应用                       |
-| `app:openExternal`           | `url: string`                     | `Promise`                                   | 验证 http(s)/mailto 后 `shell.openExternal`  |
+| `app:openExternal`           | `url: unknown`                    | `Promise`                                   | `allowedExternalUrl()` 验证 http(s)/mailto 后 `shell.openExternal`  |
 | `app:showItemInFolder`       | `filePath`                        | `void`                                      | `shell.showItemInFolder`                     |
 | `app:openDirectory`          | `dirPath`                         | `void`                                      | `shell.openPath`                             |
 | `app:exportPDF`              | `html, defaultPath?`              | `string \| null`                            | 隐藏 BrowserWindow 加载 HTML 后 `printToPDF` |
@@ -676,6 +686,10 @@ openPath(filePath)
       ↓
     after() 回调 → 挂载工具栏、安装观察者、刷新 UI
 ```
+
+Ctrl/Cmd+单击相对 Markdown 链接时，渲染器先调用 `file:resolveMarkdownLink(sourceFile, href)`；主进程拒绝协议、绝对路径、非 Markdown 和不存在目标，仅返回规范化的普通文件路径及可选片段。`openPath()` 复用已有标签或创建新标签，待 Vditor 就绪后将 `#片段` 定位到目标标题。
+
+相对图片继续由 `vditor-adapter.js` 转换为 `local-file://` 资源 URL；不再使用 Vditor 的通用 `linkBase`，以保留 Markdown 链接原始相对目标供受限 IPC 解析。
 
 ### 9.2 文件保存流程
 
@@ -789,45 +803,45 @@ function rememberRecent(filePath) {
 
 ### 10.1 逻辑组件清单
 
-#### 标题栏与窗口控制（`app.js:743-855`, `index.html:15-86`）
+#### 标题栏与窗口控制（`app.js` 的 `updateMaximizedState()` / `setupEvents()`，`index.html:15-86`）
 
 - **职责：** 自定义标题栏（Windows/Linux）、应用菜单挂载点、新建/打开/保存快捷按钮、标签栏、最小化/最大化/关闭按钮、macOS 隐藏式标题栏
 - **实现：** `updateMaximizedState()`、窗口按钮 `onclick`
 
-#### 应用菜单（`app.js:2483-2650`, `index.html:17-25`）
+#### 应用菜单（`app.js:2653` 起的 `setupAppMenus()`，`index.html:17-25`）
 
 - **职责：** Windows/Linux 平台在标题栏挂载自定义下拉菜单（File 菜单含编辑模式 / 布局 / 设置 / 退出）
 - **实现：** `setupAppMenus()` 构建 popup DOM、`handleMenu(action, value)` 路由到功能函数
 - **macOS：** 使用 `src/main/menu.ts` 的原生 Menu，通过 `menu:action` IPC 与渲染器同步
 
-#### 标签栏（`app.js:1352-1431`, `index.html:64-66`）
+#### 标签栏（`app.js:1371` 起的 `renderTabs()`，`index.html:64-66`）
 
 - **职责：** 渲染标签按钮列表、支持拖拽重排序、中键关闭、脏标记显示、外部冲突标记
 - **实现：** `renderTabs()`、标签拖拽使用 Pointer Events API
 
-#### 编辑区（`app.js:1087-1168`, `index.html:141-213`）
+#### 编辑区（`app.js:1094` 起的 `ensureEditor()` 及相关编辑器生命周期函数，`index.html:141-213`）
 
 - **职责：** 承载所有标签页的 Vditor 编辑器 host、空状态引导、外部变更横幅、查找替换组件
 - **实现：** `ensureEditor()`、`switchTab()` 切换 active 类；编辑器重建和三种模式切换均保存主滚动容器的位置，跨模式按文档滚动进度恢复，SV 始终以源码区为准
 
-#### 查找替换（`app.js:283-406`, `index.html:153-206`）
+#### 查找替换（`app.js:324-406`，`index.html:153-206`）
 
 - **职责：** 全文查找、逐条匹配、CSS Highlights API 高亮、替换单个/全部
 - **实现：** `openFind()`、`refreshFind()`、`moveFindMatch()`、`replaceFindMatch()`、`replaceAllFindMatches()`
 - **注意：** 当前实现通过 `tab.vditor.setValue(content)` 回写替换结果，可能丢失选择/undo 状态（已知问题）
 
-#### 侧栏（`app.js:1640-1726`, `index.html:115-139`）
+#### 侧栏（`app.js:2895` 起的 `toggleSidebar()`，`index.html:115-139`）
 
 - **职责：** 左侧可折叠面板，包含文件树视图和大纲视图
 - **实现：** `toggleSidebar()` 带 CSS transition、`appendDirectory()` 懒加载子目录
 
-#### 文件树（`app.js:1678-1726`, `index.html:127-131`）
+#### 文件树（`app.js:1735` 起的 `appendDirectory()` / `showTreeMenu()`，`index.html:127-131`）
 
 - **职责：** 懒加载工作区目录树、文件展开状态持久化、文件名省略（canvas 测量）、右键菜单（新建/重命名/回收站/在管理器中显示）
 - **实现：** `appendDirectory()`、`showTreeMenu()`、`renameExplorerItem()`、`middleEllipsis()`
 - **过滤：** 仅显示 `fileExplorer.visibleExtensions` 中的扩展名，隐藏以 `.` 开头的文件
 
-#### 文档大纲（`app.js:1897-2015`, `index.html:133-136`）
+#### 文档大纲（`app.js:1954` 起的 `renderOutline()`，`index.html:133-136`）
 
 - **职责：** 解析当前文档 Markdown 标题，构建可折叠的层次树，点击跳转并平滑滚动到对应位置
 - **实现：** `renderOutline()` 从 `currentContent(tab)` 正则提取 `^(#{1,6})\s+(.+?)`，`scrollToHeading()` 动画滚动
@@ -837,7 +851,7 @@ function rememberRecent(filePath) {
 - **职责：** 显示当前文件路径、状态消息、编辑模式（IR/SV/WYSIWYG）、词字符行数、编码、行结尾、主题切换、设置快捷入口、版本号；编辑模式文本可展开快捷菜单
 - **实现：** `updateActiveUI()` 汇总状态，`toggleStatusModeMenu()` / `selectStatusMode()` 通过适配器复用 Vditor 的原生模式切换
 
-#### 设置对话框（`app.js:2130-2402`, `index.html:249-end`）
+#### 设置对话框（`app.js:2327` 起的设置保存/关闭逻辑及 `:2498` 的拖拽逻辑，`index.html:249-end`）
 
 - **职责：** 模态对话框，包含 6 个面板（Appearance/Fonts/Editor/Preview/Files & Session/About），支持拖拽移动和 8 方向拖拽调整大小，保存后实时应用
 - **实现：** `openSettings()`、`saveSettings()`、`setupSettingsDrag()`、`restoreSettingsCardSize()`
@@ -896,12 +910,12 @@ function rememberRecent(filePath) {
 - "查看源码" 按钮（GitHub 链接）
 - 底部 "Restore defaults" 按钮（重置所有设置，仅此面板显示）
 
-#### 确认对话框（`app.js:95-149`, `index.html` 中的 `#confirmModal`）
+#### 确认对话框（`app.js:104` 起的 `showConfirmDialog()`，`index.html` 中的 `#confirmModal`）
 
 - **职责：** 通用确认对话框，支持自定义标题/消息/操作按钮列表，返回 Promise
 - **实现：** `showConfirmDialog({ title, message, actions })` 返回 `{ resolve: Promise }`
 
-#### 右键菜单（`app.js:1728-1784`, `#contextMenu`）
+#### 右键菜单（`app.js:1785` 起的 `showTreeMenu()`，`#contextMenu`）
 
 - **职责：** 文件树节点和工作区根目录的上下文操作菜单
 
@@ -940,7 +954,7 @@ function rememberRecent(filePath) {
 
 ### 11.1 CSS 预处理器
 
-**无预处理器，使用纯 CSS。** 单一文件 `src/renderer/styles/app.css`（约 2483 行）。
+**无预处理器，使用纯 CSS。** 单一文件 `src/renderer/styles/app.css`（2645 行，随源码变化）。
 
 ### 11.2 CSS 变量体系（设计 Token）
 
@@ -1034,7 +1048,13 @@ function rememberRecent(filePath) {
       "target": ["AppImage", "deb", "rpm"],
       "category": "Office"
     }
-  }
+  },
+  "fileAssociations": [{
+    "ext": ["md", "markdown", "mdown", "mkd", "mkdn"],
+    "name": "Markdown Document",
+    "mimeType": "text/markdown",
+    "role": "Editor"
+  }]
 }
 ```
 
@@ -1350,6 +1370,8 @@ flowchart TB
 | ----------------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tests/unit/app-paths.test.ts`      | `src/main/app-paths.ts`                 | Linux XDG 路径、XDG 相对路径回退、Windows Roaming/Local 分离、macOS 应用标识目录、环境变量隔离                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `tests/unit/open-files.test.ts`     | `src/main/open-files.ts`                | 绝对/相对/file-URL 路径提取、去重、过滤标志位/目录/不存在的文件/非 Markdown 扩展名                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `tests/unit/external-url.test.ts`   | `src/main/external-url.ts`              | 仅允许 `http:` / `https:` / `mailto:`；拒绝非字符串、相对路径、应用/文件/脚本/data 协议 |
+| `tests/unit/resolve-markdown-link.test.ts` | `src/main/resolve-markdown-link.ts` | 相对 Markdown 路径、`../`、百分号编码、片段、Windows 路径、缺失/绝对/协议/非 Markdown/非法编码目标拒绝 |
 | `tests/unit/file-manager.test.ts`   | `src/main/services/file-manager.ts`     | UTF-8 读取、UTF-8 BOM 检测与剥离、GB18030 回退、父目录自动创建、文件/目录创建、路径逃逸拒绝（`../`）、目录优先自然排序、重命名、二进制图片写入                                                                                                                                                                                                                                                                                                                                                                    |
 | `tests/unit/settings-store.test.ts` | `src/main/services/settings-store.ts`   | 首次加载返回默认值、TOML 部分深合并与默认值、未知字段丢弃、`set` 持久化（含 TOML 段结构验证）、`update` 多字段快照（含 `workspaceTreeStates` 数组）、设置对话框尺寸持久化（`window.settingsDialog`）、`getAll` 返回克隆副本、`reset` 重置内存和磁盘                                                                                                                                                                                                                                                               |
 | `tests/unit/vditor-adapter.test.ts` | `src/renderer/vditor-adapter.js`        | 冻结的 selectors 对象、`validateHost` 成功（toolbar 通过 `mountedToolbar` 参数提供）、代码主题亮/暗分界点（`ant-design` 前为 dark 组）、DOM 漂移检测（缺少 source 节点时 `valid: false`）、列表 `marker`/`padding` 解析、hash anchor 到标题索引（IR 内部链接 + 元素 id + slug）、跨多 span 文本节点的匹配与选区                                                                                                                                                                                                   |
@@ -1357,7 +1379,7 @@ flowchart TB
 
 ### 15.2 E2E 测试（Playwright Electron，单文件 `tests/e2e/app.spec.ts`）
 
-当前包含 **48 个参数化 `test()` 用例**，覆盖以下核心场景（按功能域分类）：
+当前包含 **61 个参数化 `test()` 用例**，覆盖以下核心场景（按功能域分类）：
 
 #### 启动与窗口生命周期
 
@@ -1389,6 +1411,13 @@ flowchart TB
 - 相对图片加载（Markdown `![](assets/x.png)` + HTML `<img>` 不污染源码）
 - HTTPS 文档图片在三模式下均加载
 - 工具栏不出现 `fullscreen` 按钮，WYSIWYG 代码块使用 `previewCodeFontFamily`
+
+#### 链接跳转与外部协议
+
+- 文内锚点和 Vditor TOC 在 IR / WYSIWYG / SV 双面板中仅经 Ctrl/Cmd+单击平滑跳转
+- 相对 Markdown 链接在三种模式下打开目标标签，并继续定位可选片段
+- `app:openExternal` 在特权 IPC 边界拒绝 `javascript:` 等非白名单协议
+- 窄窗口工具栏折行时，下拉菜单不改变编辑区几何；隐藏工具栏后标题栏仅在编辑区侧保留投影
 
 #### 工作区与文件树
 
@@ -1450,12 +1479,12 @@ flowchart TB
 
 | 模块                                | 当前状态                                   | 待补充                                                                                                                                                                        |
 | ----------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/main/index.ts`                 | 仅 E2E 覆盖                                | 缺乏 `resolveSystemLocale` / `isMaximizedLikeBounds` / `openExternal` URL 协议校验 / `initialWindowBackground` 主题映射 / watcher `on('all')` 事件流的单元测试                |
+| `src/main/index.ts`                 | E2E + 外部 URL 白名单单测                   | 缺乏 `resolveSystemLocale` / `isMaximizedLikeBounds` / `initialWindowBackground` 主题映射 / watcher `on('all')` 事件流的单元测试                |
 | `src/main/preload.ts`               | 仅 E2E 覆盖                                | 无 Bridge API surface 类型契约测试                                                                                                                                            |
 | `src/main/protocol.ts`              | 仅 E2E 覆盖                                | 无 `local-file://` 非绝对路径 / 不存在文件 / URL 遍历攻击的单元测试                                                                                                           |
 | `src/main/menu.ts`                  | 仅 E2E 覆盖                                | 无三语言菜单标签生成的独立测试                                                                                                                                                |
 | `src/main/services/file-manager.ts` | 单元测试较完善                             | 缺少 `exists()` / 空目录 `listDir` / `renameItem` 路径逃逸拒绝 / `createItem` "已存在" 冲突路径                                                                               |
-| `src/renderer/vditor-adapter.js`    | 单元测试与 E2E 均有                        | 缺少 `resolveRelativeImageSources` / `observeRelativeImageSources` / `withOriginalImageSources` / `toolbarButton` 选择器注入防御 / `isRelativeImageSource` 边界输入的单元测试 |
+| `src/renderer/vditor-adapter.js`    | 单元测试与 E2E 均有                        | 覆盖 DOM 结构、链接交互、IR 展开切换和相对图片（含 Vditor 提前转换的 `app://app/` 路径）；仍缺少 `observeRelativeImageSources` / `withOriginalImageSources` / `toolbarButton` 选择器注入防御 / `isRelativeImageSource` 边界输入的单元测试 |
 | `src/renderer/app.js`               | 仅 E2E + `renderer-shell` 源代码字符串断言 | 无模块化后的单元行为测试                                                                                                                                                      |
 | `src/renderer/locales.js`           | `renderer-shell` 键完整性对等测试          | 无占位符参数替换 / 三语言字典完整性的独立单元测试                                                                                                                             |
 
@@ -1468,16 +1497,16 @@ flowchart TB
 | 文件                  | 行数 | 内容                                                           |
 | --------------------- | ---- | -------------------------------------------------------------- |
 | `src/main/index.ts`   | 124  | HACK：Linux unmaximize 后延迟修复 bounds（100/350/800/1400ms） |
-| `src/renderer/app.js` | 2037 | 硬编码中文 `'请先保存文档，再插入本地图片'`（未国际化）        |
-| `src/renderer/app.js` | 2056 | 硬编码中文 `'图片保存失败：'`（未国际化）                      |
-| `src/renderer/app.js` | 2096 | 硬编码中文 `'已导出 '`（未国际化）                             |
-| `src/renderer/app.js` | 3028 | 硬编码中文 `'仅支持拖入 Markdown 文件'`（未国际化）            |
+| `src/renderer/app.js` | 2209 | 硬编码中文 `'请先保存文档，再插入本地图片'`（未国际化）        |
+| `src/renderer/app.js` | 2228 | 硬编码中文 `'图片保存失败：'`（未国际化）                      |
+| `src/renderer/app.js` | 2268/2278 | 硬编码中文 `'已导出 '`（未国际化）                       |
+| `src/renderer/app.js` | 3254 | 硬编码中文 `'仅支持拖入 Markdown 文件'`（未国际化）            |
 
 ### 16.2 架构风险点
 
-1. **`app.js` 集中度过高（3075 行单体）**：标签管理、工作区、设置、文件树、查找替换、主题、菜单、对话框、拖拽等功能全部耦合于同一文件，职责无法隔离测试，修改风险集中。
+1. **`app.js` 集中度过高（3301 行单体）**：标签管理、工作区、设置、文件树、查找替换、主题、菜单、对话框、拖拽等功能全部耦合于同一文件，职责无法隔离测试，修改风险集中。
 
-2. **`src/main/ipc/` 为空目录**：所有 IPC handler 集中在 `index.ts` 的 `registerIpcHandlers()`，导致主入口文件体积膨胀（486 行），无分层边界。
+2. **`src/main/ipc/` 为空目录**：所有 IPC handler 集中在 `index.ts` 的 `registerIpcHandlers()`，导致主入口文件体积膨胀（510 行），无分层边界。
 
 3. **IPC 参数校验不足**：`file:write` / `file:read` / `app:saveSettings` 等通道未验证路径合法性、参数类型或授权范围。`local-file://` 协议无路径白名单，可访问任意本地文件。
 

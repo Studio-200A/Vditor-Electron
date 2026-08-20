@@ -32,7 +32,7 @@ describe('Vditor DOM compatibility adapter', () => {
       <div class="vditor-content">
         <pre class="vditor-sv vditor-reset"><span data-type="heading-marker">#</span><span data-type="newline">\n</span></pre>
         <pre class="vditor-ir"><h1><span data-type="heading-marker"># </span>IR</h1><span data-type="a"><span class="vditor-ir__link">Jump</span><span class="vditor-ir__marker--link">#ir</span></span></pre>
-        <pre class="vditor-wysiwyg"><h1>WYSIWYG</h1></pre>
+        <pre class="vditor-wysiwyg"><h1>WYSIWYG</h1><a href="https://example.com">External</a></pre>
         <div class="vditor-preview"><h1>Preview</h1></div>
       </div>`;
     return host;
@@ -74,7 +74,8 @@ describe('Vditor DOM compatibility adapter', () => {
   it('maps document hash links to rendered heading indexes', () => {
     const host = createHost();
     const preview = adapter.editorParts(host).preview;
-    preview.innerHTML = '<h1 id="intro">Intro</h1><h2>Target Section</h2>';
+    preview.innerHTML =
+      '<div class="vditor-toc"><span data-target-id="intro">Intro</span></div><h1 id="intro">Intro</h1><h2>Target Section</h2>';
     expect(adapter.headingIndexForAnchor(host, '#intro')).toBe(0);
     expect(adapter.headingIndexForAnchor(host, '#target-section')).toBe(1);
     expect(adapter.headingIndexForAnchor(host, '#missing')).toBe(-1);
@@ -82,6 +83,97 @@ describe('Vditor DOM compatibility adapter', () => {
       .editorParts(host)
       .instantRendering.querySelector('.vditor-ir__link');
     expect(adapter.documentAnchor(instantLink, host).href).toBe('#ir');
+    const tocEntry = preview.querySelector('[data-target-id="intro"]');
+    expect(adapter.documentAnchor(tocEntry, host)).toMatchObject({ href: '#intro', kind: 'toc' });
+    const externalLink = adapter.editorParts(host).wysiwyg.querySelector('a');
+    expect(adapter.documentLink(externalLink, host)).toMatchObject({
+      href: 'https://example.com',
+      kind: 'link',
+    });
+  });
+
+  it('suppresses and restores native document-link titles while showing an app hint', () => {
+    const host = createHost();
+    const externalLink = adapter.editorParts(host).wysiwyg.querySelector('a');
+    externalLink.title = 'Original title';
+    const link = adapter.documentLink(externalLink, host);
+    expect(adapter.setDocumentLinkHint(link, 'Ctrl+Click to follow link', 'pointer')).toBe(true);
+    expect(externalLink.hasAttribute('title')).toBe(false);
+    expect(externalLink.style.cursor).toBe('pointer');
+    expect(adapter.clearDocumentLinkHint(link)).toBe(true);
+    expect(externalLink).toHaveProperty('title', 'Original title');
+    expect(externalLink.style.cursor).toBe('');
+  });
+
+  it('places the selection in editable document links but not preview TOC entries', () => {
+    const host = createHost();
+    window.document.body.append(host);
+    const instantLink = adapter
+      .editorParts(host)
+      .instantRendering.querySelector('.vditor-ir__link');
+    const link = adapter.documentAnchor(instantLink, host);
+    link.element.closest('.vditor-ir').focus = () => {};
+    expect(adapter.focusDocumentLink(link)).toBe(true);
+    expect(window.getSelection()?.anchorNode).toBe(link.element);
+
+    const preview = adapter.editorParts(host).preview;
+    preview.innerHTML = '<div class="vditor-toc"><span data-target-id="intro">Intro</span></div>';
+    expect(adapter.focusDocumentLink(adapter.documentAnchor(preview.firstChild, host))).toBe(false);
+  });
+
+  it('expands an Instant Rendering link without discarding its text selection', () => {
+    const host = createHost();
+    window.document.body.append(host);
+    const text = adapter.editorParts(host).instantRendering.querySelector('.vditor-ir__link');
+    const range = window.document.createRange();
+    range.selectNodeContents(text);
+    range.collapse(true);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    text.closest('.vditor-ir').focus = () => {};
+
+    expect(adapter.expandInstantLinkForEditing(adapter.documentLink(text, host))).toBe(true);
+    expect(text.closest('[data-type="a"]')?.classList.contains('vditor-ir__node--expand')).toBe(
+      true,
+    );
+    expect(window.getSelection()?.anchorNode).toBe(text);
+    expect(adapter.expandInstantLinkForEditing(adapter.documentLink(text, host))).toBe(false);
+  });
+
+  it('closes the prior Instant Rendering link expansion before opening another', () => {
+    const host = createHost();
+    window.document.body.append(host);
+    const instantRendering = adapter.editorParts(host).instantRendering;
+    instantRendering.insertAdjacentHTML(
+      'beforeend',
+      '<span data-type="a"><span class="vditor-ir__link">Second</span><span class="vditor-ir__marker--link">#second</span></span>',
+    );
+    instantRendering.focus = () => {};
+    const [first, second] = instantRendering.querySelectorAll('.vditor-ir__link');
+
+    adapter.expandInstantLinkForEditing(adapter.documentLink(first, host));
+    adapter.expandInstantLinkForEditing(adapter.documentLink(second, host));
+
+    expect(first.closest('[data-type="a"]')?.classList.contains('vditor-ir__node--expand')).toBe(
+      false,
+    );
+    expect(second.closest('[data-type="a"]')?.classList.contains('vditor-ir__node--expand')).toBe(
+      true,
+    );
+  });
+
+  it('resolves app-protocol image paths back to the active document directory', () => {
+    const host = createHost();
+    const image = window.document.createElement('img');
+    image.src = 'app://app/assets/screenshot-light.webp';
+    host.append(image);
+
+    adapter.resolveRelativeImageSources(host, 'local-file://root/home/project/');
+
+    expect(image.dataset.vditorDesktopOriginalSrc).toBe('assets/screenshot-light.webp');
+    expect(image.getAttribute('src')).toBe(
+      'local-file://root/home/project/assets/screenshot-light.webp',
+    );
   });
 
   it('creates reusable text-match ranges for the active editor without searching the preview', () => {

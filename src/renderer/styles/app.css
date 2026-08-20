@@ -287,6 +287,20 @@ button.danger {
 #app:is(.toolbar-hidden, .toolbar-unavailable) .window-titlebar {
   box-shadow: none;
 }
+#app:is(.toolbar-hidden, .toolbar-unavailable) .window-titlebar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: var(--sidebar-current, 260px);
+  z-index: 1;
+  box-shadow: var(--top-surface-shadow);
+  pointer-events: none;
+}
+#app.sidebar-collapsed:is(.toolbar-hidden, .toolbar-unavailable) .window-titlebar::after {
+  left: 0;
+}
 #app:is(.toolbar-hidden, .toolbar-unavailable) .sidebar {
   padding-top: 38px;
 }
@@ -1423,6 +1437,20 @@ html[data-scrollbar-mode='hidden'] .app-scrollbar::-webkit-scrollbar {
 }
 #statusMessage.error {
   color: var(--danger);
+}
+.document-link-tooltip {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  max-width: min(320px, calc(100vw - 16px));
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--panel);
+  box-shadow: 0 3px 12px rgb(0 0 0 / 18%);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.25;
 }
 .status-icon {
   width: 21px;

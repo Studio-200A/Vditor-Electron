@@ -24,8 +24,12 @@
     listPadding: '[data-type="padding"]',
     renderedHeading: 'h1,h2,h3,h4,h5,h6',
     instantLink: '[data-type="a"]',
+    instantExpandedNode: '.vditor-ir__node--expand',
+    instantLinkText: '.vditor-ir__link',
     instantLinkDestination: '.vditor-ir__marker--link',
+    tocTarget: '.vditor-toc [data-target-id]',
   });
+  const documentLinkPresentation = new WeakMap();
 
   function editorParts(host) {
     return {
@@ -341,12 +345,103 @@
   function documentAnchor(target, host) {
     const element = target?.nodeType === Node.TEXT_NODE ? target.parentElement : target;
     if (!element || !host?.contains(element)) return null;
+    // Vditor 3.11.x renders TOC entries as descendants with data-target-id instead
+    // of anchors. Keep that private contract in this adapter for upgrade auditing.
+    const tocTarget = element.closest?.(selectors.tocTarget);
+    if (tocTarget && host.contains(tocTarget)) {
+      const targetId = tocTarget.getAttribute('data-target-id')?.trim();
+      if (targetId) return { element: tocTarget, href: `#${targetId}`, kind: 'toc' };
+    }
     const link = element.closest?.('a[href^="#"]');
-    if (link) return { element: link, href: link.getAttribute('href') || '' };
+    if (link) return { element: link, href: link.getAttribute('href') || '', kind: 'link' };
     const instantLink = element.closest?.(selectors.instantLink);
     if (!instantLink || !host.contains(instantLink)) return null;
     const href = instantLink.querySelector(selectors.instantLinkDestination)?.textContent?.trim();
-    return href?.startsWith('#') ? { element: instantLink, href } : null;
+    return href?.startsWith('#') ? { element: instantLink, href, kind: 'link' } : null;
+  }
+
+  function documentLink(target, host) {
+    const anchor = documentAnchor(target, host);
+    if (anchor) return anchor;
+    const element = target?.nodeType === Node.TEXT_NODE ? target.parentElement : target;
+    if (!element || !host?.contains(element)) return null;
+    const link = element.closest?.('a[href]');
+    if (link && host.contains(link))
+      return { element: link, href: link.getAttribute('href') || '', kind: 'link' };
+    const instantLink = element.closest?.(selectors.instantLink);
+    if (!instantLink || !host.contains(instantLink)) return null;
+    const href = instantLink.querySelector(selectors.instantLinkDestination)?.textContent?.trim();
+    return href ? { element: instantLink, href, kind: 'link' } : null;
+  }
+
+  function setDocumentLinkHint(link, hint, cursor) {
+    const element = link?.element;
+    if (!element || typeof hint !== 'string') return false;
+    if (!documentLinkPresentation.has(element)) {
+      documentLinkPresentation.set(element, {
+        title: element.getAttribute('title'),
+        cursor: element.style.cursor,
+      });
+    }
+    // The application renders the navigation hint itself. Suppress native titles
+    // while hovered so author-provided titles do not create a second tooltip.
+    element.removeAttribute('title');
+    element.style.cursor = cursor;
+    return true;
+  }
+
+  function clearDocumentLinkHint(link) {
+    const element = link?.element;
+    const presentation = element && documentLinkPresentation.get(element);
+    if (!element || !presentation) return false;
+    if (presentation.title === null) element.removeAttribute('title');
+    else element.title = presentation.title;
+    element.style.cursor = presentation.cursor;
+    documentLinkPresentation.delete(element);
+    return true;
+  }
+
+  function focusDocumentLink(link) {
+    const element = link?.element;
+    if (!element) return false;
+    const editor = element.closest?.(`${selectors.instantRendering}, ${selectors.wysiwyg}`);
+    if (!editor) return false;
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    range.collapse(false);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    editor.focus();
+    return true;
+  }
+
+  function expandInstantLinkForEditing(link) {
+    const element = link?.element;
+    if (!element?.matches?.(selectors.instantLink)) return false;
+    // Once the node is expanded, Vditor's own click handler must receive later
+    // clicks so the browser can place the caret in either link text or URL marker.
+    if (element.classList.contains('vditor-ir__node--expand')) return false;
+    // Vditor 3.11.x returns early for an IR link click before calling expandMarker().
+    // Mirror expandMarker() by closing the previous expansion before opening this node,
+    // while preserving the browser's click-position range.
+    const editor = element.closest(selectors.instantRendering);
+    editor?.querySelectorAll(selectors.instantExpandedNode).forEach((node) => {
+      node.classList.remove('vditor-ir__node--expand');
+    });
+    element.classList.add('vditor-ir__node--expand');
+    element.classList.remove('vditor-ir__node--hidden');
+    const selection = window.getSelection();
+    const text = element.querySelector(selectors.instantLinkText);
+    if (!selection?.rangeCount || !text?.contains(selection.getRangeAt(0).startContainer)) {
+      const range = document.createRange();
+      range.selectNodeContents(text || element);
+      range.collapse(false);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+    editor?.focus();
+    return true;
   }
 
   function headingIndexForAnchor(host, href) {
@@ -388,15 +483,32 @@
     );
   }
 
+  function relativeSourceFromAppUrl(source) {
+    try {
+      const url = new URL(source);
+      if (url.protocol !== 'app:' || url.hostname !== 'app') return '';
+      const pathname = decodeURIComponent(url.pathname).replace(/^\/+/, '');
+      return pathname ? `${pathname}${url.search}${url.hash}` : '';
+    } catch (_) {
+      return '';
+    }
+  }
+
   function resolveRelativeImageSources(host, baseUrl) {
     if (!host || !baseUrl) return;
     host.querySelectorAll('img[src]').forEach((image) => {
       if (image.dataset.vditorDesktopOriginalSrc) return;
       const source = image.getAttribute('src') || '';
-      if (!isRelativeImageSource(source)) return;
+      // Vditor resolves Markdown images against the app document before this
+      // observer sees them. Restore that app://app path to its Markdown-relative
+      // form, then resolve it against the active document directory instead.
+      const relativeSource = isRelativeImageSource(source)
+        ? source
+        : relativeSourceFromAppUrl(source);
+      if (!relativeSource) return;
       try {
-        image.dataset.vditorDesktopOriginalSrc = source;
-        image.setAttribute('src', new URL(source, baseUrl).href);
+        image.dataset.vditorDesktopOriginalSrc = relativeSource;
+        image.setAttribute('src', new URL(relativeSource, baseUrl).href);
       } catch (_) {}
     });
   }
@@ -490,6 +602,11 @@
     revealTextMatch,
     selectTextMatch,
     documentAnchor,
+    documentLink,
+    setDocumentLinkHint,
+    clearDocumentLinkHint,
+    focusDocumentLink,
+    expandInstantLinkForEditing,
     headingIndexForAnchor,
     resolveRelativeImageSources,
     observeRelativeImageSources,

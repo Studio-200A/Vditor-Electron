@@ -4,7 +4,7 @@ This document defines the standard workflow for developing, reviewing, tagging, 
 
 ## Branch model
 
-- Version- or feature-specific `dev-*` / `feat-*` branches are active development branches. For example, `dev-0.1.3` carries the 0.1.3 release work.
+- Version- or feature-specific `dev-*` / `feat-*` branches are active development branches. For example, `dev-0.1.5` carries the 0.1.5 release work.
 - `main` is release-oriented and should receive completed work through a GitHub pull request.
 - Official version tags must be created on the final commit on `main` after the pull request has been merged.
 
@@ -26,7 +26,7 @@ Keep the release preparation changes in the pull request reviewable and avoid ch
 
 ## Pull request and merge
 
-Create a pull request from the release branch, such as `dev-0.1.3`, to `main` on GitHub. Review the diff and confirm that the required checks pass. Merge the pull request using the project's chosen GitHub merge strategy.
+Create a pull request from the release branch, such as `dev-0.1.5`, to `main` on GitHub. Review the diff and confirm that the required checks pass. Merge the pull request using the project's chosen GitHub merge strategy.
 
 The release commit is the resulting commit on `main`:
 
@@ -39,7 +39,7 @@ The release commit is the resulting commit on `main`:
 After the pull request is merged:
 
 1. Open GitHub's **New release** page.
-2. Create a new tag, such as `0.1.3` or `v0.1.3`, using the repository's established tag convention.
+2. Create a new tag, such as `0.1.5` or `v0.1.5`, using the repository's established tag convention.
 3. Set the tag target to the final merged commit on `main`.
 4. Enter the release title and copy the corresponding version section from `CHANGELOG.md` into the release notes.
 5. Save the release as a draft.
@@ -52,11 +52,11 @@ Synchronize the local repository and tags, then build from the release tag:
 
 ```bash
 git fetch origin --tags
-git switch --detach v0.1.3
+git switch --detach v0.1.5
 npm run release:linux
 ```
 
-Replace `v0.1.3` with the actual tag name. The command produces the configured Linux release artifacts, including the unpacked application, portable archive, and AppImage. If only one artifact is needed, use the corresponding `release:linux:*` script.
+Replace `v0.1.5` with the actual tag name. The command produces the configured Linux release artifacts, including the unpacked application, portable archive, and AppImage. If only one artifact is needed, use the corresponding `release:linux:*` script.
 
 Before uploading, verify that:
 
@@ -72,8 +72,8 @@ Upload the artifacts to the draft GitHub release. Do not modify the source or mo
 After the artifacts and notes have been reviewed, publish the GitHub release. Then return to the normal development flow:
 
 ```bash
-git switch dev-0.1.3
-git pull --ff-only origin dev-0.1.3
+git switch dev-0.1.5
+git pull --ff-only origin dev-0.1.5
 ```
 
 Start subsequent work on a new version- or feature-specific development branch; keep `main` aligned with published release history. If a post-release fix is needed, develop it on a new branch and use a new version tag rather than moving an existing release tag.
