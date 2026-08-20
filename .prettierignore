@@ -10,3 +10,5 @@ playwright-report/
 .agents/
 .codex/
 package-lock.json
+*.md
+*.markdown
