@@ -133,6 +133,7 @@ Portable 压缩包中的 desktop 文件使用 `/path/to/vditor-desktop` 作为�
 | 关闭标签页     | `Ctrl/Cmd + W`         |
 | 切换资源管理器 | `Ctrl/Cmd + B`         |
 | 打开设置       | `Ctrl/Cmd + ,`         |
+| 切换 Chrome DevTools（启用后） | `Ctrl/Cmd + Shift + I` |
 | 切换全屏       | `F11`                  |
 
 ## 配置与数据目录

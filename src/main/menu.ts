@@ -105,8 +105,6 @@ export function createAppMenu(locale: string = 'en_US', editMode: EditMode = 'ir
         { role: 'zoomIn' },
         { role: 'zoomOut' },
         { role: 'resetZoom' },
-        { type: 'separator' },
-        { role: 'toggleDevTools', accelerator: 'F12' },
       ],
     },
   ];

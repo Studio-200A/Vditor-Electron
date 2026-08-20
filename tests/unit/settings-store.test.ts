@@ -61,6 +61,7 @@ describe('SettingsStore', () => {
     expect(new SettingsStore(configDir).get('editorZoom')).toBe(125);
     const contents = fs.readFileSync(store.getPath(), 'utf8');
     expect(contents).toContain('[application]');
+    expect(contents).toContain('devToolsEnabled = false');
     expect(contents).toContain('[appearance]');
     expect(contents).toContain('editorZoom = 125');
     expect(contents).toContain('[editor.toolbarConfig]');
@@ -74,6 +75,7 @@ describe('SettingsStore', () => {
     const settings = store.update({
       theme: 'monokai-pro-dark',
       lastDarkTheme: 'monokai-pro-dark',
+      devToolsEnabled: true,
       lightCodeTheme: 'atom-one-light',
       darkCodeTheme: 'monokai-sublime',
       editorZoom: 125,
@@ -85,6 +87,7 @@ describe('SettingsStore', () => {
 
     expect(settings.theme).toBe('monokai-pro-dark');
     expect(settings.lastDarkTheme).toBe('monokai-pro-dark');
+    expect(settings.devToolsEnabled).toBe(true);
     expect(settings.lightCodeTheme).toBe('atom-one-light');
     expect(settings.darkCodeTheme).toBe('monokai-sublime');
     expect(settings.editorZoom).toBe(125);

@@ -1038,8 +1038,6 @@
       setTimeout(() => {
         if (!tab.vditor) return;
         tab.mode = tab.vditor.getCurrentMode();
-        state.settings.editMode = tab.mode;
-        window.appAPI.saveSettings({ editMode: tab.mode });
         syncSplitToolbarActions(tab);
         updateActiveUI();
         scheduleSplitLineNumbers(tab);
@@ -1221,8 +1219,6 @@
         setTimeout(() => {
           if (!tab.vditor) return;
           tab.mode = tab.vditor.getCurrentMode();
-          state.settings.editMode = tab.mode;
-          window.appAPI.saveSettings({ editMode: tab.mode });
           syncSplitToolbarActions(tab);
           if (tab.id === state.activeId) updateActiveUI();
           scheduleSplitLineNumbers(tab);
@@ -2481,8 +2477,6 @@
         if (tab && value !== tab.mode) {
           rebuildEditor(tab, value);
         }
-        state.settings.editMode = value;
-        window.appAPI.saveSettings({ editMode: value });
       },
       theme: async () => {
         state.settings.theme = value;
@@ -2692,6 +2686,21 @@
     const appLeft = app.getBoundingClientRect().left;
     const sidebarWidth = sidebar.getBoundingClientRect().right - appLeft;
     applyTopControlsWidth(sidebarWidth, menu.getBoundingClientRect().width);
+  }
+
+  function syncToolbarWrapHeight() {
+    const app = $('#app');
+    const mount = $('#vditorToolbarMount');
+    const toolbar = activeTab()?.toolbar;
+    const hidden =
+      app.classList.contains('toolbar-hidden') || app.classList.contains('toolbar-unavailable');
+    const toolbarHeight =
+      !hidden && toolbar?.parentElement === mount
+        ? Math.max(toolbar.getBoundingClientRect().height, toolbar.scrollHeight)
+        : 0;
+    const extraHeight = Math.max(0, Math.ceil(toolbarHeight - 38));
+    app.classList.toggle('toolbar-wrapped', extraHeight > 0);
+    app.style.setProperty('--toolbar-wrap-height', `${extraHeight}px`);
   }
 
   function applyTopControlsWidth(sidebarWidth, menuWidth) {
@@ -2929,6 +2938,11 @@
         $('#statusMode').focus({ preventScroll: true });
         return;
       }
+      if (event.key === 'Escape' && !$('#settingsModal').classList.contains('hidden')) {
+        event.preventDefault();
+        void closeSettings();
+        return;
+      }
       if (event.key === 'Alt' && $('#app').classList.contains('fullscreen')) {
         event.preventDefault();
         $('#app').classList.toggle('fullscreen-menu-visible');
@@ -3022,6 +3036,15 @@
     });
     topControlsObserver.observe($('#sidebar'));
     topControlsObserver.observe($('#appMenuBar'));
+    const toolbarMount = $('#vditorToolbarMount');
+    new ResizeObserver(syncToolbarWrapHeight).observe(toolbarMount);
+    new MutationObserver(() => requestAnimationFrame(syncToolbarWrapHeight)).observe(toolbarMount, {
+      attributes: true,
+      childList: true,
+      subtree: true,
+      attributeFilter: ['hidden', 'style'],
+    });
+    syncToolbarWrapHeight();
     setupAutoHideScrollbar($('#fileTree'));
     setupAutoHideScrollbar($('#outlineTree'));
     setupAutoHideScrollbar($('#settingsForm'));

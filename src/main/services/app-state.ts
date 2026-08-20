@@ -1,6 +1,7 @@
 export interface AppSettings {
   restoreTabs: boolean;
   restoreWorkspace: boolean;
+  devToolsEnabled: boolean;
   systemTheme: boolean;
   theme: 'classic' | 'dark' | 'monokai-pro-dark';
   lastDarkTheme: 'dark' | 'monokai-pro-dark';
@@ -97,6 +98,7 @@ export interface RecentFile {
 export const DEFAULT_SETTINGS: AppSettings = {
   restoreTabs: true,
   restoreWorkspace: true,
+  devToolsEnabled: false,
   systemTheme: true,
   theme: 'classic',
   lastDarkTheme: 'dark',

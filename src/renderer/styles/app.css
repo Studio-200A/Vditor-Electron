@@ -203,7 +203,7 @@ button.danger {
   min-width: 0;
   flex: 1;
   display: flex;
-  align-items: stretch;
+  align-items: flex-start;
   overflow: visible;
 }
 .vditor-toolbar-mount:empty::after {
@@ -213,6 +213,9 @@ button.danger {
 .vditor-toolbar-mount > .vditor-toolbar {
   width: 100%;
   min-height: 37px;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
   padding-top: 1px !important;
   padding-bottom: 1px !important;
   padding-left: 5px !important;
@@ -220,6 +223,15 @@ button.danger {
   border: 0;
   background: var(--panel-2);
   overflow: visible;
+}
+#app.toolbar-wrapped .titlebar {
+  box-shadow: none;
+}
+#app.toolbar-wrapped .toolbar-sidebar-tabs {
+  box-shadow: var(--top-surface-shadow);
+}
+#app.toolbar-wrapped .vditor-toolbar-mount > .vditor-toolbar {
+  box-shadow: var(--top-surface-shadow);
 }
 .vditor-toolbar-mount .vditor-panel,
 .vditor-toolbar-mount .vditor-hint {
@@ -273,7 +285,7 @@ button.danger {
   transition: width 0.16s ease;
 }
 #app:is(.toolbar-hidden, .toolbar-unavailable) .window-titlebar {
-  box-shadow: var(--top-surface-shadow);
+  box-shadow: none;
 }
 #app:is(.toolbar-hidden, .toolbar-unavailable) .sidebar {
   padding-top: 38px;
@@ -545,6 +557,7 @@ button.danger {
 }
 .main-area {
   min-width: 0;
+  padding-top: var(--toolbar-wrap-height, 0px);
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -988,8 +1001,9 @@ html[data-scrollbar-mode='hidden'] .app-scrollbar::-webkit-scrollbar {
 }
 .editor-host .vditor-ir .vditor-reset,
 .editor-host .vditor-wysiwyg .vditor-reset {
-  padding-right: calc((100% - var(--editor-text-width)) / 2) !important;
-  padding-left: calc((100% - var(--editor-text-width)) / 2) !important;
+  padding-right: max(32px, calc((100% - var(--editor-text-width)) / 2)) !important;
+  padding-left: max(32px, calc((100% - var(--editor-text-width)) / 2)) !important;
+  scrollbar-gutter: stable both-edges;
 }
 .editor-host .vditor-sv {
   flex: 0 0 var(--split-source-width, 50%);
@@ -1695,6 +1709,9 @@ body.settings-card-resizing {
   cursor: move;
   user-select: none;
 }
+.settings-card > header {
+  padding-block: 8px;
+}
 .modal-card > footer {
   justify-content: flex-end;
   border-top: 1px solid var(--border);
@@ -1917,9 +1934,24 @@ body.settings-card-resizing {
 }
 .about-reset {
   width: 100%;
+  display: grid;
+  grid-template-columns: max-content;
+  justify-items: stretch;
+  gap: 14px;
   padding-top: 28px;
   border-top: 1px solid var(--border);
   text-align: left;
+}
+.about-reset #resetSettings {
+  width: 100%;
+  text-align: center;
+}
+.about-devtools-setting {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+  cursor: pointer;
 }
 .settings-content h3 {
   margin: 0 0 20px;
@@ -2064,7 +2096,7 @@ body.settings-card-resizing {
 .theme-option-monokai .theme-preview-h4 {
   stroke: #78dce8;
 }
-.settings-content label:not(.check) {
+.settings-content section > label:not(.check):not(.about-devtools-setting):not(.theme-option) {
   display: grid;
   grid-template-columns: minmax(150px, 1fr) minmax(180px, 1.4fr);
   align-items: center;
@@ -2079,6 +2111,14 @@ body.settings-card-resizing {
   border-radius: 5px;
   background: var(--bg);
   padding: 7px;
+}
+.settings-content select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+.settings-content :is(select, input[type='checkbox'], input[type='range']) {
+  accent-color: var(--accent);
 }
 .check {
   display: block;

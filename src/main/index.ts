@@ -187,6 +187,19 @@ function initialWindowBackground(settings: AppSettings): string {
   return theme === 'dark' ? '#17181a' : '#f7f7f8';
 }
 
+function isDevToolsShortcut(input: Electron.Input): boolean {
+  if (input.key.toLowerCase() !== 'i') return false;
+  return (input.control || input.meta) && input.shift;
+}
+
+function updateApplicationMenu(settings = settingsStore.getAll()): void {
+  if (process.platform !== 'darwin') {
+    Menu.setApplicationMenu(null);
+    return;
+  }
+  Menu.setApplicationMenu(createAppMenu(getEffectiveLocale(settings), settings.editMode));
+}
+
 function createWindow(): void {
   const settings = settingsStore.getAll();
   const normalBounds = initialWindowBounds(settings);
@@ -218,6 +231,10 @@ function createWindow(): void {
   rendererReady = false;
   mainWindow.webContents.on('did-start-loading', () => {
     rendererReady = false;
+  });
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.key === 'F12' || (!settingsStore.get('devToolsEnabled') && isDevToolsShortcut(input)))
+      event.preventDefault();
   });
   windowMaximizedState = settings.windowMaximized;
   boundsBeforeMaximize = { ...normalBounds };
@@ -347,18 +364,16 @@ function registerIpcHandlers(): void {
   ipcMain.handle('app:saveSettings', (_event, settings: Partial<AppSettings>) => {
     const savedSettings = settingsStore.update(settings);
     if (
-      process.platform === 'darwin' &&
-      (Object.hasOwn(settings, 'locale') || Object.hasOwn(settings, 'editMode'))
+      Object.hasOwn(settings, 'locale') ||
+      Object.hasOwn(settings, 'editMode') ||
+      Object.hasOwn(settings, 'devToolsEnabled')
     )
-      Menu.setApplicationMenu(
-        createAppMenu(getEffectiveLocale(savedSettings), savedSettings.editMode),
-      );
+      updateApplicationMenu(savedSettings);
     return savedSettings;
   });
   ipcMain.handle('app:resetSettings', () => {
     const settings = settingsStore.reset();
-    if (process.platform === 'darwin')
-      Menu.setApplicationMenu(createAppMenu(getEffectiveLocale(settings), settings.editMode));
+    updateApplicationMenu(settings);
     return settings;
   });
   ipcMain.handle('app:getSettingsPath', () => settingsStore.getPath());
@@ -423,7 +438,15 @@ function registerIpcHandlers(): void {
     toggleWindowMaximized();
   });
   ipcMain.on('window:close', () => mainWindow?.close());
-  ipcMain.on('app:toggleDevTools', () => mainWindow?.webContents.toggleDevTools());
+  ipcMain.on('app:toggleDevTools', (event) => {
+    if (
+      !mainWindow ||
+      event.sender !== mainWindow.webContents ||
+      !settingsStore.get('devToolsEnabled')
+    )
+      return;
+    mainWindow.webContents.toggleDevTools();
+  });
   ipcMain.on('app:closeConfirmed', () => {
     closeConfirmed = true;
     mainWindow?.close();
@@ -451,11 +474,7 @@ if (!ownsSingleInstanceLock) {
     settingsStore = new SettingsStore(applicationPaths.configDir);
     fileManager = new FileManagerService();
     registerIpcHandlers();
-    Menu.setApplicationMenu(
-      process.platform === 'darwin'
-        ? createAppMenu(getEffectiveLocale(), settingsStore.get('editMode'))
-        : null,
-    );
+    updateApplicationMenu();
     nativeTheme.on('updated', () =>
       send('app:systemThemeChanged', nativeTheme.shouldUseDarkColors ? 'dark' : 'classic'),
     );

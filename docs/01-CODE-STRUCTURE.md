@@ -1,9 +1,9 @@
 # Vditor-Electron Code Structure World Map
 
-- **生成时间：** 2025-08-20
-- **基于的 Git Commit：** `9d6f4c863ecefe15dc9c8a043ee405632db7e988`
-- **文档版本：** v1.0
-- **对应 package.json 版本号：** 0.1.3
+- **生成时间：** 2026-08-20
+- **基于的工作区：** `dev-0.1.5`（0.1.5 设置相关修复完成，待提交）
+- **文档版本：** v1.1
+- **对应 package.json 版本号：** 0.1.3（发布版本号将在 0.1.5 发布准备阶段更新）
 
 ---
 
@@ -192,11 +192,10 @@ File 菜单:  New File / Open File / Open Folder / Save / Save As /
             Export HTML / Export PDF / Close Tab / Close Window
 View 菜单:  Editing Mode (WYSIWYG / IR / SV) /
             Toggle Sidebar / Settings /
-            Toggle Fullscreen / Zoom In / Zoom Out / Reset Zoom /
-            Toggle DevTools
+            Toggle Fullscreen / Zoom In / Zoom Out / Reset Zoom
 ```
 
-菜单所有项通过 `mainWindow.webContents.send('menu:action', action, value?)` 通知渲染进程处理，不在主进程直接执行业务逻辑。
+菜单业务项通过 `mainWindow.webContents.send('menu:action', action, value?)` 通知渲染进程处理，不在主进程直接执行业务逻辑。Chrome DevTools 不属于原生菜单项；设置页开启后，渲染进程的 `Ctrl/Cmd+Shift+I` 请求仍由主进程依据 `devToolsEnabled` 授权，`F12` 始终被拦截。
 
 ### 4.5 系统托盘
 
@@ -204,7 +203,7 @@ View 菜单:  Editing Mode (WYSIWYG / IR / SV) /
 
 ### 4.6 全局快捷键
 
-无全局快捷键注册（`globalShortcut` API 未使用）。所有快捷键在渲染进程通过 `keydown` 事件处理（Ctrl+S/O/N/B/F/W/Q/,, Ctrl+Shift+S/I, F3, F11, F12）。
+无全局快捷键注册（`globalShortcut` API 未使用）。应用快捷键在渲染进程通过 `keydown` 事件处理；Chrome DevTools 的 `Ctrl/Cmd+Shift+I` 还需通过主进程的 `devToolsEnabled` 授权，`F12` 不作为 DevTools 快捷键。
 
 ### 4.7 单实例锁定
 
@@ -301,7 +300,7 @@ webPreferences: {
 | `minimize()`                     | `window:minimize`            | send         | 无                     | 无                                          |
 | `maximize()`                     | `window:maximize`            | send         | 无                     | 无                                          |
 | `closeWindow()`                  | `window:close`               | send         | 无                     | 无                                          |
-| `toggleDevTools()`               | `app:toggleDevTools`         | send         | 无                     | 无                                          |
+| `toggleDevTools()`               | `app:toggleDevTools`         | send         | 无                     | 主进程确认来源窗口及 `devToolsEnabled` 后执行 |
 | `onMenuAction(callback)`         | `menu:action`                | on           | `(action, value?)`     | 取消订阅函数                                |
 | `onSystemThemeChanged(callback)` | `app:systemThemeChanged`     | on           | `(theme)`              | 取消订阅函数                                |
 | `onRequestClose(callback)`       | `app:requestClose`           | on           | `()`                   | 取消订阅函数                                |
@@ -601,7 +600,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `file:watch`                 | `rootPath?`                       | `boolean`                                   | 替换单例 chokidar watcher                    |
 | `app:getSettings`            | 无                                | `AppSettings`                               | 返回完整配置副本（structuredClone）          |
 | `app:getDefaultSettings`     | 无                                | `AppSettings`                               | 返回默认配置副本                             |
-| `app:saveSettings`           | `Partial<AppSettings>`            | `AppSettings`                               | 深合并并持久化，触发 macOS 菜单重建          |
+| `app:saveSettings`           | `Partial<AppSettings>`            | `AppSettings`                               | 深合并并持久化；相关设置变化时更新 macOS 菜单 |
 | `app:resetSettings`          | 无                                | `AppSettings`                               | 重置为默认值并持久化                         |
 | `app:getSettingsPath`        | 无                                | `string`                                    | 配置文件绝对路径                             |
 | `app:getSettingsDisplayPath` | 无                                | `string`                                    | 带 `~` 替换的显示路径                        |
@@ -625,7 +624,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `window:minimize`      | 无   | `mainWindow.minimize()`                              |
 | `window:maximize`      | 无   | `toggleWindowMaximized()`（含 Linux bounds 修复）    |
 | `window:close`         | 无   | `mainWindow.close()`（触发 close 拦截）              |
-| `app:toggleDevTools`   | 无   | `webContents.toggleDevTools()`                       |
+| `app:toggleDevTools`   | 无   | 主进程确认来源窗口及 `devToolsEnabled` 后调用 `webContents.toggleDevTools()` |
 | `app:closeConfirmed`   | 无   | 设置 `closeConfirmed = true` 后重新 `close()`        |
 
 #### 主进程 → 渲染器（main.send）

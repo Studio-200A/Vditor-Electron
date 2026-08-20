@@ -420,7 +420,7 @@ test('switches among all three modes from the View > Editing Mode submenu', asyn
     ).toContainText('✓');
     await page.locator('.app-menu-popup.submenu button', { hasText: 'WYSIWYG Mode' }).click();
     await expect(page.locator('.editor-host.active .vditor-wysiwyg')).toBeVisible();
-    await expect.poll(() => readSetting(testRoot, 'editor', 'editMode')).toBe('wysiwyg');
+    await expect.poll(() => readSetting(testRoot, 'editor', 'editMode')).toBe('ir');
 
     await openEditingMode();
     await page
@@ -432,7 +432,7 @@ test('switches among all three modes from the View > Editing Mode submenu', asyn
     await page.locator('.app-menu-popup.submenu button', { hasText: 'Split Preview Mode' }).click();
     await expect(page.locator('.editor-host.active .vditor-sv')).toBeVisible();
     await expect(page.locator('.editor-host.active .vditor-preview')).toBeVisible();
-    await expect.poll(() => readSetting(testRoot, 'editor', 'editMode')).toBe('sv');
+    await expect.poll(() => readSetting(testRoot, 'editor', 'editMode')).toBe('ir');
   } finally {
     await closeApp(running);
   }
@@ -1257,11 +1257,11 @@ test('links Light and Dark content themes to the application theme', async () =>
     const { page, testRoot } = running;
     await createNewTab(page);
 
-    await page.locator('.theme-switch span').click();
+    await page.locator('#statusThemeToggle + span').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await expect.poll(() => readSetting(testRoot, 'appearance', 'contentTheme')).toBe('dark');
 
-    await page.locator('.theme-switch span').click();
+    await page.locator('#statusThemeToggle + span').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'classic');
     await expect.poll(() => readSetting(testRoot, 'appearance', 'contentTheme')).toBe('light');
 
@@ -1272,7 +1272,7 @@ test('links Light and Dark content themes to the application theme', async () =>
     await expect.poll(() => readSetting(testRoot, 'appearance', 'contentTheme')).toBe('ant-design');
     await page.locator('#saveSettings').click();
 
-    await page.locator('.theme-switch span').click();
+    await page.locator('#statusThemeToggle + span').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await expect.poll(() => readSetting(testRoot, 'appearance', 'contentTheme')).toBe('ant-design');
   } finally {
@@ -1346,13 +1346,13 @@ test('remembers which dark theme the status toggle should restore', async () => 
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'monokai-pro-dark');
     await expect(page.locator('#statusThemeToggle')).toBeChecked();
 
-    await page.locator('.theme-switch span').click();
+    await page.locator('#statusThemeToggle + span').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'classic');
     await expect
       .poll(() => readSetting(testRoot, 'appearance', 'lastDarkTheme'))
       .toBe('monokai-pro-dark');
 
-    await page.locator('.theme-switch span').click();
+    await page.locator('#statusThemeToggle + span').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'monokai-pro-dark');
     await expect.poll(() => readSetting(testRoot, 'appearance', 'theme')).toBe('monokai-pro-dark');
 
@@ -1360,9 +1360,9 @@ test('remembers which dark theme the status toggle should restore', async () => 
     await page.locator('.theme-option-dark').click();
     await expect.poll(() => readSetting(testRoot, 'appearance', 'lastDarkTheme')).toBe('dark');
     await page.locator('#saveSettings').click();
-    await page.locator('.theme-switch span').click();
+    await page.locator('#statusThemeToggle + span').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'classic');
-    await page.locator('.theme-switch span').click();
+    await page.locator('#statusThemeToggle + span').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   } finally {
     await closeApp(running);
@@ -1728,7 +1728,7 @@ test('filters and remembers code-block themes separately for light and dark mode
       .poll(() => readSetting(testRoot, 'appearance', 'lightCodeTheme'))
       .toBe('atom-one-light');
 
-    await page.locator('.theme-switch span').click();
+    await page.locator('#statusThemeToggle + span').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await expect.poll(() => readSetting(testRoot, 'appearance', 'codeTheme')).toBe('monokai');
     await page.locator('#vditorToolbarMount button[data-type="code-theme"]').click();
@@ -1739,11 +1739,11 @@ test('filters and remembers code-block themes separately for light and dark mode
       .poll(() => readSetting(testRoot, 'appearance', 'darkCodeTheme'))
       .toBe('monokai-sublime');
 
-    await page.locator('.theme-switch span').click();
+    await page.locator('#statusThemeToggle + span').click();
     await expect
       .poll(() => readSetting(testRoot, 'appearance', 'codeTheme'))
       .toBe('atom-one-light');
-    await page.locator('.theme-switch span').click();
+    await page.locator('#statusThemeToggle + span').click();
     await expect
       .poll(() => readSetting(testRoot, 'appearance', 'codeTheme'))
       .toBe('monokai-sublime');
@@ -1826,7 +1826,7 @@ test('renders the redesigned status bar and scales titlebar menu text', async ()
       )
       .toBe(18);
 
-    await page.locator('.theme-switch span').click();
+    await page.locator('#statusThemeToggle + span').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await page.locator('#statusSettings').click();
     await expect(page.locator('#settingsModal')).toBeVisible();
@@ -1880,6 +1880,61 @@ test('shows the localized About page with project links and reset at the bottom'
   }
 });
 
+test('only opens Chrome DevTools after enabling its persisted setting', async () => {
+  const running = await launchApp();
+  try {
+    const { app, page, testRoot } = running;
+    const devToolsOpen = () =>
+      app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].webContents.isDevToolsOpened(),
+      );
+    const sendShortcut = (keyCode: string, modifiers: string[] = []) =>
+      app.evaluate(
+        ({ BrowserWindow }, { keyCode, modifiers }) =>
+          BrowserWindow.getAllWindows()[0].webContents.sendInputEvent({
+            type: 'keyDown',
+            keyCode,
+            modifiers,
+          }),
+        { keyCode, modifiers },
+      );
+    await page.evaluate(() =>
+      (document.querySelector('#statusSettings') as HTMLButtonElement).click(),
+    );
+    await page.evaluate(() =>
+      (document.querySelector('.settings-nav [data-panel="about"]') as HTMLButtonElement).click(),
+    );
+    const toggle = page.locator('[name="devToolsEnabled"]');
+    await expect(toggle).not.toBeChecked();
+
+    await sendShortcut('I', ['control', 'shift']);
+    await expect.poll(devToolsOpen).toBe(false);
+
+    await page.evaluate(() =>
+      (document.querySelector('.about-devtools-setting') as HTMLLabelElement).click(),
+    );
+    await expect(toggle).toBeChecked();
+    await expect.poll(() => readSetting(testRoot, 'application', 'devToolsEnabled')).toBe(true);
+    await sendShortcut('I', ['control', 'shift']);
+    await expect.poll(devToolsOpen).toBe(true);
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].webContents.closeDevTools(),
+    );
+    await sendShortcut('F12');
+    await expect.poll(devToolsOpen).toBe(false);
+
+    await page.evaluate(() =>
+      (document.querySelector('.about-devtools-setting') as HTMLLabelElement).click(),
+    );
+    await expect(toggle).not.toBeChecked();
+    await expect.poll(() => readSetting(testRoot, 'application', 'devToolsEnabled')).toBe(false);
+    await sendShortcut('I', ['control', 'shift']);
+    await expect.poll(devToolsOpen).toBe(false);
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('shows the Traditional Chinese locale throughout settings', async () => {
   const running = await launchApp({ locale: 'zh_Hant' });
   try {
@@ -1912,7 +1967,7 @@ test('uses the file name in the title and matches all chrome background colors',
     expect(new Set(lightColors).size).toBe(1);
     await expect(page.locator('#tabBar')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 
-    await page.locator('.theme-switch span').click();
+    await page.locator('#statusThemeToggle + span').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     const darkColors = await chromeColors();
     expect(new Set(darkColors).size).toBe(1);

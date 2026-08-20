@@ -5,7 +5,7 @@ import * as TOML from '@iarna/toml';
 import { AppSettings, DEFAULT_SETTINGS } from './app-state';
 
 type SettingsDocument = {
-  application: Pick<AppSettings, 'restoreTabs' | 'restoreWorkspace' | 'locale'>;
+  application: Pick<AppSettings, 'restoreTabs' | 'restoreWorkspace' | 'devToolsEnabled' | 'locale'>;
   appearance: Pick<
     AppSettings,
     | 'systemTheme'
@@ -181,7 +181,7 @@ export class SettingsStore {
 
   private toDocument(settings: AppSettings): SettingsDocument {
     return {
-      application: pick(settings, ['restoreTabs', 'restoreWorkspace', 'locale']),
+      application: pick(settings, ['restoreTabs', 'restoreWorkspace', 'devToolsEnabled', 'locale']),
       appearance: pick(settings, [
         'systemTheme',
         'theme',

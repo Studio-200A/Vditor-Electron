@@ -56,7 +56,7 @@ describe('renderer shell', () => {
     );
     expect(css).toMatch(/\.window-titlebar\s*\{[^}]*background:\s*var\(--panel-2\)/s);
     expect(css).toMatch(
-      /#app:is\(\.toolbar-hidden, \.toolbar-unavailable\) \.window-titlebar\s*\{[^}]*box-shadow:\s*var\(--top-surface-shadow\)/s,
+      /#app:is\(\.toolbar-hidden, \.toolbar-unavailable\) \.window-titlebar\s*\{[^}]*box-shadow:\s*none/s,
     );
     expect(css).toMatch(
       /\.titlebar-sidebar-toggle\s*\{[^}]*display:\s*grid[^}]*place-items:\s*center/s,
@@ -379,6 +379,12 @@ describe('renderer shell', () => {
     expect(document.querySelector('.settings-nav [data-panel="about"]')).not.toBeNull();
     expect(document.querySelector('.about-panel .about-logo')).not.toBeNull();
     expect(document.querySelector('.about-panel #resetSettings')).not.toBeNull();
+    expect(document.querySelector<HTMLInputElement>('[name="devToolsEnabled"]')?.type).toBe(
+      'checkbox',
+    );
+    expect(document.querySelector('.about-devtools-setting')?.textContent).toContain(
+      'Chrome DevTools',
+    );
     expect(document.querySelectorAll('.about-panel [data-external]').length).toBeGreaterThan(3);
   });
 

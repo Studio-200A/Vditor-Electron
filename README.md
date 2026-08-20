@@ -133,6 +133,7 @@ Linux is the primary development and validation platform at present. Windows and
 | Close tab         | `Ctrl/Cmd + W`         |
 | Toggle explorer   | `Ctrl/Cmd + B`         |
 | Open settings     | `Ctrl/Cmd + ,`         |
+| Toggle Chrome DevTools (when enabled) | `Ctrl/Cmd + Shift + I` |
 | Toggle fullscreen | `F11`                  |
 
 ## Configuration and data
