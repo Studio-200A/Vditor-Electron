@@ -66,7 +66,6 @@
   let tabDragPointerId = null;
   let tabDragGhost = null;
   let tabDragMoved = false;
-  const scrollAnimations = new WeakMap();
 
   function resolveLocale(locale) {
     if (locale && locale !== 'system' && LOCALES[locale]) return locale;
@@ -1027,10 +1026,15 @@
     }
     if (button === trigger) {
       if (type === 'both' || type === 'preview')
-        setTimeout(() => scheduleSplitLineNumbers(tab), 50);
+        setTimeout(() => {
+          scheduleSplitLineNumbers(tab);
+        }, 50);
       return;
     }
     if (type === 'edit-mode' && ['wysiwyg', 'ir', 'sv'].includes(button.dataset.mode)) {
+      if (button.dataset.mode !== tab.vditor?.getCurrentMode()) {
+        tab.pendingScroll = captureEditorScroll(tab);
+      }
       setTimeout(() => {
         if (!tab.vditor) return;
         tab.mode = tab.vditor.getCurrentMode();
@@ -1039,6 +1043,7 @@
         syncSplitToolbarActions(tab);
         updateActiveUI();
         scheduleSplitLineNumbers(tab);
+        restoreEditorScroll(tab);
       }, 50);
     } else if (type === 'code-theme') {
       const codeTheme = button.textContent.trim();
@@ -1097,16 +1102,15 @@
 
   function captureEditorScroll(tab) {
     if (!tab?.vditor) return null;
-    const parts = VDITOR.editorParts(tab.host);
     const mode = tab.vditor.getCurrentMode();
-    const editor = parts[mode === 'sv' ? 'source' : mode === 'ir' ? 'instantRendering' : 'wysiwyg'];
-    const containers = [editor, editor?.querySelector(VDITOR.selectors.reset)].filter(Boolean);
+    const scroller = VDITOR.editorScrollContainer(tab.host, mode);
+    if (!scroller) return null;
+    const maximumTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
     return {
       mode,
-      positions: containers.map((container) => ({
-        scrollTop: container.scrollTop,
-        scrollLeft: container.scrollLeft,
-      })),
+      scrollTop: scroller.scrollTop,
+      scrollLeft: scroller.scrollLeft,
+      progress: maximumTop ? scroller.scrollTop / maximumTop : 0,
     };
   }
 
@@ -1115,17 +1119,16 @@
     if (!saved) return;
     tab.pendingScroll = null;
     const restore = () => {
-      const parts = VDITOR.editorParts(tab.host);
       const mode = tab.vditor?.getCurrentMode() || tab.mode;
-      const editor =
-        parts[mode === 'sv' ? 'source' : mode === 'ir' ? 'instantRendering' : 'wysiwyg'];
-      const containers = [editor, editor?.querySelector(VDITOR.selectors.reset)].filter(Boolean);
-      containers.forEach((container, index) => {
-        const position = saved.positions[index];
-        if (!position) return;
-        container.scrollTop = position.scrollTop;
-        container.scrollLeft = position.scrollLeft;
-      });
+      const scroller = VDITOR.editorScrollContainer(tab.host, mode);
+      if (!scroller) return;
+      const maximumTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+      const maximumLeft = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+      scroller.scrollTop =
+        mode === saved.mode
+          ? Math.min(maximumTop, Math.max(0, saved.scrollTop))
+          : maximumTop * Math.min(1, Math.max(0, saved.progress));
+      scroller.scrollLeft = Math.min(maximumLeft, Math.max(0, saved.scrollLeft));
       scheduleSplitLineNumbers(tab);
     };
     requestAnimationFrame(() => requestAnimationFrame(restore));
@@ -1515,6 +1518,8 @@
       $('#windowTitle').textContent = 'Vditor Desktop';
       $('#statusPath').textContent = '';
       $('#statusMode').textContent = '—';
+      $('#statusMode').setAttribute('aria-disabled', 'true');
+      closeStatusModeMenu();
       $('#statusWords').textContent = t('status.words', { count: 0 });
       $('#statusChars').textContent = t('status.chars', { count: 0 });
       $('#statusLines').textContent = t('status.lines', { count: 0 });
@@ -1533,6 +1538,8 @@
     const currentMode = tab.vditor && tab.ready ? tab.vditor.getCurrentMode() : tab.mode;
     tab.mode = currentMode;
     $('#statusMode').textContent = currentMode.toUpperCase();
+    $('#statusMode').setAttribute('aria-disabled', 'false');
+    syncStatusModeMenu(currentMode);
     const chars = content.replace(/\s/g, '').length;
     const latinWords = (content.match(/[A-Za-z0-9_]+/g) || []).length;
     const hanChars = (content.match(/[\u3400-\u9fff]/g) || []).length;
@@ -1546,6 +1553,40 @@
       const node = $(`.tree-file[data-path="${CSS.escape(tab.filePath)}"]`);
       if (node) node.classList.add('active');
     }
+  }
+
+  function syncStatusModeMenu(mode) {
+    $$('#statusModeMenu [data-status-mode]').forEach((button) => {
+      const selected = button.dataset.statusMode === mode;
+      button.setAttribute('aria-checked', String(selected));
+      button.querySelector('.checkmark').textContent = selected ? '✓' : '';
+    });
+  }
+
+  function closeStatusModeMenu() {
+    $('#statusModeMenu').classList.add('hidden');
+    $('#statusMode').setAttribute('aria-expanded', 'false');
+  }
+
+  function toggleStatusModeMenu() {
+    const tab = activeTab();
+    if (!tab?.vditor || !tab.ready) return;
+    const menu = $('#statusModeMenu');
+    const willOpen = menu.classList.contains('hidden');
+    if (!willOpen) {
+      closeStatusModeMenu();
+      return;
+    }
+    syncStatusModeMenu(tab.vditor.getCurrentMode());
+    menu.classList.remove('hidden');
+    $('#statusMode').setAttribute('aria-expanded', 'true');
+  }
+
+  function selectStatusMode(mode) {
+    const tab = activeTab();
+    closeStatusModeMenu();
+    if (!tab?.vditor || !tab.ready || mode === tab.vditor.getCurrentMode()) return;
+    VDITOR.selectEditMode(tab.toolbar, mode);
   }
 
   function updateEmptyState() {
@@ -1983,30 +2024,8 @@
       ) || editor;
     const scrollerRect = scroller.getBoundingClientRect();
     const headingRect = heading.getBoundingClientRect();
-    const top =
-      scroller.scrollTop +
-      headingRect.top -
-      scrollerRect.top -
-      Math.max(0, (scroller.clientHeight - headingRect.height) / 2);
-    const destination = Math.max(0, top);
-    const start = scroller.scrollTop;
-    const distance = destination - start;
-    const previousAnimation = scrollAnimations.get(scroller);
-    if (previousAnimation) cancelAnimationFrame(previousAnimation);
-    if (Math.abs(distance) < 1 || matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      scroller.scrollTop = destination;
-      return;
-    }
-    const duration = Math.min(240, Math.max(140, Math.abs(distance) * 0.16));
-    const startedAt = performance.now();
-    const step = (now) => {
-      const progress = Math.min(1, (now - startedAt) / duration);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      scroller.scrollTop = start + distance * eased;
-      if (progress < 1) scrollAnimations.set(scroller, requestAnimationFrame(step));
-      else scrollAnimations.delete(scroller);
-    };
-    scrollAnimations.set(scroller, requestAnimationFrame(step));
+    const top = scroller.scrollTop + headingRect.top - scrollerRect.top - scroller.clientHeight / 6;
+    VDITOR.animateDocumentNavigationScroll(scroller, top);
   }
   function scrollToHeading(tab, headingIndex) {
     VDITOR.headingTargets(tab.host, headingIndex).forEach(({ editor, heading }) => {
@@ -2806,6 +2825,21 @@
     $('#emptyNewFile').onclick = newTab;
     $('#emptyOpenFile').onclick = chooseFiles;
     $('#toggleSidebar').onclick = () => toggleSidebar();
+    $('#statusMode').onclick = (event) => {
+      event.stopPropagation();
+      toggleStatusModeMenu();
+    };
+    $('#statusMode').onkeydown = (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      toggleStatusModeMenu();
+    };
+    $('#statusModeMenu').onclick = (event) => {
+      const button = event.target.closest('[data-status-mode]');
+      if (!button) return;
+      event.stopPropagation();
+      selectStatusMode(button.dataset.statusMode);
+    };
     $('#statusSettings').onclick = openSettings;
     $('#statusThemeToggle').onchange = async (event) => {
       const theme = event.target.checked ? darkThemePreference() : 'classic';
@@ -2879,11 +2913,20 @@
     $$('[data-external]').forEach((button) => {
       button.onclick = () => window.appAPI.openExternal(button.dataset.external);
     });
-    document.addEventListener('click', () => $('#contextMenu').classList.add('hidden'));
+    document.addEventListener('click', () => {
+      $('#contextMenu').classList.add('hidden');
+      closeStatusModeMenu();
+    });
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape' && !$('#confirmModal').classList.contains('hidden')) {
         event.preventDefault();
         closeConfirmDialog('cancel');
+        return;
+      }
+      if (event.key === 'Escape' && !$('#statusModeMenu').classList.contains('hidden')) {
+        event.preventDefault();
+        closeStatusModeMenu();
+        $('#statusMode').focus({ preventScroll: true });
         return;
       }
       if (event.key === 'Alt' && $('#app').classList.contains('fullscreen')) {

@@ -4,7 +4,17 @@
 
 ### New Features
 
+- **feat(status bar):** Added a compact mode picker for switching between WYSIWYG, IR, and SV directly from the current editor-mode indicator.
+
 ### Bug Fixes
+
+- **fix(workbench chrome):** Kept the sidebar controls aligned while resizing the explorer, including when no document is open or the editor toolbar is hidden.
+- **fix(title bar):** Kept the sidebar toggle fixed in place as related file actions fold away, and restored the title-bar shadow when the editor toolbar is hidden.
+- **fix(menus):** Kept unavailable layout commands visually disabled when hovered or focused.
+- **fix(tabs):** Improved light-theme tab hover feedback and made close controls use an accent-only hover state.
+- **fix(document navigation):** Smoothed find-result navigation and prevented unnecessary movement when jumping between nearby outline headings.
+- **fix(editor position):** Kept the current document position for regular Markdown documents when changing editing modes, without returning to the top.
+- **fix(monokai theme):** Prevented raw HTML blocks in Instant Rendering mode from being painted as Monokai code blocks and aligned its link color with WYSIWYG and Split Preview.
 
 ### Project Maintenance
 

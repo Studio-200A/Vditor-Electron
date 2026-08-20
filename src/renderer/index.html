@@ -217,9 +217,30 @@
       <footer class="statusbar">
         <div class="status-left"><span id="statusPath"></span><span id="statusMessage"></span></div>
         <div class="status-right">
-          <span id="statusMode">IR</span><span id="statusWords">0 词</span
-          ><span id="statusChars">0 字符</span><span id="statusLines">1 行</span>
-          <span id="statusEncoding">UTF-8</span><span id="statusLineEnding">LF</span>
+          <div class="status-mode-picker">
+            <span
+              id="statusMode"
+              role="button"
+              tabindex="0"
+              aria-haspopup="menu"
+              aria-expanded="false"
+              >IR</span
+            >
+            <div id="statusModeMenu" class="status-mode-menu hidden" role="menu">
+              <button type="button" data-status-mode="wysiwyg" role="menuitemradio">
+                <i class="checkmark" aria-hidden="true"></i><span>WYSIWYG</span>
+              </button>
+              <button type="button" data-status-mode="ir" role="menuitemradio">
+                <i class="checkmark" aria-hidden="true"></i><span>IR</span>
+              </button>
+              <button type="button" data-status-mode="sv" role="menuitemradio">
+                <i class="checkmark" aria-hidden="true"></i><span>SV</span>
+              </button>
+            </div>
+          </div>
+          <span id="statusWords">0 词</span><span id="statusChars">0 字符</span
+          ><span id="statusLines">1 行</span> <span id="statusEncoding">UTF-8</span
+          ><span id="statusLineEnding">LF</span>
           <button
             id="statusSettings"
             class="status-icon"

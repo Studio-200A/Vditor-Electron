@@ -56,7 +56,16 @@ describe('renderer shell', () => {
     );
     expect(css).toMatch(/\.window-titlebar\s*\{[^}]*background:\s*var\(--panel-2\)/s);
     expect(css).toMatch(
+      /#app:is\(\.toolbar-hidden, \.toolbar-unavailable\) \.window-titlebar\s*\{[^}]*box-shadow:\s*var\(--top-surface-shadow\)/s,
+    );
+    expect(css).toMatch(
       /\.titlebar-sidebar-toggle\s*\{[^}]*display:\s*grid[^}]*place-items:\s*center/s,
+    );
+    expect(css).toMatch(
+      /#app\.sidebar-transitioning \.toolbar-sidebar-tabs\s*\{[^}]*width 0\.16s ease/s,
+    );
+    expect(css).toMatch(
+      /\.app-menu-popup button:disabled:hover,[\s\S]*?color:\s*color-mix\(in srgb, var\(--muted\) 55%, transparent\)/,
     );
     expect(css).toContain('--window-radius: 8px');
     expect(css).toMatch(/#app\s*\{[^}]*border-radius:\s*var\(--window-radius\)/s);

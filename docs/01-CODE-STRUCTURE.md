@@ -505,7 +505,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 
 **设计意图：** 将 Vditor 3.11.x 的私有 DOM 选择器和非公开行为集中于此文件，使 `app.js` 仅依赖语义化的适配器 API，降低 Vditor 升级时的审计面。
 
-以下为 `window.VditorDesktopAdapter` 冻结对象导出的全部 28 个 API，按职能分组。
+以下为 `window.VditorDesktopAdapter` 冻结对象导出的全部 32 个 API，按职能分组。
 
 #### DOM 结构查询
 
@@ -515,6 +515,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `editorParts(host)`                   | `host`                        | `{ toolbar, content, source, instantRendering, wysiwyg, preview }` | 返回编辑器各子视图 DOM 节点                                                                                            |
 | `validateHost(host, mountedToolbar?)` | `host, toolbar?`              | `{ valid, missing[] }`                                             | 检查 toolbar 节点与 7 个必需按钮（edit-mode/both/preview/outdent/indent/content-theme/code-theme），返回结构完整性报告 |
 | `activeEditor(host, mode)`            | `host, 'sv'\|'ir'\|'wysiwyg'` | `Element`                                                          | 根据编辑模式返回当前活动编辑器节点                                                                                     |
+| `editorScrollContainer(host, mode)`   | `host, 'sv'\|'ir'\|'wysiwyg'` | `Element \| null`                                                 | 返回当前模式的主滚动容器；SV 为源码区，IR/WYSIWYG 为其 `.vditor-reset` 子节点                                         |
 | `scrollContainers(host)`              | `host`                        | `Element[]`                                                        | 获取所有可滚动容器节点（用于自动隐藏滚动条）                                                                           |
 | `innerScroller(node)`                 | `node`                        | `Element \| null`                                                  | 获取节点最近的 `.vditor-reset` 内层滚动容器                                                                            |
 
@@ -525,6 +526,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `toolbarContext(target)`            | `eventTarget`   | `{ button, item, trigger, type }` | 从点击目标提取工具栏按钮上下文                                                |
 | `toolbarButton(toolbar, type)`      | `toolbar, type` | `Element \| null`                 | 按 `data-type` 查找工具栏按钮（含防注入正则校验）                             |
 | `toolbarHint(item)`                 | `item`          | `Element \| null`                 | 获取工具栏项的 hover 提示面板                                                 |
+| `selectEditMode(toolbar, mode)`     | `toolbar, mode` | `boolean`                          | 通过 Vditor 自身的 edit-mode 菜单按钮切换模式，复用其状态、undo 与焦点处理    |
 | `toolbarHints(root?)`               | `root?`         | `Element[]`                       | 获取所有打开的工具栏面板                                                      |
 | `hoverTooltips(root?)`              | `root?`         | `Element[]`                       | 获取所有 hover 态标签列表                                                     |
 | `openSubmenus(root?)`               | `root?`         | `Element[]`                       | 获取所有打开的自定义子菜单                                                    |
@@ -545,9 +547,16 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | ---------------------------------------------------------------------- | --------------- | ------------------------- | ---------------------------------------- |
 | `textMatches(host, mode, query, caseSensitive?)`                       | 编辑器范围参数  | `{ start, end, range }[]` | 在编辑器文本节点中查找匹配项并构建 Range |
 | `highlightTextMatches(host, mode, query, activeIndex, caseSensitive?)` | 同上 + 激活索引 | `matches[]`               | 将匹配项注册到 CSS Highlights API        |
+| `scrollRangeIntoView(range, editor)`                                    | `Range, Element` | `boolean`               | 选择 Vditor 实际滚动容器，并将远处匹配项定位到可视区域 |
 | `revealTextMatch(host, mode, query, occurrence, caseSensitive?)`       | 同上 + 第几个   | `boolean`                 | 高亮并滚动到指定匹配项                   |
 | `selectTextMatch(host, mode, query, occurrence, caseSensitive?)`       | 同上            | `boolean`                 | 将浏览器选区设为指定匹配项               |
 | `clearFindHighlights()`                                                | —               | `void`                    | 清除 CSS Highlights                      |
+
+#### 文档导航动画
+
+| 函数                                                    | 入参                   | 返回值    | 用途                                                                                  |
+| ------------------------------------------------------- | ---------------------- | --------- | ------------------------------------------------------------------------------------- |
+| `animateDocumentNavigationScroll(scroller, destination)` | `Element, scrollTop` | `boolean` | 统一查找与大纲跳转的距离时长公式、ease-out 动画、取消机制和 reduced-motion 降级策略 |
 
 #### 文档锚点导航
 
@@ -800,7 +809,7 @@ function rememberRecent(filePath) {
 #### 编辑区（`app.js:1087-1168`, `index.html:141-213`）
 
 - **职责：** 承载所有标签页的 Vditor 编辑器 host、空状态引导、外部变更横幅、查找替换组件
-- **实现：** `ensureEditor()`、`switchTab()` 切换 active 类
+- **实现：** `ensureEditor()`、`switchTab()` 切换 active 类；编辑器重建和三种模式切换均保存主滚动容器的位置，跨模式按文档滚动进度恢复，SV 始终以源码区为准
 
 #### 查找替换（`app.js:283-406`, `index.html:153-206`）
 
@@ -824,10 +833,10 @@ function rememberRecent(filePath) {
 - **职责：** 解析当前文档 Markdown 标题，构建可折叠的层次树，点击跳转并平滑滚动到对应位置
 - **实现：** `renderOutline()` 从 `currentContent(tab)` 正则提取 `^(#{1,6})\s+(.+?)`，`scrollToHeading()` 动画滚动
 
-#### 状态栏（`app.js:1506-1549`, `index.html:217-246`）
+#### 状态栏（`app.js`, `index.html:217-266`）
 
-- **职责：** 显示当前文件路径、状态消息、编辑模式（IR/SV/WYSIWYG）、词字符行数、编码、行结尾、主题切换、设置快捷入口、版本号
-- **实现：** `updateActiveUI()` 汇总所有状态信息
+- **职责：** 显示当前文件路径、状态消息、编辑模式（IR/SV/WYSIWYG）、词字符行数、编码、行结尾、主题切换、设置快捷入口、版本号；编辑模式文本可展开快捷菜单
+- **实现：** `updateActiveUI()` 汇总状态，`toggleStatusModeMenu()` / `selectStatusMode()` 通过适配器复用 Vditor 的原生模式切换
 
 #### 设置对话框（`app.js:2130-2402`, `index.html:249-end`）
 

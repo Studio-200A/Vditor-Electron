@@ -54,6 +54,17 @@
     return item?.querySelector(selectors.toolbarHint) || null;
   }
 
+  function selectEditMode(toolbar, mode) {
+    if (!['wysiwyg', 'ir', 'sv'].includes(mode)) return false;
+    const editModeItem = toolbarButton(toolbar, 'edit-mode')?.closest(selectors.toolbarItem);
+    // Vditor 3.11.x binds its supported mode transition to these hint buttons.
+    // Dispatching through that control preserves Vditor's mode, toolbar, undo, and focus handling.
+    const button = toolbarHint(editModeItem)?.querySelector(`button[data-mode="${mode}"]`);
+    if (!button) return false;
+    button.click();
+    return true;
+  }
+
   function toolbarHints(root = document) {
     return Array.from(root.querySelectorAll(selectors.toolbarHints));
   }
@@ -129,8 +140,57 @@
     return parts.instantRendering;
   }
 
+  function editorScrollContainer(host, mode) {
+    const editor = activeEditor(host, mode);
+    if (!editor) return null;
+    // In Vditor 3.11.x rendered modes scroll their private .vditor-reset child,
+    // while SV scrolls its editor element directly.
+    return mode === 'sv' ? editor : editor.querySelector(selectors.reset) || editor;
+  }
+
   const findHighlightName = 'vditor-desktop-find';
   const activeFindHighlightName = 'vditor-desktop-find-active';
+  const documentNavigationScroll = Object.freeze({
+    minDuration: 140,
+    maxDuration: 240,
+    millisecondsPerPixel: 0.16,
+  });
+  const documentNavigationAnimations = new WeakMap();
+
+  function animateDocumentNavigationScroll(scroller, destination) {
+    if (!scroller || !Number.isFinite(destination)) return false;
+    const maximum = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+    const target = Math.min(maximum, Math.max(0, destination));
+    const previousAnimation = documentNavigationAnimations.get(scroller);
+    if (previousAnimation) cancelAnimationFrame(previousAnimation);
+    documentNavigationAnimations.delete(scroller);
+    const start = scroller.scrollTop;
+    const distance = target - start;
+    if (
+      Math.abs(distance) < 1 ||
+      globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    ) {
+      scroller.scrollTop = target;
+      return false;
+    }
+    const duration = Math.min(
+      documentNavigationScroll.maxDuration,
+      Math.max(
+        documentNavigationScroll.minDuration,
+        Math.abs(distance) * documentNavigationScroll.millisecondsPerPixel,
+      ),
+    );
+    const startedAt = performance.now();
+    const step = (now) => {
+      const progress = Math.min(1, (now - startedAt) / duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      scroller.scrollTop = start + distance * eased;
+      if (progress < 1) documentNavigationAnimations.set(scroller, requestAnimationFrame(step));
+      else documentNavigationAnimations.delete(scroller);
+    };
+    documentNavigationAnimations.set(scroller, requestAnimationFrame(step));
+    return true;
+  }
 
   function textMatches(host, mode, query, caseSensitive = false) {
     const editor = activeEditor(host, mode);
@@ -203,15 +263,44 @@
     return matches;
   }
 
+  function scrollRangeIntoView(range, editor) {
+    if (!range || !editor) return false;
+    if (typeof range.getBoundingClientRect !== 'function') return false;
+    const target =
+      (range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+        ? range.commonAncestorContainer
+        : range.commonAncestorContainer.parentElement) || editor;
+    // Vditor 3.11.3 has no public find-navigation API. Its rendered modes may scroll either
+    // the editor or its private .vditor-reset child, so keep this fallback centralized here.
+    const scroller =
+      [innerScroller(target), editor].find(
+        (candidate) => candidate && candidate.scrollHeight > candidate.clientHeight + 1,
+      ) || editor;
+    const targetRect = range.getBoundingClientRect();
+    const scrollerRect = scroller.getBoundingClientRect();
+    if (!targetRect.height || !scrollerRect.height) return false;
+    const inset = Math.min(48, Math.max(24, scroller.clientHeight * 0.12));
+    if (
+      targetRect.top >= scrollerRect.top + inset &&
+      targetRect.bottom <= scrollerRect.bottom - inset
+    )
+      return false;
+    const targetTop = scroller.scrollTop + targetRect.top - scrollerRect.top;
+    const destination = Math.max(
+      0,
+      Math.min(
+        scroller.scrollHeight - scroller.clientHeight,
+        targetTop - Math.max(0, (scroller.clientHeight - targetRect.height) / 2),
+      ),
+    );
+    return animateDocumentNavigationScroll(scroller, destination);
+  }
+
   function revealTextMatch(host, mode, query, occurrence = 0, caseSensitive = false) {
     const matches = highlightTextMatches(host, mode, query, occurrence, caseSensitive);
     const match = matches[occurrence];
     if (!match) return false;
-    const target =
-      (match.range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
-        ? match.range.commonAncestorContainer
-        : match.range.commonAncestorContainer.parentElement) || activeEditor(host, mode);
-    target.scrollIntoView?.({ block: 'center', inline: 'nearest' });
+    scrollRangeIntoView(match.range, activeEditor(host, mode));
     return true;
   }
 
@@ -380,6 +469,7 @@
     toolbarContext,
     toolbarButton,
     toolbarHint,
+    selectEditMode,
     toolbarHints,
     hoverTooltips,
     openSubmenus,
@@ -391,9 +481,12 @@
     innerScroller,
     scrollContainers,
     activeEditor,
+    editorScrollContainer,
     textMatches,
     clearFindHighlights,
     highlightTextMatches,
+    animateDocumentNavigationScroll,
+    scrollRangeIntoView,
     revealTextMatch,
     selectTextMatch,
     documentAnchor,

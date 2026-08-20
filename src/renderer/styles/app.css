@@ -268,7 +268,12 @@ button.danger {
   width: var(--sidebar-current, 260px);
   overflow: hidden;
   box-shadow: var(--top-surface-shadow);
+}
+#app.sidebar-transitioning:is(.toolbar-hidden, .toolbar-unavailable) .titlebar {
   transition: width 0.16s ease;
+}
+#app:is(.toolbar-hidden, .toolbar-unavailable) .window-titlebar {
+  box-shadow: var(--top-surface-shadow);
 }
 #app:is(.toolbar-hidden, .toolbar-unavailable) .sidebar {
   padding-top: 38px;
@@ -591,10 +596,23 @@ button.danger {
   display: flex;
   align-items: center;
   gap: 6px;
+  cursor: pointer;
+  transition:
+    background-color 0.14s ease,
+    color 0.14s ease;
+}
+.document-tab:hover {
+  background: var(--hover);
+}
+:root:not([data-theme='dark']):not([data-theme='monokai-pro-dark']) .document-tab:hover {
+  background: #d9dde3;
 }
 .document-tab.active {
   background: var(--panel);
   box-shadow: inset 0 2px var(--accent);
+}
+.document-tab.active:hover {
+  background: color-mix(in srgb, var(--panel) 76%, var(--hover));
 }
 .document-tab.dragging {
   opacity: 0.72;
@@ -651,6 +669,13 @@ button.danger {
   font-size: 16px;
   font-weight: 400;
   color: var(--muted);
+  border-radius: 3px;
+  transition:
+    background-color 0.14s ease,
+    color 0.14s ease;
+}
+.document-tab b:hover {
+  color: var(--accent);
 }
 .add-tab {
   width: 38px;
@@ -1041,13 +1066,17 @@ html[data-scrollbar-mode='hidden'] .app-scrollbar::-webkit-scrollbar {
 :root[data-theme='monokai-pro-dark']
   .editor-host
   :is(.vditor-ir, .vditor-wysiwyg)
-  pre:not(.vditor-reset),
+  [data-type='code-block']
+  pre,
 :root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview pre,
 :root[data-theme='monokai-pro-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) code,
 :root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview code {
   background-color: var(--monokai-code-bg);
 }
-:root[data-theme='monokai-pro-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) a,
+:root[data-theme='monokai-pro-dark']
+  .editor-host
+  :is(.vditor-ir, .vditor-wysiwyg)
+  :is(a, .vditor-ir__link),
 :root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview a {
   color: #78dce8;
 }
@@ -1304,6 +1333,67 @@ html[data-scrollbar-mode='hidden'] .app-scrollbar::-webkit-scrollbar {
 .status-right {
   flex: 0 0 auto;
   gap: 13px;
+}
+.status-mode-picker {
+  position: relative;
+}
+#statusMode {
+  display: inline-block;
+  border-radius: 3px;
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+#statusMode:hover,
+#statusMode:focus-visible,
+#statusMode[aria-expanded='true'] {
+  color: var(--text);
+  background: var(--hover);
+}
+#statusMode:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+#statusMode[aria-disabled='true'] {
+  cursor: default;
+  color: color-mix(in srgb, var(--muted) 55%, transparent);
+}
+#statusMode[aria-disabled='true']:hover {
+  background: transparent;
+}
+.status-mode-menu {
+  position: absolute;
+  z-index: 2000;
+  right: -5px;
+  bottom: calc(100% + 6px);
+  min-width: 116px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.28);
+}
+.status-mode-menu button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 9px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  text-align: left;
+}
+.status-mode-menu button:hover,
+.status-mode-menu button:focus-visible {
+  background: var(--hover);
+  color: var(--text);
+}
+.status-mode-menu .checkmark {
+  width: 14px;
+  display: inline-block;
+  font-style: normal;
 }
 #statusPath {
   min-width: 0;
@@ -2146,7 +2236,7 @@ body.settings-card-resizing {
 }
 #app.sidebar-collapsed .titlebar-file-actions {
   width: auto;
-  padding-inline: 7px;
+  padding-inline: 5px;
   overflow: visible;
 }
 #app.sidebar-collapsed .titlebar-file-actions .icon-btn:not(.titlebar-sidebar-toggle) {
@@ -2340,6 +2430,12 @@ body[data-platform='darwin'] .modal {
   border-bottom: 0;
   box-shadow: none;
   transition:
+    padding 0.16s ease,
+    gap 0.16s ease,
+    border-width 0.16s ease;
+}
+#app.sidebar-transitioning .toolbar-sidebar-tabs {
+  transition:
     width 0.16s ease,
     padding 0.16s ease,
     gap 0.16s ease,
@@ -2391,6 +2487,7 @@ body[data-platform='darwin'] .modal {
 .app-menu-popup button:disabled:hover,
 .app-menu-popup button:disabled:focus-visible {
   background: transparent;
+  color: color-mix(in srgb, var(--muted) 55%, transparent);
 }
 @media (prefers-reduced-motion: reduce) {
   .sidebar,
