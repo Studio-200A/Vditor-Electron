@@ -100,6 +100,21 @@ describe('Vditor DOM compatibility adapter', () => {
     expect(context.padding?.dataset.type).toBe('padding');
   });
 
+  it('returns a range for every source-text line when markers contain multiple lines', () => {
+    const source = window.document.createElement('pre');
+    source.innerHTML =
+      '<span data-type="marker">first\nsecond\n</span><span data-type="newline">\n</span><span>third</span><span data-type="newline">\n</span>';
+
+    const lines = adapter.sourceLineRanges(source);
+
+    expect(lines.map(({ range }: any) => range.toString())).toEqual([
+      'first',
+      'second',
+      '',
+      'third',
+    ]);
+  });
+
   it('maps document hash links to rendered heading indexes', () => {
     const host = createHost();
     const preview = adapter.editorParts(host).preview;
@@ -305,5 +320,129 @@ describe('Vditor DOM compatibility adapter', () => {
     expect(adapter.selectTextMatch(host, 'sv', 'alpha', 1)).toBe(true);
     expect(window.getSelection()?.toString()).toBe('alpha');
     expect(adapter.selectTextMatch(host, 'sv', 'missing', 0)).toBe(false);
+  });
+
+  it('selects the current rendered block before the whole editor', () => {
+    const host = createHost();
+    window.document.body.append(host);
+    const content = adapter.editorParts(host).wysiwyg.querySelector('.vditor-reset');
+    content.innerHTML = '<p data-block="0">First block</p><p data-block="0">Second block</p>';
+    const firstText = content.querySelector('p').firstChild;
+    const caret = window.document.createRange();
+    caret.setStart(firstText, 2);
+    caret.collapse(true);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(caret);
+
+    expect(adapter.isEditableTarget(host, 'wysiwyg', firstText)).toBe(true);
+    expect(adapter.selectCurrentContextOrAll(host, 'wysiwyg')).toEqual({ scope: 'block' });
+    expect(window.getSelection()?.toString()).toBe('First block');
+    expect(adapter.selectCurrentContextOrAll(host, 'wysiwyg')).toEqual({ scope: 'all' });
+    expect(window.getSelection()?.toString()).toBe('First blockSecond block');
+  });
+
+  it('uses table cells and source lines as the first selection context', () => {
+    const host = createHost();
+    window.document.body.append(host);
+    const { instantRendering, source } = adapter.editorParts(host);
+    const instantContent = instantRendering.querySelector('.vditor-reset');
+    instantContent.innerHTML =
+      '<table data-block="0"><tbody><tr><td>Cell text</td><td> \u200b</td></tr></tbody></table>';
+    const cellText = instantContent.querySelector('td').firstChild;
+    const caret = window.document.createRange();
+    caret.setStart(cellText, 2);
+    caret.collapse(true);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(caret);
+    expect(adapter.selectCurrentContextOrAll(host, 'ir')).toEqual({ scope: 'cell' });
+    expect(window.getSelection()?.toString()).toBe('Cell text');
+
+    const emptyCell = instantContent.querySelectorAll('td')[1];
+    const emptyCaret = window.document.createRange();
+    emptyCaret.setStart(emptyCell, 0);
+    emptyCaret.collapse(true);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(emptyCaret);
+    expect(adapter.selectCurrentContextOrAll(host, 'ir')).toEqual({ scope: 'all' });
+
+    source.innerHTML =
+      '<span>first line</span><span data-type="newline">\n</span><span>second line</span><span data-type="newline">\n</span>';
+    const secondText = source.querySelectorAll('span')[2].firstChild;
+    const sourceCaret = window.document.createRange();
+    sourceCaret.setStart(secondText, 3);
+    sourceCaret.collapse(true);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(sourceCaret);
+    expect(adapter.selectCurrentContextOrAll(host, 'sv')).toEqual({ scope: 'line' });
+    expect(window.getSelection()?.toString()).toBe('second line');
+    expect(adapter.selectCurrentContextOrAll(host, 'sv')).toEqual({ scope: 'all' });
+    expect(window.getSelection()?.toString()).toBe('first line\nsecond line\n');
+
+    source.innerHTML =
+      '<div data-block="0"><span class="vditor-sv__marker">&lt;p&gt;<span data-type="newline">\n</span>  &lt;a&gt;badge&lt;/a&gt;<span data-type="newline">\n</span>&lt;/p&gt;</span><span data-type="newline">\n</span></div>';
+    const htmlLine = Array.from(source.querySelector('.vditor-sv__marker').childNodes).find(
+      (node) => node.nodeType === window.Node.TEXT_NODE && node.textContent?.includes('badge'),
+    );
+    if (!htmlLine) throw new Error('Expected nested raw HTML source line');
+    const htmlCaret = window.document.createRange();
+    htmlCaret.setStart(htmlLine, htmlLine.textContent.length);
+    htmlCaret.collapse(true);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(htmlCaret);
+    expect(adapter.selectCurrentContextOrAll(host, 'sv')).toEqual({ scope: 'line' });
+    expect(window.getSelection()?.toString()).toBe('  <a>badge</a>');
+  });
+
+  it('keeps table context, Range restoration, and table mutations behind the adapter', () => {
+    const host = createHost();
+    window.document.body.append(host);
+    const content = adapter.editorParts(host).instantRendering.querySelector('.vditor-reset');
+    content.innerHTML =
+      '<table data-block="0"><thead><tr><th>head</th></tr></thead><tbody><tr><td>value</td></tr></tbody></table>';
+    const cell = content.querySelector('td');
+    const text = cell.firstChild;
+    const range = window.document.createRange();
+    range.setStart(text, 1);
+    range.collapse(true);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+
+    const saved = adapter.captureEditorSelection(host, 'ir');
+    const otherRange = window.document.createRange();
+    otherRange.selectNodeContents(content.querySelector('th'));
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(otherRange);
+    content.focus = () => {};
+    expect(adapter.restoreEditorSelection(saved)).toBe(true);
+    expect(window.getSelection()?.anchorNode).toBe(text);
+
+    const context = adapter.tableContext(host, 'ir', text);
+    expect(context).toMatchObject({ cell, table: content.querySelector('table'), mode: 'ir' });
+    expect(adapter.tableContext(host, 'sv', text)).toBeNull();
+    let inputs = 0;
+    context.editor.addEventListener('input', () => {
+      inputs += 1;
+    });
+    expect(adapter.performTableAction(context, 'insert-row')).toBe(true);
+    expect(context.table.querySelectorAll('tbody tr')).toHaveLength(2);
+    expect(adapter.performTableAction(context, 'insert-column')).toBe(true);
+    expect(context.table.rows[0].cells).toHaveLength(2);
+    expect(adapter.performTableAction(context, 'delete-column')).toBe(true);
+    expect(context.table.rows[0].cells).toHaveLength(1);
+    expect(inputs).toBe(3);
+  });
+
+  it('leaves Vditor auxiliary controls and preview content out of editor selection handling', () => {
+    const host = createHost();
+    window.document.body.append(host);
+    const { source, wysiwyg, preview } = adapter.editorParts(host);
+    const input = window.document.createElement('input');
+    const sourceMarker = window.document.createElement('span');
+    sourceMarker.contentEditable = 'false';
+    source.append(sourceMarker);
+    wysiwyg.querySelector('.vditor-reset').append(input);
+    expect(adapter.isEditableTarget(host, 'wysiwyg', input)).toBe(false);
+    expect(adapter.isEditableTarget(host, 'wysiwyg', preview)).toBe(false);
+    expect(adapter.isEditableTarget(host, 'sv', sourceMarker)).toBe(true);
   });
 });

@@ -310,6 +310,7 @@ webPreferences: {
 | `onFullscreenChanged(callback)`  | `window:fullscreenChanged`   | on           | `(fullscreen)`         | 取消订阅函数                                |
 | `onMaximizedChanged(callback)`   | `window:maximizedChanged`    | on           | `(maximized)`          | 取消订阅函数                                |
 | `onOpenFiles(callback)`          | `app:openFiles`              | on           | `(paths)`              | 取消订阅函数                                |
+| `readClipboard()`                | `app:readClipboard`          | invoke       | 无                     | `{ text: string, html: string }`             |
 
 ### 5.4 事件订阅清理机制
 
@@ -554,6 +555,15 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `outlineHeadingTargets(host, mode, index)` | `host, mode, index` | `{ scroller, heading }[]` | 直接返回 snapshot 对应标题 DOM 节点及其滚动容器；SV 两侧集合数量一致时同步源码与 preview，否则只返回原生 canonical 目标 |
 | `observeOutlineChanges(host, callback)` | `host, callback` | `MutationObserver \| null` | 监听模式可见性与异步 preview 标题渲染，驱动活动 Outline 视图的防抖刷新；重建和关闭标签时断开 |
 
+#### 编辑器选择与右键菜单
+
+| 函数 | 用途 |
+| --- | --- |
+| `isEditableTarget()` / `captureEditorSelection()` / `restoreEditorSelection()` | 限定真实可编辑表面，并保存、恢复右键菜单执行前的 Range |
+| `selectCurrentContextOrAll()` | 实现当前 block、表格单元格或 SV 源码行到全文的选择升级 |
+| `tableContext()` / `performTableAction()` | 识别 WYSIWYG / IR 表格上下文并执行四项行列操作，重新进入 Vditor 的 input / undo 更新路径 |
+| `executeEditorCommand()` | 执行剪切、复制、删除和 Vditor paste 事件；撤销/重做不通过右键菜单提供 |
+
 #### 查找替换（CSS Highlights API）
 
 | 函数                                                                   | 入参            | 返回值                    | 用途                                     |
@@ -634,6 +644,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `app:showItemInFolder`       | `filePath`                        | `void`                                      | `shell.showItemInFolder`                     |
 | `app:openDirectory`          | `dirPath`                         | `void`                                      | `shell.openPath`                             |
 | `app:exportPDF`              | `html, defaultPath?`              | `string \| null`                            | 隐藏 BrowserWindow 加载 HTML 后 `printToPDF` |
+| `app:readClipboard`          | 无                                | `{ text: string, html: string }`             | 读取编辑区右键菜单所需的系统剪贴板文本和 HTML 数据 |
 
 #### send 通道（render → main，无返回值）
 
@@ -923,12 +934,12 @@ function rememberRecent(filePath) {
 #### 确认对话框（`app.js:113` 起的 `showConfirmDialog()`，`index.html` 中的 `#confirmModal`）
 
 - **职责：** 通用确认对话框，支持自定义标题/消息/操作按钮列表，返回 Promise
-- **实现：** `showConfirmDialog({ title, message, actions })` 返回 `{ resolve: Promise }`
-- **未保存变更交互：** `showUnsavedDialog()` 单独启用受限拖动；拖动仅从标题栏开始，位置限制在模态窗口可用范围内，关闭后回到居中位置，不提供尺寸调整手柄或持久化位置。
+- **实现：** `showConfirmDialog({ title, message, detail, actions, draggable })` 直接返回由操作按钮结果兑现的 `Promise<string>`。
+- **受限拖动交互：** 未保存变更与移到回收站确认框启用 `draggable`；拖动仅从标题栏开始，位置限制在模态窗口可用范围内，关闭后回到居中位置，不提供尺寸调整手柄或持久化位置。
 
-#### 右键菜单（`app.js:1849` 起的 `showTreeMenu()`，`#contextMenu`）
+#### 右键菜单（`app.js:1965` 起的 `showContextMenu()` / `showEditorContextMenu()`，`#contextMenu`）
 
-- **职责：** 文件树节点和工作区根目录的上下文操作菜单
+- **职责：** 文件树节点、工作区根目录和编辑区真实可编辑表面的共享上下文菜单；编辑区提供剪切、复制、粘贴、纯文本粘贴、删除、当前上下文选择，以及 WYSIWYG / IR 表格行列操作。撤销/重做继续使用快捷键和 Vditor 工具栏。
 
 ### 10.2 逻辑组件嵌套关系
 
@@ -1425,6 +1436,8 @@ flowchart TB
 - 相对图片加载（Markdown `![](assets/x.png)` + HTML `<img>` 不污染源码）
 - HTTPS 文档图片在三模式下均加载
 - 工具栏不出现 `fullscreen` 按钮，WYSIWYG 代码块使用 `previewCodeFontFamily`
+- 编辑区右键菜单仅接管三种模式的真实可编辑表面；覆盖 Range 恢复、SV preview / 查找框排除、剪贴板命令与 WYSIWYG / IR 表格行列操作
+- 三种模式下的两段式 Ctrl/Cmd+A：普通 block、非空/空表格单元格、SV 源码行，以及非编辑控件原生全选边界
 
 #### 链接跳转与外部协议
 

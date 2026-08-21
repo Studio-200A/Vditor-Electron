@@ -8,6 +8,9 @@
 - **feat(status bar):** Added a compact mode picker for switching between WYSIWYG, IR, and SV directly from the current editor-mode indicator.
 - **feat(devtools):** Added a persisted Chrome DevTools switch in Settings > About; disabled shortcuts cannot open DevTools.
 - **feat(relative Markdown links):** Ctrl/Cmd-click relative Markdown links now opens the destination in a new or existing tab, supports `../`, percent-encoded file names, and optional heading fragments, and safely rejects unsupported or missing targets.
+- **feat(contextual select all):** Ctrl/Cmd+A now selects the current block, table cell, or source line first, then the complete editor on the next press.
+- **feat(editor context menu):** Added a localized right-click menu for editing commands in all three modes, with row and column actions for rendered table cells.
+- **feat(vditor desktop main menu button):** New cursor hover visual effect.
 
 ### Bug Fixes
 
@@ -24,13 +27,16 @@
 - **fix(mode switching):** Removed split-view toolbar button flicker when switching from WYSIWYG or Instant Rendering while keeping list indentation controls available.
 - **fix(outline):** Matched Desktop outline collection to Vditor's native current-mode or visible-preview H1–H6 semantics, removing duplicate Markdown parsing and unreliable cross-collection line mapping.
 - **fix(outline navigation):** Corrected heading targets when ordinary blocks appear between headings, and scrolls SV preview through its actual outer preview container.
-- **fix(unsaved changes):** The unsaved-changes confirmation dialog can now be dragged within the application window without becoming resizable.
+- **fix(empty outline state):** Kept the empty-outline message below the Files/Outline controls in fullscreen and made it non-selectable when no document is open.
+- **fix(confirmation dialogs):** Unsaved-changes and move-to-trash confirmations can now be dragged within the application window without becoming resizable.
 
 #### Editor and document navigation
 
 - **fix(document navigation):** Smoothed find-result navigation and prevented unnecessary movement when jumping between nearby outline headings.
-- **fix(editor position):** Kept the current document position for regular Markdown documents when changing editing modes, without returning to the top.
+- **fix(editor position):** Kept the current document position for regular Markdown documents when changing editing modes, restoring it before the first paint instead of briefly flashing the document top.
 - **fix(editor layout):** Kept full-width paragraphs and editor markers within the visible editing area in WYSIWYG and Instant Rendering modes.
+- **fix(raw HTML typography):** Raw HTML previews in WYSIWYG and Instant Rendering now use the configured rendered text font and size instead of inheriting code-block typography.
+- **fix(SV line numbers):** Made the source line-number gutter non-selectable, aligned numbers to the vertical center of source text, kept blank source lines from stacking at the gutter top after scrolling, and excluded the editor's trailing blank space from its numbered track.
 
 #### Links and local resources
 

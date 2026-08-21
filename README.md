@@ -45,6 +45,7 @@ Vditor Desktop is a local Markdown writing app built with [Electron](https://git
 - **Three ways to write.** Move between WYSIWYG, instant rendering, and split preview mode without leaving the document.
 - **Desktop-grade file handling.** Open files from the command line or a file manager, work with a folder as a workspace, and recover tabs and window state between sessions.
 - **Workspace-aware file operations.** Create numbered untitled documents, create and rename files inline, open a workspace from the explorer context menu, and move files to the trash without leaving the editor.
+- **Editing context menu.** Right-click in any editable mode for clipboard, deletion, and context selection actions; rendered table cells also offer row and column actions.
 - **A focused interface.** A compact workbench bar keeps menus, file actions, tabs, and window controls together, while the editor toolbar appears only when needed.
 - **Rich Markdown.** Keep Vditor's support for formulas, diagrams, charts, footnotes, syntax highlighting, tables of contents, and media previews.
 - **Local-first by design.** Configuration and Chromium data are stored locally in platform-appropriate directories. The application does not upload your documents.
@@ -130,6 +131,7 @@ Linux is the primary development and validation platform at present. Windows and
 | Save              | `Ctrl/Cmd + S`         |
 | Save As           | `Ctrl/Cmd + Shift + S` |
 | Find and replace  | `Ctrl/Cmd + F`         |
+| Select context / all | `Ctrl/Cmd + A`      |
 | Close tab         | `Ctrl/Cmd + W`         |
 | Toggle explorer   | `Ctrl/Cmd + B`         |
 | Open settings     | `Ctrl/Cmd + ,`         |

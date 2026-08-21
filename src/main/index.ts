@@ -1,4 +1,14 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, screen, shell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeTheme,
+  screen,
+  shell,
+} from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'path';
 import { watch, FSWatcher } from 'chokidar';
@@ -406,6 +416,11 @@ function registerIpcHandlers(): void {
     const factor = Math.min(2, Math.max(0.75, Number(zoom) / 100));
     mainWindow?.webContents.setZoomFactor(factor);
     return factor;
+  });
+  ipcMain.handle('app:readClipboard', (event) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents)
+      throw new Error('Clipboard access is limited to the application window');
+    return { text: clipboard.readText(), html: clipboard.readHTML() };
   });
   ipcMain.handle('app:openExternal', (_event, url: unknown) => {
     const externalUrl = allowedExternalUrl(url);

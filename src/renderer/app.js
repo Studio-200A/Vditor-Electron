@@ -67,6 +67,9 @@
   let tabDragGhost = null;
   let tabDragMoved = false;
   let hoveredDocumentLink = null;
+  let editorSelectionActive = false;
+  let pendingTableCellSelection = null;
+  let contextMenuState = null;
 
   function resolveLocale(locale) {
     if (locale && locale !== 'system' && LOCALES[locale]) return locale;
@@ -81,6 +84,13 @@
     const fallback = Object.prototype.hasOwnProperty.call(english, key) ? english[key] : key;
     const value = Object.prototype.hasOwnProperty.call(table, key) ? table[key] : fallback;
     return String(value).replace(/\{(\w+)\}/g, (_match, name) => params[name] ?? `{${name}}`);
+  }
+
+  function updateMainMenuGlow(event) {
+    const button = event.currentTarget;
+    const rect = button.getBoundingClientRect();
+    button.style.setProperty('--button-glow-x', `${event.clientX - rect.left}px`);
+    button.style.setProperty('--button-glow-y', `${event.clientY - rect.top}px`);
   }
 
   function updateMaximizedState(maximized) {
@@ -202,6 +212,65 @@
   function activeTab() {
     return state.tabs.find((tab) => tab.id === state.activeId) || null;
   }
+
+  function selectEditorContextOrAll(event) {
+    if (event.altKey || event.key.toLowerCase() !== 'a') return false;
+    const tab = activeTab();
+    const mode = tab?.vditor?.getCurrentMode();
+    const editorTarget = VDITOR.isEditableTarget(tab?.host, mode, event.target)
+      ? event.target
+      : document.activeElement;
+    if (
+      !editorSelectionActive ||
+      !tab?.ready ||
+      !mode ||
+      !VDITOR.isEditableTarget(tab.host, mode, editorTarget)
+    )
+      return false;
+    const selection = VDITOR.selectCurrentContextOrAll(tab.host, mode);
+    if (!selection) return false;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    return true;
+  }
+
+  function selectedTableCellForBackspace(event) {
+    if (
+      event.key !== 'Backspace' ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.altKey ||
+      event.shiftKey
+    )
+      return false;
+    const tab = activeTab();
+    const mode = tab?.vditor?.getCurrentMode();
+    if (!tab?.ready || !mode || !VDITOR.isEditableTarget(tab.host, mode, event.target))
+      return false;
+    return VDITOR.selectedTableCell(tab.host, mode);
+  }
+
+  function updateEditorSelectionActivity(target, preserveEditorHost = false) {
+    const tab = activeTab();
+    const mode = tab?.vditor?.getCurrentMode();
+    if (tab?.ready && mode && VDITOR.isEditableTarget(tab.host, mode, target)) {
+      editorSelectionActive = true;
+      return;
+    }
+    const element = target?.nodeType === Node.ELEMENT_NODE ? target : target?.parentElement;
+    if (preserveEditorHost && element && tab?.host.contains(element)) return;
+    editorSelectionActive = false;
+  }
+
+  function keepsNativeSelectAll(target) {
+    const element = target?.nodeType === Node.ELEMENT_NODE ? target : target?.parentElement;
+    if (!element) return false;
+    const tab = activeTab();
+    const mode = tab?.vditor?.getCurrentMode();
+    if (tab?.ready && mode && VDITOR.isEditableTarget(tab.host, mode, element)) return false;
+    return Boolean(element.closest('input,textarea,select') || element.isContentEditable);
+  }
+
   function escapeHTML(value) {
     const node = document.createElement('div');
     node.textContent = String(value);
@@ -587,10 +656,14 @@
   function disconnectSplitLineNumbers(tab) {
     tab.lineObserver?.disconnect();
     tab.lineResizeObserver?.disconnect();
+    if (tab.lineScrollSource && tab.lineScrollHandler)
+      tab.lineScrollSource.removeEventListener('scroll', tab.lineScrollHandler);
     if (tab.lineNumberFrame) cancelAnimationFrame(tab.lineNumberFrame);
     if (tab.whitespaceFrame) cancelAnimationFrame(tab.whitespaceFrame);
     tab.lineObserver = null;
     tab.lineResizeObserver = null;
+    tab.lineScrollSource = null;
+    tab.lineScrollHandler = null;
     tab.lineNumberFrame = null;
     tab.whitespaceFrame = null;
   }
@@ -745,15 +818,25 @@
       gutter = document.createElement('div');
       gutter.className = 'sv-line-numbers';
       content.insertBefore(gutter, content.firstChild);
-      sv.addEventListener('scroll', () => {
-        gutter.scrollTop = sv.scrollTop;
-        const canvas = content.querySelector('.sv-whitespace-canvas');
+    }
+    if (tab.lineScrollSource !== sv) {
+      if (tab.lineScrollSource && tab.lineScrollHandler)
+        tab.lineScrollSource.removeEventListener('scroll', tab.lineScrollHandler);
+      tab.lineScrollSource = sv;
+      tab.lineScrollHandler = () => {
+        const currentContent = VDITOR.editorParts(tab.host).content;
+        const currentGutter = currentContent?.querySelector(':scope > .sv-line-numbers');
+        const lineNumberCanvas = currentGutter?.querySelector(':scope > .sv-line-number-canvas');
+        if (lineNumberCanvas && !lineNumberCanvas.classList.contains('scroll-linked'))
+          lineNumberCanvas.style.transform = `translateY(${-sv.scrollTop}px)`;
+        const canvas = currentContent?.querySelector('.sv-whitespace-canvas');
         if (canvas) {
           const renderedScrollTop = Number(canvas.dataset.scrollTop || 0);
           canvas.style.transform = `translateY(${renderedScrollTop - sv.scrollTop}px)`;
         }
         scheduleWhitespaceMarkers(tab, sv);
-      });
+      };
+      sv.addEventListener('scroll', tab.lineScrollHandler);
     }
     const isSplitView = tab.vditor.getCurrentMode() === 'sv';
     syncSplitViewLayout(tab);
@@ -768,40 +851,56 @@
       return;
     }
 
-    const count = Math.max(1, currentContent(tab).split(/\r?\n/).length);
     const style = getComputedStyle(sv);
     const lineHeight =
       Number.parseFloat(style.lineHeight) || Number.parseFloat(style.fontSize) * 1.5;
     const svRect = sv.getBoundingClientRect();
-    const newlines = VDITOR.sourceNewlines(sv);
-    const positions = [];
-    let startContainer = sv;
-    let startOffset = 0;
-    for (let index = 0; index < count; index += 1) {
-      const newline = newlines[index];
+    // Vditor can represent several textual source lines inside one private
+    // newline marker (notably table and HTML syntax). Measure the actual
+    // source text lines, otherwise positions after the final marker are only
+    // guessed and spill into the editor's trailing spacer.
+    const sourceLines = VDITOR.sourceLineRanges(sv);
+    if (!sourceLines.length) {
       const range = document.createRange();
-      range.setStart(startContainer, startOffset);
-      if (newline) range.setEndBefore(newline);
-      else range.setEnd(sv, sv.childNodes.length);
-      const rect = Array.from(range.getClientRects()).find((item) => item.height > 0);
-      const fallbackRect = newline?.getBoundingClientRect();
-      const measuredRect = rect || fallbackRect;
+      range.selectNodeContents(sv);
+      sourceLines.push({ range, fallbackRange: range.cloneRange() });
+    }
+    const positions = [];
+    for (let index = 0; index < sourceLines.length; index += 1) {
+      const { range, fallbackRange } = sourceLines[index];
+      // Raw HTML markers and wrapped source lines can return client rects in
+      // an order that ends at the newline marker. The line number belongs at
+      // the visually topmost rect of the logical source line.
+      const rect = Array.from(range.getClientRects())
+        .filter((item) => item.height > 0)
+        .reduce((topmost, item) => (!topmost || item.top < topmost.top ? item : topmost), null);
+      const fallbackRect = fallbackRange.getBoundingClientRect();
+      // Empty source lines have a zero-sized fallback range. It is not a
+      // layout position: treating it as one places every such line at the
+      // top of the gutter after the scroll-linked transform is applied.
+      const measuredRect = rect || (fallbackRect.height > 0 ? fallbackRect : null);
       const measuredTop = measuredRect
-        ? measuredRect.top -
-          svRect.top +
-          sv.scrollTop +
-          Math.max(0, (measuredRect.height - lineHeight) / 2)
-        : (positions[index - 1] ?? (Number.parseFloat(style.paddingTop) || 0)) + lineHeight;
+        ? measuredRect.top - svRect.top + sv.scrollTop + (measuredRect.height - lineHeight) / 2
+        : index === 0
+          ? Number.parseFloat(style.paddingTop) || 0
+          : positions[index - 1] + lineHeight;
       positions.push(measuredTop);
-      if (newline?.parentNode) {
-        startContainer = newline.parentNode;
-        startOffset = Array.prototype.indexOf.call(startContainer.childNodes, newline) + 1;
-      }
     }
 
     const canvas = document.createElement('div');
     canvas.className = 'sv-line-number-canvas';
-    canvas.style.height = `${Math.max(sv.scrollHeight, positions.at(-1) + lineHeight)}px`;
+    // Match SV's complete scroll range so source lines and gutter stay aligned.
+    // Only actual Markdown lines receive spans; the trailing editor spacer is
+    // therefore an empty, unnumbered part of this canvas.
+    canvas.style.height = `${Math.max(sv.scrollHeight, (positions.at(-1) || 0) + lineHeight)}px`;
+    const scrollRange = Math.max(0, sv.scrollHeight - sv.clientHeight);
+    // Keep the gutter on the source element's compositor scroll timeline when
+    // Chromium supports it. The scroll-event transform remains a fallback for
+    // older engines, but it trails a compositor scroll by one visual frame.
+    const scrollLinked = CSS.supports?.('animation-timeline: scroll()');
+    canvas.classList.toggle('scroll-linked', Boolean(scrollLinked));
+    canvas.style.setProperty('--sv-scroll-range', `${scrollRange}px`);
+    if (!scrollLinked) canvas.style.transform = `translateY(${-sv.scrollTop}px)`;
     positions.forEach((top, index) => {
       const number = document.createElement('span');
       number.className = 'sv-line-number';
@@ -810,7 +909,6 @@
       canvas.appendChild(number);
     });
     gutter.replaceChildren(canvas);
-    gutter.scrollTop = sv.scrollTop;
     renderWhitespaceMarkers(tab, sv);
   }
 
@@ -1107,14 +1205,18 @@
     }
     if (type === 'edit-mode' && ['wysiwyg', 'ir', 'sv'].includes(button.dataset.mode)) {
       if (button.dataset.mode !== tab.vditor?.getCurrentMode()) {
+        closeContextMenu();
         tab.pendingScroll = captureEditorScroll(tab);
+        // Vditor rebuilds the target mode synchronously during this click.
+        // Restore before the next paint so the newly visible editor never
+        // presents its default top position for a frame.
+        requestAnimationFrame(() => restoreEditorScroll(tab));
       }
       setTimeout(() => {
         if (!tab.vditor) return;
         tab.mode = tab.vditor.getCurrentMode();
         updateActiveUI();
         scheduleSplitLineNumbers(tab);
-        restoreEditorScroll(tab);
       }, 50);
     } else if (type === 'code-theme') {
       const codeTheme = button.textContent.trim();
@@ -1178,21 +1280,39 @@
   function restoreEditorScroll(tab) {
     const saved = tab.pendingScroll;
     if (!saved) return;
-    tab.pendingScroll = null;
     const restore = () => {
       const mode = tab.vditor?.getCurrentMode() || tab.mode;
       const scroller = VDITOR.editorScrollContainer(tab.host, mode);
-      if (!scroller) return;
+      if (!scroller) return false;
       const maximumTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
       const maximumLeft = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
-      scroller.scrollTop =
+      const top =
         mode === saved.mode
           ? Math.min(maximumTop, Math.max(0, saved.scrollTop))
           : maximumTop * Math.min(1, Math.max(0, saved.progress));
+      scroller.scrollTop = top;
       scroller.scrollLeft = Math.min(maximumLeft, Math.max(0, saved.scrollLeft));
       scheduleSplitLineNumbers(tab);
+      return maximumTop > 0 || saved.scrollTop === 0;
     };
-    requestAnimationFrame(() => requestAnimationFrame(restore));
+    // Vditor may finish a mode render after `after` has already run. Restore
+    // before the first paint, then repeat across the next frames and once
+    // after its short asynchronous render work so that it cannot reset the
+    // reconstructed editor back to the document start.
+    const restoreUntilStable = (frame = 0) => {
+      if (tab.pendingScroll !== saved) return;
+      restore();
+      if (frame < 3) {
+        requestAnimationFrame(() => restoreUntilStable(frame + 1));
+        return;
+      }
+      setTimeout(() => {
+        if (tab.pendingScroll !== saved) return;
+        restore();
+        tab.pendingScroll = null;
+      }, 80);
+    };
+    restoreUntilStable();
   }
 
   function restoreEditorToolbar(tab) {
@@ -1213,6 +1333,7 @@
   }
 
   function rebuildEditor(tab, mode) {
+    if (contextMenuState?.tab === tab) closeContextMenu();
     tab.pendingScroll = captureEditorScroll(tab);
     disconnectSplitLineNumbers(tab);
     disconnectEditorBottomSpacer(tab);
@@ -1295,6 +1416,7 @@
       },
       true,
     );
+    tab.host.addEventListener('contextmenu', (event) => showEditorContextMenu(tab, event), true);
     $('#editorArea').appendChild(tab.host);
     state.tabs.push(tab);
     renderTabs();
@@ -1379,6 +1501,7 @@
   function switchTab(id) {
     const tab = state.tabs.find((item) => item.id === id);
     if (!tab) return;
+    closeContextMenu();
     restoreEditorToolbar(activeTab());
     state.activeId = id;
     state.tabs.forEach((item) => item.host.classList.toggle('active', item.id === id));
@@ -1397,6 +1520,7 @@
   async function closeTab(id, { discard = false } = {}) {
     const tab = state.tabs.find((item) => item.id === id);
     if (!tab) return;
+    if (contextMenuState?.tab === tab) closeContextMenu();
     if (tab.modified && !discard) {
       const action = await showUnsavedDialog(
         t('confirm.closeDirty', { title: tab.title }),
@@ -1846,62 +1970,159 @@
     scheduleTreeNameEllipses();
   }
 
+  function closeContextMenu() {
+    const menu = $('#contextMenu');
+    if (!menu) return;
+    menu.classList.add('hidden');
+    menu.replaceChildren();
+    contextMenuState = null;
+  }
+
+  function showContextMenu(event, items, menuState = null) {
+    const menu = $('#contextMenu');
+    closeContextMenu();
+    contextMenuState = menuState;
+    items.forEach((item) => {
+      if (item.separator) {
+        menu.appendChild(document.createElement('hr'));
+        return;
+      }
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.contextAction = item.id || '';
+      button.disabled = Boolean(item.disabled);
+      const label = document.createElement('span');
+      label.textContent = item.label;
+      button.appendChild(label);
+      if (item.shortcut) {
+        const shortcut = document.createElement('small');
+        shortcut.textContent = item.shortcut;
+        button.appendChild(shortcut);
+      }
+      button.addEventListener('pointerdown', (pointerEvent) => {
+        pointerEvent.preventDefault();
+        pointerEvent.stopPropagation();
+      });
+      button.addEventListener('mousedown', (mouseEvent) => mouseEvent.preventDefault());
+      button.addEventListener('click', (clickEvent) => {
+        clickEvent.stopPropagation();
+        const savedState = contextMenuState;
+        closeContextMenu();
+        if (!button.disabled) void item.action?.(savedState);
+      });
+      menu.appendChild(button);
+    });
+    menu.style.visibility = 'hidden';
+    menu.classList.remove('hidden');
+    const margin = 6;
+    menu.style.left = `${Math.max(margin, Math.min(event.clientX, window.innerWidth - menu.offsetWidth - margin))}px`;
+    menu.style.top = `${Math.max(margin, Math.min(event.clientY, window.innerHeight - menu.offsetHeight - margin))}px`;
+    menu.style.visibility = '';
+  }
+
+  function editorShortcut(key) {
+    const modifier = window.appAPI.platform === 'darwin' ? 'Cmd' : 'Ctrl';
+    return `${modifier}+${key}`;
+  }
+
+  async function runEditorContextAction(menuState, action) {
+    const { tab, mode, selection, table } = menuState || {};
+    if (!tab?.ready || tab !== activeTab() || tab.vditor?.getCurrentMode() !== mode) return;
+    if (!VDITOR.restoreEditorSelection(selection)) return;
+    if (action === 'select-context') {
+      VDITOR.selectCurrentContextOrAll(tab.host, mode);
+      return;
+    }
+    if (action.startsWith('table-')) {
+      VDITOR.performTableAction(table, action.slice('table-'.length), tab.vditor);
+      return;
+    }
+    let clipboard = null;
+    if (action === 'paste' || action === 'paste-plain')
+      clipboard = await window.appAPI.readClipboard();
+    VDITOR.executeEditorCommand(tab.host, mode, action, clipboard);
+  }
+
+  function showEditorContextMenu(tab, event) {
+    if (tab !== activeTab() || !tab.ready) return;
+    const mode = tab.vditor?.getCurrentMode();
+    if (!mode || !VDITOR.isEditableTarget(tab.host, mode, event.target)) return;
+    const selection = VDITOR.captureEditorSelection(
+      tab.host,
+      mode,
+      event.target,
+      event.clientX,
+      event.clientY,
+    );
+    if (!selection) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const table = VDITOR.tableContext(tab.host, mode, event.target);
+    const hasSelection = !selection.range.collapsed;
+    const menuState = { tab, mode, selection, table };
+    const action = (id, label, options = {}) => ({
+      id,
+      label: t(label),
+      shortcut: options.shortcut,
+      disabled: options.disabled,
+      action: (state) => runEditorContextAction(state, id),
+    });
+    const items = [
+      action('cut', 'context.cut', { shortcut: editorShortcut('X'), disabled: !hasSelection }),
+      action('copy', 'context.copy', { shortcut: editorShortcut('C'), disabled: !hasSelection }),
+      action('paste', 'context.paste', { shortcut: editorShortcut('V') }),
+      action('paste-plain', 'context.pastePlain'),
+      action('delete', 'context.delete', { disabled: !hasSelection }),
+      action('select-context', 'context.selectContext', { shortcut: editorShortcut('A') }),
+    ];
+    if (table) {
+      items.push(
+        { separator: true },
+        action('table-insert-row', 'context.insertRow'),
+        action('table-delete-row', 'context.deleteRow', { disabled: table.cell.tagName === 'TH' }),
+        action('table-insert-column', 'context.insertColumn'),
+        action('table-delete-column', 'context.deleteColumn'),
+      );
+    }
+    showContextMenu(event, items, menuState);
+  }
+
   function showTreeMenu(event, entry, row) {
     event.preventDefault();
-    const menu = $('#contextMenu');
-    menu.innerHTML = '';
     const actions =
       entry.type === 'directory'
         ? [
-            [t('context.newFile'), () => createExplorerItem(entry.path, 'file')],
-            [t('context.newFolder'), () => createExplorerItem(entry.path, 'directory')],
+            { label: t('context.newFile'), action: () => createExplorerItem(entry.path, 'file') },
+            {
+              label: t('context.newFolder'),
+              action: () => createExplorerItem(entry.path, 'directory'),
+            },
           ]
         : [];
     actions.push(
-      [t('context.rename'), () => renameExplorerItem(entry, row)],
-      [t('context.trash'), () => deleteExplorerItem(entry)],
-      [t('context.reveal'), () => window.appAPI.showItemInFolder(entry.path)],
+      { label: t('context.rename'), action: () => renameExplorerItem(entry, row) },
+      { label: t('context.trash'), action: () => deleteExplorerItem(entry) },
+      { label: t('context.reveal'), action: () => window.appAPI.showItemInFolder(entry.path) },
     );
-    actions.forEach(([label, fn]) => {
-      const button = document.createElement('button');
-      button.textContent = label;
-      button.onclick = () => {
-        menu.classList.add('hidden');
-        fn();
-      };
-      menu.appendChild(button);
-    });
-    menu.style.left = `${event.clientX}px`;
-    menu.style.top = `${event.clientY}px`;
-    menu.classList.remove('hidden');
+    showContextMenu(event, actions);
   }
 
   function showWorkspaceTreeMenu(event) {
     event.preventDefault();
-    const menu = $('#contextMenu');
-    menu.innerHTML = '';
     const actions = [
-      [t('context.changeWorkspace'), chooseFolder],
-      [t('context.newFile'), createWorkspaceUntitledFile, !state.workspace],
-      [
-        t('context.openWorkspace'),
-        () => window.appAPI.openDirectory(state.workspace),
-        !state.workspace,
-      ],
+      { label: t('context.changeWorkspace'), action: chooseFolder },
+      {
+        label: t('context.newFile'),
+        action: createWorkspaceUntitledFile,
+        disabled: !state.workspace,
+      },
+      {
+        label: t('context.openWorkspace'),
+        action: () => window.appAPI.openDirectory(state.workspace),
+        disabled: !state.workspace,
+      },
     ];
-    actions.forEach(([label, fn, disabled]) => {
-      const button = document.createElement('button');
-      button.textContent = label;
-      button.disabled = Boolean(disabled);
-      button.onclick = () => {
-        menu.classList.add('hidden');
-        void fn();
-      };
-      menu.appendChild(button);
-    });
-    menu.style.left = `${event.clientX}px`;
-    menu.style.top = `${event.clientY}px`;
-    menu.classList.remove('hidden');
+    showContextMenu(event, actions);
   }
 
   async function createWorkspaceUntitledFile() {
@@ -1996,6 +2217,7 @@
   async function deleteExplorerItem(entry) {
     const proceed = await confirmDialog({
       message: t('workspace.delete', { name: entry.name }),
+      draggable: true,
     });
     if (!proceed) return;
     try {
@@ -3190,14 +3412,55 @@
     $$('[data-external]').forEach((button) => {
       button.onclick = () => window.appAPI.openExternal(button.dataset.external);
     });
-    document.addEventListener('click', () => {
-      $('#contextMenu').classList.add('hidden');
-      closeStatusModeMenu();
+    document.addEventListener('click', () => closeStatusModeMenu());
+    document.addEventListener('pointerdown', (event) => {
+      if (!event.target.closest('#contextMenu')) closeContextMenu();
     });
+    $('.app-menu-bar > button[data-menu="main"]')?.addEventListener(
+      'mousemove',
+      updateMainMenuGlow,
+      { passive: true },
+    );
+    document.addEventListener(
+      'pointerdown',
+      (event) => updateEditorSelectionActivity(event.target),
+      true,
+    );
+    document.addEventListener(
+      'focusin',
+      (event) => updateEditorSelectionActivity(event.target, true),
+      true,
+    );
     document.addEventListener('keydown', updateHoveredDocumentLinkCursor, true);
     document.addEventListener('keyup', updateHoveredDocumentLinkCursor, true);
-    window.addEventListener('blur', clearHoveredDocumentLink);
+    document.addEventListener(
+      'keydown',
+      (event) => {
+        const tableCellSelection = selectedTableCellForBackspace(event);
+        pendingTableCellSelection = tableCellSelection
+          ? { event, selection: tableCellSelection }
+          : null;
+        if ((event.ctrlKey || event.metaKey) && selectEditorContextOrAll(event)) return;
+      },
+      true,
+    );
+    window.addEventListener('blur', () => {
+      editorSelectionActive = false;
+      closeContextMenu();
+      clearHoveredDocumentLink();
+    });
     document.addEventListener('keydown', (event) => {
+      if (pendingTableCellSelection?.event === event) {
+        const { selection } = pendingTableCellSelection;
+        pendingTableCellSelection = null;
+        if (!event.defaultPrevented)
+          VDITOR.selectTableCellContents(selection.cell, selection.editor);
+      }
+      if (event.key === 'Escape' && !$('#contextMenu').classList.contains('hidden')) {
+        event.preventDefault();
+        closeContextMenu();
+        return;
+      }
       if (event.key === 'Escape' && !$('#confirmModal').classList.contains('hidden')) {
         event.preventDefault();
         closeConfirmDialog('cancel');
@@ -3237,6 +3500,11 @@
       }
       if (!(event.ctrlKey || event.metaKey)) return;
       const key = event.key.toLowerCase();
+      if (key === 'a') {
+        if (selectEditorContextOrAll(event)) return;
+        if (!keepsNativeSelectAll(event.target)) event.preventDefault();
+        return;
+      }
       if (key === 'i' && event.shiftKey) {
         event.preventDefault();
         window.appAPI.toggleDevTools();
