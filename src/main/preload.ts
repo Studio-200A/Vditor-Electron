@@ -51,6 +51,7 @@ contextBridge.exposeInMainWorld('appAPI', {
   isMaximized: () => ipcRenderer.invoke('app:isMaximized'),
   getInfo: () => ipcRenderer.invoke('app:getInfo'),
   setZoomFactor: (zoom: number) => ipcRenderer.invoke('app:setZoomFactor', zoom),
+  readClipboard: () => ipcRenderer.invoke('app:readClipboard'),
   openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
   showItemInFolder: (filePath: string) => ipcRenderer.invoke('app:showItemInFolder', filePath),
   openDirectory: (dirPath: string) => ipcRenderer.invoke('app:openDirectory', dirPath),

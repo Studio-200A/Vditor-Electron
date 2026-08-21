@@ -210,8 +210,32 @@ test('creates numbered tabs and shows the empty state after closing all tabs', a
     const { page } = running;
     await expect(page.locator('.document-tab')).toHaveCount(0);
     await expect(page.locator('#noTabs')).toBeVisible();
-    await expect(page.locator('#app')).toHaveClass(/toolbar-unavailable/);
-    await expect(page.locator('#vditorToolbarMount')).toBeHidden();
+    await expect(page.locator('#app')).not.toHaveClass(/toolbar-unavailable/);
+    await expect(page.locator('#vditorToolbarMount > .vditor-toolbar')).toBeVisible();
+    await expect
+      .poll(() =>
+        page
+          .locator('#vditorToolbarMount > .vditor-toolbar button')
+          .evaluateAll(
+            (buttons) => buttons.length > 0 && buttons.every((button) => button.disabled),
+          ),
+      )
+      .toBe(true);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const save = document.querySelector('#saveFile');
+          const buttons = Array.from(
+            document.querySelectorAll(
+              '#vditorToolbarMount > .vditor-toolbar .vditor-toolbar__item button',
+            ),
+          );
+          if (!(save instanceof HTMLElement) || !buttons.length) return false;
+          const saveColor = getComputedStyle(save).color;
+          return buttons.every((button) => getComputedStyle(button).color === saveColor);
+        }),
+      )
+      .toBe(true);
     await expect
       .poll(() =>
         page
@@ -221,10 +245,23 @@ test('creates numbered tabs and shows the empty state after closing all tabs', a
       .toBe('drag');
     await page.locator('[data-menu="main"]').click();
     await expect(page.locator('.app-menu-popup button', { hasText: 'Close Tab' })).toHaveCount(0);
+    const editModeMenu = page.locator('.app-menu-popup button.has-submenu', {
+      hasText: 'Editing Mode',
+    });
+    await expect(editModeMenu).toBeDisabled();
+    await editModeMenu.hover();
+    await expect(page.locator('.app-menu-popup.submenu')).toHaveCount(0);
     await page.locator('.app-menu-popup button.has-submenu', { hasText: 'Layout' }).click();
     const toolbarItem = page.locator('.app-menu-popup.submenu button', { hasText: 'Show Toolbar' });
-    await expect(toolbarItem).toBeDisabled();
-    await expect(toolbarItem.locator('.checkmark')).toHaveText('');
+    await expect(toolbarItem).toBeEnabled();
+    await expect(toolbarItem.locator('.checkmark')).toHaveText('✓');
+    await toolbarItem.click();
+    await expect(page.locator('#vditorToolbarMount')).toBeHidden();
+    await page.locator('[data-menu="main"]').click();
+    await page.locator('[data-menu="main"]').click();
+    await page.locator('.app-menu-popup button.has-submenu', { hasText: 'Layout' }).click();
+    await page.locator('.app-menu-popup.submenu button', { hasText: 'Show Toolbar' }).click();
+    await expect(page.locator('#vditorToolbarMount > .vditor-toolbar')).toBeVisible();
     await page.locator('[data-menu="main"]').click();
     await expect(page.locator('.app-menu-popup')).toHaveCount(0);
 
@@ -524,10 +561,10 @@ test('switches among all three modes from the View > Editing Mode submenu', asyn
 });
 
 test('switches to split view and renders source line numbers', async () => {
-  const running = await launchApp();
+  const markdown = `## Heading\n\n${'long-line '.repeat(80)}\n\nlast`;
+  const running = await launchApp({ editMode: 'ir' }, { 'line-numbers.md': markdown });
   try {
     const { page } = running;
-    await createNewTab(page);
     const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
     await modeTrigger.click();
     await page.locator('#vditorToolbarMount button[data-mode="sv"]').click();
@@ -535,8 +572,12 @@ test('switches to split view and renders source line numbers', async () => {
     await expect(page.locator('.editor-host.active .vditor-sv')).toBeVisible();
     await expect(page.locator('.editor-host.active .sv-line-numbers')).toBeVisible();
     const source = page.locator('.editor-host.active .vditor-sv');
-    await source.fill(`## Heading\n${'long-line '.repeat(80)}\nlast`);
-    await expect(page.locator('.editor-host.active .sv-line-number')).toHaveCount(3);
+    const gutter = page.locator('.editor-host.active .sv-line-numbers');
+    const lineNumberCanvas = page.locator('.editor-host.active .sv-line-number-canvas');
+    await expect(gutter).toHaveCSS('pointer-events', 'none');
+    await expect(gutter).toHaveCSS('user-select', 'none');
+    await expect(lineNumberCanvas).toHaveClass(/scroll-linked/);
+    await expect(page.locator('.editor-host.active .sv-line-number')).toHaveCount(5);
     await expect
       .poll(() =>
         source.evaluate((node) => {
@@ -562,6 +603,60 @@ test('switches to split view and renders source line numbers', async () => {
         }),
       )
       .toBeLessThan(4);
+    await source.evaluate((node) => {
+      node.scrollTop = node.scrollHeight;
+      node.dispatchEvent(new Event('scroll'));
+    });
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const source = document.querySelector('.editor-host.active .vditor-sv');
+          const canvas = document.querySelector('.editor-host.active .sv-line-number-canvas');
+          if (!(source instanceof HTMLElement) || !(canvas instanceof HTMLElement))
+            return Number.POSITIVE_INFINITY;
+          const transform = new DOMMatrixReadOnly(getComputedStyle(canvas).transform);
+          return Math.abs(transform.m42 + source.scrollTop);
+        }),
+      )
+      .toBeLessThan(1);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const source = document.querySelector('.editor-host.active .vditor-sv');
+          const lastNumber = document.querySelector(
+            '.editor-host.active .sv-line-number:last-child',
+          );
+          if (!(source instanceof HTMLElement) || !lastNumber) return Number.POSITIVE_INFINITY;
+          const walker = document.createTreeWalker(source, NodeFilter.SHOW_TEXT);
+          let text = walker.nextNode();
+          while (text && text.textContent !== 'last') text = walker.nextNode();
+          if (!text) return Number.POSITIVE_INFINITY;
+          const range = document.createRange();
+          range.selectNodeContents(text);
+          const textRect = range.getBoundingClientRect();
+          const numberRect = lastNumber.getBoundingClientRect();
+          return Math.abs(
+            textRect.top + textRect.height / 2 - (numberRect.top + numberRect.height / 2),
+          );
+        }),
+      )
+      .toBeLessThan(4);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const source = document.querySelector('.editor-host.active .vditor-sv');
+          const lastNumber = document.querySelector(
+            '.editor-host.active .sv-line-number:last-child',
+          );
+          if (!(source instanceof HTMLElement) || !(lastNumber instanceof HTMLElement))
+            return false;
+          const spacerHeight = Number.parseFloat(getComputedStyle(source, '::after').height);
+          return (
+            lastNumber.offsetTop + lastNumber.offsetHeight <= source.scrollHeight - spacerHeight
+          );
+        }),
+      )
+      .toBe(true);
 
     const resizer = page.locator('.editor-host.active .sv-split-resizer');
     await expect(resizer).toBeVisible();
@@ -623,6 +718,257 @@ test('switches to split view and renders source line numbers', async () => {
   }
 });
 
+test('does not number Vditor SV bottom spacer after README source', async () => {
+  const markdown = fs.readFileSync(path.join(projectRoot, 'README_CN.md'), 'utf8');
+  const running = await launchApp({ editMode: 'sv' }, { 'README_CN.md': markdown });
+  try {
+    const { page } = running;
+    await expect(page.locator('.editor-host.active .vditor-sv')).toBeVisible();
+    await expect(page.locator('.editor-host.active .sv-line-numbers')).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const numbers = Array.from(
+            document.querySelectorAll('.editor-host.active .sv-line-number'),
+          );
+          return (
+            numbers.length > 0 &&
+            numbers.every((number, index) => number.textContent === String(index + 1))
+          );
+        }),
+      )
+      .toBe(true);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const source = document.querySelector('.editor-host.active .vditor-sv');
+          const lastNumber = document.querySelector(
+            '.editor-host.active .sv-line-number:last-child',
+          );
+          if (!(source instanceof HTMLElement) || !(lastNumber instanceof HTMLElement))
+            return false;
+          const spacerHeight = Number.parseFloat(getComputedStyle(source, '::after').height);
+          return (
+            lastNumber.offsetTop + lastNumber.offsetHeight <= source.scrollHeight - spacerHeight
+          );
+        }),
+      )
+      .toBe(true);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps blank SV line numbers in flow after fullscreen scrolling', async () => {
+  const markdown = Array.from({ length: 60 }, (_, index) =>
+    index % 2 === 0 ? `line ${index + 1}` : '',
+  ).join('\n');
+  const running = await launchApp(
+    { editMode: 'sv', toolbarVisible: false },
+    { 'sv-blank-lines.md': markdown },
+  );
+  try {
+    const { page } = running;
+    await expect(page.locator('.editor-host.active .vditor-sv')).toBeVisible();
+    await page.keyboard.press('F11');
+    await expect(page.locator('#app')).toHaveClass(/fullscreen/);
+    const source = page.locator('.editor-host.active .vditor-sv');
+    await source.evaluate((node) => {
+      node.scrollTop = 257;
+      node.dispatchEvent(new Event('scroll'));
+    });
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const gutter = document.querySelector('.editor-host.active .sv-line-numbers');
+          const source = document.querySelector('.editor-host.active .vditor-sv');
+          if (!(gutter instanceof HTMLElement) || !(source instanceof HTMLElement)) return null;
+          const gutterTop = gutter.getBoundingClientRect().top;
+          const blankLines = Array.from({ length: 60 }, (_, index) => index + 1).filter(
+            (line) => line % 2 === 0,
+          );
+          const pinnedBlankLines = blankLines.filter((line) => {
+            const number = Array.from(
+              document.querySelectorAll('.editor-host.active .sv-line-number'),
+            ).find((item) => item.textContent === String(line));
+            if (!(number instanceof HTMLElement)) return false;
+            const rect = number.getBoundingClientRect();
+            return rect.top <= gutterTop + 0.5 && rect.bottom > gutterTop + 1;
+          });
+          return pinnedBlankLines;
+        }),
+      )
+      .toEqual([]);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const source = document.querySelector('.editor-host.active .vditor-sv');
+          const numbers = Array.from(
+            document.querySelectorAll('.editor-host.active .sv-line-number'),
+          );
+          if (!(source instanceof HTMLElement)) return Number.POSITIVE_INFINITY;
+          const lines = window.VditorDesktopAdapter.sourceLineRanges(source);
+          return Math.max(
+            ...lines.map((line, index) => {
+              const textRect = line.range.getBoundingClientRect();
+              const numberRect = numbers[index]?.getBoundingClientRect();
+              return textRect.height > 0 && numberRect
+                ? Math.abs(
+                    textRect.top + textRect.height / 2 - (numberRect.top + numberRect.height / 2),
+                  )
+                : 0;
+            }),
+          );
+        }),
+      )
+      .toBeLessThan(0.75);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('deletes a selected nonempty table cell in WYSIWYG and Instant Rendering', async () => {
+  const markdown = '| left | right |\n| --- | --- |\n| alpha | beta |';
+  for (const mode of ['ir', 'wysiwyg'] as const) {
+    const running = await launchApp({ editMode: mode }, { 'table-delete.md': markdown });
+    try {
+      const { page } = running;
+      const modifier =
+        (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+      const cell = page.locator('.editor-host.active tbody td').first();
+      await expect(cell).toContainText('alpha');
+      await cell.click();
+      await page.keyboard.press(`${modifier}+a`);
+      await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe('alpha');
+      await page.keyboard.press('Backspace');
+      await expect(cell).toHaveText('');
+    } finally {
+      await closeApp(running);
+    }
+  }
+});
+
+test('shows the editor context menu only on editable surfaces and restores its Range', async () => {
+  const markdown = 'first paragraph\n\nsecond paragraph';
+  const running = await launchApp({ editMode: 'ir' }, { 'context.md': markdown });
+  try {
+    const { page } = running;
+    const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+    const switchTo = async (mode: 'ir' | 'wysiwyg' | 'sv') => {
+      if (
+        await page
+          .locator(`.editor-host.active .vditor-${mode === 'wysiwyg' ? 'wysiwyg' : mode}`)
+          .isVisible()
+      )
+        return;
+      await modeTrigger.click();
+      await page.locator(`#vditorToolbarMount button[data-mode="${mode}"]`).click();
+      await expect(
+        page.locator(`.editor-host.active .vditor-${mode === 'wysiwyg' ? 'wysiwyg' : mode}`),
+      ).toBeVisible();
+    };
+    for (const mode of ['ir', 'wysiwyg', 'sv'] as const) {
+      await switchTo(mode);
+      const editor = page.locator(
+        `.editor-host.active .${mode === 'sv' ? 'vditor-sv' : `vditor-${mode} .vditor-reset`}`,
+      );
+      await expect(editor).toBeVisible();
+      await editor.evaluate((node) => {
+        const text = document.createTreeWalker(node, NodeFilter.SHOW_TEXT).nextNode();
+        if (!text) throw new Error('Expected editable text');
+        const range = document.createRange();
+        range.setStart(text, Math.min(2, text.textContent?.length || 0));
+        range.collapse(true);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        (node.closest('.vditor-ir, .vditor-wysiwyg, .vditor-sv') as HTMLElement)?.focus();
+      });
+      await editor.click({ button: 'right' });
+      const menu = page.locator('#contextMenu');
+      await expect(menu).toBeVisible();
+      await expect(menu.locator('[data-context-action="paste-plain"]')).toBeVisible();
+      await expect(menu.locator('[data-context-action="select-context"]')).toBeVisible();
+      const bounds = await menu.boundingBox();
+      expect(bounds).not.toBeNull();
+      expect(bounds!.x).toBeGreaterThanOrEqual(0);
+      expect(bounds!.y).toBeGreaterThanOrEqual(0);
+      await menu.locator('[data-context-action="select-context"]').click();
+      await expect
+        .poll(() => page.evaluate(() => window.getSelection()?.toString().trim().length || 0))
+        .toBeGreaterThan(0);
+
+      await page.keyboard.press('Escape');
+      await expect(menu).toBeHidden();
+      if (mode === 'sv') {
+        await page.locator('.editor-host.active .vditor-preview').click({ button: 'right' });
+        await expect(menu).toBeHidden();
+      }
+    }
+    const modifier =
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+    await page.keyboard.press(`${modifier}+f`);
+    await expect(page.locator('#findInput')).toBeVisible();
+    await page.locator('#findInput').click({ button: 'right' });
+    await expect(page.locator('#contextMenu')).toBeHidden();
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('performs table context-menu actions in WYSIWYG and Instant Rendering', async () => {
+  const markdown = '| left | right |\n| --- | --- |\n| alpha | beta |\n| gamma | delta |';
+  for (const mode of ['ir', 'wysiwyg'] as const) {
+    const running = await launchApp({ editMode: mode }, { 'table-context.md': markdown });
+    try {
+      const { page } = running;
+      const menu = page.locator('#contextMenu');
+      const rightClickCell = async () => {
+        await page.locator('.editor-host.active tbody td').first().click({ button: 'right' });
+        await expect(menu).toBeVisible();
+      };
+      await rightClickCell();
+      await expect(menu.locator('[data-context-action="table-insert-row"]')).toBeVisible();
+      await expect(menu.locator('[data-context-action="table-delete-row"]')).toBeEnabled();
+      await expect(menu.locator('[data-context-action="table-insert-column"]')).toBeVisible();
+      await expect(menu.locator('[data-context-action="table-delete-column"]')).toBeVisible();
+      await menu.locator('[data-context-action="table-insert-row"]').click();
+      await expect.poll(() => page.locator('.editor-host.active tbody tr').count()).toBe(3);
+
+      await rightClickCell();
+      await menu.locator('[data-context-action="table-delete-row"]').click();
+      await expect.poll(() => page.locator('.editor-host.active tbody tr').count()).toBe(2);
+
+      await rightClickCell();
+      await menu.locator('[data-context-action="table-insert-column"]').click();
+      await expect
+        .poll(() =>
+          page
+            .locator('.editor-host.active tbody td')
+            .first()
+            .evaluate((cell) => cell.parentElement!.children.length),
+        )
+        .toBe(3);
+
+      await rightClickCell();
+      await menu.locator('[data-context-action="table-delete-column"]').click();
+      await expect
+        .poll(() =>
+          page
+            .locator('.editor-host.active tbody td')
+            .first()
+            .evaluate((cell) => cell.parentElement!.children.length),
+        )
+        .toBe(2);
+
+      await page.locator('.editor-host.active thead th').first().click({ button: 'right' });
+      await expect(menu.locator('[data-context-action="table-delete-row"]')).toBeDisabled();
+    } finally {
+      await closeApp(running);
+    }
+  }
+});
+
 test('satisfies the Vditor DOM integration contract', async () => {
   const running = await launchApp({ editMode: 'sv' });
   try {
@@ -648,6 +994,188 @@ test('satisfies the Vditor DOM integration contract', async () => {
         }),
       )
       .toBe(true);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('selects the current editor context before the complete document with Ctrl/Cmd+A', async () => {
+  const running = await launchApp({ editMode: 'ir' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    const modifier =
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+    const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+    const switchTo = async (mode: 'wysiwyg' | 'ir' | 'sv') => {
+      await modeTrigger.click();
+      await page.locator(`#vditorToolbarMount button[data-mode="${mode}"]`).click();
+      await expect(
+        page.locator(`.editor-host.active .vditor-${mode === 'wysiwyg' ? 'wysiwyg' : mode}`),
+      ).toBeVisible();
+    };
+    const selectionText = () => page.evaluate(() => window.getSelection()?.toString());
+    const placeCaretAtStart = (editor: ReturnType<Page['locator']>) =>
+      editor.evaluate((node) => {
+        const text = document.createTreeWalker(node, NodeFilter.SHOW_TEXT).nextNode();
+        if (!text) throw new Error('Expected editable text');
+        const range = document.createRange();
+        range.setStart(text, 0);
+        range.collapse(true);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        (node.closest('.vditor-ir, .vditor-wysiwyg, .vditor-sv') as HTMLElement)?.focus({
+          preventScroll: true,
+        });
+      });
+
+    const ir = page.locator('.editor-host.active .vditor-ir .vditor-reset');
+    await ir.fill('first paragraph\n\nsecond paragraph');
+    await placeCaretAtStart(ir);
+    await page.keyboard.press(`${modifier}+a`);
+    await expect.poll(selectionText).toBe('first paragraph');
+    await page.keyboard.press(`${modifier}+a`);
+    await expect.poll(selectionText).toContain('second paragraph');
+
+    await switchTo('wysiwyg');
+    const wysiwyg = page.locator('.editor-host.active .vditor-wysiwyg .vditor-reset');
+    await placeCaretAtStart(wysiwyg);
+    await page.keyboard.press(`${modifier}+a`);
+    await expect.poll(selectionText).toBe('first paragraph');
+    await page.keyboard.press(`${modifier}+a`);
+    await expect.poll(selectionText).toContain('second paragraph');
+
+    await switchTo('sv');
+    const source = page.locator('.editor-host.active .vditor-sv');
+    await placeCaretAtStart(source);
+    await page.keyboard.press(`${modifier}+a`);
+    await expect.poll(selectionText).toBe('first paragraph');
+    await page.keyboard.press(`${modifier}+a`);
+    await expect.poll(selectionText).toContain('second paragraph');
+
+    await source.fill('<div>HTML content</div>');
+    const htmlCaretPoint = await source.evaluate((node) => {
+      const text = node.querySelector('.vditor-sv__marker')?.firstChild;
+      if (!text) throw new Error('Expected HTML marker text');
+      const range = document.createRange();
+      range.setStart(text, 6);
+      range.setEnd(text, 7);
+      const rect = range.getBoundingClientRect();
+      return { x: rect.left + 1, y: rect.top + rect.height / 2 };
+    });
+    await page.mouse.click(htmlCaretPoint.x, htmlCaretPoint.y);
+    await page.keyboard.press(`${modifier}+a`);
+    await expect.poll(selectionText).toBe('<div>HTML content</div>');
+    await page.keyboard.press(`${modifier}+a`);
+    await expect.poll(selectionText).toContain('\n');
+
+    await page.keyboard.press(`${modifier}+f`);
+    await expect(page.locator('#findInput')).toBeFocused();
+    await page.keyboard.press(`${modifier}+a`);
+    await expect(page.locator('#findInput')).toHaveValue('');
+
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => window.getSelection()?.removeAllRanges());
+    await page.locator('#statusMode').click();
+    await page.keyboard.press(`${modifier}+a`);
+    await expect.poll(selectionText).toBe('');
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps WYSIWYG code-block selection on the application two-stage path', async () => {
+  const running = await launchApp(
+    { editMode: 'wysiwyg' },
+    { 'code-block.md': 'before\n\n```js\nconst value = 1;\n```\n\nafter' },
+  );
+  try {
+    const { page } = running;
+    const modifier =
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+    const block = page.locator('.editor-host.active [data-type="code-block"]').first();
+    await block.locator('.vditor-wysiwyg__preview').click();
+    const code = block.locator('code').first();
+    await code.waitFor({ state: 'visible' });
+    await code.evaluate((node) => {
+      const text = node.firstChild;
+      if (!text) throw new Error('Expected code text');
+      const range = document.createRange();
+      range.setStart(text, 2);
+      range.collapse(true);
+      window.getSelection()?.removeAllRanges();
+      window.getSelection()?.addRange(range);
+      (node.closest('.vditor-wysiwyg') as HTMLElement)?.focus({ preventScroll: true });
+    });
+    await page.keyboard.press(`${modifier}+a`);
+    await expect
+      .poll(() => page.evaluate(() => window.getSelection()?.toString()))
+      .toContain('const value = 1;');
+    await page.keyboard.press(`${modifier}+a`);
+    await expect
+      .poll(() => page.evaluate(() => window.getSelection()?.toString()))
+      .toContain('before');
+    await expect
+      .poll(() => page.evaluate(() => window.getSelection()?.toString()))
+      .toContain('after');
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('selects README raw HTML source lines at closing-tag boundaries', async () => {
+  const readme = fs.readFileSync(path.join(projectRoot, 'README.md'), 'utf8');
+  const running = await launchApp({ editMode: 'sv' }, { 'selection-readme.md': readme });
+  try {
+    const { page } = running;
+    const source = page.locator('.editor-host.active .vditor-sv');
+    await expect(source).toBeVisible();
+    await source.evaluate((node) => {
+      node.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+      let text = walker.nextNode();
+      while (text && !text.textContent?.includes('code_style-prettier')) text = walker.nextNode();
+      if (!text?.textContent) throw new Error('README badge HTML line is missing');
+      const range = document.createRange();
+      range.setStart(text, text.textContent.length);
+      range.collapse(true);
+      window.getSelection()?.removeAllRanges();
+      window.getSelection()?.addRange(range);
+      (node as HTMLElement).focus({ preventScroll: true });
+    });
+    const modifier =
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+    await page.keyboard.press(`${modifier}+a`);
+    await expect
+      .poll(() => page.evaluate(() => window.getSelection()?.toString()))
+      .toBe(
+        '  <a href="https://github.com/prettier/prettier"><img src="https://img.shields.io/badge/code_style-prettier-ff69b4.svg" alt="code style: prettier" /></a>',
+      );
+    const selectClosingParagraph = async (occurrence: number) => {
+      await source.evaluate((node, targetOccurrence) => {
+        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+        const closings = [];
+        let text = walker.nextNode();
+        while (text) {
+          if (text.textContent === '</p>') closings.push(text);
+          text = walker.nextNode();
+        }
+        const target = closings[targetOccurrence];
+        if (!target?.textContent) throw new Error('README closing paragraph tag is missing');
+        node.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+        const range = document.createRange();
+        range.setStart(target, target.textContent.length);
+        range.collapse(true);
+        window.getSelection()?.removeAllRanges();
+        window.getSelection()?.addRange(range);
+        (node as HTMLElement).focus({ preventScroll: true });
+      }, occurrence);
+      await page.keyboard.press(`${modifier}+a`);
+      await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe('</p>');
+    };
+    await selectClosingParagraph(0);
+    await selectClosingParagraph(2);
   } finally {
     await closeApp(running);
   }
@@ -1016,6 +1544,35 @@ test('hides the custom titlebar while Electron is fullscreen', async () => {
     await page.keyboard.press('F11');
     await expect(page.locator('#app')).not.toHaveClass(/fullscreen/);
     await expect(page.locator('#windowTitlebar')).toBeVisible();
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps the empty outline message below controls and non-selectable in fullscreen', async () => {
+  const running = await launchApp({ sidebarVisible: true });
+  try {
+    const { page } = running;
+    await page.locator('.sidebar-tabs [data-view="outline"]').click();
+    const empty = page.locator('#outlineTree > .empty');
+    await expect(empty).toHaveText('Open a document first');
+    await expect(empty).toHaveCSS('user-select', 'none');
+
+    await page.keyboard.press('F11');
+    await expect(page.locator('#app')).toHaveClass(/fullscreen/);
+    await expect(page.locator('#windowTitlebar')).toBeHidden();
+    const tabsBox = await page.locator('header.titlebar .toolbar-sidebar-tabs').boundingBox();
+    const emptyBox = await empty.boundingBox();
+    if (!tabsBox || !emptyBox) throw new Error('Fullscreen outline controls have no bounds');
+    expect(emptyBox.y).toBeGreaterThanOrEqual(tabsBox.y + tabsBox.height - 1);
+
+    await page.evaluate(() => window.getSelection()?.removeAllRanges());
+    await page.mouse.move(emptyBox.x + 12, emptyBox.y + emptyBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(emptyBox.x + emptyBox.width - 12, emptyBox.y + emptyBox.height / 2);
+    await page.mouse.up();
+    await expect.poll(() => page.evaluate(() => window.getSelection()?.toString() || '')).toBe('');
+    await page.keyboard.press('F11');
   } finally {
     await closeApp(running);
   }
@@ -1414,6 +1971,49 @@ test('shows only the workspace name and refresh action in the explorer header', 
         rows.every((row) => !row.draggable && !row.hasAttribute('draggable')),
       ),
     ).toBe(true);
+  } finally {
+    await closeApp(running);
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('shows the move-to-trash confirmation as a draggable in-window dialog', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-trash-dialog-'));
+  fs.writeFileSync(path.join(workspace, 'README.md'), '# Read me');
+  const running = await launchApp({
+    restoreWorkspace: true,
+    sidebarVisible: true,
+    session: { workspacePath: workspace, activeFilePath: null, openFiles: [] },
+  });
+  try {
+    const { page } = running;
+    const file = page.locator('#fileTree > .tree-file').filter({ hasText: 'README.md' });
+    await file.click({ button: 'right' });
+    await page.locator('#contextMenu button', { hasText: 'Move to Trash' }).click();
+
+    const dialog = page.locator('#confirmModal');
+    const card = dialog.locator('.confirm-card');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator('#confirmMessage')).toHaveText('Move “README.md” to Trash?');
+    await expect(card).toHaveClass(/confirm-card-draggable/);
+
+    const dialogBox = await dialog.boundingBox();
+    const initialCardBox = await card.boundingBox();
+    const headerBox = await card.locator(':scope > header').boundingBox();
+    if (!dialogBox || !initialCardBox || !headerBox)
+      throw new Error('Move-to-trash dialog has incomplete drag chrome');
+    await page.mouse.move(headerBox.x + 40, headerBox.y + headerBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(headerBox.x + 90, headerBox.y + 60, { steps: 5 });
+    await page.mouse.up();
+    const movedCardBox = await card.boundingBox();
+    if (!movedCardBox) throw new Error('Move-to-trash dialog card disappeared while dragging');
+    expect(movedCardBox.x).toBeGreaterThan(initialCardBox.x + 20);
+    expect(movedCardBox.y).toBeGreaterThan(initialCardBox.y + 20);
+
+    await dialog.locator('#confirmActions [data-action="cancel"]').click();
+    await expect(dialog).toBeHidden();
+    expect(fs.existsSync(path.join(workspace, 'README.md'))).toBe(true);
   } finally {
     await closeApp(running);
     fs.rmSync(workspace, { recursive: true, force: true });
@@ -2061,6 +2661,46 @@ test('preserves the editor scroll position when settings rebuild the editor', as
   }
 });
 
+test('restores the editor scroll position before the first paint after changing modes', async () => {
+  const running = await launchApp({ editMode: 'ir' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    const markdown = Array.from({ length: 100 }, (_, index) => `paragraph ${index + 1}`).join('\n');
+    const reset = page.locator('.editor-host.active .vditor-ir .vditor-reset');
+    await reset.fill(markdown);
+    await expect(reset).toContainText('paragraph 100');
+    await reset.evaluate((node) => {
+      node.scrollTop = 420;
+      node.parentElement!.scrollTop = 420;
+    });
+    const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+    const switchTo = async (mode: 'wysiwyg' | 'sv') => {
+      await modeTrigger.click();
+      await page.locator(`#vditorToolbarMount button[data-mode="${mode}"]`).click();
+      return page.evaluate(
+        (currentMode) =>
+          new Promise<number>((resolve) =>
+            requestAnimationFrame(() => {
+              const selector =
+                currentMode === 'sv'
+                  ? '.editor-host.active .vditor-sv'
+                  : '.editor-host.active .vditor-wysiwyg .vditor-reset';
+              const scroller = document.querySelector(selector);
+              resolve(scroller instanceof HTMLElement ? scroller.scrollTop : 0);
+            }),
+          ),
+        mode,
+      );
+    };
+
+    expect(await switchTo('wysiwyg')).toBeGreaterThan(100);
+    expect(await switchTo('sv')).toBeGreaterThan(100);
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('applies the editor paragraph-width slider in WYSIWYG mode', async () => {
   const running = await launchApp();
   try {
@@ -2223,6 +2863,51 @@ test('omits Vditor web fullscreen and applies the configured font to editable co
     await expect(
       page.locator('.editor-host.active .vditor-wysiwyg > .vditor-reset + .vditor-panel'),
     ).toHaveCSS('display', 'none');
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('uses the rendered text font for raw HTML previews in every rendered mode', async () => {
+  const running = await launchApp(
+    {
+      editMode: 'ir',
+      previewFontFamily: 'Georgia, serif',
+      previewFontSize: 19,
+      previewCodeFontFamily: 'Courier New, monospace',
+      previewCodeFontSize: 13,
+    },
+    { 'raw-html-font.md': '<p>Rendered HTML text</p>' },
+  );
+  try {
+    const { page } = running;
+    const assertRenderedHTML = async (selector: string) => {
+      const preview = page.locator(selector);
+      await expect(preview).toBeVisible();
+      await expect(preview).toHaveCSS('font-family', /Georgia/);
+      await expect(preview).toHaveCSS('font-size', '19px');
+    };
+    const switchFromStatus = async (mode: 'wysiwyg' | 'sv') => {
+      await page.locator('#statusMode').click();
+      await page.locator(`#statusModeMenu button[data-status-mode="${mode}"]`).click();
+    };
+
+    await assertRenderedHTML(
+      '.editor-host.active .vditor-ir [data-type="html-block"] > .vditor-ir__preview',
+    );
+    await expect(
+      page.locator(
+        '.editor-host.active .vditor-ir [data-type="html-block"] > .vditor-ir__marker--pre code',
+      ),
+    ).toHaveCSS('font-family', /Courier New/);
+
+    await switchFromStatus('wysiwyg');
+    await assertRenderedHTML(
+      '.editor-host.active .vditor-wysiwyg [data-type="html-block"] > .vditor-wysiwyg__preview',
+    );
+
+    await switchFromStatus('sv');
+    await assertRenderedHTML('.editor-host.active .vditor-preview > .vditor-reset');
   } finally {
     await closeApp(running);
   }

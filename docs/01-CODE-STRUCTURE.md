@@ -1,8 +1,8 @@
 # Vditor-Electron Code Structure World Map
 
-- **生成时间：** 2026-08-21
+- **生成时间：** 2026-08-24
 - **基于的工作区：** `dev-0.1.5`（当前 0.1.5 开发工作树；提交状态以 `git status --short` 为准）
-- **文档版本：** v1.1
+- **文档版本：** v1.2
 - **对应 package.json 版本号：** 0.1.5
 
 ---
@@ -310,6 +310,7 @@ webPreferences: {
 | `onFullscreenChanged(callback)`  | `window:fullscreenChanged`   | on           | `(fullscreen)`         | 取消订阅函数                                |
 | `onMaximizedChanged(callback)`   | `window:maximizedChanged`    | on           | `(maximized)`          | 取消订阅函数                                |
 | `onOpenFiles(callback)`          | `app:openFiles`              | on           | `(paths)`              | 取消订阅函数                                |
+| `readClipboard()`                | `app:readClipboard`          | invoke       | 无                     | `{ text: string, html: string }`             |
 
 ### 5.4 事件订阅清理机制
 
@@ -358,6 +359,7 @@ webPreferences: {
 const state = {
   tabs: [],              // Tab[] 所有打开的标签页
   activeId: null,        // string 当前激活标签 ID
+  toolbarPreview: null,  // 无标签时用于展示默认编辑模式 toolbar 的非文档 Vditor 实例
   workspace: '',         // string 当前工作目录路径
   settings: null,        // AppSettings 从主进程加载的完整配置
   defaultSettings: null, // AppSettings 默认配置（用于重置）
@@ -430,6 +432,8 @@ const state = {
 | 销毁标签 | `closeTab(id)`             | 调用 `tab.vditor.destroy()` 并移除 host 节点              |
 | 设置变更 | `saveSettings()`           | 对所有标签调用 `rebuildEditor()`（包括演示设置）          |
 
+无文档标签时，`createToolbarPreview()` 创建一个不参与标签和文件状态的 Vditor 实例，仅将其 toolbar 挂载到共享 mount；该预览使用设置中的默认编辑模式。打开文档或设置变更时销毁并重建预览。预览 toolbar 调用 Vditor disabled 接口并由应用 CSS 灰化，不能交互；`View > Layout > Show Toolbar` 仍可控制其显隐。
+
 ### 7.3 工具栏定制
 
 默认工具栏（`app.js:19-50`）：
@@ -459,6 +463,8 @@ function mountEditorToolbar(tab) {
   if (tab.toolbar && tab.toolbar.parentElement !== mount) mount.appendChild(tab.toolbar);
 }
 ```
+
+无标签时共享 mount 改由 `state.toolbarPreview` 占用。应用菜单中的 `Editing Mode` 子菜单在此状态禁用且不展开；布局菜单中的 `Show Toolbar` 保持可用。预览 toolbar 的按钮和子面板控件全部 disabled，并使用与禁用文件操作按钮一致的灰色视觉。
 
 ### 7.4 内容同步机制
 
@@ -554,6 +560,15 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `outlineHeadingTargets(host, mode, index)` | `host, mode, index` | `{ scroller, heading }[]` | 直接返回 snapshot 对应标题 DOM 节点及其滚动容器；SV 两侧集合数量一致时同步源码与 preview，否则只返回原生 canonical 目标 |
 | `observeOutlineChanges(host, callback)` | `host, callback` | `MutationObserver \| null` | 监听模式可见性与异步 preview 标题渲染，驱动活动 Outline 视图的防抖刷新；重建和关闭标签时断开 |
 
+#### 编辑器选择与右键菜单
+
+| 函数 | 用途 |
+| --- | --- |
+| `isEditableTarget()` / `captureEditorSelection()` / `restoreEditorSelection()` | 限定真实可编辑表面，并保存、恢复右键菜单执行前的 Range |
+| `selectCurrentContextOrAll()` | 实现当前 block、表格单元格或 SV 源码行到全文的选择升级 |
+| `tableContext()` / `performTableAction()` | 识别 WYSIWYG / IR 表格上下文并执行四项行列操作，重新进入 Vditor 的 input / undo 更新路径 |
+| `executeEditorCommand()` | 执行剪切、复制、删除和 Vditor paste 事件；撤销/重做不通过右键菜单提供 |
+
 #### 查找替换（CSS Highlights API）
 
 | 函数                                                                   | 入参            | 返回值                    | 用途                                     |
@@ -634,6 +649,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `app:showItemInFolder`       | `filePath`                        | `void`                                      | `shell.showItemInFolder`                     |
 | `app:openDirectory`          | `dirPath`                         | `void`                                      | `shell.openPath`                             |
 | `app:exportPDF`              | `html, defaultPath?`              | `string \| null`                            | 隐藏 BrowserWindow 加载 HTML 后 `printToPDF` |
+| `app:readClipboard`          | 无                                | `{ text: string, html: string }`             | 读取编辑区右键菜单所需的系统剪贴板文本和 HTML 数据 |
 
 #### send 通道（render → main，无返回值）
 
@@ -822,6 +838,7 @@ function rememberRecent(filePath) {
 
 - **职责：** Windows/Linux 平台在标题栏挂载自定义下拉菜单（File 菜单含编辑模式 / 布局 / 设置 / 退出）
 - **实现：** `setupAppMenus()` 构建 popup DOM、`handleMenu(action, value)` 路由到功能函数
+- **空状态：** 无文档时编辑模式菜单项 disabled 且不展开；布局中的显示工具栏仍可切换默认模式 toolbar 预览的显隐
 - **macOS：** 使用 `src/main/menu.ts` 的原生 Menu，通过 `menu:action` IPC 与渲染器同步
 
 #### 标签栏（`app.js:1438` 起的 `renderTabs()`，`index.html:64-66`）
@@ -831,7 +848,7 @@ function rememberRecent(filePath) {
 
 #### 编辑区（`app.js:1153` 起的 `ensureEditor()` 及相关编辑器生命周期函数，`index.html:141-213`）
 
-- **职责：** 承载所有标签页的 Vditor 编辑器 host、空状态引导、外部变更横幅、查找替换组件
+- **职责：** 承载所有标签页的 Vditor 编辑器 host、无标签时的 toolbar 预览 host、空状态引导、外部变更横幅、查找替换组件
 - **实现：** `ensureEditor()`、`switchTab()` 切换 active 类；编辑器重建和三种模式切换均保存主滚动容器的位置，跨模式按文档滚动进度恢复，SV 始终以源码区为准
 
 #### 查找替换（`app.js:335-417`，`index.html:153-206`）
@@ -923,12 +940,12 @@ function rememberRecent(filePath) {
 #### 确认对话框（`app.js:113` 起的 `showConfirmDialog()`，`index.html` 中的 `#confirmModal`）
 
 - **职责：** 通用确认对话框，支持自定义标题/消息/操作按钮列表，返回 Promise
-- **实现：** `showConfirmDialog({ title, message, actions })` 返回 `{ resolve: Promise }`
-- **未保存变更交互：** `showUnsavedDialog()` 单独启用受限拖动；拖动仅从标题栏开始，位置限制在模态窗口可用范围内，关闭后回到居中位置，不提供尺寸调整手柄或持久化位置。
+- **实现：** `showConfirmDialog({ title, message, detail, actions, draggable })` 直接返回由操作按钮结果兑现的 `Promise<string>`。
+- **受限拖动交互：** 未保存变更与移到回收站确认框启用 `draggable`；拖动仅从标题栏开始，位置限制在模态窗口可用范围内，关闭后回到居中位置，不提供尺寸调整手柄或持久化位置。
 
-#### 右键菜单（`app.js:1849` 起的 `showTreeMenu()`，`#contextMenu`）
+#### 右键菜单（`app.js:1965` 起的 `showContextMenu()` / `showEditorContextMenu()`，`#contextMenu`）
 
-- **职责：** 文件树节点和工作区根目录的上下文操作菜单
+- **职责：** 文件树节点、工作区根目录和编辑区真实可编辑表面的共享上下文菜单；编辑区提供剪切、复制、粘贴、纯文本粘贴、删除、当前上下文选择，以及 WYSIWYG / IR 表格行列操作。撤销/重做继续使用快捷键和 Vditor 工具栏。
 
 ### 10.2 逻辑组件嵌套关系
 
@@ -1408,6 +1425,7 @@ flowchart TB
 #### 标签与编辑模式
 
 - 编号标签创建，关闭全部后显示空状态（`#noTabs` + 空动作按钮）
+- 无标签时显示默认编辑模式的 Vditor toolbar 预览；预览按钮全部 disabled 灰化，编辑模式菜单 disabled，布局菜单仍可切换 toolbar 显隐
 - 标签拖拽重排序（指针事件）
 - `View > Editing Mode` 切换 WYSIWYG / IR / SV，持久化 `editMode`
 - SV 源编辑器 + 预览 + 行号（对齐到 heading 垂直中线）
@@ -1425,6 +1443,8 @@ flowchart TB
 - 相对图片加载（Markdown `![](assets/x.png)` + HTML `<img>` 不污染源码）
 - HTTPS 文档图片在三模式下均加载
 - 工具栏不出现 `fullscreen` 按钮，WYSIWYG 代码块使用 `previewCodeFontFamily`
+- 编辑区右键菜单仅接管三种模式的真实可编辑表面；覆盖 Range 恢复、SV preview / 查找框排除、剪贴板命令与 WYSIWYG / IR 表格行列操作
+- 三种模式下的两段式 Ctrl/Cmd+A：普通 block、非空/空表格单元格、SV 源码行，以及非编辑控件原生全选边界
 
 #### 链接跳转与外部协议
 

@@ -18,6 +18,7 @@
   --hover: #e7e9ec;
   --text: #25272b;
   --muted: #6e737b;
+  --disabled-control-color: color-mix(in srgb, var(--muted) 42%, transparent);
   --border: #d9dce1;
   --accent: #3578e5;
   --danger: #c73b3b;
@@ -308,7 +309,9 @@ button.danger {
   top: 0;
 }
 #app.fullscreen:not(.fullscreen-menu-visible):is(.toolbar-hidden, .toolbar-unavailable) .sidebar {
-  padding-top: 0;
+  /* The editor titlebar remains over the sidebar when the native titlebar is
+     hidden, so keep the sidebar content below its 38px control row. */
+  padding-top: 38px;
 }
 #app.sidebar-collapsed:is(.toolbar-hidden, .toolbar-unavailable) .titlebar {
   width: 0;
@@ -549,6 +552,10 @@ button.danger {
   color: var(--muted);
   padding: 24px 12px;
   text-align: center;
+}
+.outline-tree > .empty {
+  user-select: none;
+  -webkit-user-select: none;
 }
 .sidebar-resize {
   position: absolute;
@@ -1039,6 +1046,11 @@ html[data-scrollbar-mode='hidden'] .app-scrollbar::-webkit-scrollbar {
 }
 .editor-host .vditor-sv {
   flex: 0 0 var(--split-source-width, 50%);
+  scroll-timeline-name: --sv-source-scroll;
+  scroll-timeline-axis: block;
+}
+.editor-host .vditor-content {
+  timeline-scope: --sv-source-scroll;
 }
 .editor-host.sv-editor-only .vditor-sv {
   width: 100% !important;
@@ -1077,6 +1089,14 @@ html[data-scrollbar-mode='hidden'] .app-scrollbar::-webkit-scrollbar {
 .editor-host .vditor-preview .vditor-reset pre {
   font-size: var(--preview-code-size);
 }
+/* Vditor renders raw HTML inside a PRE wrapper in IR and WYSIWYG. The wrapper
+   is a rendered surface, not source code, so restore the configured rendered
+   text presentation while leaving its hidden/expanded source marker monospace. */
+.editor-host .vditor-ir [data-type='html-block'] > .vditor-ir__preview,
+.editor-host .vditor-wysiwyg [data-type='html-block'] > .vditor-wysiwyg__preview {
+  font-family: var(--rendered-font) !important;
+  font-size: var(--rendered-size) !important;
+}
 .editor-host .vditor-ir [data-type='code-block'] pre,
 .editor-host .vditor-ir [data-type='code-block'] code,
 .editor-host .vditor-ir [data-type='code-block-info'],
@@ -1093,6 +1113,30 @@ html[data-scrollbar-mode='hidden'] .app-scrollbar::-webkit-scrollbar {
 }
 .editor-host .vditor-wysiwyg > .vditor-reset + .vditor-panel {
   display: none !important;
+}
+.editor-host.toolbar-preview {
+  position: fixed;
+  z-index: -1;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+#app.toolbar-preview-active .vditor-toolbar__item {
+  pointer-events: none;
+}
+#app.toolbar-preview-active .vditor-toolbar__item .vditor-tooltipped,
+#app.toolbar-preview-active .vditor-toolbar__item .vditor-tooltipped:hover,
+#app.toolbar-preview-active .vditor-toolbar__item .vditor-tooltipped:focus,
+#app.toolbar-preview-active .vditor-toolbar__item .vditor-menu--current,
+#app.toolbar-preview-active .vditor-toolbar__item button,
+#app.toolbar-preview-active .vditor-toolbar__item button:hover,
+#app.toolbar-preview-active .vditor-toolbar__item button:focus {
+  color: var(--disabled-control-color) !important;
+  cursor: default !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
 }
 :root[data-theme='monokai-pro-dark'] .editor-host,
 :root[data-theme='monokai-pro-dark'] .editor-host .vditor-content,
@@ -1321,10 +1365,24 @@ html[data-scrollbar-mode='hidden'] .app-scrollbar::-webkit-scrollbar {
   font-family: var(--source-font);
   font-size: var(--source-size);
   text-align: right;
+  pointer-events: none;
+  user-select: none;
 }
 .sv-line-number-canvas {
   position: relative;
   min-height: 100%;
+}
+.sv-line-number-canvas.scroll-linked {
+  animation: sv-line-number-scroll 1ms linear both;
+  animation-timeline: --sv-source-scroll;
+}
+@keyframes sv-line-number-scroll {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(calc(-1 * var(--sv-scroll-range)));
+  }
 }
 .sv-line-number {
   position: absolute;
@@ -2205,7 +2263,7 @@ body.confirm-card-dragging {
 .context-menu {
   position: fixed;
   z-index: 2000;
-  min-width: 165px;
+  min-width: 210px;
   padding: 5px;
   background: var(--panel);
   border: 1px solid var(--border);
@@ -2213,14 +2271,27 @@ body.confirm-card-dragging {
   box-shadow: 0 8px 28px rgb(0 0 0 / 0.25);
 }
 .context-menu button {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
   width: 100%;
   border: 0;
   text-align: left;
   background: transparent;
 }
+.context-menu button small {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
 .context-menu button:hover:not(:disabled) {
   background: var(--hover);
+}
+.context-menu hr {
+  margin: 4px 5px;
+  border: 0;
+  border-top: 1px solid var(--border);
 }
 .context-menu button:disabled {
   color: color-mix(in srgb, var(--muted) 55%, transparent);
@@ -2313,7 +2384,7 @@ body.confirm-card-dragging {
   background: var(--hover);
 }
 .titlebar-file-actions .icon-btn:disabled {
-  color: color-mix(in srgb, var(--muted) 42%, transparent);
+  color: var(--disabled-control-color);
   background: transparent;
   cursor: default;
 }
@@ -2594,6 +2665,17 @@ body[data-platform='darwin'] .modal {
     display: none;
   }
 }
+
+/* Keep the Vditor Desktop menu highlight centered on the pointer. */
+.app-menu-bar > button[data-menu='main']:hover {
+  background-color: color-mix(in srgb, var(--panel) 82%, transparent);
+  background-image: radial-gradient(
+    circle 118px at var(--button-glow-x, 50%) var(--button-glow-y, 50%),
+    color-mix(in srgb, var(--accent) 21%, transparent),
+    transparent 78%
+  );
+}
+
 .window-controls button {
   width: 45px;
   height: 100%;

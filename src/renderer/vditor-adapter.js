@@ -20,6 +20,7 @@
     sourceNewline: 'span[data-type="newline"]',
     sourceHeading: '[data-type="heading-marker"]',
     sourceBlock: '[data-block="0"]',
+    tableCell: 'td,th',
     listMarker: '[data-type="li-marker"]',
     listPadding: '[data-type="padding"]',
     renderedHeading: 'h1,h2,h3,h4,h5,h6',
@@ -124,6 +125,59 @@
 
   function sourceNewlines(source) {
     return Array.from(source?.querySelectorAll(selectors.sourceNewline) || []);
+  }
+
+  function sourceLineRanges(source) {
+    if (!source) return [];
+    const walker = document.createTreeWalker(source, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    let text = '';
+    let node = walker.nextNode();
+    while (node) {
+      const start = text.length;
+      text += node.textContent || '';
+      nodes.push({ node, start, end: text.length });
+      node = walker.nextNode();
+    }
+    const contentLength = text.replace(/(?:\r?\n)+$/, '').length;
+    if (!nodes.length || !contentLength) return [];
+
+    const boundaryAt = (offset) => {
+      const entry = nodes.find((item) => offset >= item.start && offset < item.end);
+      if (entry) return { node: entry.node, offset: offset - entry.start };
+      const last = nodes.at(-1);
+      return last ? { node: last.node, offset: last.node.textContent?.length || 0 } : null;
+    };
+    const ranges = [];
+    let start = 0;
+    for (
+      let end = text.indexOf('\n', start);
+      end !== -1 && start < contentLength;
+      end = text.indexOf('\n', start)
+    ) {
+      const range = document.createRange();
+      const lineStart = boundaryAt(start);
+      const lineEnd = boundaryAt(end);
+      if (!lineStart || !lineEnd) break;
+      range.setStart(lineStart.node, lineStart.offset);
+      range.setEnd(lineEnd.node, lineEnd.offset);
+      const newlineRange = document.createRange();
+      newlineRange.setStart(lineEnd.node, lineEnd.offset);
+      newlineRange.setEnd(lineEnd.node, lineEnd.offset + 1);
+      ranges.push({ range, fallbackRange: newlineRange });
+      start = end + 1;
+    }
+    if (start < contentLength) {
+      const range = document.createRange();
+      const lineStart = boundaryAt(start);
+      const lineEnd = boundaryAt(contentLength);
+      if (lineStart && lineEnd) {
+        range.setStart(lineStart.node, lineStart.offset);
+        range.setEnd(lineEnd.node, lineEnd.offset);
+        ranges.push({ range, fallbackRange: range.cloneRange() });
+      }
+    }
+    return ranges;
   }
 
   function listContext(node) {
@@ -246,6 +300,310 @@
     // In Vditor 3.11.x rendered modes scroll their private .vditor-reset child,
     // while SV scrolls its editor element directly.
     return mode === 'sv' ? editor : editor.querySelector(selectors.reset) || editor;
+  }
+
+  function elementForNode(node) {
+    if (!node) return null;
+    return node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+  }
+
+  function containsNode(root, node) {
+    return Boolean(root && node && (root === node || root.contains(node)));
+  }
+
+  function editableContent(host, mode) {
+    const editor = activeEditor(host, mode);
+    if (!editor) return null;
+    return mode === 'sv' ? editor : editor.querySelector(selectors.reset) || editor;
+  }
+
+  function isEditableTarget(host, mode, target) {
+    const editor = activeEditor(host, mode);
+    const element = elementForNode(target);
+    if (!editor || !element || !editor.contains(element)) return false;
+    // Vditor places auxiliary controls beside editable content, but its SV
+    // syntax markers may themselves be contenteditable=false. Those markers
+    // still belong to the source editing surface and must stay on editor paths.
+    return !element.closest('input,textarea,select,button');
+  }
+
+  function selectionRangeIn(editor) {
+    const selection = window.getSelection();
+    if (!selection?.rangeCount) return null;
+    const range = selection.getRangeAt(0);
+    return containsNode(editor, range.startContainer) && containsNode(editor, range.endContainer)
+      ? range
+      : null;
+  }
+
+  function closestWithin(node, selector, root) {
+    const element = elementForNode(node)?.closest(selector) || null;
+    return element && root?.contains(element) ? element : null;
+  }
+
+  function sourceLineRange(source, node, offset = 0) {
+    const element = elementForNode(node);
+    if (!source || !element || !source.contains(element)) return null;
+    let container = element;
+    while (
+      container !== source &&
+      !Array.from(container.childNodes).some((child) => child.matches?.(selectors.sourceNewline))
+    )
+      container = container.parentElement;
+    if (!container || !source.contains(container)) return null;
+    const children = Array.from(container.childNodes);
+    if (!children.length) return null;
+    let index;
+    if (node === container) {
+      index = Math.min(Math.max(0, offset), children.length - 1);
+    } else {
+      // Keep the original text node here. In Vditor raw-HTML markers, one
+      // element can contain many source lines; a text offset is not a child
+      // index of that marker.
+      let child = node;
+      while (child.parentNode && child.parentNode !== container) child = child.parentNode;
+      if (child.parentNode !== container) return null;
+      index = children.indexOf(child);
+    }
+    if (index < 0) return null;
+    if (children[index].matches?.(selectors.sourceNewline) && index > 0) index--;
+    let start = index;
+    while (start > 0 && !children[start - 1].matches?.(selectors.sourceNewline)) start--;
+    let end = index + 1;
+    while (end < children.length && !children[end].matches?.(selectors.sourceNewline)) end++;
+    const range = document.createRange();
+    range.setStartBefore(children[start]);
+    if (end < children.length) range.setEndBefore(children[end]);
+    else range.setEndAfter(children.at(-1));
+    return range;
+  }
+
+  function selectionContext(host, mode) {
+    const editor = editableContent(host, mode);
+    const selection = selectionRangeIn(editor);
+    if (!editor || !selection) return null;
+    if (mode === 'sv') {
+      const range = sourceLineRange(editor, selection.startContainer, selection.startOffset);
+      return range ? { kind: 'line', range, editor } : null;
+    }
+    const cell = closestWithin(selection.startContainer, selectors.tableCell, editor);
+    if (cell) {
+      const range = document.createRange();
+      range.selectNodeContents(cell);
+      return { kind: 'cell', range, editor };
+    }
+    const block = closestWithin(selection.startContainer, selectors.sourceBlock, editor);
+    if (!block) return null;
+    const range = document.createRange();
+    range.selectNodeContents(block);
+    return { kind: 'block', range, editor };
+  }
+
+  function selectedTableCell(host, mode) {
+    if (mode !== 'ir' && mode !== 'wysiwyg') return null;
+    const editor = editableContent(host, mode);
+    const range = selectionRangeIn(editor);
+    if (!editor || !range || range.collapsed) return null;
+    const startCell = closestWithin(range.startContainer, selectors.tableCell, editor);
+    const endCell = closestWithin(range.endContainer, selectors.tableCell, editor);
+    if (!startCell || startCell !== endCell) return null;
+    if (!startCell.textContent.replace(/[\s\u200b\ufeff]/g, '')) return null;
+    const cellRange = document.createRange();
+    cellRange.selectNodeContents(startCell);
+    return rangeCoversRange(range, cellRange) ? { editor, cell: startCell } : null;
+  }
+
+  function selectTableCellContents(cell, editor) {
+    if (!cell || !editor?.contains(cell)) return false;
+    const range = document.createRange();
+    range.selectNodeContents(cell);
+    return setSelection(range);
+  }
+
+  function rangeCoversRange(range, target) {
+    return (
+      range.compareBoundaryPoints(Range.START_TO_START, target) <= 0 &&
+      range.compareBoundaryPoints(Range.END_TO_END, target) >= 0
+    );
+  }
+
+  function setSelection(range) {
+    const selection = window.getSelection();
+    if (!selection || !range) return false;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return true;
+  }
+
+  function selectCurrentContextOrAll(host, mode) {
+    const context = selectionContext(host, mode);
+    if (!context) return null;
+    // This depends on Vditor 3.11.3's private block, table-cell, and source
+    // newline DOM. Recheck the three selection contracts during a Vditor upgrade.
+    // Vditor 3.11.3 represents an empty table cell with a <br>, a space, or a
+    // zero-width marker depending on mode and edit history. All are empty to a writer.
+    const emptyCell =
+      context.kind === 'cell' && context.range.toString().replace(/[\s\u200b\ufeff]/g, '') === '';
+    if (!emptyCell && !rangeCoversRange(window.getSelection().getRangeAt(0), context.range)) {
+      return setSelection(context.range) ? { scope: context.kind } : null;
+    }
+    const range = document.createRange();
+    range.selectNodeContents(context.editor);
+    return setSelection(range) ? { scope: 'all' } : null;
+  }
+
+  function captureEditorSelection(host, mode, target = null, clientX = null, clientY = null) {
+    const editor = editableContent(host, mode);
+    let range = selectionRangeIn(editor);
+    if (
+      !range &&
+      Number.isFinite(clientX) &&
+      Number.isFinite(clientY) &&
+      typeof document.caretRangeFromPoint === 'function'
+    ) {
+      const pointRange = document.caretRangeFromPoint(clientX, clientY);
+      if (pointRange && containsNode(editor, pointRange.startContainer)) range = pointRange;
+    }
+    if (!range) {
+      const element = elementForNode(target);
+      if (!element || !editor?.contains(element)) return null;
+      range = document.createRange();
+      range.selectNodeContents(element);
+      range.collapse(true);
+    }
+    return editor && range ? { editor, range: range.cloneRange() } : null;
+  }
+
+  function restoreEditorSelection(selection) {
+    if (
+      !selection?.editor?.isConnected ||
+      !selection.editor.contains(selection.range?.startContainer)
+    )
+      return false;
+    if (!setSelection(selection.range)) return false;
+    selection.editor.focus({ preventScroll: true });
+    return true;
+  }
+
+  function tableContext(host, mode, target) {
+    if (mode !== 'ir' && mode !== 'wysiwyg') return null;
+    const editor = editableContent(host, mode);
+    const cell = closestWithin(target, selectors.tableCell, editor);
+    const table = cell?.closest('table') || null;
+    if (!editor || !cell || !table || !editor.contains(table)) return null;
+    // Vditor 3.11.3 exposes no public table API. These private DOM nodes and
+    // the action contract below must be checked when the pinned Vditor changes.
+    return { editor, table, cell, mode };
+  }
+
+  function notifyEditorInput(editor, inputType) {
+    editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType, data: null }));
+  }
+
+  function tableCellForRow(cell, tagName) {
+    const next = document.createElement(tagName);
+    next.setAttribute('align', cell.getAttribute('align') || '');
+    next.textContent = ' ';
+    return next;
+  }
+
+  function performTableAction(context, action, vditor = null) {
+    const { editor, table, cell } = context || {};
+    if (!editor?.isConnected || !table?.isConnected || !cell?.isConnected) return false;
+    const row = cell.parentElement;
+    if (!row || row.tagName !== 'TR') return false;
+    const range = document.createRange();
+    range.selectNodeContents(cell);
+    range.collapse(false);
+    if (!setSelection(range)) return false;
+    // Vditor normally records this marker at the beginning of a non-navigation
+    // keydown. This is not a synthetic shortcut: it only preserves the same
+    // pre-mutation caret snapshot for the menu-triggered table operation.
+    vditor?.undo?.recordFirstPosition?.(vditor, { key: 'ContextMenu' });
+    // A document opened without edits may not yet have Vditor's initial undo
+    // snapshot. Adding the unchanged state is a no-op when it already exists,
+    // and gives the following mutation a real previous state to restore.
+    vditor?.undo?.addToUndoStack?.(vditor);
+
+    if (action === 'insert-row') {
+      const newRow = document.createElement('tr');
+      Array.from(row.children).forEach((item) => newRow.appendChild(tableCellForRow(item, 'td')));
+      if (cell.tagName === 'TH') {
+        const body = document.createElement('tbody');
+        body.appendChild(newRow);
+        row.parentElement.insertAdjacentElement('afterend', body);
+      } else {
+        row.insertAdjacentElement('afterend', newRow);
+      }
+    } else if (action === 'delete-row') {
+      // Upstream deleteRow deliberately leaves header rows intact.
+      if (cell.tagName !== 'TD') return false;
+      const body = row.parentElement;
+      const previous = row.previousElementSibling || body?.previousElementSibling?.lastElementChild;
+      if (previous?.lastElementChild) {
+        range.selectNodeContents(previous.lastElementChild);
+        range.collapse(false);
+      }
+      if (body?.children.length === 1) body.remove();
+      else row.remove();
+    } else if (action === 'insert-column') {
+      const index = Array.prototype.indexOf.call(row.children, cell);
+      if (index < 0) return false;
+      Array.from(table.rows).forEach((tableRow, rowIndex) => {
+        const next = tableCellForRow(cell, rowIndex === 0 ? 'th' : 'td');
+        tableRow.cells[index]?.insertAdjacentElement('afterend', next);
+      });
+    } else if (action === 'delete-column') {
+      const index = Array.prototype.indexOf.call(row.children, cell);
+      if (index < 0) return false;
+      if (cell.previousElementSibling || cell.nextElementSibling) {
+        range.selectNodeContents(cell.previousElementSibling || cell.nextElementSibling);
+        range.collapse(true);
+      }
+      Array.from(table.rows).forEach((tableRow) => {
+        if (tableRow.cells.length === 1) table.remove();
+        else tableRow.cells[index]?.remove();
+      });
+    } else {
+      return false;
+    }
+    setSelection(range);
+    editor.focus({ preventScroll: true });
+    // This re-enters Vditor's own mode-specific input handlers, which update
+    // Markdown serialization, preview state, modified state, and undo history.
+    // Its normal table-cell input branch does not schedule after-render work,
+    // so use the same private flag that Vditor sets for DOM-driven mutations.
+    if (vditor?.[context.mode]) vditor[context.mode].preventInput = true;
+    notifyEditorInput(editor, 'insertText');
+    return true;
+  }
+
+  function executeEditorCommand(host, mode, command, clipboard = null) {
+    const editor = editableContent(host, mode);
+    if (!editor) return false;
+    editor.focus({ preventScroll: true });
+    if (command === 'cut') {
+      // execCommand('cut') does not dispatch Vditor's `cut` listener in
+      // Chromium when invoked from a custom menu. Copy through the browser
+      // first (which writes the system clipboard), then let Vditor's own
+      // handler perform its mode-aware deletion and input bookkeeping.
+      const copied = document.execCommand('copy', false);
+      const transfer = new DataTransfer();
+      editor.dispatchEvent(
+        new ClipboardEvent('cut', { bubbles: true, cancelable: true, clipboardData: transfer }),
+      );
+      return copied;
+    }
+    if (command === 'paste' || command === 'paste-plain') {
+      const transfer = new DataTransfer();
+      transfer.setData('text/plain', String(clipboard?.text || ''));
+      if (command === 'paste' && clipboard?.html) transfer.setData('text/html', clipboard.html);
+      editor.dispatchEvent(
+        new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }),
+      );
+      return true;
+    }
+    return document.execCommand(command, false);
   }
 
   function setEditorBottomSpacer(host, height) {
@@ -737,6 +1095,7 @@
     codeThemeButtons,
     classifyCodeThemeButtons,
     sourceNewlines,
+    sourceLineRanges,
     listContext,
     headingTargets,
     outlineContentElement,
@@ -748,6 +1107,15 @@
     scrollContainers,
     activeEditor,
     editorScrollContainer,
+    isEditableTarget,
+    captureEditorSelection,
+    restoreEditorSelection,
+    selectCurrentContextOrAll,
+    tableContext,
+    performTableAction,
+    executeEditorCommand,
+    selectedTableCell,
+    selectTableCellContents,
     setEditorBottomSpacer,
     textMatches,
     clearFindHighlights,
