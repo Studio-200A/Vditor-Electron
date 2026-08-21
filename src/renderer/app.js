@@ -96,14 +96,24 @@
     if (!confirmResolver) return;
     const resolve = confirmResolver;
     confirmResolver = null;
+    setConfirmDialogDraggable(false);
     $('#confirmModal').classList.add('hidden');
     $('#confirmActions').replaceChildren();
     resolve(action);
   }
 
-  function showConfirmDialog({ title, message, detail = '', actions } = {}) {
+  function setConfirmDialogDraggable(draggable) {
+    const card = $('#confirmModal .confirm-card');
+    card.classList.toggle('confirm-card-draggable', draggable);
+    card.style.removeProperty('position');
+    card.style.removeProperty('left');
+    card.style.removeProperty('top');
+  }
+
+  function showConfirmDialog({ title, message, detail = '', actions, draggable = false } = {}) {
     if (confirmResolver) closeConfirmDialog('cancel');
     const modal = $('#confirmModal');
+    setConfirmDialogDraggable(draggable);
     $('#confirmTitle').textContent = title || t('dialog.confirmTitle');
     $('#confirmMessage').textContent = message || '';
     $('#confirmDetail').textContent = detail;
@@ -140,6 +150,7 @@
       title: t('dialog.unsavedTitle'),
       message,
       detail,
+      draggable: true,
       actions: [
         { id: 'cancel', label: t('dialog.cancel') },
         { id: 'discard', label: t('dialog.dontSave') },
@@ -584,6 +595,24 @@
     tab.whitespaceFrame = null;
   }
 
+  function updateEditorBottomSpacer(tab) {
+    if (!tab?.host) return;
+    VDITOR.setEditorBottomSpacer(tab.host, tab.host.clientHeight / 2);
+  }
+
+  function observeEditorBottomSpacer(tab) {
+    tab.bottomSpacerObserver?.disconnect();
+    updateEditorBottomSpacer(tab);
+    if (typeof ResizeObserver !== 'function') return;
+    tab.bottomSpacerObserver = new ResizeObserver(() => updateEditorBottomSpacer(tab));
+    tab.bottomSpacerObserver.observe(tab.host);
+  }
+
+  function disconnectEditorBottomSpacer(tab) {
+    tab.bottomSpacerObserver?.disconnect();
+    tab.bottomSpacerObserver = null;
+  }
+
   function renderWhitespaceMarkers(tab, sv) {
     const content = VDITOR.editorParts(tab.host).content;
     let layer = content.querySelector(':scope > .sv-whitespace-layer');
@@ -854,6 +883,36 @@
     element.addEventListener('scroll', reveal, { passive: true });
   }
 
+  function setupTabWheelScrolling(tabBar) {
+    tabBar.addEventListener(
+      'wheel',
+      (event) => {
+        if (tabBar.scrollWidth <= tabBar.clientWidth) return;
+        const rawDelta =
+          Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+        if (!rawDelta) return;
+        const delta =
+          event.deltaMode === WheelEvent.DOM_DELTA_LINE
+            ? rawDelta * 16
+            : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+              ? rawDelta * tabBar.clientWidth
+              : rawDelta;
+        const maximumLeft = Math.max(0, tabBar.scrollWidth - tabBar.clientWidth);
+        const nextLeft = Math.min(maximumLeft, Math.max(0, tabBar.scrollLeft + delta));
+        if (nextLeft === tabBar.scrollLeft) return;
+        event.preventDefault();
+        tabBar.scrollLeft = nextLeft;
+      },
+      { passive: false },
+    );
+  }
+
+  function effectiveToolbarItems(toolbarItems) {
+    const configured = toolbarItems?.length ? toolbarItems : DEFAULT_TOOLBAR;
+    // Vditor 3.11.3 mode transitions still address this internal toolbar item.
+    return configured.includes('outline') ? configured : [...configured, 'outline'];
+  }
+
   function editorOptions(tab) {
     const s = state.settings;
     const wasModified = tab.modified;
@@ -875,10 +934,12 @@
       typewriterMode: s.typewriterMode,
       tab: s.tabInsertSpaces ? ' '.repeat(Number(s.tabSize) || 4) : '\t',
       rtl: s.rtl,
-      toolbar: s.toolbarItems && s.toolbarItems.length ? s.toolbarItems : DEFAULT_TOOLBAR,
+      toolbar: effectiveToolbarItems(s.toolbarItems),
       // The Vditor toolbar is mounted into the application toolbar. Its visibility
       // is controlled as one layout part from View > Layout.
       toolbarConfig: { hide: false, pin: false },
+      // Desktop owns the single outline experience in the application sidebar.
+      outline: { enable: false, position: 'left' },
       // Application-level capture owns modifier-click navigation. Normal clicks
       // must still reach Vditor so IR can place its caret and expand link Markdown.
       link: { isOpen: false },
@@ -905,6 +966,9 @@
           paragraphBeginningSpace: s.paragraphBeginningSpace,
           fixTermTypo: s.fixTermTypo,
           gfmAutoLink: s.gfmAutoLink,
+          // Resolve Markdown-relative resources before Vditor inserts their DOM nodes.
+          // Doing this in the adapter observer is too late to prevent an initial app:// request.
+          linkBase: localResourceBase(tab.baseDir),
           listStyle: s.listStyle,
           sanitize: s.sanitize,
           codeBlockPreview: true,
@@ -928,6 +992,10 @@
           tab.host,
           tab.host.dataset.localResourceBase,
         );
+        tab.outlineObserver?.disconnect();
+        tab.outlineObserver = VDITOR.observeOutlineChanges(tab.host, () => {
+          if (tab.id === state.activeId) scheduleOutline();
+        });
         setupDocumentAnchorNavigation(tab);
         VDITOR.scrollContainers(tab.host).forEach(setupAutoHideScrollbar);
         const normalized = currentContent(tab);
@@ -936,6 +1004,8 @@
         tab.modified = wasModified || normalized !== tab.savedContent;
         tab.ready = true;
         tab.toolbar = VDITOR.editorParts(tab.host).toolbar;
+        VDITOR.hideNativeOutlineControl(tab.toolbar);
+        VDITOR.keepSplitToolbarActionsAvailable(tab.toolbar);
         tab.toolbar.addEventListener(
           'click',
           (event) => handleVditorToolbarClick(tab, event),
@@ -946,12 +1016,12 @@
           (event) => preserveSplitToolbarSelection(tab, event),
           true,
         );
-        syncSplitToolbarActions(tab);
         syncCodeThemeControls(isDarkTheme(appTheme), state.settings.codeTheme);
         if (tab.id === state.activeId) mountEditorToolbar(tab);
         renderTabs();
         updateActiveUI();
         observeSplitLineNumbers(tab);
+        observeEditorBottomSpacer(tab);
         ensureSplitResizer(tab);
         setupSplitEditorEnhancements(tab);
         scheduleSplitLineNumbers(tab);
@@ -1042,7 +1112,6 @@
       setTimeout(() => {
         if (!tab.vditor) return;
         tab.mode = tab.vditor.getCurrentMode();
-        syncSplitToolbarActions(tab);
         updateActiveUI();
         scheduleSplitLineNumbers(tab);
         restoreEditorScroll(tab);
@@ -1079,16 +1148,6 @@
         });
       }, 0);
     }
-  }
-
-  function syncSplitToolbarActions(tab) {
-    if (!tab.toolbar || tab.vditor?.getCurrentMode() !== 'sv') return;
-    ['outdent', 'indent'].forEach((type) => {
-      const button = VDITOR.toolbarButton(tab.toolbar, type);
-      const item = button?.closest(VDITOR.selectors.toolbarItem);
-      if (item) item.style.display = 'block';
-      button?.classList.remove('vditor-menu--disabled');
-    });
   }
 
   function ensureEditor(tab) {
@@ -1156,8 +1215,11 @@
   function rebuildEditor(tab, mode) {
     tab.pendingScroll = captureEditorScroll(tab);
     disconnectSplitLineNumbers(tab);
+    disconnectEditorBottomSpacer(tab);
     tab.resourceObserver?.disconnect();
     tab.resourceObserver = null;
+    tab.outlineObserver?.disconnect();
+    tab.outlineObserver = null;
     if (tab.vditor) {
       restoreEditorToolbar(tab);
       try {
@@ -1207,7 +1269,9 @@
       lineResizeObserver: null,
       lineNumberFrame: null,
       whitespaceFrame: null,
+      bottomSpacerObserver: null,
       outlineCollapsed: new Set(),
+      outlineObserver: null,
       resourceObserver: null,
       splitResizer: null,
       externalConflict: null,
@@ -1225,7 +1289,6 @@
         setTimeout(() => {
           if (!tab.vditor) return;
           tab.mode = tab.vditor.getCurrentMode();
-          syncSplitToolbarActions(tab);
           if (tab.id === state.activeId) updateActiveUI();
           scheduleSplitLineNumbers(tab);
         }, 50);
@@ -1320,6 +1383,7 @@
     state.activeId = id;
     state.tabs.forEach((item) => item.host.classList.toggle('active', item.id === id));
     ensureEditor(tab);
+    requestAnimationFrame(() => updateEditorBottomSpacer(tab));
     requestAnimationFrame(() => scrollToPendingAnchor(tab));
     if (tab.toolbar) mountEditorToolbar(tab);
     scheduleSplitLineNumbers(tab);
@@ -1342,8 +1406,11 @@
     }
     clearTimeout(tab.saveTimer);
     disconnectSplitLineNumbers(tab);
+    disconnectEditorBottomSpacer(tab);
     tab.resourceObserver?.disconnect();
     tab.resourceObserver = null;
+    tab.outlineObserver?.disconnect();
+    tab.outlineObserver = null;
     restoreEditorToolbar(tab);
     if (tab.vditor) {
       try {
@@ -1454,10 +1521,7 @@
     tab.content = value;
     tab.modified = value !== tab.savedContent;
     renderTabs();
-    if (tab.id === state.activeId) {
-      updateActiveUI();
-      scheduleOutline();
-    }
+    if (tab.id === state.activeId) updateActiveUI();
     scheduleSplitLineNumbers(tab);
     if (
       state.settings.autoSave &&
@@ -1948,10 +2012,12 @@
   }
 
   function scheduleOutline() {
+    if (!$('#outlineView').classList.contains('active')) return;
     clearTimeout(state.outlineTimer);
     state.outlineTimer = setTimeout(renderOutline, 300);
   }
   function renderOutline() {
+    if (!$('#outlineView').classList.contains('active')) return;
     const tab = activeTab();
     const target = $('#outlineTree');
     target.innerHTML = '';
@@ -1959,13 +2025,7 @@
       target.innerHTML = `<div class="empty">${escapeHTML(t('sidebar.noDocument'))}</div>`;
       return;
     }
-    const headings = [];
-    currentContent(tab)
-      .split('\n')
-      .forEach((line, index) => {
-        const match = line.match(/^(#{1,6})\s+(.+?)\s*#*$/);
-        if (match) headings.push({ level: match[1].length, text: match[2], line: index });
-      });
+    const headings = VDITOR.outlineSnapshot(tab.host, tab.mode);
     if (!headings.length) {
       target.innerHTML = `<div class="empty">${escapeHTML(t('sidebar.noHeadings'))}</div>`;
       return;
@@ -1975,8 +2035,7 @@
     headings.forEach((heading, index) => {
       const node = {
         ...heading,
-        index,
-        key: `${heading.line}:${heading.level}:${heading.text}`,
+        outlineIndex: index,
         children: [],
       };
       while (stack.length && stack.at(-1).level >= node.level) stack.pop();
@@ -2016,8 +2075,7 @@
       button.type = 'button';
       button.className = 'outline-item';
       button.textContent = node.text;
-      button.title = t('outline.line', { line: node.line + 1 });
-      button.onclick = () => scrollToHeading(tab, node.index);
+      button.onclick = () => scrollToOutlineHeading(tab, node.outlineIndex);
       row.appendChild(button);
       wrapper.appendChild(row);
       if (node.children.length) {
@@ -2038,6 +2096,10 @@
       [innerScroller, editor].find(
         (candidate) => candidate && candidate.scrollHeight > candidate.clientHeight + 1,
       ) || editor;
+    scrollHeadingIntoContainer(scroller, heading);
+  }
+  function scrollHeadingIntoContainer(scroller, heading) {
+    if (!scroller || !heading || !scroller.getClientRects().length) return;
     const scrollerRect = scroller.getBoundingClientRect();
     const headingRect = heading.getBoundingClientRect();
     const top = scroller.scrollTop + headingRect.top - scrollerRect.top - scroller.clientHeight / 6;
@@ -2047,6 +2109,11 @@
     VDITOR.headingTargets(tab.host, headingIndex).forEach(({ editor, heading }) => {
       scrollHeadingIntoEditor(editor, heading);
     });
+  }
+  function scrollToOutlineHeading(tab, headingIndex) {
+    VDITOR.outlineHeadingTargets(tab.host, tab.mode, headingIndex).forEach(
+      ({ scroller, heading }) => scrollHeadingIntoContainer(scroller, heading),
+    );
   }
 
   function documentNavigationTooltip() {
@@ -2573,6 +2640,49 @@
     });
   }
 
+  function setupConfirmDialogDrag() {
+    const modal = $('#confirmModal');
+    const card = $('.confirm-card', modal);
+    const header = card.querySelector(':scope > header');
+    const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value));
+    const setPosition = (left, top) => {
+      const maximumLeft = Math.max(0, modal.clientWidth - card.offsetWidth);
+      const maximumTop = Math.max(0, modal.clientHeight - card.offsetHeight);
+      card.style.left = `${Math.round(clamp(left, 0, maximumLeft))}px`;
+      card.style.top = `${Math.round(clamp(top, 0, maximumTop))}px`;
+    };
+
+    header.addEventListener('mousedown', (event) => {
+      if (event.button !== 0 || !card.classList.contains('confirm-card-draggable')) return;
+      event.preventDefault();
+      const modalBounds = modal.getBoundingClientRect();
+      const cardBounds = card.getBoundingClientRect();
+      card.style.position = 'absolute';
+      setPosition(cardBounds.left - modalBounds.left, cardBounds.top - modalBounds.top);
+      const offsetX = event.clientX - cardBounds.left;
+      const offsetY = event.clientY - cardBounds.top;
+      document.body.classList.add('confirm-card-dragging');
+      const move = (moveEvent) => {
+        setPosition(
+          moveEvent.clientX - modalBounds.left - offsetX,
+          moveEvent.clientY - modalBounds.top - offsetY,
+        );
+      };
+      const up = () => {
+        document.body.classList.remove('confirm-card-dragging');
+        window.removeEventListener('mousemove', move);
+        window.removeEventListener('mouseup', up);
+      };
+      window.addEventListener('mousemove', move);
+      window.addEventListener('mouseup', up);
+    });
+
+    window.addEventListener('resize', () => {
+      if (card.style.position !== 'absolute') return;
+      setPosition(Number.parseFloat(card.style.left) || 0, Number.parseFloat(card.style.top) || 0);
+    });
+  }
+
   async function handleExternalChange(change) {
     if (state.workspace) {
       clearTimeout(state.treeTimer);
@@ -3074,6 +3184,7 @@
       }
     };
     setupSettingsDrag();
+    setupConfirmDialogDrag();
     $('#openSettingsFolder').onclick = async () =>
       window.appAPI.showItemInFolder(await window.appAPI.getSettingsPath());
     $$('[data-external]').forEach((button) => {
@@ -3209,6 +3320,7 @@
     setupAutoHideScrollbar($('#outlineTree'));
     setupAutoHideScrollbar($('#settingsForm'));
     setupAutoHideScrollbar($('#tabBar'));
+    setupTabWheelScrolling($('#tabBar'));
     setupAutoHideScrollbar($('.confirm-content'));
     window.appAPI.onMenuAction(handleMenu);
     window.appAPI.onSystemThemeChanged((theme) => {

@@ -29,7 +29,7 @@ The product is a desktop host and experience layer for Vditor. Keep Markdown edi
 
 ## Architecture Map
 
-`docs/01-CODE_STRUCTURE.md` is a repository architecture map intended for on-demand navigation.
+`docs/01-CODE-STRUCTURE.md` is a repository architecture map intended for on-demand navigation.
 
 Do **not** read this document from beginning to end by default.
 
@@ -41,11 +41,11 @@ When architectural context is needed:
 4. Use the referenced files, functions, modules, and data flows to locate the actual implementation.
 5. Always verify the current source code before making changes.
 
-Treat `01-CODE_STRUCTURE.md` as a **navigation map, not the source of truth**. It represents the repository at the commit recorded at the top of the document and may become partially stale as development continues.
+Treat `01-CODE-STRUCTURE.md` as a **navigation map, not the source of truth**. It represents the repository at the commit recorded at the top of the document and may become partially stale as development continues.
 
 Only read multiple sections when the task crosses architectural boundaries, such as renderer ↔ preload ↔ main-process IPC or UI ↔ settings ↔ persistence.
 
-**Keep it updated**: The last thing to do before a dev/main branch merge and a new release is to update `docs/01-CODE_STRUCTURE.md` if necessary. Remind the developer to do so before publishing a new release, so that everything is well tracked.
+**Keep it updated**: The last thing to do before a dev/main branch merge and a new release is to update `docs/01-CODE-STRUCTURE.md` if necessary. Remind the developer to do so before publishing a new release, so that everything is well tracked.
 
 ## Technical Standards
 

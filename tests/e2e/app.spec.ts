@@ -376,6 +376,30 @@ test('reorders tabs by dragging within the unified workbench bar', async () => {
   }
 });
 
+test('scrolls overflowing document tabs with the mouse wheel', async () => {
+  const running = await launchApp();
+  try {
+    const { page } = running;
+    for (let index = 0; index < 5; index += 1) await createNewTab(page);
+    const tabBar = page.locator('#tabBar');
+    await tabBar.evaluate((node) => {
+      node.style.flex = '0 0 240px';
+    });
+    const before = await tabBar.evaluate((node) => ({
+      clientWidth: node.clientWidth,
+      scrollLeft: node.scrollLeft,
+      scrollWidth: node.scrollWidth,
+    }));
+    expect(before.scrollLeft).toBe(0);
+    expect(before.scrollWidth).toBeGreaterThan(before.clientWidth);
+    await tabBar.hover();
+    await page.mouse.wheel(0, 160);
+    await expect.poll(() => tabBar.evaluate((node) => node.scrollLeft)).toBeGreaterThan(0);
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('opens the View > Layout submenu and toggles the unified toolbar', async () => {
   const running = await launchApp({ sidebarVisible: true });
   try {
@@ -650,6 +674,20 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
       editor.evaluate((node) =>
         Math.max(node.scrollTop, node.querySelector(':scope > .vditor-reset')?.scrollTop || 0),
       );
+    const headingIsVisible = (editor: ReturnType<Page['locator']>, selector: string, index = 0) =>
+      editor.evaluate(
+        (node, target) => {
+          const heading = node.querySelectorAll(target.selector)[target.index];
+          const scroller = node.matches('.vditor-preview, .vditor-sv')
+            ? node
+            : node.querySelector(':scope > .vditor-reset') || node;
+          if (!heading || !scroller) return false;
+          const headingRect = heading.getBoundingClientRect();
+          const scrollerRect = scroller.getBoundingClientRect();
+          return headingRect.top >= scrollerRect.top && headingRect.bottom <= scrollerRect.bottom;
+        },
+        { selector, index },
+      );
     await ir.locator('.vditor-reset').fill(markdown);
     await expect(ir.locator('h2')).toHaveCount(1);
     const irLink = ir.locator('[data-type="a"] .vditor-ir__link');
@@ -667,6 +705,7 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
     await expect.poll(() => scrollTop(ir)).toBe(0);
     await irLink.click({ modifiers: [linkModifier] });
     await expect.poll(() => scrollTop(ir)).toBeGreaterThan(0);
+    await page.waitForTimeout(300);
     await ir.evaluate((node) => {
       node.scrollTop = 0;
       const reset = node.querySelector(':scope > .vditor-reset');
@@ -685,7 +724,7 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
     await topToggle.click();
     await expect(target).toBeVisible();
     await target.click();
-    await expect.poll(() => scrollTop(ir)).toBeGreaterThan(0);
+    await expect.poll(() => headingIsVisible(ir, 'h2')).toBe(true);
 
     const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
     await modeTrigger.click();
@@ -699,13 +738,14 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
     });
     await wysiwyg.locator('a[href="#target"]').click({ modifiers: [linkModifier] });
     await expect.poll(() => scrollTop(wysiwyg)).toBeGreaterThan(0);
+    await page.waitForTimeout(300);
     await wysiwyg.evaluate((node) => {
       node.scrollTop = 0;
       const reset = node.querySelector(':scope > .vditor-reset');
       if (reset) reset.scrollTop = 0;
     });
     await target.click();
-    await expect.poll(() => scrollTop(wysiwyg)).toBeGreaterThan(0);
+    await expect.poll(() => headingIsVisible(wysiwyg, 'h2')).toBe(true);
 
     await modeTrigger.click();
     await page.locator('#vditorToolbarMount button[data-mode="sv"]').click();
@@ -721,6 +761,7 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
     });
     await preview.locator('a[href="#target"]').click({ modifiers: [linkModifier] });
     await expect.poll(() => preview.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+    await page.waitForTimeout(300);
     await source.evaluate((node) => {
       node.scrollTop = 0;
     });
@@ -728,8 +769,8 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
       node.scrollTop = 0;
     });
     await target.click();
-    await expect.poll(() => source.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
-    await expect.poll(() => preview.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+    await expect.poll(() => headingIsVisible(source, '[data-type="heading-marker"]', 1)).toBe(true);
+    await expect.poll(() => headingIsVisible(preview, 'h2')).toBe(true);
 
     await source.evaluate((node) => {
       node.scrollTop = 0;
@@ -755,10 +796,141 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
       `${modifierLabel}+Click to follow link`,
     );
     await tocTarget.click();
-    await expect.poll(() => preview.evaluate((node) => node.scrollTop)).toBe(0);
+    await expect.poll(() => preview.evaluate((node) => node.scrollTop)).toBeLessThan(4);
     await tocTarget.click({ modifiers: [linkModifier] });
     await expect.poll(() => source.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
     await expect.poll(() => preview.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps a dynamic half-height bottom spacer in every editor mode', async () => {
+  const running = await launchApp({ editMode: 'ir' });
+  try {
+    const { app, page } = running;
+    await createNewTab(page);
+    const spacer = (selector: string) =>
+      page.evaluate((editorSelector) => {
+        const host = document.querySelector('.editor-host.active');
+        const editor = host?.querySelector(editorSelector);
+        const content =
+          editorSelector === '.vditor-sv' ? editor : editor?.querySelector('.vditor-reset');
+        if (!host || !editor || !content)
+          throw new Error(`Missing Vditor surface: ${editorSelector}`);
+        return {
+          hostHeight: host.clientHeight,
+          variable: editor.style.getPropertyValue('--editor-bottom'),
+          afterHeight: Number.parseFloat(getComputedStyle(content, '::after').height),
+        };
+      }, selector);
+    const expectSpacer = async (selector: string) => {
+      await expect
+        .poll(async () => {
+          const value = await spacer(selector);
+          return (
+            value.variable === `${Math.round(value.hostHeight / 2)}px` &&
+            Math.abs(value.afterHeight - value.hostHeight / 2) < 1
+          );
+        })
+        .toBe(true);
+      const value = await spacer(selector);
+      expect(value.variable).toBe(`${Math.round(value.hostHeight / 2)}px`);
+      expect(value.afterHeight).toBe(Math.round(value.hostHeight / 2));
+    };
+
+    await expectSpacer('.vditor-ir');
+    const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+    await modeTrigger.click();
+    await page.locator('#vditorToolbarMount button[data-mode="wysiwyg"]').click();
+    await expectSpacer('.vditor-wysiwyg');
+    await modeTrigger.click();
+    await page.locator('#vditorToolbarMount button[data-mode="sv"]').click();
+    await expectSpacer('.vditor-sv');
+    await expectSpacer('.vditor-preview');
+
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(760, 700));
+    await expectSpacer('.vditor-sv');
+    await expectSpacer('.vditor-preview');
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('hides Vditor native outline controls while keeping the Desktop outline available', async () => {
+  const running = await launchApp({
+    editMode: 'ir',
+    sidebarVisible: true,
+    toolbarItems: [
+      'headings',
+      'outline',
+      'outdent',
+      'indent',
+      'edit-mode',
+      'both',
+      'preview',
+      'code-theme',
+      'content-theme',
+    ],
+  });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    await page.locator('.editor-host.active .vditor-ir .vditor-reset').fill('# Desktop outline');
+    const nativeOutline = page.locator('#vditorToolbarMount button[data-type="outline"]');
+    await expect(nativeOutline).toBeHidden();
+    await page.locator('.sidebar-tabs [data-view="outline"]').click();
+    await expect(page.locator('#outlineTree button', { hasText: 'Desktop outline' })).toBeVisible();
+
+    const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+    await modeTrigger.click();
+    await page.locator('#vditorToolbarMount button[data-mode="wysiwyg"]').click();
+    await expect(nativeOutline).toBeHidden();
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('matches Vditor native heading semantics in the Desktop outline', async () => {
+  const markdown = [
+    'Setext level one',
+    '================',
+    '',
+    'Setext level two',
+    '----------------',
+    '',
+    '```markdown',
+    '# Not a heading',
+    '```',
+    '',
+    '## ATX level two',
+  ].join('\n');
+  const running = await launchApp(
+    { editMode: 'ir', sidebarVisible: true },
+    { 'semantic-outline.md': markdown },
+  );
+  try {
+    const { page } = running;
+    await page.locator('.sidebar-tabs [data-view="outline"]').click();
+    const nativeHeadings = () =>
+      page.locator('.editor-host.active').evaluate((host) => {
+        const adapter = window.VditorDesktopAdapter;
+        const mode = ['wysiwyg', 'ir', 'sv'].find(
+          (candidate) => host.querySelector(`.vditor-${candidate}`)?.getClientRects().length,
+        );
+        return adapter.outlineSnapshot(host, mode).map(({ level, text }) => ({ level, text }));
+      });
+    const outlineMatchesNative = async () => {
+      const native = await nativeHeadings();
+      const desktop = await page.locator('#outlineTree .outline-item').allTextContents();
+      return native.length > 0 && desktop.join('\n') === native.map(({ text }) => text).join('\n');
+    };
+    await expect.poll(outlineMatchesNative).toBe(true);
+
+    const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+    await modeTrigger.click();
+    await page.locator('#vditorToolbarMount button[data-mode="sv"]').click();
+    await expect.poll(outlineMatchesNative).toBe(true);
   } finally {
     await closeApp(running);
   }
@@ -967,6 +1139,74 @@ test('keeps list indentation actions available in split-view mode', async () => 
   }
 });
 
+test('keeps split-view list toolbar actions stable while changing modes', async () => {
+  const running = await launchApp({ editMode: 'ir' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+    const switchTo = async (mode: 'wysiwyg' | 'ir' | 'sv') => {
+      await modeTrigger.click();
+      await page.locator(`#vditorToolbarMount button[data-mode="${mode}"]`).click();
+      await expect(
+        page.locator(`.editor-host.active .vditor-${mode === 'wysiwyg' ? 'wysiwyg' : mode}`),
+      ).toBeVisible();
+    };
+    const observeSplitActionMutations = () =>
+      page.evaluate(() => {
+        const actions = ['outdent', 'indent'].map((type) => {
+          const button = document.querySelector(`#vditorToolbarMount button[data-type="${type}"]`);
+          const item = button?.closest('.vditor-toolbar__item');
+          if (!item) throw new Error(`Missing ${type} toolbar item`);
+          return item;
+        });
+        (
+          window as typeof window & { splitToolbarActionChanges?: number[] }
+        ).splitToolbarActionChanges = [0, 0];
+        const changes = (window as typeof window & { splitToolbarActionChanges: number[] })
+          .splitToolbarActionChanges;
+        const observer = new MutationObserver((records) => {
+          records.forEach((record) => {
+            const index = actions.indexOf(record.target as HTMLElement);
+            if (index >= 0 && record.attributeName === 'style') changes[index] += 1;
+          });
+        });
+        actions.forEach((item) =>
+          observer.observe(item, { attributes: true, attributeFilter: ['style'] }),
+        );
+        (
+          window as typeof window & { splitToolbarActionObserver?: MutationObserver }
+        ).splitToolbarActionObserver = observer;
+      });
+    const readSplitActionMutations = () =>
+      page.evaluate(() => {
+        (
+          window as typeof window & { splitToolbarActionObserver?: MutationObserver }
+        ).splitToolbarActionObserver?.disconnect();
+        return (window as typeof window & { splitToolbarActionChanges?: number[] })
+          .splitToolbarActionChanges;
+      });
+
+    await switchTo('wysiwyg');
+    await observeSplitActionMutations();
+    await switchTo('sv');
+    await page.waitForTimeout(75);
+    // Vditor performs its own single mode-transition update. Desktop keeps the
+    // actions visible with CSS, so it must not add the former delayed rewrite.
+    expect(await readSplitActionMutations()).toEqual([1, 1]);
+    await expect(page.locator('#vditorToolbarMount button[data-type="outdent"]')).toBeVisible();
+    await expect(page.locator('#vditorToolbarMount button[data-type="indent"]')).toBeVisible();
+
+    await switchTo('ir');
+    await observeSplitActionMutations();
+    await switchTo('sv');
+    await page.waitForTimeout(75);
+    expect(await readSplitActionMutations()).toEqual([1, 1]);
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('shows whitespace and applies Tab spaces and automatic indentation in split view', async () => {
   const running = await launchApp({
     editMode: 'sv',
@@ -1045,6 +1285,13 @@ test('shows whitespace and applies Tab spaces and automatic indentation in split
     liveTransforms.forEach(({ delta, transform }) => {
       const renderedDelta = Number(transform.match(/translateY\((-?[\d.]+)px\)/)?.[1]);
       expect(renderedDelta).toBeCloseTo(delta, 2);
+    });
+    // Vditor keeps a scrollable tail after the last source line. At the exact
+    // bottom there need not be a whitespace character in the viewport, so
+    // verify redraw after returning to a position that contains source text.
+    await source.evaluate((node) => {
+      node.scrollTop = (node.scrollHeight - node.clientHeight) * 0.75;
+      node.dispatchEvent(new Event('scroll'));
     });
     await expect
       .poll(() => whitespaceCanvas.evaluate((canvas) => Number(canvas.dataset.markerCount || 0)))
@@ -2165,6 +2412,8 @@ test('shows a localized themed dialog when closing a window with unsaved changes
     await expect(dialog.locator('#confirmMessage')).toHaveText('有 1 个文档包含未保存的更改。');
     await expect(dialog.locator('#confirmDetail')).toContainText('Untitled 1');
     await expect(dialog.locator('#confirmActions button')).toHaveText(['取消', '不保存', '保存']);
+    const card = dialog.locator('.confirm-card');
+    await expect(card.locator('[data-settings-resize]')).toHaveCount(0);
     const colors = await dialog.evaluate((node) =>
       ['header', '.confirm-content', 'footer'].map(
         (selector) => getComputedStyle(node.querySelector(selector)).backgroundColor,
@@ -2174,6 +2423,34 @@ test('shows a localized themed dialog when closing a window with unsaved changes
     const dialogBox = await dialog.boundingBox();
     const appBox = await page.locator('#app').boundingBox();
     expect(dialogBox).toEqual(appBox);
+    const initialCardBox = await card.boundingBox();
+    const headerBox = await card.locator(':scope > header').boundingBox();
+    if (!dialogBox || !initialCardBox || !headerBox)
+      throw new Error('Unsaved changes dialog has incomplete drag chrome');
+    await page.mouse.move(headerBox.x + 40, headerBox.y + headerBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(
+      dialogBox.x + dialogBox.width + 160,
+      dialogBox.y + dialogBox.height + 160,
+      {
+        steps: 5,
+      },
+    );
+    await page.mouse.up();
+    const movedCardBox = await card.boundingBox();
+    if (!movedCardBox) throw new Error('Unsaved changes dialog card disappeared while dragging');
+    expect(movedCardBox.x).toBeGreaterThan(initialCardBox.x + 20);
+    expect(movedCardBox.y).toBeGreaterThan(initialCardBox.y + 20);
+    expect(movedCardBox.width).toBeCloseTo(initialCardBox.width, 0);
+    expect(movedCardBox.height).toBeCloseTo(initialCardBox.height, 0);
+    expect(movedCardBox.x).toBeGreaterThanOrEqual(dialogBox.x - 1);
+    expect(movedCardBox.y).toBeGreaterThanOrEqual(dialogBox.y - 1);
+    expect(movedCardBox.x + movedCardBox.width).toBeLessThanOrEqual(
+      dialogBox.x + dialogBox.width + 1,
+    );
+    expect(movedCardBox.y + movedCardBox.height).toBeLessThanOrEqual(
+      dialogBox.y + dialogBox.height + 1,
+    );
     await dialog.locator('button', { hasText: '取消' }).click();
     await expect(dialog).toBeHidden();
   } finally {

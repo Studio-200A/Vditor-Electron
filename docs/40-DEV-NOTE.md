@@ -96,8 +96,8 @@ Vditor 的 `setValue()` 异步重渲染，`getValue()` 可能暂时返回旧 DOM
 - `npm run lint` 通过。
 - `npm run typecheck` 通过。
 - `npm run check:vditor` 通过。
-- Vitest `74/74` 通过。
-- Electron E2E `56/56` 通过。
+- Vitest 单元测试通过。
+- Electron E2E 通过。
 
 ## 后续约束
 
@@ -113,7 +113,7 @@ Vditor 的 `setValue()` 异步重渲染，`getValue()` 可能暂时返回旧 DOM
 
 ## 当前状态
 
-核心工作区 UI 已在 0.1.3 实现并通过自动化回归。文件保存原子化、工作区外 watcher、删除/目录移动恢复和跨重启冲突恢复不属于本轮已交付范围，见 `docs/11-0.2.0-DEVELOPMENT-PLAN.md`。
+核心工作区 UI 已在 0.1.3 实现并通过自动化回归。文件保存原子化、工作区外 watcher、删除/目录移动恢复和跨重启冲突恢复不属于本轮已交付范围，见 `docs/12-0.2.0-DEVELOPMENT-PLAN.md`。
 
 ## 顶部结构
 
@@ -155,3 +155,40 @@ Status bar
 - macOS 原生菜单：`src/main/menu.ts`
 - 文案：`src/renderer/locales.js`
 - 回归：`tests/unit/renderer-shell.test.ts`、`tests/e2e/app.spec.ts`
+
+---
+
+# Vditor 3.11.3：模式切换与工具栏内部耦合
+
+## 记录版本：0.1.5
+
+## 现象
+
+Desktop 侧栏已作为唯一的大纲入口，原生 Vditor 大纲面板关闭且入口隐藏。实现过程中确认：Vditor 3.11.3 的 `setEditMode()` 仍会直接读取并显示/隐藏 `outline` 工具项，即使 `outline.enable` 为 `false`。
+
+另一个关联现象发生在从 WYSIWYG 或 IR 切入 SV：Vditor 会隐藏 `outdent`、`indent`，并为它们加上 disabled class；但 Desktop 在 SV 中自行基于 source selection 实现列表缩进。若在模式切换后再异步恢复这两个按钮，会造成工具栏内容在一个切换中发生两次布局更新，表现为轻微的内容闪烁。
+
+## 失败尝试与原因
+
+1. 从 Vditor toolbar 配置中直接移除 `outline`。
+
+    - 失败原因：Vditor 的私有模式切换实现仍假定该项存在，会继续访问其内部 toolbar 元素；关闭大纲面板不等于移除该内部结构。
+
+2. 在 Vditor 切换模式后的 `setTimeout(..., 50)` 中调用 `syncSplitToolbarActions()`，把 SV 的 `outdent` / `indent` 改回 `display: block` 并移除 disabled class。
+
+    - 失败原因：Vditor 已在同步切换中把按钮隐藏，50ms 后应用再次改变 display，形成“先隐藏、再插回”的两阶段工具栏重排。功能可用，但 WYSIWYG/IR → SV 可见闪烁；快捷键切换也不应依赖鼠标点击后的补偿路径。
+
+## 正确处理方法
+
+- 保留 `outline` 作为运行时内部 toolbar 项，`outline.enable: false` 禁用原生面板；由 `vditor-adapter.js` 为该私有项添加应用 data attribute，再用应用 CSS 的 `display: none !important` 隐藏入口。
+- adapter 在初始化时为 `outdent` / `indent` 添加稳定占位 data attribute。应用 CSS 在 SV 中持续覆盖 Vditor 的隐藏和禁用外观；实际命令仍由 renderer capture 阶段的 source-selection 逻辑处理。
+- 删除模式切换后的延迟 display 改写。应用仍可在延迟回调更新自身模式状态、行号和滚动位置，但不得再二次改变这两个工具栏项的布局。
+
+## 注意事项与验证
+
+- 所有 Vditor 私有 toolbar 查询、`closest()` 和 data attribute 标记必须留在 `src/renderer/vditor-adapter.js`；`app.js` 只调用语义化 adapter API。
+- 这是 Vditor 3.11.3 的私有契约。升级 Vditor 时，须检查 `setEditMode()` 对 `outline`、`outdent`、`indent` 的显示和 disabled 行为，并同步更新 `docs/20-VDITOR-UPGRADE.md`。
+- 回归覆盖：adapter 单测验证标记；Electron E2E 验证从 WYSIWYG 与 IR 切入 SV 时两个列表按钮只保留 Vditor 同步 show/hide 的两次 style 更新、不会再出现延迟补偿更新，且最终仍可见；另保留 SV 列表缩进/反缩进功能测试。
+- 大纲对齐 Vditor 原生功能时，当前编辑区的直接 H1–H6 DOM 才是准则。Electron 验证显示 IR 对 Setext 和围栏内 ATX 样式文本的即时结果不等同于完整 Markdown 语义；因此不要把“原生等价”写成“完整 Markdown 标题解析”。若需跨模式一致的 Setext/围栏语义，应单独决策并实现独立 Markdown 解析与目标定位，不能隐式改变原生对齐范围。
+- 原生对齐实现只保留一份 snapshot：preview 可见时取 preview，否则取当前模式编辑区。不要再把原生 DOM 标题、Markdown fallback 和另一套目标数组按下标拼接；集合不一致时行号、折叠 key 和跳转目标都会错位。Outline 视图隐藏期间无需调用 `getValue()` 或重建树，切换到该视图时再刷新即可。
+- SV preview 在模式切换后异步渲染，不能用固定延迟补偿。由 adapter 的可清理 MutationObserver 监听模式 style 与内容变化并触发防抖刷新；标签重建、关闭时必须 disconnect，避免旧 host 与回调泄漏。

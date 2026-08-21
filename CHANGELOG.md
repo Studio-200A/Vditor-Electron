@@ -4,6 +4,7 @@
 
 ### New Features
 
+- **feat(editor space):** Added a dynamic half-height blank area after the document in all editor modes, keeping the final content comfortably above the status bar.
 - **feat(status bar):** Added a compact mode picker for switching between WYSIWYG, IR, and SV directly from the current editor-mode indicator.
 - **feat(devtools):** Added a persisted Chrome DevTools switch in Settings > About; disabled shortcuts cannot open DevTools.
 - **feat(relative Markdown links):** Ctrl/Cmd-click relative Markdown links now opens the destination in a new or existing tab, supports `../`, percent-encoded file names, and optional heading fragments, and safely rejects unsupported or missing targets.
@@ -17,6 +18,13 @@
 - **fix(menus):** Kept unavailable layout commands visually disabled when hovered or focused.
 - **fix(tabs):** Improved light-theme tab hover feedback and made close controls use an accent-only hover state.
 - **fix(toolbar layout):** Let the editor toolbar expand vertically when its controls wrap in narrower windows, without adding empty space above the sidebar or shifting the editor when a toolbar menu opens; kept toolbar, sidebar-tab, and hidden-toolbar shadows aligned with their visible boundaries.
+- **fix(title bar):** Corrected malformed SVG view boxes for the New, Open, and Save icons.
+- **fix(tabs):** Enabled mouse-wheel scrolling for an overflowing document tab strip.
+- **fix(outline):** Removed Vditor's duplicate in-editor outline control; the resizable Desktop sidebar outline is now the single outline experience in every editing mode.
+- **fix(mode switching):** Removed split-view toolbar button flicker when switching from WYSIWYG or Instant Rendering while keeping list indentation controls available.
+- **fix(outline):** Matched Desktop outline collection to Vditor's native current-mode or visible-preview H1–H6 semantics, removing duplicate Markdown parsing and unreliable cross-collection line mapping.
+- **fix(outline navigation):** Corrected heading targets when ordinary blocks appear between headings, and scrolls SV preview through its actual outer preview container.
+- **fix(unsaved changes):** The unsaved-changes confirmation dialog can now be dragged within the application window without becoming resizable.
 
 #### Editor and document navigation
 
@@ -29,6 +37,7 @@
 - **fix(in-document links):** Unified hash-link and table-of-contents navigation across all editor modes: ordinary clicks retain editing context and show a platform-aware Ctrl/Cmd-click hint; Ctrl/Cmd-click scrolls smoothly to the target heading.
 - **fix(external links):** Unified `http(s)` and `mailto:` link handling across all editor modes: ordinary clicks remain editable and Ctrl/Cmd-click opens the link through the validated system handler. Navigation and new-window requests use the same protocol allowlist. Link hover uses a text cursor normally and a hand cursor while the navigation modifier is held.
 - **fix(relative images):** Resolved Markdown-relative image paths against the active document directory even when Vditor first converts them to app-protocol URLs.
+- **fix(relative images):** Resolved Markdown-relative image paths before Vditor renders them, preventing transient `app://` 404 requests while preserving the original Markdown source.
 
 #### Settings and themes
 

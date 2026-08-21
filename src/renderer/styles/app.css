@@ -610,6 +610,19 @@ button.danger {
   width: 0 !important;
   height: 0 !important;
 }
+[data-vditor-desktop-hidden-outline='true'] {
+  display: none !important;
+}
+
+/* Vditor hides these in SV, but Desktop supplies the source-selection commands.
+   The app-owned marker prevents a delayed display reset during mode changes. */
+[data-vditor-desktop-split-toolbar-action='true'] {
+  display: block !important;
+}
+[data-vditor-desktop-split-toolbar-action='true'] > button.vditor-menu--disabled {
+  color: var(--toolbar-icon-color) !important;
+  cursor: pointer !important;
+}
 .document-tab {
   position: relative;
   flex: 0 1 auto;
@@ -963,6 +976,11 @@ button.danger {
   font-size: var(--source-size);
   line-height: 1.5;
   padding-left: 52px;
+}
+.editor-host .vditor-preview > .vditor-reset::after {
+  content: '';
+  display: block;
+  height: var(--editor-bottom, 0px);
 }
 .app-scrollbar::-webkit-scrollbar {
   width: 9px;
@@ -1791,6 +1809,12 @@ body.settings-card-resizing {
 }
 .confirm-card > header {
   cursor: default;
+}
+.confirm-card.confirm-card-draggable > header {
+  cursor: move;
+}
+body.confirm-card-dragging {
+  user-select: none;
 }
 .confirm-content {
   min-height: 112px;

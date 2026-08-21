@@ -54,6 +54,32 @@
     return toolbar?.querySelector(`button[data-type="${type}"]`) || null;
   }
 
+  function hideNativeOutlineControl(toolbar) {
+    const button = toolbarButton(toolbar, 'outline');
+    const item = button?.closest(selectors.toolbarItem);
+    if (!item) return false;
+    // Vditor 3.11.3 toggles this private toolbar item during mode changes even
+    // when its outline panel is disabled. Keep the item for that contract but
+    // Mark the private item for the application stylesheet. Its !important
+    // rule survives Vditor's inline display updates during mode switches.
+    item.dataset.vditorDesktopHiddenOutline = 'true';
+    return true;
+  }
+
+  function keepSplitToolbarActionsAvailable(toolbar) {
+    let found = false;
+    ['outdent', 'indent'].forEach((type) => {
+      const item = toolbarButton(toolbar, type)?.closest(selectors.toolbarItem);
+      if (!item) return;
+      // Vditor 3.11.3 hides and disables these in SV, while Desktop handles
+      // the commands against the source selection. Keep their layout stable
+      // so a mode switch does not need a delayed second toolbar mutation.
+      item.dataset.vditorDesktopSplitToolbarAction = 'true';
+      found = true;
+    });
+    return found;
+  }
+
   function toolbarHint(item) {
     return item?.querySelector(selectors.toolbarHint) || null;
   }
@@ -123,6 +149,76 @@
     }));
   }
 
+  function outlineContentElement(host, mode) {
+    const parts = editorParts(host);
+    // Vditor 3.11.3 Outline.render() uses previewElement whenever the preview
+    // pane is visible; otherwise it uses the current mode's editor element.
+    if (parts.preview?.style.display === 'block')
+      return parts.preview.querySelector(selectors.reset);
+    const editor = activeEditor(host, mode);
+    return editor?.matches?.(selectors.reset)
+      ? editor
+      : editor?.querySelector(`:scope > ${selectors.reset}`) || editor;
+  }
+
+  function directOutlineHeadings(editor) {
+    return Array.from(editor?.children || []).flatMap((element) => {
+      if (!element.matches?.(selectors.renderedHeading)) return [];
+      const text = headingText(element).trim();
+      if (!text) return [];
+      return [{ element, level: Number.parseInt(element.tagName.slice(1), 10), text }];
+    });
+  }
+
+  function outlineSnapshot(host, mode) {
+    const occurrences = new Map();
+    return directOutlineHeadings(outlineContentElement(host, mode)).map((heading, index) => {
+      const identity = `${heading.level}:${heading.text}`;
+      const occurrence = occurrences.get(identity) || 0;
+      occurrences.set(identity, occurrence + 1);
+      return { index, level: heading.level, text: heading.text, key: `${identity}:${occurrence}` };
+    });
+  }
+
+  function outlineScrollContainer(host, mode) {
+    const parts = editorParts(host);
+    // Vditor 3.11.3 scrolls the outer preview pane, while rendered editor
+    // modes scroll their reset child and SV scrolls its source element.
+    if (parts.preview?.style.display === 'block') return parts.preview;
+    return editorScrollContainer(host, mode);
+  }
+
+  function outlineHeadingTargets(host, mode, headingIndex) {
+    const canonical = outlineContentElement(host, mode);
+    const canonicalHeadings = directOutlineHeadings(canonical);
+    const heading = canonicalHeadings[headingIndex];
+    if (!canonical || !heading) return [];
+    const targets = [{ scroller: outlineScrollContainer(host, mode), heading: heading.element }];
+    // Desktop additionally keeps both SV panes aligned when their heading
+    // counts agree. A mismatch is left on the canonical preview target rather
+    // than guessing an index in a different semantic collection.
+    if (mode === 'sv') {
+      const source = editorParts(host).source;
+      const sourceHeadings = Array.from(source?.querySelectorAll(selectors.sourceHeading) || []);
+      if (source && sourceHeadings.length === canonicalHeadings.length)
+        targets.unshift({ scroller: source, heading: sourceHeadings[headingIndex] });
+    }
+    return targets;
+  }
+
+  function observeOutlineChanges(host, callback) {
+    if (!host || typeof callback !== 'function') return null;
+    const observer = new MutationObserver(callback);
+    observer.observe(host, {
+      attributes: true,
+      attributeFilter: ['style'],
+      characterData: true,
+      childList: true,
+      subtree: true,
+    });
+    return observer;
+  }
+
   function innerScroller(node) {
     return node?.closest(selectors.reset) || null;
   }
@@ -150,6 +246,18 @@
     // In Vditor 3.11.x rendered modes scroll their private .vditor-reset child,
     // while SV scrolls its editor element directly.
     return mode === 'sv' ? editor : editor.querySelector(selectors.reset) || editor;
+  }
+
+  function setEditorBottomSpacer(host, height) {
+    if (!Number.isFinite(height)) return false;
+    // Vditor 3.11.3 renders --editor-bottom through a trailing ::after in
+    // SV, IR, and WYSIWYG. Set every mode so its bottom space survives a
+    // mode switch without changing the user's typewriter-mode setting.
+    const value = `${Math.max(0, Math.round(height))}px`;
+    const parts = editorParts(host);
+    const editors = [parts.source, parts.instantRendering, parts.wysiwyg, parts.preview];
+    editors.forEach((editor) => editor?.style.setProperty('--editor-bottom', value));
+    return editors.some(Boolean);
   }
 
   const findHighlightName = 'vditor-desktop-find';
@@ -494,6 +602,31 @@
     }
   }
 
+  function relativeSourceFromLocalUrl(source, baseUrl) {
+    try {
+      const base = new URL(baseUrl);
+      const url = new URL(source);
+      if (
+        url.protocol !== 'local-file:' ||
+        url.protocol !== base.protocol ||
+        url.hostname !== base.hostname
+      )
+        return '';
+      const baseParts = decodeURIComponent(base.pathname).split('/').filter(Boolean);
+      const targetParts = decodeURIComponent(url.pathname).split('/').filter(Boolean);
+      let shared = 0;
+      while (shared < baseParts.length && baseParts[shared] === targetParts[shared]) shared += 1;
+      const relativeParts = [
+        ...Array.from({ length: baseParts.length - shared }, () => '..'),
+        ...targetParts.slice(shared),
+      ];
+      const relativePath = relativeParts.map(encodeURIComponent).join('/');
+      return `${relativePath}${url.search}${url.hash}`;
+    } catch (_) {
+      return '';
+    }
+  }
+
   function resolveRelativeImageSources(host, baseUrl) {
     if (!host || !baseUrl) return;
     host.querySelectorAll('img[src]').forEach((image) => {
@@ -504,7 +637,7 @@
       // form, then resolve it against the active document directory instead.
       const relativeSource = isRelativeImageSource(source)
         ? source
-        : relativeSourceFromAppUrl(source);
+        : relativeSourceFromAppUrl(source) || relativeSourceFromLocalUrl(source, baseUrl);
       if (!relativeSource) return;
       try {
         image.dataset.vditorDesktopOriginalSrc = relativeSource;
@@ -513,15 +646,26 @@
     });
   }
 
+  function resolveRelativeDocumentLinks(host, baseUrl) {
+    if (!host || !baseUrl) return;
+    host.querySelectorAll('a[href]').forEach((link) => {
+      const relativeSource = relativeSourceFromLocalUrl(link.getAttribute('href') || '', baseUrl);
+      if (relativeSource) link.setAttribute('href', relativeSource);
+    });
+  }
+
   function observeRelativeImageSources(host, baseUrl) {
     if (!host || !baseUrl) return null;
-    const resolve = () => resolveRelativeImageSources(host, baseUrl);
+    const resolve = () => {
+      resolveRelativeImageSources(host, baseUrl);
+      resolveRelativeDocumentLinks(host, baseUrl);
+    };
     const observer = new MutationObserver(resolve);
     observer.observe(host, {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['src'],
+      attributeFilter: ['src', 'href'],
     });
     resolve();
     return observer;
@@ -556,6 +700,8 @@
       .filter(([name]) => name !== 'toolbar')
       .filter(([, value]) => !value)
       .map(([name]) => name);
+    if (parts.preview && !parts.preview.querySelector(selectors.reset))
+      missing.push('preview:content');
     if (!toolbar) missing.unshift('toolbar');
     const requiredToolbarTypes = [
       'edit-mode',
@@ -563,6 +709,7 @@
       'preview',
       'outdent',
       'indent',
+      'outline',
       'content-theme',
       'code-theme',
     ];
@@ -580,6 +727,8 @@
     editorParts,
     toolbarContext,
     toolbarButton,
+    hideNativeOutlineControl,
+    keepSplitToolbarActionsAvailable,
     toolbarHint,
     selectEditMode,
     toolbarHints,
@@ -590,10 +739,16 @@
     sourceNewlines,
     listContext,
     headingTargets,
+    outlineContentElement,
+    outlineSnapshot,
+    outlineScrollContainer,
+    outlineHeadingTargets,
+    observeOutlineChanges,
     innerScroller,
     scrollContainers,
     activeEditor,
     editorScrollContainer,
+    setEditorBottomSpacer,
     textMatches,
     clearFindHighlights,
     highlightTextMatches,
@@ -608,7 +763,9 @@
     focusDocumentLink,
     expandInstantLinkForEditing,
     headingIndexForAnchor,
+    relativeSourceFromLocalUrl,
     resolveRelativeImageSources,
+    resolveRelativeDocumentLinks,
     observeRelativeImageSources,
     withOriginalImageSources,
     validateHost,

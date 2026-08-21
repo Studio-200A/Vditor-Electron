@@ -166,6 +166,9 @@ describe('renderer shell', () => {
     expect(document.querySelector('#confirmDetail')).not.toBeNull();
     expect(document.querySelector('#confirmActions')).not.toBeNull();
     expect(css).toMatch(/\.confirm-card\s*\{/);
+    expect(document.querySelectorAll('.confirm-card [data-settings-resize]')).toHaveLength(0);
+    expect(rendererScript).toContain('setupConfirmDialogDrag()');
+    expect(css).toMatch(/\.confirm-card\.confirm-card-draggable > header\s*\{[^}]*cursor:\s*move/s);
     expect(css).toMatch(/\.modal\s*\{[^}]*inset:\s*14px 20px 28px/s);
   });
 
@@ -289,6 +292,14 @@ describe('renderer shell', () => {
     expect(css).toMatch(/\.statusbar\s*\{[^}]*font-family:\s*var\(--ui-font\)/s);
   });
 
+  it('uses complete four-number viewBoxes for inline SVG icons', () => {
+    const invalidIcons = Array.from(document.querySelectorAll('svg[viewBox]')).filter((icon) => {
+      const values = icon.getAttribute('viewBox')?.trim().split(/\s+/) || [];
+      return values.length !== 4 || values.some((value) => !Number.isFinite(Number(value)));
+    });
+    expect(invalidIcons).toEqual([]);
+  });
+
   it('allows remote document images without relaxing scripts or connections', () => {
     const policy = document
       .querySelector('meta[http-equiv="Content-Security-Policy"]')
@@ -306,6 +317,18 @@ describe('renderer shell', () => {
     expect(css).toContain('color-mix(in srgb, var(--text) 78%, var(--muted))');
     expect(rendererScript).toContain('function scrollHeadingIntoEditor');
     expect(vditorAdapterScript).toContain('sourceHeading: \'[data-type="heading-marker"]\'');
+  });
+
+  it('adds a dynamic bottom spacer to every Vditor editing surface', () => {
+    expect(vditorAdapterScript).toContain('function setEditorBottomSpacer(host, height)');
+    expect(rendererScript).toContain('function observeEditorBottomSpacer(tab)');
+    expect(rendererScript).toContain('disconnectEditorBottomSpacer(tab)');
+    expect(css).toMatch(
+      /\.editor-host \.vditor-preview > \.vditor-reset::after\s*\{[^}]*height:\s*var\(--editor-bottom, 0px\)/s,
+    );
+    expect(css).toMatch(
+      /\.editor-host \.vditor-preview > \.vditor-reset::after\s*\{[^}]*content:\s*'';[^}]*display:\s*block;/s,
+    );
   });
 
   it('offers the built-in Monokai Pro Dark theme and remembers it for the status toggle', () => {

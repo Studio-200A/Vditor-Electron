@@ -1,7 +1,7 @@
 # Vditor-Electron Code Structure World Map
 
-- **生成时间：** 2026-08-20
-- **基于的工作区：** `dev-0.1.5`（0.1.5 设置相关修复完成，待提交）
+- **生成时间：** 2026-08-21
+- **基于的工作区：** `dev-0.1.5`（当前 0.1.5 开发工作树；提交状态以 `git status --short` 为准）
 - **文档版本：** v1.1
 - **对应 package.json 版本号：** 0.1.5
 
@@ -84,7 +84,7 @@ Vditor-Electron/
 │   │       └── app-state.ts       # AppSettings 接口与默认值定义
 ├── src/renderer/                  # 渲染进程（纯 JavaScript + HTML + CSS）
 │   ├── index.html                 # 应用壳 HTML（标题栏、侧栏、编辑区、对话框）
-│   ├── app.js                     # 集中式应用控制器（3301 行，随源码变化）
+│   ├── app.js                     # 集中式应用控制器（标签、工作区、设置、编辑器生命周期等）
 │   ├── vditor-adapter.js          # Vditor 私有 DOM 适配层（集中选择器与结构假设）
 │   ├── locales.js                 # 三语字典（en_US / zh_Hans / zh_Hant）
 │   ├── styles/
@@ -210,7 +210,7 @@ View 菜单:  Editing Mode (WYSIWYG / IR / SV) /
 ### 4.7 单实例锁定
 
 ```typescript
-// src/main/index.ts:432
+// src/main/index.ts:460
 const ownsSingleInstanceLock = app.requestSingleInstanceLock();
 if (!ownsSingleInstanceLock) {
   app.quit();
@@ -332,7 +332,7 @@ webPreferences: {
 4. app.js（IIFE，DOMContentLoaded 时执行 init()）
 ```
 
-`init()` 函数（`app.js:3258-3300`）：
+`init()` 函数（`app.js:3370-3409`）：
 
 1. 校验 `Vditor`、`VditorDesktopAdapter`、`fileAPI`、`appAPI` 均可用
 2. 设置 `body.dataset.platform`
@@ -376,7 +376,7 @@ const state = {
 
 ### 7.1 初始化配置
 
-每个标签页的 Vditor 实例通过 `editorOptions(tab)` 构建（`app.js:857-963`）：
+每个标签页的 Vditor 实例通过 `editorOptions(tab)` 构建（`app.js:916-979`）：
 
 ```javascript
 {
@@ -393,8 +393,9 @@ const state = {
   typewriterMode: settings.typewriterMode,
   tab: settings.tabInsertSpaces ? ' '.repeat(tabSize) : '\t',
   rtl: settings.rtl,
-  toolbar: settings.toolbarItems.length ? settings.toolbarItems : DEFAULT_TOOLBAR,
+  toolbar: effectiveToolbarItems(settings.toolbarItems), // 保留 Vditor 内部 outline 占位项
   toolbarConfig: { hide: false, pin: false },  // 内嵌工具栏始终显示；可见性由应用菜单控制
+  outline: { enable: false, position: 'left' }, // Desktop 侧栏是唯一大纲入口
   link: { isOpen: false },                     // 普通点击保留给 Vditor 编辑；应用仅接管 Ctrl/Cmd 跳转
   cache: { enable: false },
   undoDelay: 500,
@@ -443,6 +444,8 @@ const DEFAULT_TOOLBAR = [
   'edit-mode', 'both', 'preview', 'outline', 'code-theme', 'content-theme',
 ];
 ```
+
+`effectiveToolbarItems()` 会在运行时补回 Vditor 3.11.3 模式切换所需的内部 `outline` 工具项，但不改写持久化设置。`vditor-adapter.js` 为该私有 DOM 入口设置应用专用 data attribute，`app.css` 以 `display: none !important` 隐藏它；该规则不会被 Vditor 的模式切换显示更新覆盖。原生大纲面板保持关闭，应用侧栏的 Desktop 大纲是三种编辑模式共用的唯一大纲入口。adapter 也为 `outdent` / `indent` 设置稳定占位标记：SV 模式下由 CSS 保持可见并覆盖 Vditor 的禁用外观，应用的 source-selection 命令继续处理实际缩进；不要在模式切换后的延迟回调中再改写这两个按钮的 `display`。
 
 **工具栏迁移机制：** 所有标签共享同一个 mount 点（`#vditorToolbarMount`），切换标签时将旧标签的 toolbar 节点移回原 host，将新标签的 toolbar append 到 mount：
 
@@ -516,9 +519,10 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | ------------------------------------- | ----------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
 | `selectors`                           | —                             | `frozen Object`                                                    | Vditor 私有 DOM 选择器常量集合                                                                                         |
 | `editorParts(host)`                   | `host`                        | `{ toolbar, content, source, instantRendering, wysiwyg, preview }` | 返回编辑器各子视图 DOM 节点                                                                                            |
-| `validateHost(host, mountedToolbar?)` | `host, toolbar?`              | `{ valid, missing[] }`                                             | 检查 toolbar 节点与 7 个必需按钮（edit-mode/both/preview/outdent/indent/content-theme/code-theme），返回结构完整性报告 |
+| `validateHost(host, mountedToolbar?)` | `host, toolbar?`              | `{ valid, missing[] }`                                             | 检查编辑子视图、preview content、toolbar 节点与 8 个必需按钮（edit-mode/both/preview/outdent/indent/outline/content-theme/code-theme），返回结构完整性报告 |
 | `activeEditor(host, mode)`            | `host, 'sv'\|'ir'\|'wysiwyg'` | `Element`                                                          | 根据编辑模式返回当前活动编辑器节点                                                                                     |
 | `editorScrollContainer(host, mode)`   | `host, 'sv'\|'ir'\|'wysiwyg'` | `Element \| null`                                                 | 返回当前模式的主滚动容器；SV 为源码区，IR/WYSIWYG 为其 `.vditor-reset` 子节点                                         |
+| `setEditorBottomSpacer(host, height)` | `host, pixels`                | `boolean`                                                          | 为 SV、IR、WYSIWYG 与 preview 写入 Vditor 私有 `--editor-bottom`，形成动态尾部留白                                   |
 | `scrollContainers(host)`              | `host`                        | `Element[]`                                                        | 获取所有可滚动容器节点（用于自动隐藏滚动条）                                                                           |
 | `innerScroller(node)`                 | `node`                        | `Element \| null`                                                  | 获取节点最近的 `.vditor-reset` 内层滚动容器                                                                            |
 
@@ -528,6 +532,8 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | ----------------------------------- | --------------- | --------------------------------- | ----------------------------------------------------------------------------- |
 | `toolbarContext(target)`            | `eventTarget`   | `{ button, item, trigger, type }` | 从点击目标提取工具栏按钮上下文                                                |
 | `toolbarButton(toolbar, type)`      | `toolbar, type` | `Element \| null`                 | 按 `data-type` 查找工具栏按钮（含防注入正则校验）                             |
+| `hideNativeOutlineControl(toolbar)` | `toolbar`       | `boolean`                          | 为 Vditor 内部 outline 项设置应用标记，交由 CSS 隐藏重复入口                 |
+| `keepSplitToolbarActionsAvailable(toolbar)` | `toolbar` | `boolean`                          | 为 outdent/indent 设置稳定占位标记，防止切入 SV 时发生延迟二次布局变更        |
 | `toolbarHint(item)`                 | `item`          | `Element \| null`                 | 获取工具栏项的 hover 提示面板                                                 |
 | `selectEditMode(toolbar, mode)`     | `toolbar, mode` | `boolean`                          | 通过 Vditor 自身的 edit-mode 菜单按钮切换模式，复用其状态、undo 与焦点处理    |
 | `toolbarHints(root?)`               | `root?`         | `Element[]`                       | 获取所有打开的工具栏面板                                                      |
@@ -543,6 +549,10 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `sourceNewlines(source)`      | `sv`          | `Element[]`                  | 获取 SV 模式所有换行 span（用于行号渲染）             |
 | `listContext(node)`           | `textNode`    | `{ block, marker, padding }` | 解析当前列表的 marker/padding 节点（用于缩进/反缩进） |
 | `headingTargets(host, index)` | `host, index` | `{ editor, heading }[]`      | 获取指定索引的标题在所有编辑器模式中的 DOM 节点       |
+| `outlineSnapshot(host, mode)` | `host, mode` | `{ index, level, text, key }[]` | 按 Vditor 原生规则从可见 preview 或当前模式编辑区收集直接 H1–H6，作为 Desktop 大纲的唯一 snapshot |
+| `outlineScrollContainer(host, mode)` | `host, mode` | `Element \| null` | 返回大纲 canonical 内容的实际滚动容器：可见 preview 为外层 preview，IR/WYSIWYG 为 reset，SV 为源码区 |
+| `outlineHeadingTargets(host, mode, index)` | `host, mode, index` | `{ scroller, heading }[]` | 直接返回 snapshot 对应标题 DOM 节点及其滚动容器；SV 两侧集合数量一致时同步源码与 preview，否则只返回原生 canonical 目标 |
+| `observeOutlineChanges(host, callback)` | `host, callback` | `MutationObserver \| null` | 监听模式可见性与异步 preview 标题渲染，驱动活动 Outline 视图的防抖刷新；重建和关闭标签时断开 |
 
 #### 查找替换（CSS Highlights API）
 
@@ -727,7 +737,7 @@ onEditorInput(tab, value)
 ### 9.4 文件变更监听
 
 ```typescript
-// src/main/index.ts:329
+// src/main/index.ts:351
 ipcMain.handle('file:watch', async (_event, rootPath?: string) => {
   if (watcher) await watcher.close();
   watcher = null;
@@ -746,14 +756,14 @@ ipcMain.handle('file:watch', async (_event, rootPath?: string) => {
 
 **外部变更响应：**
 
-- 标签未修改：自动重载磁盘内容，静默更新（`app.js:2420-2432`）
-- 标签已修改：设置 `externalConflict`，显示"重载/忽略"横幅（`app.js:1558-1566`）
+- 标签未修改：自动重载磁盘内容，静默更新（`app.js:1689-1714`）
+- 标签已修改：设置 `externalConflict`，显示"重载/忽略"横幅（`app.js:1719-1726`）
 - 文件删除：在状态栏显示删除通知（不自动关闭已打开标签）
 
 **忽略窗口：** 写入磁盘后 1500ms 内，该路径的 chokidar 事件被忽略（`handleExternalChange`）：
 
 ```javascript
-// app.js:2409
+// app.js:2691
 if ((state.ignoredChanges.get(change.path) || 0) > Date.now()) return;
 ```
 
@@ -782,7 +792,7 @@ if ((state.ignoredChanges.get(change.path) || 0) > Date.now()) return;
 ### 9.6 最近打开文件记录
 
 ```javascript
-// app.js:2109
+// app.js:2348
 function rememberRecent(filePath) {
   const recent = [
     { path, title, openedAt: Date.now() },
@@ -808,50 +818,50 @@ function rememberRecent(filePath) {
 - **职责：** 自定义标题栏（Windows/Linux）、应用菜单挂载点、新建/打开/保存快捷按钮、标签栏、最小化/最大化/关闭按钮、macOS 隐藏式标题栏
 - **实现：** `updateMaximizedState()`、窗口按钮 `onclick`
 
-#### 应用菜单（`app.js:2653` 起的 `setupAppMenus()`，`index.html:17-25`）
+#### 应用菜单（`app.js:2763` 起的 `setupAppMenus()`，`index.html:17-25`）
 
 - **职责：** Windows/Linux 平台在标题栏挂载自定义下拉菜单（File 菜单含编辑模式 / 布局 / 设置 / 退出）
 - **实现：** `setupAppMenus()` 构建 popup DOM、`handleMenu(action, value)` 路由到功能函数
 - **macOS：** 使用 `src/main/menu.ts` 的原生 Menu，通过 `menu:action` IPC 与渲染器同步
 
-#### 标签栏（`app.js:1371` 起的 `renderTabs()`，`index.html:64-66`）
+#### 标签栏（`app.js:1438` 起的 `renderTabs()`，`index.html:64-66`）
 
 - **职责：** 渲染标签按钮列表、支持拖拽重排序、中键关闭、脏标记显示、外部冲突标记
 - **实现：** `renderTabs()`、标签拖拽使用 Pointer Events API
 
-#### 编辑区（`app.js:1094` 起的 `ensureEditor()` 及相关编辑器生命周期函数，`index.html:141-213`）
+#### 编辑区（`app.js:1153` 起的 `ensureEditor()` 及相关编辑器生命周期函数，`index.html:141-213`）
 
 - **职责：** 承载所有标签页的 Vditor 编辑器 host、空状态引导、外部变更横幅、查找替换组件
 - **实现：** `ensureEditor()`、`switchTab()` 切换 active 类；编辑器重建和三种模式切换均保存主滚动容器的位置，跨模式按文档滚动进度恢复，SV 始终以源码区为准
 
-#### 查找替换（`app.js:324-406`，`index.html:153-206`）
+#### 查找替换（`app.js:335-417`，`index.html:153-206`）
 
 - **职责：** 全文查找、逐条匹配、CSS Highlights API 高亮、替换单个/全部
 - **实现：** `openFind()`、`refreshFind()`、`moveFindMatch()`、`replaceFindMatch()`、`replaceAllFindMatches()`
 - **注意：** 当前实现通过 `tab.vditor.setValue(content)` 回写替换结果，可能丢失选择/undo 状态（已知问题）
 
-#### 侧栏（`app.js:2895` 起的 `toggleSidebar()`，`index.html:115-139`）
+#### 侧栏（`app.js:3005` 起的 `toggleSidebar()`，`index.html:115-139`）
 
 - **职责：** 左侧可折叠面板，包含文件树视图和大纲视图
 - **实现：** `toggleSidebar()` 带 CSS transition、`appendDirectory()` 懒加载子目录
 
-#### 文件树（`app.js:1735` 起的 `appendDirectory()` / `showTreeMenu()`，`index.html:127-131`）
+#### 文件树（`app.js:1799` 起的 `appendDirectory()` / `showTreeMenu()`，`index.html:127-131`）
 
 - **职责：** 懒加载工作区目录树、文件展开状态持久化、文件名省略（canvas 测量）、右键菜单（新建/重命名/回收站/在管理器中显示）
 - **实现：** `appendDirectory()`、`showTreeMenu()`、`renameExplorerItem()`、`middleEllipsis()`
 - **过滤：** 仅显示 `fileExplorer.visibleExtensions` 中的扩展名，隐藏以 `.` 开头的文件
 
-#### 文档大纲（`app.js:1954` 起的 `renderOutline()`，`index.html:133-136`）
+#### 文档大纲（`app.js:2019` 起的 `renderOutline()`，`index.html:133-136`）
 
-- **职责：** 解析当前文档 Markdown 标题，构建可折叠的层次树，点击跳转并平滑滚动到对应位置
-- **实现：** `renderOutline()` 从 `currentContent(tab)` 正则提取 `^(#{1,6})\s+(.+?)`，`scrollToHeading()` 动画滚动
+- **职责：** 以 Vditor 原生语义收集当前可见编辑/预览内容的直接标题，构建可折叠层次树，点击跳转并平滑滚动到对应位置
+- **实现：** `renderOutline()` 使用 adapter 的 `outlineSnapshot()`；`scrollToOutlineHeading()` 使用同一 snapshot 对应的标题节点和实际滚动容器。SV 两侧标题数量一致时同步滚动源码与预览。
 
 #### 状态栏（`app.js`, `index.html:217-266`）
 
 - **职责：** 显示当前文件路径、状态消息、编辑模式（IR/SV/WYSIWYG）、词字符行数、编码、行结尾、主题切换、设置快捷入口、版本号；编辑模式文本可展开快捷菜单
 - **实现：** `updateActiveUI()` 汇总状态，`toggleStatusModeMenu()` / `selectStatusMode()` 通过适配器复用 Vditor 的原生模式切换
 
-#### 设置对话框（`app.js:2327` 起的设置保存/关闭逻辑及 `:2498` 的拖拽逻辑，`index.html:249-end`）
+#### 设置对话框（`app.js:2369` 起的设置保存/关闭逻辑及 `:2565` 的拖拽逻辑，`index.html:249-end`）
 
 - **职责：** 模态对话框，包含 6 个面板（Appearance/Fonts/Editor/Preview/Files & Session/About），支持拖拽移动和 8 方向拖拽调整大小，保存后实时应用
 - **实现：** `openSettings()`、`saveSettings()`、`setupSettingsDrag()`、`restoreSettingsCardSize()`
@@ -910,12 +920,13 @@ function rememberRecent(filePath) {
 - "查看源码" 按钮（GitHub 链接）
 - 底部 "Restore defaults" 按钮（重置所有设置，仅此面板显示）
 
-#### 确认对话框（`app.js:104` 起的 `showConfirmDialog()`，`index.html` 中的 `#confirmModal`）
+#### 确认对话框（`app.js:113` 起的 `showConfirmDialog()`，`index.html` 中的 `#confirmModal`）
 
 - **职责：** 通用确认对话框，支持自定义标题/消息/操作按钮列表，返回 Promise
 - **实现：** `showConfirmDialog({ title, message, actions })` 返回 `{ resolve: Promise }`
+- **未保存变更交互：** `showUnsavedDialog()` 单独启用受限拖动；拖动仅从标题栏开始，位置限制在模态窗口可用范围内，关闭后回到居中位置，不提供尺寸调整手柄或持久化位置。
 
-#### 右键菜单（`app.js:1785` 起的 `showTreeMenu()`，`#contextMenu`）
+#### 右键菜单（`app.js:1849` 起的 `showTreeMenu()`，`#contextMenu`）
 
 - **职责：** 文件树节点和工作区根目录的上下文操作菜单
 
@@ -954,7 +965,7 @@ function rememberRecent(filePath) {
 
 ### 11.1 CSS 预处理器
 
-**无预处理器，使用纯 CSS。** 单一文件 `src/renderer/styles/app.css`（2645 行，随源码变化）。
+**无预处理器，使用纯 CSS。** 样式集中在单一文件 `src/renderer/styles/app.css`。
 
 ### 11.2 CSS 变量体系（设计 Token）
 
@@ -1366,6 +1377,8 @@ flowchart TB
 
 ### 15.1 单元测试（Vitest）
 
+下表按测试文件列出当前单元测试覆盖范围。
+
 | 测试文件                            | 被测模块                                | 覆盖场景                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | ----------------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tests/unit/app-paths.test.ts`      | `src/main/app-paths.ts`                 | Linux XDG 路径、XDG 相对路径回退、Windows Roaming/Local 分离、macOS 应用标识目录、环境变量隔离                                                                                                                                                                                                                                                                                                                                                                                                                    |
@@ -1374,12 +1387,12 @@ flowchart TB
 | `tests/unit/resolve-markdown-link.test.ts` | `src/main/resolve-markdown-link.ts` | 相对 Markdown 路径、`../`、百分号编码、片段、Windows 路径、缺失/绝对/协议/非 Markdown/非法编码目标拒绝 |
 | `tests/unit/file-manager.test.ts`   | `src/main/services/file-manager.ts`     | UTF-8 读取、UTF-8 BOM 检测与剥离、GB18030 回退、父目录自动创建、文件/目录创建、路径逃逸拒绝（`../`）、目录优先自然排序、重命名、二进制图片写入                                                                                                                                                                                                                                                                                                                                                                    |
 | `tests/unit/settings-store.test.ts` | `src/main/services/settings-store.ts`   | 首次加载返回默认值、TOML 部分深合并与默认值、未知字段丢弃、`set` 持久化（含 TOML 段结构验证）、`update` 多字段快照（含 `workspaceTreeStates` 数组）、设置对话框尺寸持久化（`window.settingsDialog`）、`getAll` 返回克隆副本、`reset` 重置内存和磁盘                                                                                                                                                                                                                                                               |
-| `tests/unit/vditor-adapter.test.ts` | `src/renderer/vditor-adapter.js`        | 冻结的 selectors 对象、`validateHost` 成功（toolbar 通过 `mountedToolbar` 参数提供）、代码主题亮/暗分界点（`ant-design` 前为 dark 组）、DOM 漂移检测（缺少 source 节点时 `valid: false`）、列表 `marker`/`padding` 解析、hash anchor 到标题索引（IR 内部链接 + 元素 id + slug）、跨多 span 文本节点的匹配与选区                                                                                                                                                                                                   |
-| `tests/unit/renderer-shell.test.ts` | 渲染器壳（HTML/CSS/JS/preload）静态结构 | 标题栏 / 菜单 / 窗口控件 DOM；三种编辑模式菜单项；en/zh_Hans/zh_Hant 键完整性对等；Linux 发布脚本；自动隐藏滚动条样式；第二实例文件转发；确认对话框；设置对话框 8 方向调整手柄；空标签恢复；查找替换控件带 SVG；文件树无 draggable；折叠/展开/中间省略；设置面板分类；关于面板；UI/编辑器/预览缩放；状态栏控件；CSP img-src/connect-src；大纲无标题态；Monokai Pro Dark 主题；亮/暗代码主题分离；字体子分组；工作区头部；编辑文本宽度范围；无过时占位符/工具栏设置项；适配器脚本加载顺序；设置路径页脚/重置当前页 |
+| `tests/unit/vditor-adapter.test.ts` | `src/renderer/vditor-adapter.js`        | 冻结的 selectors 对象、`validateHost` 成功（toolbar 通过 `mountedToolbar` 参数提供）、代码主题亮/暗分界点（`ant-design` 前为 dark 组）、DOM 漂移检测（缺少 source 节点时 `valid: false`）、列表 `marker`/`padding` 解析、动态尾部留白写入全部 Vditor 表面、hash anchor 到标题索引（IR 内部链接 + 元素 id + slug）、原生大纲 snapshot、标题间普通块时的准确目标节点及 SV preview 外层滚动容器、跨多 span 文本节点的匹配与选区                                                                                                                                                                                                   |
+| `tests/unit/renderer-shell.test.ts` | 渲染器壳（HTML/CSS/JS/preload）静态结构 | 标题栏 / 菜单 / 窗口控件 DOM；三种编辑模式菜单项；en/zh_Hans/zh_Hant 键完整性对等；Linux 发布脚本；自动隐藏滚动条样式；第二实例文件转发；确认对话框（未保存变更可拖动、无调整尺寸手柄）；设置对话框 8 方向调整手柄；空标签恢复；查找替换控件带 SVG；文件树无 draggable；折叠/展开/中间省略；设置面板分类；关于面板；UI/编辑器/预览缩放；状态栏控件；CSP img-src/connect-src；大纲无标题态；Monokai Pro Dark 主题；亮/暗代码主题分离；字体子分组；工作区头部；编辑文本宽度范围；无过时占位符/工具栏设置项；适配器脚本加载顺序；设置路径页脚/重置当前页 |
 
 ### 15.2 E2E 测试（Playwright Electron，单文件 `tests/e2e/app.spec.ts`）
 
-当前包含 **61 个参数化 `test()` 用例**，覆盖以下核心场景（按功能域分类）：
+下列用例按功能域覆盖核心场景；具体数量以 Playwright 测试清单为准：
 
 #### 启动与窗口生命周期
 
@@ -1407,7 +1420,8 @@ flowchart TB
 
 - `adapter.validateHost` 返回 `{ valid: true, missing: [] }`
 - SV 换行 span 与列表 marker 存在性
-- 大纲标题导航：IR / WYSIWYG / SV（双面板）锚点后均正确滚动
+- 编辑区动态尾部留白：IR / WYSIWYG / SV 源码与 preview 均为编辑器高度约 50%，窗口缩放后重新计算
+- 大纲标题导航：IR / WYSIWYG / SV（双面板）点击后对应标题均进入实际滚动容器的可视区
 - 相对图片加载（Markdown `![](assets/x.png)` + HTML `<img>` 不污染源码）
 - HTTPS 文档图片在三模式下均加载
 - 工具栏不出现 `fullscreen` 按钮，WYSIWYG 代码块使用 `previewCodeFontFamily`
@@ -1473,7 +1487,7 @@ flowchart TB
 
 - 简体中文 About 面板（7 个外部链接 + 居中 logo + 底部重置按钮）
 - 繁体中文设置面板（`lang="zh-Hant"`、`設定` 标题）
-- 未保存更改确认对话框（`zh_Hans` 下显示 "未保存的更改" 等本地化文案）
+- 未保存更改确认对话框（`zh_Hans` 下显示 "未保存的更改" 等本地化文案；可在窗口内拖动但不可调整尺寸）
 
 ### 15.3 测试覆盖缺口
 
@@ -1504,9 +1518,9 @@ flowchart TB
 
 ### 16.2 架构风险点
 
-1. **`app.js` 集中度过高（3301 行单体）**：标签管理、工作区、设置、文件树、查找替换、主题、菜单、对话框、拖拽等功能全部耦合于同一文件，职责无法隔离测试，修改风险集中。
+1. **`app.js` 集中度过高**：标签管理、工作区、设置、文件树、查找替换、主题、菜单、对话框、拖拽等功能全部耦合于同一文件，职责无法隔离测试，修改风险集中。
 
-2. **`src/main/ipc/` 为空目录**：所有 IPC handler 集中在 `index.ts` 的 `registerIpcHandlers()`，导致主入口文件体积膨胀（510 行），无分层边界。
+2. **`src/main/ipc/` 为空目录**：所有 IPC handler 集中在 `index.ts` 的 `registerIpcHandlers()`，导致主入口文件职责膨胀，无分层边界。
 
 3. **IPC 参数校验不足**：`file:write` / `file:read` / `app:saveSettings` 等通道未验证路径合法性、参数类型或授权范围。`local-file://` 协议无路径白名单，可访问任意本地文件。
 
