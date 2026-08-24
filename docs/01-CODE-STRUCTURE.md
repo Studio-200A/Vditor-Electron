@@ -1,8 +1,8 @@
 # Vditor-Electron Code Structure World Map
 
 - **生成时间：** 2026-08-24
-- **基于的工作区：** `dev-0.1.5`（当前 0.1.5 开发工作树；提交状态以 `git status --short` 为准）
-- **文档版本：** v1.2
+- **基于的工作区：** `dev-0.2.0`，HEAD `66020a743d93a83a259f6774906950df8601c430`（包含未提交的批次 1 安全文档保存改动；提交状态以 `git status --short` 为准）
+- **文档版本：** v1.3
 - **对应 package.json 版本号：** 0.1.5
 
 ---
@@ -79,7 +79,8 @@ Vditor-Electron/
 │   │   ├── resolve-markdown-link.ts # 相对 Markdown 链接安全解析
 │   │   ├── ipc/                   # （空目录，预留 IPC handler 分层）
 │   │   └── services/              # 主进程服务层
-│   │       ├── file-manager.ts    # 文件读写、目录操作、编码探测
+│   │       ├── file-manager.ts    # 文件读写、目录操作、编码探测与文档写入错误映射
+│   │       ├── safe-file-writer.ts # 同目录临时文件、同步、替换与失败清理
 │   │       ├── settings-store.ts  # TOML 配置读写、深合并、原子保存
 │   │       └── app-state.ts       # AppSettings 接口与默认值定义
 ├── src/renderer/                  # 渲染进程（纯 JavaScript + HTML + CSS）
@@ -261,7 +262,8 @@ webPreferences: {
 | `saveFileDialog(defaultPath?, defaultDirectory?)` | `file:saveDialog`       | invoke     | `string?, string?`                    | `string \| null`                        |
 | `exportDialog(type, defaultPath?)`                | `file:exportDialog`     | invoke     | `'html'\|'pdf', string?`              | `string \| null`                        |
 | `readFile(filePath)`                              | `file:read`             | invoke     | `string`                              | `{ content: string, encoding: string }` |
-| `writeFile(filePath, content)`                    | `file:write`            | invoke     | `string, string`                      | `void`                                  |
+| `writeFile(filePath, content)`                    | `file:write`            | invoke     | `string, string`                      | `{ expectedContent, wrote }`            |
+| `writeDocument(filePath, content)`                | `file:writeDocument`    | invoke     | `string, string`                      | `{ expectedContent, wrote }` 或 `{ error }` |
 | `writeBinaryFile(filePath, bytes)`                | `file:writeBinary`      | invoke     | `string, Uint8Array`                  | `void`                                  |
 | `exists(filePath)`                                | `file:exists`           | invoke     | `string`                              | `boolean`                               |
 | `listDir(dirPath)`                                | `file:listDir`          | invoke     | `string`                              | `DirEntry[]`                            |
@@ -621,7 +623,8 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `file:saveDialog`            | `defaultPath?, defaultDirectory?` | `string \| null`                            | 保存对话框                                   |
 | `file:exportDialog`          | `type, defaultPath?`              | `string \| null`                            | 导出对话框                                   |
 | `file:read`                  | `filePath: string`                | `{ content, encoding }`                     | 读取文件（UTF-8/BOM/GB18030）                |
-| `file:write`                 | `filePath, content`               | `void`                                      | 写入文本（创建父目录）                       |
+| `file:write`                 | `filePath, content`               | `{ expectedContent, wrote }`                | 安全写入文本（供非文档导出等使用）           |
+| `file:writeDocument`         | `filePath, content`               | `{ expectedContent, wrote }` 或 `{ error }` | 安全文档写入；将权限等错误映射为领域结果     |
 | `file:writeBinary`           | `filePath, Uint8Array`            | `void`                                      | 写入二进制（图片/PDF）                       |
 | `file:exists`                | `filePath`                        | `boolean`                                   | 文件存在性检查                               |
 | `file:listDir`               | `dirPath`                         | `DirEntry[]`                                | 目录列表（目录优先，自然排序）               |
@@ -726,8 +729,9 @@ saveTab(tab, saveAs = false)
   ├── 无 filePath 或 saveAs → fileAPI.saveFileDialog()
   ├── currentContent(tab)                  # 通过 vditor-adapter 恢复相对图片 URL
   ├── 转换为文件原始行结尾（CRLF/LF）
-  ├── state.ignoredChanges.set(path, now+1500)  # 抑制自身触发的 watcher 事件 1.5s
-  ├── fileAPI.writeFile(destination, content)
+  ├── fileAPI.writeDocument(destination, content)
+  │   └── main: SafeFileWriter 同目录临时文件 → write → sync → close → rename
+  ├── 成功：记录 expectedSavedContent；仅实际写入时标记 renderer 忽略窗口
   └── 更新 tab.filePath/title/baseDir，清除冲突标记，持久化会话
 ```
 
@@ -750,6 +754,8 @@ onEditorInput(tab, value)
 
 写入时统一使用 UTF-8。
 
+`SafeFileWriter` 先比较目标文件字节；内容相同则返回 `wrote: false`，不改变 mtime。需要写入时，它在目标同目录创建唯一临时文件，写入并 `sync`、关闭、保留已有权限模式后调用当前平台的 `rename` 替换。任一阶段失败时不删除原目标，并尽力清理本次临时文件。`FileManagerService.writeDocument` 将权限错误映射为 `{ error: 'permission-denied' }`，renderer 显示本地化提示；主进程以 `WARNING:` 记录简短诊断。
+
 ### 9.4 文件变更监听
 
 ```typescript
@@ -759,9 +765,10 @@ ipcMain.handle('file:watch', async (_event, rootPath?: string) => {
   watcher = null;
   if (!rootPath) return true;
   watcher = watch(rootPath, { ignoreInitial: true, depth: 20 });
-  watcher.on('all', (eventName, changedPath) =>
-    send('file:changed', { event: eventName, path: changedPath }),
-  );
+  watcher.on('all', (eventName, changedPath) => {
+    if (isOwnDocumentWriteEvent(changedPath)) return;
+    send('file:changed', { event: eventName, path: changedPath });
+  });
   return true;
 });
 ```
@@ -776,7 +783,7 @@ ipcMain.handle('file:watch', async (_event, rootPath?: string) => {
 - 标签已修改：设置 `externalConflict`，显示"重载/忽略"横幅（`app.js:1719-1726`）
 - 文件删除：在状态栏显示删除通知（不自动关闭已打开标签）
 
-**忽略窗口：** 写入磁盘后 1500ms 内，该路径的 chokidar 事件被忽略（`handleExternalChange`）：
+**自身保存抑制：** `file:writeDocument` 开始时主进程登记目标路径 1500ms；watcher 会忽略该目标以及同目录、同文件名前缀的 `.tmp` 临时文件事件，避免原子替换刷新文件树或制造伪外部变更。renderer 保留同样的短时目标路径抑制作为兼容层；批次 3 将以稳定读取和正文比较取代时间窗口作为最终判断。
 
 ```javascript
 // app.js:2691
@@ -792,6 +799,7 @@ if ((state.ignoredChanges.get(change.path) || 0) > Date.now()) return;
   filePath: '.../notes.md',     // 磁盘路径，未保存文件为 null
   content: string,              // 当前编辑器内容（LF 标准）
   savedContent: string,         // 上次保存到磁盘的内容
+  expectedSavedContent: string, // 最近一次安全写入预期的磁盘正文（含原始行结尾）
   modified: boolean,            // content !== savedContent
   encoding: string,             // 读取时探测的编码
   lineEnding: 'LF' | 'CRLF',  // 原始行结尾，保存时还原
@@ -1416,7 +1424,7 @@ flowchart TB
 | `tests/unit/open-files.test.ts`     | `src/main/open-files.ts`                | 绝对/相对/file-URL 路径提取、去重、过滤标志位/目录/不存在的文件/非 Markdown 扩展名                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `tests/unit/external-url.test.ts`   | `src/main/external-url.ts`              | 仅允许 `http:` / `https:` / `mailto:`；拒绝非字符串、相对路径、应用/文件/脚本/data 协议 |
 | `tests/unit/resolve-markdown-link.test.ts` | `src/main/resolve-markdown-link.ts` | 相对 Markdown 路径、`../`、百分号编码、片段、Windows 路径、缺失/绝对/协议/非 Markdown/非法编码目标拒绝 |
-| `tests/unit/file-manager.test.ts`   | `src/main/services/file-manager.ts`     | UTF-8 读取、UTF-8 BOM 检测与剥离、GB18030 回退、父目录自动创建、文件/目录创建、路径逃逸拒绝（`../`）、目录优先自然排序、重命名、二进制图片写入                                                                                                                                                                                                                                                                                                                                                                    |
+| `tests/unit/file-manager.test.ts`   | `src/main/services/file-manager.ts` 与 `safe-file-writer.ts` | UTF-8 读取、UTF-8 BOM 检测与剥离、GB18030 回退、同目录安全替换、权限保持、无变化跳过、临时创建/替换失败保留原文件及清理、权限错误映射、文件/目录创建、路径逃逸拒绝（`../`）、目录优先自然排序、重命名、二进制图片写入 |
 | `tests/unit/settings-store.test.ts` | `src/main/services/settings-store.ts`   | 首次加载返回默认值、TOML 部分深合并与默认值、未知字段丢弃、`set` 持久化（含 TOML 段结构验证）、`update` 多字段快照（含 `workspaceTreeStates` 数组）、设置对话框尺寸持久化（`window.settingsDialog`）、`getAll` 返回克隆副本、`reset` 重置内存和磁盘                                                                                                                                                                                                                                                               |
 | `tests/unit/vditor-adapter.test.ts` | `src/renderer/vditor-adapter.js`        | 冻结的 selectors 对象、`validateHost` 成功（toolbar 通过 `mountedToolbar` 参数提供）、代码主题亮/暗分界点（`ant-design` 前为 dark 组）、DOM 漂移检测（缺少 source 节点时 `valid: false`）、列表 `marker`/`padding` 解析、动态尾部留白写入全部 Vditor 表面、hash anchor 到标题索引（IR 内部链接 + 元素 id + slug）、原生大纲 snapshot、标题间普通块时的准确目标节点及 SV preview 外层滚动容器、跨多 span 文本节点的匹配与选区                                                                                                                                                                                                   |
 | `tests/unit/renderer-shell.test.ts` | 渲染器壳（HTML/CSS/JS/preload）静态结构 | 标题栏 / 菜单 / 窗口控件 DOM；三种编辑模式菜单项；en/zh_Hans/zh_Hant 键完整性对等；Linux 发布脚本；自动隐藏滚动条样式；第二实例文件转发；确认对话框（未保存变更可拖动、无调整尺寸手柄）；设置对话框 8 方向调整手柄；空标签恢复；查找替换控件带 SVG；文件树无 draggable；折叠/展开/中间省略；设置面板分类；关于面板；UI/编辑器/预览缩放；状态栏控件；CSP img-src/connect-src；大纲无标题态；Monokai Pro Dark 主题；亮/暗代码主题分离；字体子分组；工作区头部；编辑文本宽度范围；无过时占位符/工具栏设置项；适配器脚本加载顺序；设置路径页脚/重置当前页 |
@@ -1478,6 +1486,8 @@ flowchart TB
 
 #### 文件读写与外部变更
 
+- 手动保存与自动保存写回磁盘；工作区中的自动保存不会丢失活动文件选中态
+- 安全写入成功、无变化跳过、临时写入失败、替换失败与权限错误映射
 - 干净工作区文件外部修改时自动重载（无冲突横幅）
 - 本地有未保存修改的文件受外部修改时显示冲突横幅（`!` 冲突标记 + `#externalChangeBanner`）
 - "忽略外部变更"后保存覆盖本地内容
@@ -1558,7 +1568,7 @@ flowchart TB
 
 3. **IPC 参数校验不足**：`file:write` / `file:read` / `app:saveSettings` 等通道未验证路径合法性、参数类型或授权范围。`local-file://` 协议无路径白名单，可访问任意本地文件。
 
-4. **文档写入非原子化**：`FileManagerService.writeFile` 使用 `writeFileSync`，中断时可能产生部分文件（settings-store 已实现 tmp+rename 原子写入，但文件保存未复制此模式）。
+4. **跨平台替换语义尚未实机验证**：文档安全写入已在 Linux 通过故障和 Electron 测试；Windows/macOS 对锁定目标、替换和大小写路径的真实语义仍待实体机验证。
 
 5. **`local-file://` 无访问范围限制**：任何包含本地文件路径的 URL 均可被加载，缺少工作区或已授权路径的校验。
 
@@ -1578,8 +1588,7 @@ flowchart TB
 
 1. 在 `local-file://` 协议中增加工作区根目录白名单验证
 2. 在 `file:write` / `file:delete` handler 中增加路径授权校验
-3. 文件写入改为 tmp+rename 原子模式（参考 settings-store）
-4. 完成所有硬编码中文字符串的国际化
+3. 完成所有硬编码中文字符串的国际化
 
 **P2（架构）：**
 5. 将 `index.ts` 中的 IPC handler 分拆到 `src/main/ipc/` 下的独立模块（`file-handlers.ts`、`app-handlers.ts`、`window-handlers.ts`）

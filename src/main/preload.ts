@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld('fileAPI', {
   readFile: (filePath: string) => ipcRenderer.invoke('file:read', filePath),
   writeFile: (filePath: string, content: string) =>
     ipcRenderer.invoke('file:write', filePath, content),
+  writeDocument: (filePath: string, content: string) =>
+    ipcRenderer.invoke('file:writeDocument', filePath, content),
   writeBinaryFile: (filePath: string, bytes: Uint8Array) =>
     ipcRenderer.invoke('file:writeBinary', filePath, bytes),
   exists: (filePath: string) => ipcRenderer.invoke('file:exists', filePath),

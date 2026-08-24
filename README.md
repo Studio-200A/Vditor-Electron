@@ -69,11 +69,12 @@ Switch modes from the unified toolbar or **View → Editing Mode**. Split Previe
 - Drag tabs to arrange them in the order that fits your work.
 - Collapse the explorer to give the editor more room; its file actions fold away with it while menus and shortcuts remain available.
 - Save, Save As, export HTML or PDF, and recover the last workspace and window state.
+- Save documents safely through a same-directory temporary file; unchanged files are not rewritten, and a failed save keeps the original file and your unsaved editor content intact.
 - Find and replace text in the active document with a compact `Ctrl/Cmd + F` panel.
 - Detect changes to files in the active workspace. Clean documents reload automatically; documents with local edits show a persistent conflict banner and pause autosave until you choose how to proceed.
 - Paste or upload images to a configurable relative assets directory. Relative local images and online images can be previewed in all three modes.
 
-External file monitoring currently covers files in the active workspace and Untitled documents whose expected workspace path appears. Files opened outside the workspace, file deletion recovery, directory moves, atomic saves, and conflict recovery across application restarts remain planned reliability work; keep backups of important documents.
+External file monitoring currently covers files in the active workspace and Untitled documents whose expected workspace path appears. Files opened outside the workspace, file deletion recovery, directory moves, and conflict recovery across application restarts remain planned reliability work; keep backups of important documents.
 
 ## Themes and languages
 

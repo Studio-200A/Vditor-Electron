@@ -239,6 +239,7 @@
       lineEnding: 'LF',
       baseDir: '',
       modified: false,
+      expectedSavedContent: '',
       mode: state.settings.editMode,
       vditor: null,
       ready: false,
@@ -1433,6 +1434,7 @@
       lineEnding: detectLineEnding(content),
       baseDir,
       modified: false,
+      expectedSavedContent: content,
       mode: state.settings.editMode,
       vditor: null,
       ready: false,
@@ -1738,13 +1740,25 @@
         tab.lineEnding === 'CRLF'
           ? content.replace(/\r?\n/g, '\r\n')
           : content.replace(/\r\n/g, '\n');
-      state.ignoredChanges.set(destination, Date.now() + 1500);
-      await window.fileAPI.writeFile(destination, diskContent);
+      const result = await window.fileAPI.writeDocument(destination, diskContent);
+      if (result.error) {
+        showMessage(
+          t(
+            result.error === 'permission-denied'
+              ? 'message.savePermissionDenied'
+              : 'message.saveFailedGeneric',
+          ),
+          true,
+        );
+        return false;
+      }
+      if (result.wrote) state.ignoredChanges.set(destination, Date.now() + 1500);
       const previousBaseDir = tab.baseDir;
       tab.filePath = destination;
       tab.title = fileName(destination);
       tab.content = content;
       tab.savedContent = content;
+      tab.expectedSavedContent = result.expectedContent;
       tab.modified = false;
       tab.externalConflict = null;
       tab.externalChangeIgnored = false;
@@ -1875,6 +1889,7 @@
       tab.title = fileName(conflict.path);
       tab.content = result.content;
       tab.savedContent = result.content;
+      tab.expectedSavedContent = result.content;
       tab.modified = false;
       tab.encoding = result.encoding;
       tab.lineEnding = detectLineEnding(result.content);
@@ -2979,12 +2994,12 @@
   }
 
   async function handleExternalChange(change) {
+    if ((state.ignoredChanges.get(change.path) || 0) > Date.now()) return;
+    if (!['add', 'change', 'unlink'].includes(change.event)) return;
     if (state.workspace) {
       clearTimeout(state.treeTimer);
       state.treeTimer = setTimeout(refreshTree, 300);
     }
-    if ((state.ignoredChanges.get(change.path) || 0) > Date.now()) return;
-    if (!['add', 'change', 'unlink'].includes(change.event)) return;
     const normalizedPath = normalizedFilePath(change.path);
     const tabs = state.tabs.filter(
       (tab) => normalizedFilePath(tabTargetPath(tab)) === normalizedPath,
@@ -2998,7 +3013,7 @@
         try {
           const result = await window.fileAPI.readFile(change.path);
           tab.lineEnding = detectLineEnding(result.content);
-          tab.content = tab.savedContent = result.content;
+          tab.content = tab.savedContent = tab.expectedSavedContent = result.content;
           tab.encoding = result.encoding;
           tab.externalConflict = null;
           tab.externalChangeIgnored = false;

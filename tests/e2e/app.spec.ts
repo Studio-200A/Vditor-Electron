@@ -114,6 +114,39 @@ test('opens a Markdown file supplied by the desktop launcher on cold start', asy
   }
 });
 
+test('saves a changed Markdown document from the desktop editor', async () => {
+  const running = await launchApp({ editMode: 'sv' }, { 'save target.md': 'Original content' });
+  try {
+    const { page, testRoot } = running;
+    const filePath = path.join(testRoot, 'save target.md');
+    await page.locator('.editor-host.active .vditor-sv').fill('Saved content');
+    await page.keyboard.press('Control+s');
+
+    await expect(page.locator('#statusMessage')).toContainText('Saved save target.md');
+    await expect(page.locator('.document-tab.active .dirty')).toBeHidden();
+    await expect.poll(() => fs.readFileSync(filePath, 'utf8').trimEnd()).toBe('Saved content');
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('auto-saves a changed Markdown document through the document write path', async () => {
+  const running = await launchApp(
+    { autoSave: true, autoSaveDelay: 50, editMode: 'sv' },
+    { 'auto-save target.md': 'Original content' },
+  );
+  try {
+    const { page, testRoot } = running;
+    const filePath = path.join(testRoot, 'auto-save target.md');
+    await page.locator('.editor-host.active .vditor-sv').fill('Auto-saved content');
+
+    await expect.poll(() => fs.readFileSync(filePath, 'utf8').trimEnd()).toBe('Auto-saved content');
+    await expect(page.locator('.document-tab.active .dirty')).toBeHidden();
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('finds, navigates, and replaces text in the active document', async () => {
   const running = await launchApp({}, { 'find.md': 'alpha beta alpha\nalpha' });
   try {
@@ -2171,6 +2204,38 @@ test('reloads clean workspace files and protects local edits from external chang
     await expect(page.locator('#externalChangeBanner')).toBeHidden();
     await page.keyboard.press('Control+s');
     await expect.poll(() => fs.readFileSync(modifiedPath, 'utf8')).toContain('Local changes');
+  } finally {
+    await closeApp(running);
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('keeps the active workspace file selected after auto-save', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-auto-save-workspace-'));
+  const filePath = path.join(workspace, 'selected.md');
+  fs.writeFileSync(filePath, 'Original content');
+  const running = await launchApp({
+    autoSave: true,
+    autoSaveDelay: 50,
+    editMode: 'sv',
+    restoreTabs: true,
+    restoreWorkspace: true,
+    sidebarVisible: true,
+    session: {
+      workspacePath: workspace,
+      activeFilePath: filePath,
+      openFiles: [filePath],
+    },
+  });
+  try {
+    const { page } = running;
+    const fileRow = page.locator(`#fileTree .tree-file[data-path="${filePath}"]`);
+    await expect(fileRow).toHaveClass(/active/);
+    await page.locator('.editor-host.active .vditor-sv').fill('Auto-saved content');
+
+    await expect.poll(() => fs.readFileSync(filePath, 'utf8').trimEnd()).toBe('Auto-saved content');
+    await page.waitForTimeout(350);
+    await expect(fileRow).toHaveClass(/active/);
   } finally {
     await closeApp(running);
     fs.rmSync(workspace, { recursive: true, force: true });

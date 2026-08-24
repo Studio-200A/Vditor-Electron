@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FileManagerService } from '../../src/main/services/file-manager';
 
 describe('FileManagerService', () => {
@@ -14,6 +14,7 @@ describe('FileManagerService', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     fs.rmSync(root, { recursive: true, force: true });
   });
 
@@ -55,6 +56,71 @@ describe('FileManagerService', () => {
     await service.writeFile(filePath, 'nested');
 
     expect(fs.readFileSync(filePath, 'utf8')).toBe('nested');
+  });
+
+  it('replaces documents through a synced sibling temporary file and preserves mode', async () => {
+    const filePath = path.join(root, 'document.md');
+    fs.writeFileSync(filePath, 'before', 'utf8');
+    fs.chmodSync(filePath, 0o640);
+
+    await expect(service.writeFile(filePath, 'after')).resolves.toEqual({
+      expectedContent: 'after',
+      wrote: true,
+    });
+
+    expect(fs.readFileSync(filePath, 'utf8')).toBe('after');
+    expect(fs.statSync(filePath).mode & 0o777).toBe(0o640);
+    expect(fs.readdirSync(root).filter((name) => name.endsWith('.tmp'))).toEqual([]);
+  });
+
+  it('does not replace an unchanged document', async () => {
+    const filePath = path.join(root, 'unchanged.md');
+    fs.writeFileSync(filePath, 'same', 'utf8');
+    const before = fs.statSync(filePath).mtimeMs;
+
+    await expect(service.writeFile(filePath, 'same')).resolves.toEqual({
+      expectedContent: 'same',
+      wrote: false,
+    });
+
+    expect(fs.statSync(filePath).mtimeMs).toBe(before);
+  });
+
+  it('keeps the original document when temporary creation fails', async () => {
+    const filePath = path.join(root, 'write-failure.md');
+    fs.writeFileSync(filePath, 'original', 'utf8');
+    vi.spyOn(fs.promises, 'open').mockRejectedValueOnce(new Error('temporary write failed'));
+
+    await expect(service.writeFile(filePath, 'replacement')).rejects.toThrow(
+      'temporary write failed',
+    );
+
+    expect(fs.readFileSync(filePath, 'utf8')).toBe('original');
+    expect(fs.readdirSync(root).filter((name) => name.endsWith('.tmp'))).toEqual([]);
+  });
+
+  it('keeps the original document and removes the temporary file when replacement fails', async () => {
+    const filePath = path.join(root, 'replace-failure.md');
+    fs.writeFileSync(filePath, 'original', 'utf8');
+    vi.spyOn(fs.promises, 'rename').mockRejectedValueOnce(new Error('replacement failed'));
+
+    await expect(service.writeFile(filePath, 'replacement')).rejects.toThrow('replacement failed');
+
+    expect(fs.readFileSync(filePath, 'utf8')).toBe('original');
+    expect(fs.readdirSync(root).filter((name) => name.endsWith('.tmp'))).toEqual([]);
+  });
+
+  it('returns a safe user-facing result for permission failures', async () => {
+    const permissionError = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    service = new FileManagerService({
+      write: async () => Promise.reject(permissionError),
+    });
+
+    await expect(
+      service.writeDocument(path.join(root, 'locked.md'), 'replacement'),
+    ).resolves.toEqual({
+      error: 'permission-denied',
+    });
   });
 
   it('creates files and directories inside the selected parent', async () => {

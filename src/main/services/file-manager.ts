@@ -1,5 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { SafeFileWriter, SafeWriteResult } from './safe-file-writer';
+
+export type DocumentWriteResult = SafeWriteResult | { error: 'permission-denied' | 'write-failed' };
+
+interface DocumentFileWriter {
+  write(filePath: string, content: string): Promise<SafeWriteResult>;
+}
 
 export interface DirEntry {
   name: string;
@@ -10,6 +17,8 @@ export interface DirEntry {
 }
 
 export class FileManagerService {
+  constructor(private readonly safeFileWriter: DocumentFileWriter = new SafeFileWriter()) {}
+
   async readFile(filePath: string): Promise<{ content: string; encoding: string }> {
     const resolvedPath = path.resolve(filePath);
     const buffer = fs.readFileSync(resolvedPath);
@@ -26,13 +35,32 @@ export class FileManagerService {
     }
   }
 
-  async writeFile(filePath: string, content: string): Promise<void> {
-    const resolvedPath = path.resolve(filePath);
-    const dir = path.dirname(resolvedPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+  async writeFile(filePath: string, content: string): Promise<SafeWriteResult> {
+    return this.safeFileWriter.write(filePath, content);
+  }
+
+  async writeDocument(filePath: string, content: string): Promise<DocumentWriteResult> {
+    try {
+      return await this.safeFileWriter.write(filePath, content);
+    } catch (error) {
+      if (this.isPermissionError(error)) {
+        console.error(
+          'WARNING: Document write error: the file or its directory may not be writable.',
+        );
+        return { error: 'permission-denied' };
+      }
+      console.error('Document write error: unable to safely replace the file.');
+      return { error: 'write-failed' };
     }
-    fs.writeFileSync(resolvedPath, content, 'utf-8');
+  }
+
+  private isPermissionError(error: unknown): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error.code === 'EACCES' || error.code === 'EPERM')
+    );
   }
 
   async exists(filePath: string): Promise<boolean> {

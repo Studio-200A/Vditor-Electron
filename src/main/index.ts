@@ -32,6 +32,7 @@ let windowMaximizedState = false;
 let windowBoundsSaveTimer: NodeJS.Timeout | null = null;
 let rendererReady = false;
 let pendingOpenFiles: string[] = [];
+const ownDocumentWrites = new Map<string, number>();
 
 const applicationPaths = resolveApplicationPaths();
 fs.mkdirSync(applicationPaths.chromiumDir, { recursive: true });
@@ -40,6 +41,30 @@ app.setPath('sessionData', applicationPaths.chromiumDir);
 
 function isWindowMaximized(): boolean {
   return windowMaximizedState;
+}
+
+function markOwnDocumentWrite(filePath: string): void {
+  ownDocumentWrites.set(path.resolve(filePath), Date.now() + 1500);
+}
+
+function isOwnDocumentWriteEvent(changedPath: string): boolean {
+  const resolvedChange = path.resolve(changedPath);
+  const now = Date.now();
+  for (const [destination, expiresAt] of ownDocumentWrites) {
+    if (expiresAt <= now) {
+      ownDocumentWrites.delete(destination);
+      continue;
+    }
+    if (resolvedChange === destination) return true;
+    const temporaryPrefix = `.${path.basename(destination)}.`;
+    if (
+      path.dirname(resolvedChange) === path.dirname(destination) &&
+      path.basename(resolvedChange).startsWith(temporaryPrefix) &&
+      path.extname(resolvedChange) === '.tmp'
+    )
+      return true;
+  }
+  return false;
 }
 
 function persistWindowMaximized(maximized: boolean): void {
@@ -334,6 +359,10 @@ function registerIpcHandlers(): void {
   ipcMain.handle('file:write', (_event, filePath: string, content: string) =>
     fileManager.writeFile(filePath, content),
   );
+  ipcMain.handle('file:writeDocument', (_event, filePath: string, content: string) => {
+    markOwnDocumentWrite(filePath);
+    return fileManager.writeDocument(filePath, content);
+  });
   ipcMain.handle('file:writeBinary', (_event, filePath: string, bytes: Uint8Array) =>
     fileManager.writeBinaryFile(filePath, bytes),
   );
@@ -363,9 +392,10 @@ function registerIpcHandlers(): void {
     watcher = null;
     if (!rootPath) return true;
     watcher = watch(rootPath, { ignoreInitial: true, depth: 20 });
-    watcher.on('all', (eventName, changedPath) =>
-      send('file:changed', { event: eventName, path: changedPath }),
-    );
+    watcher.on('all', (eventName, changedPath) => {
+      if (isOwnDocumentWriteEvent(changedPath)) return;
+      send('file:changed', { event: eventName, path: changedPath });
+    });
     return true;
   });
 

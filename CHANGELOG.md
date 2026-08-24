@@ -7,6 +7,8 @@
 ### Bug Fixes
 
 - **fix(context menu):** Disabled Paste and Paste as Plain Text when the system clipboard has no content to insert.
+- **fix(save):** Save documents through a synced same-directory temporary file before replacement, preserving existing permissions and keeping the original file intact on write or replacement failure.
+- **fix(autosave):** Prevented an application's own atomic-save events from refreshing the workspace explorer or clearing the active file selection.
 
 ### Project Maintenance
 
