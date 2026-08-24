@@ -1257,6 +1257,20 @@ build:assets:
 
 **（待实现）** 无 husky 或 lint-staged 配置。
 
+### 13.9 代码规范来源
+
+代码格式、静态检查、类型检查和完整验证以仓库根目录的配置文件与 `package.json` 脚本为准：
+
+- 格式：`.prettierrc.json`、`npm run format:check`
+- 静态检查：`eslint.config.mjs`、`npm run lint`
+- TypeScript：当前生效的 `tsconfig*.json`、`npm run typecheck`
+- 完整验证：`package.json` 中的 `check` / `check:all`
+- 跨 coding agent 的稳定实现原则：`AGENTS.md`
+- 当前模块位置和实现导航：本文档；完成定位后以源码为准
+- 版本化迁移期间的专属规则：对应版本的开发计划，例如 `docs/14-0.2.5-RENDERER-REFACTOR-PLAN.md`
+
+本节只记录规范的来源，不复制配置细节。配置、脚本或架构发生变化时，更新对应的唯一来源；本文档仅在模块位置或数据流导航发生变化时同步更新。
+
 ---
 
 ## 14. 模块依赖关系

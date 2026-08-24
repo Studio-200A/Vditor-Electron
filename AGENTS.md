@@ -76,6 +76,14 @@ Only read multiple sections when the task crosses architectural boundaries, such
 - Prefer small, named helpers for a repeated or security-sensitive operation; keep one-off behavior local. Do not introduce an event bus, global utility layer, or framework solely to move code between files.
 - Preserve user-visible behavior during refactors. Keep behavior changes and structural migrations separate when feasible, and do not combine unrelated formatting churn with either.
 
+### Code consistency and agent conventions
+
+- 代码格式以仓库根目录的 `.prettierrc.json` 为准，静态检查以 `eslint.config.mjs` 为准，使用仓库脚本执行验证；不要用个人或 agent 偏好覆盖这些规则。
+- 同一职责域优先沿用现有稳定代码的命名、导入导出、错误处理和生命周期写法；不要在同一职责域并行引入多套等价范式。若迁移计划明确了新范式，以迁移计划为准，并逐步完成旧写法迁移。
+- 不要为了统一风格无关地重写遗留文件或转换文件语言；保持当前语言边界，版本化迁移按照对应开发计划执行。
+- 注释只说明不明显的约束、兼容性假设、安全边界或清理原因，不复述代码本身；新增抽象必须能对应明确的职责、边界或可测试行为。
+- 需要了解模块位置和数据流时，先查看 `docs/01-CODE-STRUCTURE.md` 的相关章节并回到源码核对；需要执行版本迁移时，遵循对应的开发计划。配置细节和检查命令以实际配置文件、`package.json` 脚本为准。
+
 ### Renderer, DOM, and Vditor integration
 
 - Renderer code may query application-owned DOM only. Use `textContent` or explicit DOM construction for untrusted content; do not interpolate file names, Markdown-derived values, paths, or external data into `innerHTML`.
