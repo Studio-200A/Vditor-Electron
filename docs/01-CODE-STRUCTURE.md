@@ -1,8 +1,8 @@
 # Vditor-Electron Code Structure World Map
 
 - **生成时间：** 2026-08-24
-- **基于的工作区：** `dev-0.2.0`，HEAD `0182430824892f3d03b762bf7226372a1c9c0a2d`（包含批次 1、2 的已提交基线及本轮未提交修正；提交状态以 `git status --short` 为准）
-- **文档版本：** v1.4
+- **基于的工作区：** `dev-0.2.0`，当前批次 3 代码状态（提交状态以 `git status --short` 为准）
+- **文档版本：** v1.5
 - **对应 package.json 版本号：** 0.1.5
 
 ---
@@ -80,6 +80,7 @@ Vditor-Electron/
 │   │   ├── ipc/                   # （空目录，预留 IPC handler 分层）
 │   │   └── services/              # 主进程服务层
 │   │       ├── file-manager.ts    # 文件读写、目录操作、编码探测与文档写入错误映射
+│   │       ├── file-watch-service.ts # 工作区结构与打开文档内容 watcher 的所有权、稳定读取和清理
 │   │       ├── safe-file-writer.ts # 同目录临时文件、同步、替换与失败清理
 │   │       ├── recovery-store.ts  # 私有恢复快照的校验、原子写入、读取与清理
 │   │       ├── settings-store.ts  # TOML 配置读写、深合并、原子保存
@@ -135,6 +136,7 @@ Vditor-Electron/
    ├── new SettingsStore(configDir)       // 加载 TOML 配置
    ├── new RecoveryStore(recoveryDir)      // 初始化私有恢复快照存储
    ├── new FileManagerService()           // 初始化文件服务
+   ├── new FileWatchService(...)          // 初始化工作区和打开文档的文件监听服务
    ├── registerIpcHandlers()              // 注册所有 IPC 通道
    ├── Menu.setApplicationMenu(...)       // macOS 设置原生菜单，其他平台置 null
    ├── nativeTheme.on('updated', ...)      // 监听系统主题变更
@@ -143,7 +145,7 @@ Vditor-Electron/
 4. app.on('open-file', ...)               // macOS 文件关联打开事件
 5. app.on('second-instance', ...)         // 单实例模式下第二个实例传来的文件
 6. app.on('window-all-closed', ...)       // 非 macOS 平台退出应用
-7. app.on('before-quit', ...)             // 关闭 chokidar watcher
+7. app.on('before-quit', ...)             // 释放工作区和打开文档 watcher
 ```
 
 ### 4.2 窗口创建逻辑
@@ -276,8 +278,10 @@ webPreferences: {
 | `dirname(filePath)`                               | `file:dirname`          | invoke     | `string`                              | `string`                                |
 | `relative(from, to)`                              | `file:relative`         | invoke     | `string, string`                      | `string`                                |
 | `resolveMarkdownLink(sourceFile, href)`           | `file:resolveMarkdownLink` | invoke  | `string, string`                      | `MarkdownLinkResolution`                |
-| `watch(rootPath?)`                                | `file:watch`            | invoke     | `string?`                             | `boolean`                               |
-| `onChanged(callback)`                             | `file:changed`          | on（订阅） | `{ event: string, path: string }`     | 取消订阅函数                            |
+| `setWorkspaceWatch(rootPath?)`                    | `file:setWorkspaceWatch` | invoke    | `string?`                             | `void`                                  |
+| `watchDocument(filePath)`                          | `file:watchDocument`    | invoke     | `string`                              | `void`                                  |
+| `unwatchDocument(filePath)`                        | `file:unwatchDocument`  | invoke     | `string`                              | `void`                                  |
+| `onChanged(callback)`                             | `file:changed`          | on（订阅） | `{ event, path, scope, content?, encoding? }` | 取消订阅函数                    |
 | `getDroppedPath(file)`                            | _(webUtils)_            | 直接调用   | `File`                                | `string`                                |
 
 #### `window.appAPI`
@@ -375,13 +379,12 @@ const state = {
   locale: 'en_US',       // string 当前语言代码
   untitledCounter: 0,    // number 新文件序号
   treeTimer: null,       // Timer 工作区树刷新防抖计时器
-  ignoredChanges: new Map(), // Map<string,number> 自身触发的文件变更忽略窗口
 };
 ```
 
 持久化策略：每次标签/工作区状态变更调用 `persistSession()`，通过 `saveSettings({ session })` 写入 TOML。
 
-恢复运行时状态属于各 `tab`：`recoverySnapshotId`、防抖 timer、串行操作 Promise、revision 与 `recoveryState`。它们不进入 session；脏标签只将经过白名单投影的恢复快照经 `app:saveRecovery` 写入私有目录。
+恢复运行时状态属于各 `tab`：`recoverySnapshotId`、防抖 timer、串行操作 Promise、revision 与 `recoveryState`。外部变更状态包含 `expectedSavedContent`、`externalConflict` 与 `externalChangeIgnored`；文档 watcher 的实际句柄、timer 和 binding generation 仅由主进程 `FileWatchService` 持有。它们都不进入 session；脏标签只将经过白名单投影的恢复快照经 `app:saveRecovery` 写入私有目录。
 
 ---
 
@@ -644,7 +647,9 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `file:dirname`               | `filePath`                        | `string`                                    | `path.dirname`                               |
 | `file:relative`              | `from, to`                        | `string`                                    | 斜杠归一化的相对路径                         |
 | `file:resolveMarkdownLink`   | `sourceFile, href`                | `MarkdownLinkResolution`                    | 仅解析已保存文件的相对 Markdown 链接，验证普通文件并返回规范目标路径与片段 |
-| `file:watch`                 | `rootPath?`                       | `boolean`                                   | 替换单例 chokidar watcher                    |
+| `file:setWorkspaceWatch`     | `rootPath?`                       | `void`                                      | 设置只报告目录结构变化的工作区 watcher       |
+| `file:watchDocument`         | `filePath`                        | `void`                                      | 为每个打开文档建立去重的稳定内容 watcher     |
+| `file:unwatchDocument`       | `filePath`                        | `void`                                      | 关闭对应文档 watcher 并取消迟到读取          |
 | `app:getSettings`            | 无                                | `AppSettings`                               | 返回完整配置副本（structuredClone）          |
 | `app:getDefaultSettings`     | 无                                | `AppSettings`                               | 返回默认配置副本                             |
 | `app:saveSettings`           | `Partial<AppSettings>`            | `AppSettings`                               | 深合并并持久化；相关设置变化时更新 macOS 菜单 |
@@ -685,7 +690,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | -------------------------- | -------------------------------- | -------------------------------------------------------- |
 | `menu:action`              | `action: string, value?: string` | macOS 原生菜单项点击                                     |
 | `app:openFiles`            | `string[]`                       | 启动/second-instance/open-file 事件，渲染 ready 后推送   |
-| `file:changed`             | `{ event, path }`                | chokidar watcher 所有 add/change/unlink 事件             |
+| `file:changed`             | `{ event, path, scope, content?, encoding? }` | 工作区结构或稳定文档正文变化                         |
 | `app:systemThemeChanged`   | `'dark'\|'classic'`              | `nativeTheme.on('updated')`                              |
 | `app:requestClose`         | 无                               | `mainWindow.on('close')` 拦截，交给渲染器确认未保存标签  |
 | `window:fullscreenChanged` | `boolean`                        | `mainWindow.on('enter-full-screen'/'leave-full-screen')` |
@@ -696,7 +701,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 以下通道同时存在两个方向的数据流：
 
 - `app:closeConfirmed`（渲染器 send）与 `app:requestClose`（main send）构成完整的双向关闭确认协议
-- `file:watch`（渲染器 invoke 替换 watcher）与 `file:changed`（main send 通知变更）配合使用
+- `file:setWorkspaceWatch` / `file:watchDocument` / `file:unwatchDocument`（渲染器 invoke）与 `file:changed`（main send 通知变更）配合使用
 
 ### 8.3 错误处理机制
 
@@ -771,37 +776,19 @@ onEditorInput(tab, value)
 
 ### 9.4 文件变更监听
 
-```typescript
-// src/main/index.ts:351
-ipcMain.handle('file:watch', async (_event, rootPath?: string) => {
-  if (watcher) await watcher.close();
-  watcher = null;
-  if (!rootPath) return true;
-  watcher = watch(rootPath, { ignoreInitial: true, depth: 20 });
-  watcher.on('all', (eventName, changedPath) => {
-    if (isOwnDocumentWriteEvent(changedPath)) return;
-    send('file:changed', { event: eventName, path: changedPath });
-  });
-  return true;
-});
-```
+`FileWatchService`（`src/main/services/file-watch-service.ts`）将文件树和打开文档的监听分离：
 
-- 单例模式：每次 `file:watch` 调用先关闭旧 watcher
-- `depth: 20`：覆盖深层目录结构
-- `before-quit` 时关闭 watcher
+- 一个工作区 watcher（`file:setWorkspaceWatch`）仅报告新增、删除等目录结构事件；已打开文档的内容事件不会触发文件树重建。
+- 每个打开文档经 `file:watchDocument` 拥有一个按规范路径去重的独立 watcher，因而工作区外文件和工作区切换后的既有标签仍被监听；关闭标签、另存、重绑和应用退出经 `file:unwatchDocument` / `dispose()` 清理。
+- 文档 watcher 启用 `awaitWriteFinish`（1000 ms / 150 ms poll），读取稳定正文后以 `scope: 'document'` 发送 `{ content, encoding }`；事件以 binding generation 防止 cleanup 后的迟到读取污染新状态。
+- Linux 收到 raw `rename` 时延迟 `unwatch/add` 重绑目标路径，覆盖原子替换后的 inode 变化；规范路径会在可用时使用 `realpath`，Windows 键不区分大小写。
+- 自身保存的短时标记只抑制文件树临时替换事件；渲染器以稳定正文与标签 `expectedSavedContent` 比较，决定是否忽略自身写入或进入外部冲突。
 
 **外部变更响应：**
 
-- 标签未修改：自动重载磁盘内容，静默更新（`app.js:1689-1714`）
-- 标签已修改：设置 `externalConflict`，显示"重载/忽略"横幅（`app.js:1719-1726`）
+- 标签未修改：收到稳定正文后自动重载，静默更新。
+- 标签已修改：设置 `externalConflict`，显示“重载/忽略”横幅。
 - 文件删除：在状态栏显示删除通知（不自动关闭已打开标签）
-
-**自身保存抑制：** `file:writeDocument` 开始时主进程登记目标路径 1500ms；watcher 会忽略该目标以及同目录、同文件名前缀的 `.tmp` 临时文件事件，避免原子替换刷新文件树或制造伪外部变更。renderer 保留同样的短时目标路径抑制作为兼容层；批次 3 将以稳定读取和正文比较取代时间窗口作为最终判断。
-
-```javascript
-// app.js:2691
-if ((state.ignoredChanges.get(change.path) || 0) > Date.now()) return;
-```
 
 ### 9.5 多标签页文件状态
 
@@ -1387,10 +1374,10 @@ flowchart TB
         Protocol[protocol.ts\nregisterAppProtocol]
         SettingsStore[services/settings-store.ts\nSettingsStore]
         FileManager[services/file-manager.ts\nFileManagerService]
+        FileWatch[services/file-watch-service.ts\nFileWatchService]
         AppState[services/app-state.ts\nAppSettings + DEFAULT_SETTINGS]
         Menu[menu.ts\ncreateAppMenu]
         IPC[index.ts\nregisterIpcHandlers]
-        Watcher[chokidar watcher\nfile:watch / file:changed]
     end
 
     subgraph preload[BrowserWindow / preload.ts]
@@ -1424,9 +1411,10 @@ flowchart TB
     Controller --> AppAPI
 
     IPC --> FileManager
+    IPC --> FileWatch
     IPC --> SettingsStore
     IPC --> Menu
-    Watcher -->|"file:changed"| FileAPI
+    FileWatch -->|"file:changed"| FileAPI
 
     class main fill:#fff6,stroke:#888,color:#222
     class preload fill:#e8f1ff,stroke:#4b7bec,color:#222
@@ -1438,7 +1426,7 @@ flowchart TB
 - 主进程模块（`app-paths.ts` / `protocol.ts` / `services/*` / `menu.ts`）只在 `index.ts` 启动和注册阶段引用，运行时由 `ipcMain.handle` 回调驱动，不直接调用渲染器。
 - `preload.ts` 是唯一被 `contextBridge` 允许的通道，渲染器通过 `window.fileAPI` / `window.appAPI` 访问所有主进程能力。
 - 渲染器内部的 `app.js` 同时依赖 `VditorDesktopAdapter`（Vditor 私有 DOM 隔离）和 `VditorDesktopLocales`（国际化字典）两个全局脚本挂载点。
-- `chokidar` Watcher 是单例，由 `file:watch` handler 替换，事件通过 `mainWindow.webContents.send('file:changed')` 推送渲染器。
+- `FileWatchService` 持有一个工作区结构 watcher 和每个打开文档的内容 watcher；事件通过 `mainWindow.webContents.send('file:changed')` 推送渲染器，并以 `scope` 区分树刷新和正文比较。
 
 ---
 
@@ -1455,6 +1443,7 @@ flowchart TB
 | `tests/unit/external-url.test.ts`   | `src/main/external-url.ts`              | 仅允许 `http:` / `https:` / `mailto:`；拒绝非字符串、相对路径、应用/文件/脚本/data 协议 |
 | `tests/unit/resolve-markdown-link.test.ts` | `src/main/resolve-markdown-link.ts` | 相对 Markdown 路径、`../`、百分号编码、片段、Windows 路径、缺失/绝对/协议/非 Markdown/非法编码目标拒绝 |
 | `tests/unit/file-manager.test.ts`   | `src/main/services/file-manager.ts` 与 `safe-file-writer.ts` | UTF-8 读取、UTF-8 BOM 检测与剥离、GB18030 回退、同目录安全替换、权限保持、无变化跳过、临时创建/替换失败保留原文件及清理、权限错误映射、文件/目录创建、路径逃逸拒绝（`../`）、目录优先自然排序、重命名、二进制图片写入 |
+| `tests/unit/file-watch-service.test.ts` | `src/main/services/file-watch-service.ts` | 工作区结构与文档内容 watcher 分工、同路径去重、稳定等待、瞬态 `unlink` 重核、符号链接规范路径、释放后的迟到读取，以及 Linux raw rename 重绑 |
 | `tests/unit/settings-store.test.ts` | `src/main/services/settings-store.ts`   | 首次加载返回默认值、TOML 部分深合并与默认值、未知字段丢弃、`set` 持久化（含 TOML 段结构验证）、`update` 多字段快照（含 `workspaceTreeStates` 数组）、设置对话框尺寸持久化（`window.settingsDialog`）、`getAll` 返回克隆副本、`reset` 重置内存和磁盘                                                                                                                                                                                                                                                               |
 | `tests/unit/recovery-store.test.ts` | `src/main/services/recovery-store.ts` | 私有目录/文件权限、候选元数据不含正文、原子写入与显式清理、损坏/未知 schema/超限快照移除，以及 `unchanged` / `changed` / `unavailable` 三种磁盘状态 |
 | `tests/unit/vditor-adapter.test.ts` | `src/renderer/vditor-adapter.js`        | 冻结的 selectors 对象、`validateHost` 成功（toolbar 通过 `mountedToolbar` 参数提供）、代码主题亮/暗分界点（`ant-design` 前为 dark 组）、DOM 漂移检测（缺少 source 节点时 `valid: false`）、列表 `marker`/`padding` 解析、动态尾部留白写入全部 Vditor 表面、hash anchor 到标题索引（IR 内部链接 + 元素 id + slug）、原生大纲 snapshot、标题间普通块时的准确目标节点及 SV preview 外层滚动容器、跨多 span 文本节点的匹配与选区                                                                                                                                                                                                   |
@@ -1521,8 +1510,8 @@ flowchart TB
 - 首次保存或另存为后立即刷新工作区文件树
 - 安全写入成功、无变化跳过、临时写入失败、替换失败与权限错误映射
 - 预置恢复快照启动后直接显示正文和警示横幅；正常状态保存后清理，磁盘冲突状态不会提供直接覆盖操作
-- 干净工作区文件外部修改时自动重载（无冲突横幅）
-- 本地有未保存修改的文件受外部修改时显示冲突横幅（`!` 冲突标记 + `#externalChangeBanner`）
+- 干净的工作区内外打开文件外部修改时自动重载（无冲突横幅）；原子替换、切换工作区和关闭后从文件树重开仍继续监听
+- 本地有未保存修改的文件受外部修改时显示冲突横幅（`!` 冲突标记 + `#externalChangeBanner`），自身自动保存不误报冲突
 - "忽略外部变更"后保存覆盖本地内容
 - CRLF 保留（写入磁盘后 `#statusLineEnding` = CRLF）
 

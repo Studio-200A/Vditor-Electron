@@ -72,10 +72,10 @@ Switch modes from the unified toolbar or **View → Editing Mode**. Split Previe
 - Save documents safely through a same-directory temporary file; unchanged files are not rewritten, and a failed save keeps the original file and your unsaved editor content intact.
 - Recover unsaved work after an unexpected exit. Recovered documents open directly with a warning banner: save the recovered version when its original file is unchanged, or save elsewhere when the disk version changed or the original file is unavailable.
 - Find and replace text in the active document with a compact `Ctrl/Cmd + F` panel.
-- Detect changes to files in the active workspace. Clean documents reload automatically; documents with local edits show a persistent conflict banner and pause autosave until you choose how to proceed.
+- Detect changes to open files, whether they are in the active workspace or opened independently. Clean documents reload automatically; documents with local edits show a persistent conflict banner and pause autosave until you choose how to proceed.
 - Paste or upload images to a configurable relative assets directory. Relative local images and online images can be previewed in all three modes.
 
-External file monitoring currently covers files in the active workspace and Untitled documents whose expected workspace path appears. Files opened outside the workspace, file deletion recovery, directory moves, and conflict recovery across application restarts remain planned reliability work; keep backups of important documents.
+External file monitoring covers every open file, including files opened outside the active workspace. File deletion recovery, directory moves, and conflict recovery across application restarts remain planned reliability work; keep backups of important documents.
 
 ## Themes and languages
 

@@ -83,6 +83,15 @@ async function createNewTab(page: Page): Promise<void> {
   await page.waitForSelector('.editor-host.active .vditor-content');
 }
 
+function replaceFileAtomically(filePath: string, content: string): void {
+  const temporaryPath = path.join(
+    path.dirname(filePath),
+    `.${path.basename(filePath)}.${process.pid}-${Date.now()}.tmp`,
+  );
+  fs.writeFileSync(temporaryPath, content);
+  fs.renameSync(temporaryPath, filePath);
+}
+
 test('isolates TOML configuration and Chromium data in the configured directories', async () => {
   const running = await launchApp();
   try {
@@ -2313,6 +2322,7 @@ test('reloads clean workspace files and protects local edits from external chang
     editMode: 'sv',
     restoreTabs: true,
     restoreWorkspace: true,
+    sidebarVisible: true,
     session: {
       workspacePath: workspace,
       activeFilePath: cleanPath,
@@ -2322,11 +2332,18 @@ test('reloads clean workspace files and protects local edits from external chang
   try {
     const { page } = running;
     const editor = page.locator('.editor-host.active .vditor-sv');
+    const cleanFileRow = page.locator(`#fileTree .tree-file[data-path="${cleanPath}"]`);
     await expect(editor).toContainText('Initial content');
+    await expect(cleanFileRow).toHaveClass(/active/);
+    await cleanFileRow.evaluate((node) => {
+      node.dataset.watcherRegressionMarker = 'preserved';
+    });
 
-    fs.writeFileSync(cleanPath, 'Reloaded from disk');
+    replaceFileAtomically(cleanPath, 'Reloaded from disk');
     await expect(editor).toContainText('Reloaded from disk');
     await expect(page.locator('#externalChangeBanner')).toBeHidden();
+    await expect(cleanFileRow).toHaveAttribute('data-watcher-regression-marker', 'preserved');
+    await expect(cleanFileRow).toHaveClass(/active/);
 
     await page.locator('.document-tab').filter({ hasText: 'modified.md' }).click();
     await editor.fill('Local changes');
@@ -2343,6 +2360,63 @@ test('reloads clean workspace files and protects local edits from external chang
   } finally {
     await closeApp(running);
     fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('monitors open files outside the workspace', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-workspace-watch-'));
+  const outsideRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-external-watch-'));
+  const outsidePath = path.join(outsideRoot, 'outside.md');
+  fs.writeFileSync(outsidePath, 'Initial outside content');
+  const running = await launchApp({
+    autoSave: true,
+    autoSaveDelay: 5_000,
+    editMode: 'sv',
+    restoreTabs: true,
+    restoreWorkspace: true,
+    session: {
+      workspacePath: workspace,
+      activeFilePath: outsidePath,
+      openFiles: [outsidePath],
+    },
+  });
+  try {
+    const { app, page } = running;
+    const editor = page.locator('.editor-host.active .vditor-sv');
+    await expect(editor).toContainText('Initial outside content');
+
+    replaceFileAtomically(outsidePath, 'Outside replacement');
+    await expect(editor).toContainText('Outside replacement');
+    await expect(page.locator('#externalChangeBanner')).toBeHidden();
+
+    await app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+    }, outsideRoot);
+    await page.locator('#appMenuBar [data-menu="main"]').click();
+    await page
+      .locator('.app-menu-popup button')
+      .filter({ hasText: /^Open Folder/ })
+      .click();
+    await expect(page.locator('#workspaceName')).toHaveText(path.basename(outsideRoot));
+
+    replaceFileAtomically(outsidePath, 'Replacement after workspace switch');
+    await expect(editor).toContainText('Replacement after workspace switch');
+
+    await page.locator('.document-tab.active b').click();
+    await expect(page.locator('.document-tab')).toHaveCount(0);
+    await page.locator(`#fileTree .tree-file[data-path="${outsidePath}"]`).click();
+    await expect(editor).toContainText('Replacement after workspace switch');
+    replaceFileAtomically(outsidePath, 'Replacement after reopening');
+    await expect(editor).toContainText('Replacement after reopening');
+
+    await editor.fill('Local outside changes');
+    replaceFileAtomically(outsidePath, 'Conflicting outside replacement');
+    await expect(page.locator('#externalChangeBanner')).toBeVisible();
+    await expect(page.locator('.document-tab.active .conflict')).toHaveText('!');
+  } finally {
+    await closeApp(running);
+    fs.rmSync(workspace, { recursive: true, force: true });
+    fs.rmSync(outsideRoot, { recursive: true, force: true });
   }
 });
 
@@ -2372,6 +2446,7 @@ test('keeps the active workspace file selected after auto-save', async () => {
     await expect.poll(() => fs.readFileSync(filePath, 'utf8').trimEnd()).toBe('Auto-saved content');
     await page.waitForTimeout(350);
     await expect(fileRow).toHaveClass(/active/);
+    await expect(page.locator('#externalChangeBanner')).toBeHidden();
   } finally {
     await closeApp(running);
     fs.rmSync(workspace, { recursive: true, force: true });

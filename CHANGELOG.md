@@ -99,7 +99,10 @@
 ### Bug Fixes
 
 - **fix(dark content themes):** Corrected Ant Design and WeChat rendering colors in Dark and Monokai Pro Dark themes, including inline code, tables, links, blockquotes, and heading text across all three editing modes.
-- **fix(external changes):** Added workspace file-change handling that reloads clean open documents, marks locally modified documents with a persistent conflict indicator and banner, and pauses autosave until the conflict is addressed.
+- **fix(external changes):** Added independent document monitoring for every open file, including files outside the active workspace. Clean documents reload automatically; locally modified documents retain a persistent conflict indicator and banner, and autosave pauses until the conflict is addressed.
+   - Separated workspace structural events from per-document content watchers, so external content updates no longer rebuild the sidebar or lose its active selection.
+   - Wait for stable document content, compare it with the expected saved content, and rebind Linux document watches after atomic replacement writes.
+   - Keep monitoring an open external file after switching workspaces or closing and reopening it from the file explorer.
    - “Reload” discards the local tab content and reads the current disk version.
    - “Ignore” keeps the tab content and requires an explicit manual save to overwrite the file; autosave remains paused.
    - Untitled tabs whose expected workspace path is created now enter the same conflict flow instead of being blocked by explorer naming rules.
@@ -107,8 +110,8 @@
 
 ### Known Limitations
 
-- External monitoring currently follows the active workspace; files opened outside it are not yet watched.
-- Deletion, directory moves, atomic replacement writes, and conflict state recovery across application restarts remain planned work.
+- Deletion, directory moves, and conflict state recovery across application restarts remain planned work.
+- Windows and macOS watcher behavior, path-case semantics, and atomic replacement events still require physical-device verification.
 
 ## 0.1.2
 

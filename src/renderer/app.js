@@ -14,7 +14,6 @@
     locale: 'en_US',
     untitledCounter: 0,
     treeTimer: null,
-    ignoredChanges: new Map(),
   };
   const LOCALES = window.VditorDesktopLocales || {};
   const DEFAULT_TOOLBAR = [
@@ -337,6 +336,16 @@
   function tabTargetPath(tab) {
     if (tab.filePath) return tab.filePath;
     return state.workspace ? `${state.workspace.replace(/[\\/]$/, '')}/${tab.title}.md` : '';
+  }
+  async function watchTabDocument(tab) {
+    if (tab?.filePath) await window.fileAPI.watchDocument(tab.filePath);
+  }
+  async function releaseDocumentWatch(filePath) {
+    if (!filePath) return;
+    const stillOpen = state.tabs.some(
+      (tab) => normalizedFilePath(tab.filePath) === normalizedFilePath(filePath),
+    );
+    if (!stillOpen) await window.fileAPI.unwatchDocument(filePath);
   }
   function stripExtension(name) {
     return name.replace(/\.(md|markdown)$/i, '');
@@ -1539,6 +1548,7 @@
         activate,
         pendingAnchor,
       });
+      await watchTabDocument(tab);
       rememberRecent(filePath);
       return tab;
     } catch (error) {
@@ -1614,6 +1624,7 @@
     tab.host.remove();
     const index = state.tabs.indexOf(tab);
     state.tabs.splice(index, 1);
+    await releaseDocumentWatch(tab.filePath);
     if (!state.tabs.length) {
       state.activeId = null;
       $('#vditorToolbarMount').innerHTML = '';
@@ -1770,7 +1781,6 @@
         );
         return false;
       }
-      if (result.wrote) state.ignoredChanges.set(destination, Date.now() + 1500);
       const previousBaseDir = tab.baseDir;
       tab.filePath = destination;
       tab.title = fileName(destination);
@@ -1782,6 +1792,8 @@
       tab.externalChangeIgnored = false;
       tab.encoding = 'utf-8';
       tab.baseDir = await window.fileAPI.dirname(destination);
+      await releaseDocumentWatch(previousPath);
+      await watchTabDocument(tab);
       await discardRecoverySnapshot(tab);
       tab.recoveryState = null;
       if (previousBaseDir !== tab.baseDir) rebuildEditor(tab);
@@ -1871,7 +1883,7 @@
       const snapshot = await window.appAPI.restoreRecovery(candidate.id);
       if (!snapshot) continue;
       if (snapshot.diskState !== 'unchanged') {
-        createTab({
+        const tab = createTab({
           title: t('recovery.conflictTitle', { title: snapshot.title }),
           content: snapshot.content,
           savedContent: '',
@@ -1881,8 +1893,9 @@
           recoverySnapshotId: snapshot.id,
           recoveryState: snapshot.diskState,
         });
+        await watchTabDocument(tab);
       } else {
-        createTab({
+        const tab = createTab({
           filePath: snapshot.filePath,
           content: snapshot.content,
           savedContent: snapshot.savedContent,
@@ -1892,6 +1905,7 @@
           recoverySnapshotId: snapshot.id,
           recoveryState: 'unchanged',
         });
+        await watchTabDocument(tab);
       }
     }
   }
@@ -1941,8 +1955,12 @@
     $('#statusLines').textContent = t('status.lines', { count: content.split(/\r?\n/).length });
     $('#statusEncoding').textContent = tab.encoding.toUpperCase();
     $('#statusLineEnding').textContent = tab.lineEnding;
+    updateActiveTreeSelection(tab);
+  }
+
+  function updateActiveTreeSelection(tab = activeTab()) {
     $$('.tree-file.active').forEach((node) => node.classList.remove('active'));
-    if (tab.filePath) {
+    if (tab?.filePath) {
       const node = $(`.tree-file[data-path="${CSS.escape(tab.filePath)}"]`);
       if (node) node.classList.add('active');
     }
@@ -2094,7 +2112,7 @@
     state.workspace = folder || '';
     $('#workspaceName').textContent = folder ? fileName(folder) : t('sidebar.noWorkspace');
     $('#workspaceHeading').title = folder || t('sidebar.openFolder');
-    await window.fileAPI.watch(folder || undefined);
+    await window.fileAPI.setWorkspaceWatch(folder || undefined);
     await refreshTree();
     if (folder) {
       const recent = [
@@ -2110,13 +2128,22 @@
 
   async function refreshTree() {
     const root = $('#fileTree');
-    root.innerHTML = '';
-    if (!state.workspace) {
-      root.innerHTML = `<button id="openFolderEmpty" class="empty-action">${escapeHTML(t('sidebar.openFolder'))}</button>`;
-      $('#openFolderEmpty').onclick = chooseFolder;
+    const workspace = state.workspace;
+    if (!workspace) {
+      const button = document.createElement('button');
+      button.id = 'openFolderEmpty';
+      button.className = 'empty-action';
+      button.textContent = t('sidebar.openFolder');
+      button.onclick = chooseFolder;
+      root.replaceChildren(button);
       return;
     }
-    await appendDirectory(root, state.workspace);
+    const content = document.createDocumentFragment();
+    await appendDirectory(content, workspace);
+    if (state.workspace !== workspace) return;
+    root.replaceChildren(content);
+    updateActiveTreeSelection();
+    scheduleTreeNameEllipses();
   }
 
   function expandedWorkspacePaths() {
@@ -3151,11 +3178,11 @@
   }
 
   async function handleExternalChange(change) {
-    if ((state.ignoredChanges.get(change.path) || 0) > Date.now()) return;
     if (!['add', 'change', 'unlink'].includes(change.event)) return;
-    if (state.workspace) {
+    if (change.scope === 'workspace') {
       clearTimeout(state.treeTimer);
       state.treeTimer = setTimeout(refreshTree, 300);
+      return;
     }
     const normalizedPath = normalizedFilePath(change.path);
     const tabs = state.tabs.filter(
@@ -3166,18 +3193,17 @@
         if (tab.filePath) showMessage(t('external.deleted', { name: tab.title }), true);
         continue;
       }
+      if (change.content === tab.expectedSavedContent) continue;
       if (tab.filePath && !tab.modified && !tab.externalChangeIgnored) {
-        try {
-          const result = await window.fileAPI.readFile(change.path);
-          tab.lineEnding = detectLineEnding(result.content);
-          tab.content = tab.savedContent = tab.expectedSavedContent = result.content;
-          tab.encoding = result.encoding;
-          tab.externalConflict = null;
-          tab.externalChangeIgnored = false;
-          if (tab.vditor) tab.vditor.setValue(result.content, true);
-          if (tab.id === state.activeId) updateActiveUI();
-          showMessage(t('external.reloaded', { name: tab.title }));
-        } catch (_) {}
+        if (typeof change.content !== 'string') continue;
+        tab.lineEnding = detectLineEnding(change.content);
+        tab.content = tab.savedContent = tab.expectedSavedContent = change.content;
+        tab.encoding = change.encoding || tab.encoding;
+        tab.externalConflict = null;
+        tab.externalChangeIgnored = false;
+        if (tab.vditor) tab.vditor.setValue(change.content, true);
+        if (tab.id === state.activeId) updateActiveUI();
+        showMessage(t('external.reloaded', { name: tab.title }));
         continue;
       }
       clearTimeout(tab.saveTimer);

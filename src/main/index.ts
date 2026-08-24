@@ -11,7 +11,6 @@ import {
 } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'path';
-import { watch, FSWatcher } from 'chokidar';
 import { resolveApplicationPaths } from './app-paths';
 import { registerAppProtocol } from './protocol';
 import { createAppMenu } from './menu';
@@ -19,6 +18,7 @@ import { extractOpenFilePaths } from './open-files';
 import { allowedExternalUrl } from './external-url';
 import { resolveRelativeMarkdownLink } from './resolve-markdown-link';
 import { FileManagerService } from './services/file-manager';
+import { FileWatchService } from './services/file-watch-service';
 import { RecoveryStore } from './services/recovery-store';
 import { SettingsStore } from './services/settings-store';
 import { AppSettings, DEFAULT_SETTINGS } from './services/app-state';
@@ -27,14 +27,13 @@ let mainWindow: BrowserWindow | null = null;
 let fileManager: FileManagerService;
 let settingsStore: SettingsStore;
 let recoveryStore: RecoveryStore;
-let watcher: FSWatcher | null = null;
+let fileWatchService: FileWatchService;
 let closeConfirmed = false;
 let boundsBeforeMaximize: Electron.Rectangle | null = null;
 let windowMaximizedState = false;
 let windowBoundsSaveTimer: NodeJS.Timeout | null = null;
 let rendererReady = false;
 let pendingOpenFiles: string[] = [];
-const ownDocumentWrites = new Map<string, number>();
 
 const applicationPaths = resolveApplicationPaths();
 fs.mkdirSync(applicationPaths.chromiumDir, { recursive: true });
@@ -43,30 +42,6 @@ app.setPath('sessionData', applicationPaths.chromiumDir);
 
 function isWindowMaximized(): boolean {
   return windowMaximizedState;
-}
-
-function markOwnDocumentWrite(filePath: string): void {
-  ownDocumentWrites.set(path.resolve(filePath), Date.now() + 1500);
-}
-
-function isOwnDocumentWriteEvent(changedPath: string): boolean {
-  const resolvedChange = path.resolve(changedPath);
-  const now = Date.now();
-  for (const [destination, expiresAt] of ownDocumentWrites) {
-    if (expiresAt <= now) {
-      ownDocumentWrites.delete(destination);
-      continue;
-    }
-    if (resolvedChange === destination) return true;
-    const temporaryPrefix = `.${path.basename(destination)}.`;
-    if (
-      path.dirname(resolvedChange) === path.dirname(destination) &&
-      path.basename(resolvedChange).startsWith(temporaryPrefix) &&
-      path.extname(resolvedChange) === '.tmp'
-    )
-      return true;
-  }
-  return false;
 }
 
 function persistWindowMaximized(maximized: boolean): void {
@@ -362,7 +337,7 @@ function registerIpcHandlers(): void {
     fileManager.writeFile(filePath, content),
   );
   ipcMain.handle('file:writeDocument', (_event, filePath: string, content: string) => {
-    markOwnDocumentWrite(filePath);
+    fileWatchService.markOwnDocumentWrite(filePath);
     return fileManager.writeDocument(filePath, content);
   });
   ipcMain.handle('file:writeBinary', (_event, filePath: string, bytes: Uint8Array) =>
@@ -389,17 +364,15 @@ function registerIpcHandlers(): void {
   ipcMain.handle('file:resolveMarkdownLink', (_event, sourceFile: unknown, href: unknown) =>
     resolveRelativeMarkdownLink(sourceFile, href),
   );
-  ipcMain.handle('file:watch', async (_event, rootPath?: string) => {
-    if (watcher) await watcher.close();
-    watcher = null;
-    if (!rootPath) return true;
-    watcher = watch(rootPath, { ignoreInitial: true, depth: 20 });
-    watcher.on('all', (eventName, changedPath) => {
-      if (isOwnDocumentWriteEvent(changedPath)) return;
-      send('file:changed', { event: eventName, path: changedPath });
-    });
-    return true;
-  });
+  ipcMain.handle('file:setWorkspaceWatch', (_event, rootPath?: string) =>
+    fileWatchService.setWorkspace(rootPath),
+  );
+  ipcMain.handle('file:watchDocument', (_event, filePath: string) =>
+    fileWatchService.watchDocument(filePath),
+  );
+  ipcMain.handle('file:unwatchDocument', (_event, filePath: string) =>
+    fileWatchService.unwatchDocument(filePath),
+  );
 
   ipcMain.handle('app:getSettings', () => settingsStore.getAll());
   ipcMain.handle('app:getRecoveryCandidates', () => recoveryStore.listCandidates());
@@ -529,6 +502,10 @@ if (!ownsSingleInstanceLock) {
     settingsStore = new SettingsStore(applicationPaths.configDir);
     recoveryStore = new RecoveryStore(applicationPaths.recoveryDir);
     fileManager = new FileManagerService();
+    fileWatchService = new FileWatchService(
+      (filePath) => fileManager.readFile(filePath),
+      (event) => send('file:changed', event),
+    );
     registerIpcHandlers();
     updateApplicationMenu();
     nativeTheme.on('updated', () =>
@@ -545,7 +522,7 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 app.on('before-quit', () => {
-  void watcher?.close();
+  void fileWatchService?.dispose();
 });
 app.on('web-contents-created', (_event, contents) => {
   contents.on('will-navigate', (event, navigationUrl) => {
