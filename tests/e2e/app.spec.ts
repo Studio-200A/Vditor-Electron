@@ -916,6 +916,32 @@ test('shows the editor context menu only on editable surfaces and restores its R
   }
 });
 
+test('disables context-menu paste actions when the clipboard is empty', async () => {
+  const running = await launchApp({}, { 'context-paste.md': 'editable content' });
+  try {
+    const { app, page } = running;
+    const setClipboardText = async (text: string) =>
+      app.evaluate(({ clipboard }, value) => {
+        clipboard.readText = () => value;
+        clipboard.readHTML = () => '';
+      }, text);
+    await setClipboardText('');
+    const editor = page.locator('.editor-host.active .vditor-ir .vditor-reset');
+    await editor.dispatchEvent('contextmenu', { button: 2, clientX: 100, clientY: 100 });
+    const menu = page.locator('#contextMenu');
+    await expect(menu).toBeVisible();
+    await expect(menu.locator('[data-context-action="paste"]')).toBeDisabled();
+    await expect(menu.locator('[data-context-action="paste-plain"]')).toBeDisabled();
+
+    await setClipboardText('clipboard content');
+    await editor.dispatchEvent('contextmenu', { button: 2, clientX: 100, clientY: 100 });
+    await expect(menu.locator('[data-context-action="paste"]')).toBeEnabled();
+    await expect(menu.locator('[data-context-action="paste-plain"]')).toBeEnabled();
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('performs table context-menu actions in WYSIWYG and Instant Rendering', async () => {
   const markdown = '| left | right |\n| --- | --- |\n| alpha | beta |\n| gamma | delta |';
   for (const mode of ['ir', 'wysiwyg'] as const) {

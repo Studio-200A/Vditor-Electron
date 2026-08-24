@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0 - Under-the-Hood Robustness Improvement
+
+### New Features
+
+### Bug Fixes
+
+- **fix(context menu):** Disabled Paste and Paste as Plain Text when the system clipboard has no content to insert.
+
+### Project Maintenance
+
 ## 0.1.5 - Editing Experience Improvement
 
 ### New Features

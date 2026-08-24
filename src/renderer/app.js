@@ -2079,6 +2079,10 @@
     return `${modifier}+${key}`;
   }
 
+  function hasClipboardContent(clipboard) {
+    return Boolean(String(clipboard?.text || '') || String(clipboard?.html || ''));
+  }
+
   async function runEditorContextAction(menuState, action) {
     const { tab, mode, selection, table } = menuState || {};
     if (!tab?.ready || tab !== activeTab() || tab.vditor?.getCurrentMode() !== mode) return;
@@ -2097,7 +2101,7 @@
     VDITOR.executeEditorCommand(tab.host, mode, action, clipboard);
   }
 
-  function showEditorContextMenu(tab, event) {
+  async function showEditorContextMenu(tab, event) {
     if (tab !== activeTab() || !tab.ready) return;
     const mode = tab.vditor?.getCurrentMode();
     if (!mode || !VDITOR.isEditableTarget(tab.host, mode, event.target)) return;
@@ -2111,6 +2115,12 @@
     if (!selection) return;
     event.preventDefault();
     event.stopPropagation();
+    let clipboard = null;
+    try {
+      clipboard = await window.appAPI.readClipboard();
+    } catch {
+      // Keep paste disabled when the clipboard cannot be read safely.
+    }
     const table = VDITOR.tableContext(tab.host, mode, event.target);
     const hasSelection = !selection.range.collapsed;
     const menuState = { tab, mode, selection, table };
@@ -2124,8 +2134,13 @@
     const items = [
       action('cut', 'context.cut', { shortcut: editorShortcut('X'), disabled: !hasSelection }),
       action('copy', 'context.copy', { shortcut: editorShortcut('C'), disabled: !hasSelection }),
-      action('paste', 'context.paste', { shortcut: editorShortcut('V') }),
-      action('paste-plain', 'context.pastePlain'),
+      action('paste', 'context.paste', {
+        shortcut: editorShortcut('V'),
+        disabled: !hasClipboardContent(clipboard),
+      }),
+      action('paste-plain', 'context.pastePlain', {
+        disabled: !hasClipboardContent(clipboard),
+      }),
       action('delete', 'context.delete', { disabled: !hasSelection }),
       action('select-context', 'context.selectContext', { shortcut: editorShortcut('A') }),
     ];
