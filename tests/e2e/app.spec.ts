@@ -5,6 +5,7 @@ import * as TOML from '@iarna/toml';
 import { expect, test, type Page } from '@playwright/test';
 import { _electron as electron, type ElectronApplication } from 'playwright';
 import type { AppSettings } from '../../src/main/services/app-state';
+import { RECOVERY_SCHEMA_VERSION, RecoveryStore } from '../../src/main/services/recovery-store';
 import { SettingsStore } from '../../src/main/services/settings-store';
 
 const projectRoot = path.resolve(__dirname, '../..');
@@ -144,6 +145,69 @@ test('auto-saves a changed Markdown document through the document write path', a
     await expect(page.locator('.document-tab.active .dirty')).toBeHidden();
   } finally {
     await closeApp(running);
+  }
+});
+
+test('restores a persisted recovery snapshot and clears it on save', async () => {
+  const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-recovery-e2e-'));
+  const configDir = path.join(testRoot, 'config');
+  const filePath = path.join(testRoot, 'recovery target.md');
+  fs.mkdirSync(configDir);
+  fs.writeFileSync(filePath, 'Original content');
+  new SettingsStore(configDir).update({
+    locale: 'en_US',
+    systemTheme: false,
+    editMode: 'sv',
+    autoSave: false,
+    restoreTabs: false,
+    restoreWorkspace: false,
+  });
+  const recoveryStore = new RecoveryStore(configDir);
+  await recoveryStore.save({
+    schemaVersion: RECOVERY_SCHEMA_VERSION,
+    id: '756c51d8-34de-4618-a7c3-04cf367a3815',
+    filePath,
+    title: 'recovery target.md',
+    content: 'Recovered after crash',
+    savedContent: 'Original content',
+    encoding: 'utf-8',
+    lineEnding: 'LF',
+    mode: 'sv',
+    updatedAt: Date.now(),
+  });
+  const recoveryDir = path.join(configDir, 'recovery');
+  let restored: ElectronApplication | null = null;
+  try {
+    restored = await electron.launch({
+      args: ['.'],
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        ELECTRON_DISABLE_SECURITY_WARNINGS: 'true',
+        VDITOR_DESKTOP_CONFIG_DIR: configDir,
+        VDITOR_DESKTOP_DATA_DIR: path.join(testRoot, 'chromium'),
+      },
+    });
+    const restoredPage = await restored.firstWindow();
+    await restoredPage.waitForSelector('#appMenuBar[data-ready="true"]');
+    await expect(restoredPage.locator('#confirmModal')).toBeVisible();
+    await restoredPage
+      .locator('#confirmActions [data-action="restore"]')
+      .evaluate((button) => (button as HTMLButtonElement).click());
+    await expect(restoredPage.locator('.editor-host.active .vditor-sv')).toContainText(
+      'Recovered after crash',
+    );
+
+    await restoredPage.keyboard.press('Control+s');
+    await expect
+      .poll(() => fs.readFileSync(filePath, 'utf8').trimEnd())
+      .toBe('Recovered after crash');
+    await expect.poll(() => fs.readdirSync(recoveryDir)).toEqual([]);
+  } finally {
+    if (restored) {
+      restored.process().kill('SIGKILL');
+    }
+    fs.rmSync(testRoot, { recursive: true, force: true });
   }
 });
 

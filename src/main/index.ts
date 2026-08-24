@@ -19,12 +19,14 @@ import { extractOpenFilePaths } from './open-files';
 import { allowedExternalUrl } from './external-url';
 import { resolveRelativeMarkdownLink } from './resolve-markdown-link';
 import { FileManagerService } from './services/file-manager';
+import { RecoveryStore } from './services/recovery-store';
 import { SettingsStore } from './services/settings-store';
 import { AppSettings, DEFAULT_SETTINGS } from './services/app-state';
 
 let mainWindow: BrowserWindow | null = null;
 let fileManager: FileManagerService;
 let settingsStore: SettingsStore;
+let recoveryStore: RecoveryStore;
 let watcher: FSWatcher | null = null;
 let closeConfirmed = false;
 let boundsBeforeMaximize: Electron.Rectangle | null = null;
@@ -400,6 +402,10 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('app:getSettings', () => settingsStore.getAll());
+  ipcMain.handle('app:getRecoveryCandidates', () => recoveryStore.listCandidates());
+  ipcMain.handle('app:restoreRecovery', (_event, id: string) => recoveryStore.restore(id));
+  ipcMain.handle('app:saveRecovery', (_event, snapshot) => recoveryStore.save(snapshot));
+  ipcMain.handle('app:discardRecovery', (_event, id: string) => recoveryStore.discard(id));
   ipcMain.on('app:rendererReady', (event) => {
     if (!mainWindow || event.sender !== mainWindow.webContents) return;
     rendererReady = true;
@@ -521,6 +527,7 @@ if (!ownsSingleInstanceLock) {
   void app.whenReady().then(() => {
     registerAppProtocol();
     settingsStore = new SettingsStore(applicationPaths.configDir);
+    recoveryStore = new RecoveryStore(applicationPaths.configDir);
     fileManager = new FileManagerService();
     registerIpcHandlers();
     updateApplicationMenu();

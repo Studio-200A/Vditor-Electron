@@ -41,6 +41,11 @@ contextBridge.exposeInMainWorld('fileAPI', {
 contextBridge.exposeInMainWorld('appAPI', {
   platform: process.platform,
   getSettings: () => ipcRenderer.invoke('app:getSettings'),
+  getRecoveryCandidates: () => ipcRenderer.invoke('app:getRecoveryCandidates'),
+  restoreRecovery: (id: string) => ipcRenderer.invoke('app:restoreRecovery', id),
+  saveRecovery: (snapshot: Record<string, unknown>) =>
+    ipcRenderer.invoke('app:saveRecovery', snapshot),
+  discardRecovery: (id: string) => ipcRenderer.invoke('app:discardRecovery', id),
   getDefaultSettings: () => ipcRenderer.invoke('app:getDefaultSettings'),
   saveSettings: (settings: Record<string, unknown>) =>
     ipcRenderer.invoke('app:saveSettings', settings),

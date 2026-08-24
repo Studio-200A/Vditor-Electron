@@ -25,7 +25,10 @@ export interface SafeFileSystem {
  * A failed replacement deliberately leaves the original target untouched.
  */
 export class SafeFileWriter {
-  constructor(private readonly fileSystem: SafeFileSystem = fs.promises) {}
+  constructor(
+    private readonly fileSystem: SafeFileSystem = fs.promises,
+    private readonly defaultFileMode?: fs.Mode,
+  ) {}
 
   async write(filePath: string, content: string): Promise<SafeWriteResult> {
     const destination = path.resolve(filePath);
@@ -54,7 +57,11 @@ export class SafeFileWriter {
         // New files and unreadable metadata use the platform default mode.
       }
 
-      const temporary = await this.fileSystem.open(temporaryPath, 'wx', existingMode);
+      const temporary = await this.fileSystem.open(
+        temporaryPath,
+        'wx',
+        existingMode ?? this.defaultFileMode,
+      );
       temporaryCreated = true;
       try {
         await temporary.writeFile(bytes);

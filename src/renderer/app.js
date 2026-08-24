@@ -210,6 +210,9 @@
   function uid() {
     return `tab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
   }
+  function recoveryId() {
+    return globalThis.crypto?.randomUUID?.() || uid();
+  }
   function activeTab() {
     return state.tabs.find((tab) => tab.id === state.activeId) || null;
   }
@@ -1410,32 +1413,38 @@
   function createTab({
     filePath = null,
     content = '',
+    savedContent = content,
     encoding = 'utf-8',
     baseDir = '',
     activate = true,
     untitledNumber = null,
     pendingAnchor = '',
+    title: providedTitle = '',
+    mode = state.settings.editMode,
+    recoverySnapshotId = null,
   } = {}) {
     destroyToolbarPreview();
     if (state.tabs.length >= 20) {
       showMessage(t('message.maxTabs'), true);
       return null;
     }
-    const title = filePath
-      ? fileName(filePath)
-      : t('tab.untitled', { number: untitledNumber ?? ++state.untitledCounter });
+    const title =
+      providedTitle ||
+      (filePath
+        ? fileName(filePath)
+        : t('tab.untitled', { number: untitledNumber ?? ++state.untitledCounter }));
     const tab = {
       id: uid(),
       filePath,
       title,
       content,
-      savedContent: content,
+      savedContent,
       encoding,
       lineEnding: detectLineEnding(content),
       baseDir,
-      modified: false,
+      modified: content !== savedContent,
       expectedSavedContent: content,
-      mode: state.settings.editMode,
+      mode,
       vditor: null,
       ready: false,
       saveTimer: null,
@@ -1451,6 +1460,10 @@
       splitResizer: null,
       externalConflict: null,
       externalChangeIgnored: false,
+      recoverySnapshotId,
+      recoveryTimer: null,
+      recoveryRevision: 0,
+      recoveryOperation: Promise.resolve(),
       pendingAnchor,
       host: document.createElement('section'),
     };
@@ -1583,6 +1596,7 @@
       if (action === 'cancel' || (action === 'save' && !(await saveTab(tab)))) return;
     }
     clearTimeout(tab.saveTimer);
+    await discardRecoverySnapshot(tab);
     disconnectSplitLineNumbers(tab);
     disconnectEditorBottomSpacer(tab);
     tab.resourceObserver?.disconnect();
@@ -1699,6 +1713,7 @@
     if (value !== tab.content) tab.pendingEditorContent = false;
     tab.content = value;
     tab.modified = value !== tab.savedContent;
+    scheduleRecoverySnapshot(tab);
     renderTabs();
     if (tab.id === state.activeId) updateActiveUI();
     scheduleSplitLineNumbers(tab);
@@ -1764,6 +1779,7 @@
       tab.externalChangeIgnored = false;
       tab.encoding = 'utf-8';
       tab.baseDir = await window.fileAPI.dirname(destination);
+      await discardRecoverySnapshot(tab);
       if (previousBaseDir !== tab.baseDir) rebuildEditor(tab);
       rememberRecent(destination);
       renderTabs();
@@ -1774,6 +1790,114 @@
     } catch (error) {
       showMessage(t('message.saveFailed', { error: error.message }), true);
       return false;
+    }
+  }
+
+  function recoverySnapshotFor(tab) {
+    return {
+      schemaVersion: 1,
+      id: tab.recoverySnapshotId || recoveryId(),
+      filePath: tab.filePath,
+      title: tab.title,
+      content: tab.content,
+      savedContent: tab.savedContent,
+      encoding: tab.encoding,
+      lineEnding: tab.lineEnding,
+      mode: tab.mode,
+      updatedAt: Date.now(),
+    };
+  }
+
+  function queueRecoveryOperation(tab, operation) {
+    const previous = tab.recoveryOperation || Promise.resolve();
+    tab.recoveryOperation = previous.catch(() => undefined).then(operation);
+    return tab.recoveryOperation;
+  }
+
+  function scheduleRecoverySnapshot(tab) {
+    clearTimeout(tab.recoveryTimer);
+    if (!tab.modified) {
+      void discardRecoverySnapshot(tab);
+      return;
+    }
+    const id = tab.recoverySnapshotId || recoveryId();
+    tab.recoverySnapshotId = id;
+    const revision = ++tab.recoveryRevision;
+    tab.recoveryTimer = setTimeout(() => {
+      tab.recoveryTimer = null;
+      void queueRecoveryOperation(tab, async () => {
+        if (tab.recoverySnapshotId !== id || tab.recoveryRevision !== revision || !tab.modified)
+          return;
+        try {
+          await window.appAPI.saveRecovery(recoverySnapshotFor(tab));
+        } catch (_) {
+          console.error('Unable to save a recovery snapshot.');
+        }
+      });
+    }, 500);
+  }
+
+  async function discardRecoverySnapshot(tab) {
+    clearTimeout(tab.recoveryTimer);
+    tab.recoveryTimer = null;
+    const id = tab.recoverySnapshotId;
+    tab.recoverySnapshotId = null;
+    tab.recoveryRevision++;
+    if (!id) return;
+    await queueRecoveryOperation(tab, async () => {
+      try {
+        await window.appAPI.discardRecovery(id);
+      } catch (_) {
+        console.error('Unable to remove a recovery snapshot.');
+      }
+    });
+  }
+
+  async function restoreRecoverySnapshots() {
+    let candidates;
+    try {
+      candidates = await window.appAPI.getRecoveryCandidates();
+    } catch (_) {
+      return;
+    }
+    for (const candidate of candidates) {
+      const action = await showConfirmDialog({
+        title: t('recovery.title'),
+        message: t('recovery.found', { title: candidate.title }),
+        detail: t('recovery.detail'),
+        actions: [
+          { id: 'discard', label: t('recovery.discard') },
+          { id: 'restore', label: t('recovery.restore'), primary: true },
+        ],
+      });
+      if (action !== 'restore') {
+        await window.appAPI.discardRecovery(candidate.id);
+        continue;
+      }
+      const snapshot = await window.appAPI.restoreRecovery(candidate.id);
+      if (!snapshot) continue;
+      if (snapshot.diskChanged) {
+        createTab({
+          title: t('recovery.conflictTitle', { title: snapshot.title }),
+          content: snapshot.content,
+          savedContent: '',
+          encoding: snapshot.encoding,
+          baseDir: snapshot.filePath ? await window.fileAPI.dirname(snapshot.filePath) : '',
+          mode: snapshot.mode,
+          recoverySnapshotId: snapshot.id,
+        });
+        showMessage(t('recovery.conflictMessage', { title: snapshot.title }), true);
+      } else {
+        createTab({
+          filePath: snapshot.filePath,
+          content: snapshot.content,
+          savedContent: snapshot.savedContent,
+          encoding: snapshot.encoding,
+          baseDir: snapshot.filePath ? await window.fileAPI.dirname(snapshot.filePath) : '',
+          mode: snapshot.mode,
+          recoverySnapshotId: snapshot.id,
+        });
+      }
     }
   }
 
@@ -3708,6 +3832,8 @@
         for (const tab of dirty) {
           if (!(await saveTab(tab))) return;
         }
+      } else {
+        await Promise.all(dirty.map((tab) => discardRecoverySnapshot(tab)));
       }
       window.appAPI.closeConfirmed();
     });
@@ -3756,6 +3882,7 @@
     const session = state.settings.session;
     if (state.settings.restoreWorkspace && session?.workspacePath)
       await setWorkspace(session.workspacePath);
+    await restoreRecoverySnapshots();
     if (state.settings.restoreTabs && session?.openFiles?.length) {
       await openPaths(session.openFiles);
       const active = state.tabs.find((tab) => tab.filePath === session.activeFilePath);
