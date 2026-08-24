@@ -2310,7 +2310,7 @@ test('reveals the file explorer after opening a folder from the File menu', asyn
   }
 });
 
-test('reloads clean workspace files and protects local edits from external changes', async () => {
+test('resolves external file conflicts without silently overwriting disk changes', async () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-external-change-'));
   const cleanPath = path.join(workspace, 'clean.md');
   const modifiedPath = path.join(workspace, 'modified.md');
@@ -2319,6 +2319,7 @@ test('reloads clean workspace files and protects local edits from external chang
   const running = await launchApp({
     autoSave: true,
     autoSaveDelay: 5_000,
+    uiZoom: 110,
     editMode: 'sv',
     restoreTabs: true,
     restoreWorkspace: true,
@@ -2350,13 +2351,119 @@ test('reloads clean workspace files and protects local edits from external chang
     await expect(page.locator('.document-tab.active .dirty')).toHaveText('●');
     fs.writeFileSync(modifiedPath, 'External changes');
     await expect(page.locator('#externalChangeBanner')).toBeVisible();
+    await page.locator('#externalChangeBanner').evaluate((banner) => {
+      banner.style.width = '520px';
+    });
+    await expect(page.locator('#externalChangeBanner .persistent-banner-icon')).toHaveAttribute(
+      'src',
+      'assets/warning.svg',
+    );
+    const persistentBannerLayout = await page
+      .locator('#externalChangeBanner')
+      .evaluate((banner) => {
+        const content = banner.querySelector('.persistent-banner-content')?.getBoundingClientRect();
+        const actions = banner.querySelector('.persistent-banner-actions')?.getBoundingClientRect();
+        if (!content || !actions) throw new Error('External conflict banner layout is incomplete.');
+        return {
+          contentWidth: content.width,
+          actionsTop: actions.top,
+          contentBottom: content.bottom,
+          titleFontSize: getComputedStyle(banner.querySelector('.persistent-banner-copy')).fontSize,
+          actionFontSize: getComputedStyle(
+            banner.querySelector('.persistent-banner-actions button'),
+          ).fontSize,
+        };
+      });
+    expect(persistentBannerLayout.contentWidth).toBeGreaterThan(450);
+    expect(persistentBannerLayout.actionsTop).toBeGreaterThanOrEqual(
+      persistentBannerLayout.contentBottom,
+    );
+    expect(persistentBannerLayout.titleFontSize).toBe('15px');
+    expect(persistentBannerLayout.actionFontSize).toBe('15px');
+    const externalActionLayout = await page.locator('#externalChangeBanner').evaluate((banner) => {
+      const actionBounds = (id) => {
+        const bounds = banner.querySelector(id)?.getBoundingClientRect();
+        if (!bounds) throw new Error(`Missing external conflict action: ${id}`);
+        return { left: bounds.left, top: bounds.top };
+      };
+      return {
+        reload: actionBounds('#externalReload'),
+        saveAs: actionBounds('#externalSaveAs'),
+        ignore: actionBounds('#externalIgnore'),
+        overwrite: actionBounds('#externalOverwrite'),
+      };
+    });
+    expect(externalActionLayout.reload.top).toBe(externalActionLayout.saveAs.top);
+    expect(externalActionLayout.ignore.top).toBeGreaterThan(externalActionLayout.reload.top);
+    expect(externalActionLayout.ignore.top).toBe(externalActionLayout.overwrite.top);
+    expect(externalActionLayout.ignore.left).toBeLessThan(externalActionLayout.overwrite.left);
     await expect(page.locator('.document-tab.active .conflict')).toHaveText('!');
     await expect.poll(() => fs.readFileSync(modifiedPath, 'utf8')).toBe('External changes');
 
     await page.locator('#externalIgnore').click();
     await expect(page.locator('#externalChangeBanner')).toBeHidden();
+    fs.writeFileSync(modifiedPath, 'Newest external changes');
+    await expect(page.locator('#externalChangeBanner')).toBeVisible();
+    await page.locator('#externalReload').click();
+    await expect(editor).toContainText('Newest external changes');
+    await expect(page.locator('#externalChangeBanner')).toBeHidden();
+
+    await editor.fill('Local content to save elsewhere');
+    fs.writeFileSync(modifiedPath, 'External version kept in place');
+    await expect(page.locator('#externalChangeBanner')).toBeVisible();
+    await expect(page.locator('#externalSaveAs')).toBeVisible();
+    expect(fs.readFileSync(modifiedPath, 'utf8')).toBe('External version kept in place');
+    await page.locator('#externalReload').click();
+    await expect(editor).toContainText('External version kept in place');
+    await editor.fill('Ignored local changes');
+    fs.writeFileSync(modifiedPath, 'External ignored change');
+    await expect(page.locator('#externalChangeBanner')).toBeVisible();
+    await page.locator('#externalIgnore').click();
+    await expect(page.locator('#externalChangeBanner')).toBeHidden();
     await page.keyboard.press('Control+s');
-    await expect.poll(() => fs.readFileSync(modifiedPath, 'utf8')).toContain('Local changes');
+    const overwriteDialog = page.locator('#confirmModal');
+    await expect(overwriteDialog).toBeVisible();
+    expect(fs.readFileSync(modifiedPath, 'utf8')).toBe('External ignored change');
+    await overwriteDialog.locator('#confirmActions [data-action="cancel"]').click();
+    await expect(overwriteDialog).toBeHidden();
+    expect(fs.readFileSync(modifiedPath, 'utf8')).toBe('External ignored change');
+    await page.keyboard.press('Control+s');
+    await expect(overwriteDialog).toBeVisible();
+    await overwriteDialog.locator('#confirmActions [data-action="confirm"]').click();
+    await expect
+      .poll(() => fs.readFileSync(modifiedPath, 'utf8'))
+      .toContain('Ignored local changes');
+
+    await editor.fill('Direct overwrite local changes');
+    fs.writeFileSync(modifiedPath, 'External direct overwrite change');
+    await expect(page.locator('#externalChangeBanner')).toBeVisible();
+    await page.locator('#externalOverwrite').click();
+    await expect(overwriteDialog).toBeVisible();
+    const overwriteButton = overwriteDialog.locator('#confirmActions [data-action="confirm"]');
+    for (const [theme, color] of [
+      ['', 'rgb(255, 255, 255)'],
+      ['dark', 'rgb(255, 255, 255)'],
+      ['monokai-pro-dark', 'rgb(255, 255, 255)'],
+    ]) {
+      await page.evaluate((nextTheme) => {
+        if (nextTheme) document.documentElement.dataset.theme = nextTheme;
+        else delete document.documentElement.dataset.theme;
+      }, theme);
+      await expect(overwriteButton).toHaveCSS('color', color);
+      await expect(overwriteButton).toHaveCSS(
+        'background-color',
+        theme === 'dark'
+          ? 'rgb(255, 119, 119)'
+          : theme === 'monokai-pro-dark'
+            ? 'rgb(255, 97, 136)'
+            : 'rgb(199, 59, 59)',
+      );
+    }
+    await expect(overwriteDialog.locator('.confirm-card')).toHaveClass(/confirm-card-draggable/);
+    await overwriteDialog.locator('#confirmActions [data-action="confirm"]').click();
+    await expect
+      .poll(() => fs.readFileSync(modifiedPath, 'utf8'))
+      .toContain('Direct overwrite local changes');
   } finally {
     await closeApp(running);
     fs.rmSync(workspace, { recursive: true, force: true });

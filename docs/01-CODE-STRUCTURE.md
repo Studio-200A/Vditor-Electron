@@ -1,7 +1,7 @@
 # Vditor-Electron Code Structure World Map
 
 - **生成时间：** 2026-08-24
-- **基于的工作区：** `dev-0.2.0`，当前批次 3 代码状态（提交状态以 `git status --short` 为准）
+- **基于的工作区：** `dev-0.2.0`，当前批次 4 代码状态（提交状态以 `git status --short` 为准）
 - **文档版本：** v1.5
 - **对应 package.json 版本号：** 0.1.5
 
@@ -488,14 +488,15 @@ function mountEditorToolbar(tab) {
   ├── tab.modified = value !== tab.savedContent
   ├── 渲染标签列表（更新 ● 脏标记）
   ├── 更新状态栏（词数/字符数/行数）
-  └── 触发自动保存（如有 tab.filePath 且 settings.autoSave 为 true）
+  └── 触发自动保存（如有 tab.filePath、settings.autoSave 为 true 且无未解决外部冲突）
        └── setTimeout(saveTab, settings.autoSaveDelay)
-            └── window.fileAPI.writeFile(destination, diskContent)
+            └── saveTab() 的冲突检查与安全写入
 ```
 
 **保存流程：**
 
-- 手动保存：`Ctrl+S` → `saveTab()` → 未保存文件弹出 `file:saveDialog` → 写入磁盘
+- 手动保存：`Ctrl+S` → `saveTab()`；未保存文件弹出 `file:saveDialog`；存在未解决冲突时先要求用户处理，忽略冲突后再次保存必须明确确认覆盖
+- 横幅保存：外部冲突可选择重载、另存当前内容或明确覆盖；另存沿用 `saveTab(tab, true)`，明确覆盖沿用既有确认对话框
 - 自动保存：`onEditorInput` 设置防抖计时器，默认 2000ms；有 `filePath`、无外部冲突时触发
 - 内容标准化：写入前统一将换行符转换为文件原始行结尾（CRLF 或 LF）
 
@@ -745,13 +746,16 @@ Ctrl/Cmd+单击相对 Markdown 链接时，渲染器先调用 `file:resolveMarkd
 ```
 saveTab(tab, saveAs = false)
   ├── 无 filePath 或 saveAs → fileAPI.saveFileDialog()
+  ├── 冲突未处理或忽略后保存 → 阻止静默覆盖；必要时要求明确确认
   ├── currentContent(tab)                  # 通过 vditor-adapter 恢复相对图片 URL
   ├── 转换为文件原始行结尾（CRLF/LF）
   ├── fileAPI.writeDocument(destination, content)
   │   └── main: SafeFileWriter 同目录临时文件 → write → sync → close → rename
   ├── 成功：记录 expectedSavedContent；仅实际写入时标记 renderer 忽略窗口
-  └── 更新 tab.filePath/title/baseDir，清除冲突与 recovery 状态；首次保存或另存为时主动刷新工作区树，再持久化会话
+  └── 更新 tab.filePath/title/baseDir，清除冲突、忽略状态和 recovery 状态；首次保存或另存为时主动刷新工作区树，再持久化会话
 ```
+
+覆盖确认捕获当前 `externalConflict.version`。确认框显示期间若稳定磁盘正文再次变化，版本不匹配则取消本次覆盖并要求用户重新查看最新冲突；成功覆盖后重新建立 `savedContent` 和保存基线。
 
 **自动保存：**
 
@@ -787,7 +791,9 @@ onEditorInput(tab, value)
 **外部变更响应：**
 
 - 标签未修改：收到稳定正文后自动重载，静默更新。
-- 标签已修改：设置 `externalConflict`，显示“重载/忽略”横幅。
+- 标签已修改：设置 `externalConflict`，保存检测时间、稳定磁盘正文、编码和递增版本，显示“重载/另存/忽略/明确覆盖”持久横幅。
+- 横幅期间再次收到不同稳定正文：更新冲突快照并使旧的覆盖确认失效；正文回到 `expectedSavedContent` 时清除冲突。
+- 选择“忽略外部更改”后隐藏横幅但保留冲突快照，暂停自动保存；后续普通保存仍需明确确认覆盖。
 - 文件删除：在状态栏显示删除通知（不自动关闭已打开标签）
 
 ### 9.5 多标签页文件状态
@@ -804,7 +810,15 @@ onEditorInput(tab, value)
   encoding: string,             // 读取时探测的编码
   lineEnding: 'LF' | 'CRLF',  // 原始行结尾，保存时还原
   baseDir: string,              // 文件父目录（用于 localResourceBase）
-  externalConflict: null | { kind: 'modified', path },
+  externalConflict:
+    null | {
+      kind: 'modified',
+      path,
+      detectedAt: number,
+      content: string,            // 最新稳定磁盘正文
+      encoding: string,
+      version: number,            // 用于使过期覆盖确认失效
+    },
   externalChangeIgnored: boolean,
   recoverySnapshotId: string | null,
   recoveryState: null | 'unchanged' | 'changed' | 'unavailable',
@@ -988,14 +1002,14 @@ function rememberRecent(filePath) {
 │   └── main.main-area
 │       └── #editorArea（编辑区）
 │           ├── .editor-host（每个 tab 一个，由 JS 动态创建）
-│           ├── #recoveryBanner（异常恢复横幅与 warning.svg）
-│           ├── #externalChangeBanner（外部变更横幅）
+│           ├── #recoveryBanner（异常恢复横幅；与外部冲突共用 persistent-banner 结构和 warning.svg）
+│           ├── #externalChangeBanner（外部变更横幅；重载/另存/忽略/明确覆盖）
 │           ├── #findWidget（查找替换）
 │           └── #noTabs（空状态）
 └── footer.statusbar（状态栏）
 
 #settingsModal（独立模态层，不在 #app 内）
-#confirmModal（独立确认对话框层）
+#confirmModal（独立确认对话框层；覆盖确认可启用窗口内受限拖动）
 #contextMenu（独立右键菜单层）
 ```
 
@@ -1512,7 +1526,7 @@ flowchart TB
 - 预置恢复快照启动后直接显示正文和警示横幅；正常状态保存后清理，磁盘冲突状态不会提供直接覆盖操作
 - 干净的工作区内外打开文件外部修改时自动重载（无冲突横幅）；原子替换、切换工作区和关闭后从文件树重开仍继续监听
 - 本地有未保存修改的文件受外部修改时显示冲突横幅（`!` 冲突标记 + `#externalChangeBanner`），自身自动保存不误报冲突
-- "忽略外部变更"后保存覆盖本地内容
+- 冲突横幅提供重载、另存当前内容、忽略外部更改和明确覆盖；忽略后保存仍需二次确认，覆盖确认期间的再次磁盘变化会使旧确认失效
 - CRLF 保留（写入磁盘后 `#statusLineEnding` = CRLF）
 
 #### 查找替换
@@ -1535,6 +1549,8 @@ flowchart TB
 - Monokai Pro Dark H1–H6 调色板（粉/黄/绿/青/紫/橙）在三模式下均正确
 - `lastDarkTheme` 偏好持久化（`dark` 与 `monokai-pro-dark` 切换）
 - 编辑 / 焦点 / 失焦状态下背景颜色稳定
+- 文档级持久 banner 固定为图文区在上、动作区在下的两层布局；恢复和外部冲突共用 warning SVG，文案与按钮使用 15px
+- 外部冲突危险动作使用主题可读的红色强调样式；覆盖确认在亮色、暗色和 Monokai 下保持红底白字
 - 所有应用控件的键盘可见焦点使用当前主题 accent 色
 - 文件标签名 → 窗口标题 → `document.title` 同步；标题栏 / 状态栏 / 标签栏背景色在亮/暗主题下一致
 

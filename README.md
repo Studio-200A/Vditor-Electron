@@ -73,6 +73,7 @@ Switch modes from the unified toolbar or **View → Editing Mode**. Split Previe
 - Recover unsaved work after an unexpected exit. Recovered documents open directly with a warning banner: save the recovered version when its original file is unchanged, or save elsewhere when the disk version changed or the original file is unavailable.
 - Find and replace text in the active document with a compact `Ctrl/Cmd + F` panel.
 - Detect changes to open files, whether they are in the active workspace or opened independently. Clean documents reload automatically; documents with local edits show a persistent conflict banner and pause autosave until you choose how to proceed.
+- The conflict banner can reload the latest stable disk version, save the current content elsewhere, ignore the external change, or request an explicitly confirmed overwrite; a later disk change invalidates an older overwrite confirmation.
 - Paste or upload images to a configurable relative assets directory. Relative local images and online images can be previewed in all three modes.
 
 External file monitoring covers every open file, including files opened outside the active workspace. File deletion recovery, directory moves, and conflict recovery across application restarts remain planned reliability work; keep backups of important documents.

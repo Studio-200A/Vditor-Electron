@@ -143,15 +143,21 @@
           <div id="editorArea" class="editor-area">
             <section
               id="recoveryBanner"
-              class="external-change-banner recovery-banner hidden"
+              class="external-change-banner persistent-banner hidden"
               role="status"
             >
-              <img class="recovery-banner-icon" src="assets/warning.svg" alt="" />
-              <div class="recovery-banner-copy">
-                <strong id="recoveryMessage"></strong>
-                <span id="recoveryDetail"></span>
+              <div class="persistent-banner-content">
+                <img
+                  class="persistent-banner-icon recovery-banner-icon"
+                  src="assets/warning.svg"
+                  alt=""
+                />
+                <div class="persistent-banner-copy">
+                  <strong id="recoveryMessage"></strong>
+                  <span id="recoveryDetail"></span>
+                </div>
               </div>
-              <div class="recovery-banner-actions">
+              <div class="persistent-banner-actions">
                 <button id="recoverySave" type="button" data-i18n="recovery.save">
                   Save This Version
                 </button>
@@ -163,14 +169,34 @@
                 </button>
               </div>
             </section>
-            <section id="externalChangeBanner" class="external-change-banner hidden" role="status">
-              <span id="externalChangeMessage"></span>
-              <div class="external-change-actions">
+            <section
+              id="externalChangeBanner"
+              class="external-change-banner persistent-banner hidden"
+              role="status"
+            >
+              <div class="persistent-banner-content">
+                <img class="persistent-banner-icon" src="assets/warning.svg" alt="" />
+                <div class="persistent-banner-copy">
+                  <strong id="externalChangeMessage"></strong>
+                </div>
+              </div>
+              <div class="persistent-banner-actions">
                 <button id="externalReload" type="button" data-i18n="external.reload">
                   Discard Tab Changes and Reload
                 </button>
+                <button id="externalSaveAs" type="button" data-i18n="external.saveAs">
+                  Save Current Content As
+                </button>
                 <button id="externalIgnore" type="button" data-i18n="external.ignore">
                   Ignore External Change
+                </button>
+                <button
+                  id="externalOverwrite"
+                  class="danger"
+                  type="button"
+                  data-i18n="external.overwrite"
+                >
+                  Overwrite Disk Version
                 </button>
               </div>
             </section>

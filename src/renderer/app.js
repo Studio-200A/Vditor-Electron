@@ -1526,7 +1526,12 @@
     if (existing) {
       if (!existing.filePath) {
         clearTimeout(existing.saveTimer);
-        existing.externalConflict = { kind: 'modified', path: filePath };
+        existing.externalConflict = {
+          kind: 'modified',
+          path: filePath,
+          detectedAt: Date.now(),
+          version: (existing.externalConflict?.version || 0) + 1,
+        };
         existing.externalChangeIgnored = false;
         renderTabs();
       }
@@ -1753,7 +1758,7 @@
     }
   }
 
-  async function saveTab(tab = activeTab(), saveAs = false) {
+  async function saveTab(tab = activeTab(), saveAs = false, overwriteConflict = null) {
     if (!tab) return false;
     const previousPath = tab.filePath;
     let destination = tab.filePath;
@@ -1763,6 +1768,18 @@
         destination ? undefined : state.workspace || undefined,
       );
     if (!destination) return false;
+    const conflict = tab.externalConflict;
+    const writesConflictedPath =
+      conflict && normalizedFilePath(destination) === normalizedFilePath(conflict.path);
+    if (writesConflictedPath && !overwriteConflict) {
+      if (tab.externalChangeIgnored) return confirmExternalOverwrite(tab);
+      showMessage(t('external.resolveBeforeSave'), true);
+      return false;
+    }
+    if (writesConflictedPath && overwriteConflict !== conflict.version) {
+      showMessage(t('external.changedAgain', { name: tab.title }), true);
+      return false;
+    }
     try {
       const content = tab.pendingEditorContent ? tab.content : currentContent(tab);
       const diskContent =
@@ -2010,8 +2027,8 @@
   function updateExternalChangeBanner(tab) {
     const banner = $('#externalChangeBanner');
     const conflict = tab?.externalConflict;
-    banner.classList.toggle('hidden', !conflict);
-    if (!conflict) return;
+    banner.classList.toggle('hidden', !conflict || tab.externalChangeIgnored);
+    if (!conflict || tab.externalChangeIgnored) return;
     $('#externalChangeMessage').textContent = t('external.changed', {
       name: fileName(conflict.path),
     });
@@ -2055,39 +2072,52 @@
 
   async function reloadExternalChange(tab) {
     const conflict = tab?.externalConflict;
-    if (!conflict) return;
-    try {
-      const result = await window.fileAPI.readFile(conflict.path);
-      clearTimeout(tab.saveTimer);
-      const previousBaseDir = tab.baseDir;
-      tab.filePath = conflict.path;
-      tab.title = fileName(conflict.path);
-      tab.content = result.content;
-      tab.savedContent = result.content;
-      tab.expectedSavedContent = result.content;
-      tab.modified = false;
-      tab.encoding = result.encoding;
-      tab.lineEnding = detectLineEnding(result.content);
-      tab.baseDir = await window.fileAPI.dirname(conflict.path);
-      tab.externalConflict = null;
-      tab.externalChangeIgnored = false;
-      if (tab.vditor) tab.vditor.setValue(result.content, true);
-      if (previousBaseDir !== tab.baseDir) rebuildEditor(tab);
-      renderTabs();
-      if (tab.id === state.activeId) {
-        updateActiveUI();
-        renderOutline();
-      }
-      persistSession();
-      showMessage(t('external.reloaded', { name: tab.title }));
-    } catch (error) {
-      showMessage(t('message.openFailed', { error: error.message }), true);
+    if (!conflict || typeof conflict.content !== 'string') return;
+    const relatedTabs = state.tabs.filter(
+      (item) => normalizedFilePath(tabTargetPath(item)) === normalizedFilePath(conflict.path),
+    );
+    for (const item of relatedTabs) {
+      clearTimeout(item.saveTimer);
+      item.content = conflict.content;
+      item.savedContent = conflict.content;
+      item.expectedSavedContent = conflict.content;
+      item.modified = false;
+      item.encoding = conflict.encoding || item.encoding;
+      item.lineEnding = detectLineEnding(conflict.content);
+      item.externalConflict = null;
+      item.externalChangeIgnored = false;
+      if (item.vditor) item.vditor.setValue(conflict.content, true);
     }
+    renderTabs();
+    updateActiveUI();
+    renderOutline();
+    persistSession();
+    showMessage(t('external.reloaded', { name: tab.title }));
+  }
+
+  async function confirmExternalOverwrite(tab) {
+    const conflict = tab?.externalConflict;
+    if (!conflict) return false;
+    const action = await showConfirmDialog({
+      title: t('external.overwriteTitle'),
+      message: t('external.overwriteMessage', { name: tab.title }),
+      detail: t('external.overwriteDetail'),
+      actions: [
+        { id: 'cancel', label: t('dialog.cancel') },
+        { id: 'confirm', label: t('external.overwrite'), primary: true, danger: true },
+      ],
+      draggable: true,
+    });
+    if (action !== 'confirm') return false;
+    if (tab.externalConflict?.version !== conflict.version) {
+      showMessage(t('external.changedAgain', { name: tab.title }), true);
+      return false;
+    }
+    return saveTab(tab, false, conflict.version);
   }
 
   function ignoreExternalChange(tab) {
     if (!tab?.externalConflict) return;
-    tab.externalConflict = null;
     tab.externalChangeIgnored = true;
     renderTabs();
     if (tab.id === state.activeId) updateExternalChangeBanner(tab);
@@ -3193,7 +3223,12 @@
         if (tab.filePath) showMessage(t('external.deleted', { name: tab.title }), true);
         continue;
       }
-      if (change.content === tab.expectedSavedContent) continue;
+      if (typeof change.content !== 'string') continue;
+      if (change.content === tab.expectedSavedContent) {
+        tab.externalConflict = null;
+        tab.externalChangeIgnored = false;
+        continue;
+      }
       if (tab.filePath && !tab.modified && !tab.externalChangeIgnored) {
         if (typeof change.content !== 'string') continue;
         tab.lineEnding = detectLineEnding(change.content);
@@ -3207,7 +3242,14 @@
         continue;
       }
       clearTimeout(tab.saveTimer);
-      tab.externalConflict = { kind: 'modified', path: change.path };
+      tab.externalConflict = {
+        kind: 'modified',
+        path: change.path,
+        content: change.content,
+        encoding: change.encoding || tab.encoding,
+        detectedAt: Date.now(),
+        version: (tab.externalConflict?.version || 0) + 1,
+      };
       tab.externalChangeIgnored = false;
     }
     renderTabs();
@@ -3551,6 +3593,8 @@
     $('#findNext').onclick = () => moveFindMatch(1);
     $('#findClose').onclick = closeFind;
     $('#externalReload').onclick = () => void reloadExternalChange(activeTab());
+    $('#externalSaveAs').onclick = () => void saveTab(activeTab(), true);
+    $('#externalOverwrite').onclick = () => void confirmExternalOverwrite(activeTab());
     $('#externalIgnore').onclick = () => ignoreExternalChange(activeTab());
     $('#recoverySave').onclick = () => void saveRecoveredVersion(activeTab());
     $('#recoverySaveAs').onclick = () => void saveRecoveredAs(activeTab());

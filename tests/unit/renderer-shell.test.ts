@@ -200,15 +200,25 @@ describe('renderer shell', () => {
     expect(document.querySelector('#emptyOpenFile')).not.toBeNull();
   });
 
-  it('uses the existing fixed document banner for recovery warnings', () => {
+  it('uses one persistent document banner structure for recovery and external conflicts', () => {
     const recoveryBanner = document.querySelector('#recoveryBanner');
+    const externalBanner = document.querySelector('#externalChangeBanner');
     expect(recoveryBanner).not.toBeNull();
+    expect(externalBanner).not.toBeNull();
     expect(recoveryBanner?.classList.contains('external-change-banner')).toBe(true);
+    expect(externalBanner?.classList.contains('external-change-banner')).toBe(true);
+    expect(recoveryBanner?.classList.contains('persistent-banner')).toBe(true);
+    expect(externalBanner?.classList.contains('persistent-banner')).toBe(true);
+    expect(recoveryBanner?.querySelector('.persistent-banner-content')).not.toBeNull();
+    expect(externalBanner?.querySelector('.persistent-banner-content')).not.toBeNull();
     expect(recoveryBanner?.querySelector('img[src="assets/warning.svg"]')).not.toBeNull();
+    expect(externalBanner?.querySelector('img[src="assets/warning.svg"]')).not.toBeNull();
     expect(recoveryBanner?.querySelector('#recoverySave')).not.toBeNull();
     expect(recoveryBanner?.querySelector('#recoverySaveAs')).not.toBeNull();
     expect(recoveryBanner?.querySelector('#recoveryDiscard')).not.toBeNull();
-    expect(css).toContain('.recovery-banner');
+    expect(externalBanner?.querySelector('#externalSaveAs')).not.toBeNull();
+    expect(externalBanner?.querySelector('#externalOverwrite')).not.toBeNull();
+    expect(css).toContain('.persistent-banner');
   });
 
   it('provides a localized document find and replace widget', () => {

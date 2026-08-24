@@ -143,6 +143,14 @@ button.primary {
 button.danger {
   color: var(--danger);
 }
+button.primary.danger {
+  color: white;
+  background: var(--danger);
+  border-color: var(--danger);
+}
+:root[data-theme='monokai-pro-dark'] button.primary.danger {
+  color: white;
+}
 .icon-btn {
   min-width: 30px;
   padding: 4px 8px;
@@ -766,64 +774,50 @@ button.danger {
   box-shadow: 0 5px 18px rgb(0 0 0 / 0.2);
   user-select: none;
 }
-.external-change-banner > span {
-  min-width: 0;
-  flex: 1;
-}
-.external-change-actions {
-  flex: 0 0 auto;
-  display: flex;
-  gap: 6px;
-}
-.external-change-actions button {
-  white-space: nowrap;
-}
-.recovery-banner {
+.persistent-banner {
   align-items: flex-start;
+  justify-content: flex-start;
+  flex-direction: column;
+  gap: 8px;
   border-color: color-mix(in srgb, #d03827 58%, var(--border));
 }
-.recovery-banner-icon {
-  align-self: center;
+.persistent-banner-content {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  width: 100%;
+  gap: 10px;
+}
+.persistent-banner-icon {
   width: 22px;
   height: 22px;
   flex: 0 0 auto;
 }
-.recovery-banner-copy {
+.persistent-banner-copy {
   display: grid;
   min-width: 0;
   flex: 1;
   gap: 2px;
+  font-size: 15px;
 }
-.recovery-banner-copy span {
-  font-size: 0.9em;
+.persistent-banner-copy span {
+  font-size: inherit;
 }
-.recovery-banner-actions {
-  align-self: center;
-  flex: 0 0 auto;
+.persistent-banner-actions {
+  align-self: auto;
+  width: 100%;
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 6px;
 }
-.recovery-banner-actions button {
+.persistent-banner-actions button {
   white-space: nowrap;
+  font-size: 15px;
 }
-@media (max-width: 700px) {
-  .external-change-banner {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .external-change-actions {
-    justify-content: flex-end;
-    flex-wrap: wrap;
-  }
-  .recovery-banner {
-    align-items: stretch;
-  }
-  .recovery-banner-actions {
-    align-self: auto;
-    justify-content: flex-end;
-  }
+.persistent-banner-actions button.danger {
+  border-color: color-mix(in srgb, var(--danger) 58%, var(--border));
+  background: color-mix(in srgb, var(--panel) 94%, var(--danger));
 }
 .find-widget {
   position: absolute;
