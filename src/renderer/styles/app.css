@@ -18,6 +18,7 @@
   --hover: #e7e9ec;
   --text: #25272b;
   --muted: #6e737b;
+  --disabled-control-color: color-mix(in srgb, var(--muted) 42%, transparent);
   --border: #d9dce1;
   --accent: #3578e5;
   --danger: #c73b3b;
@@ -203,7 +204,7 @@ button.danger {
   min-width: 0;
   flex: 1;
   display: flex;
-  align-items: stretch;
+  align-items: flex-start;
   overflow: visible;
 }
 .vditor-toolbar-mount:empty::after {
@@ -213,6 +214,9 @@ button.danger {
 .vditor-toolbar-mount > .vditor-toolbar {
   width: 100%;
   min-height: 37px;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
   padding-top: 1px !important;
   padding-bottom: 1px !important;
   padding-left: 5px !important;
@@ -220,6 +224,15 @@ button.danger {
   border: 0;
   background: var(--panel-2);
   overflow: visible;
+}
+#app.toolbar-wrapped .titlebar {
+  box-shadow: none;
+}
+#app.toolbar-wrapped .toolbar-sidebar-tabs {
+  box-shadow: var(--top-surface-shadow);
+}
+#app.toolbar-wrapped .vditor-toolbar-mount > .vditor-toolbar {
+  box-shadow: var(--top-surface-shadow);
 }
 .vditor-toolbar-mount .vditor-panel,
 .vditor-toolbar-mount .vditor-hint {
@@ -268,7 +281,26 @@ button.danger {
   width: var(--sidebar-current, 260px);
   overflow: hidden;
   box-shadow: var(--top-surface-shadow);
+}
+#app.sidebar-transitioning:is(.toolbar-hidden, .toolbar-unavailable) .titlebar {
   transition: width 0.16s ease;
+}
+#app:is(.toolbar-hidden, .toolbar-unavailable) .window-titlebar {
+  box-shadow: none;
+}
+#app:is(.toolbar-hidden, .toolbar-unavailable) .window-titlebar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: var(--sidebar-current, 260px);
+  z-index: 1;
+  box-shadow: var(--top-surface-shadow);
+  pointer-events: none;
+}
+#app.sidebar-collapsed:is(.toolbar-hidden, .toolbar-unavailable) .window-titlebar::after {
+  left: 0;
 }
 #app:is(.toolbar-hidden, .toolbar-unavailable) .sidebar {
   padding-top: 38px;
@@ -277,7 +309,9 @@ button.danger {
   top: 0;
 }
 #app.fullscreen:not(.fullscreen-menu-visible):is(.toolbar-hidden, .toolbar-unavailable) .sidebar {
-  padding-top: 0;
+  /* The editor titlebar remains over the sidebar when the native titlebar is
+     hidden, so keep the sidebar content below its 38px control row. */
+  padding-top: 38px;
 }
 #app.sidebar-collapsed:is(.toolbar-hidden, .toolbar-unavailable) .titlebar {
   width: 0;
@@ -519,6 +553,10 @@ button.danger {
   padding: 24px 12px;
   text-align: center;
 }
+.outline-tree > .empty {
+  user-select: none;
+  -webkit-user-select: none;
+}
 .sidebar-resize {
   position: absolute;
   top: 0;
@@ -540,6 +578,7 @@ button.danger {
 }
 .main-area {
   min-width: 0;
+  padding-top: var(--toolbar-wrap-height, 0px);
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -578,6 +617,19 @@ button.danger {
   width: 0 !important;
   height: 0 !important;
 }
+[data-vditor-desktop-hidden-outline='true'] {
+  display: none !important;
+}
+
+/* Vditor hides these in SV, but Desktop supplies the source-selection commands.
+   The app-owned marker prevents a delayed display reset during mode changes. */
+[data-vditor-desktop-split-toolbar-action='true'] {
+  display: block !important;
+}
+[data-vditor-desktop-split-toolbar-action='true'] > button.vditor-menu--disabled {
+  color: var(--toolbar-icon-color) !important;
+  cursor: pointer !important;
+}
 .document-tab {
   position: relative;
   flex: 0 1 auto;
@@ -591,10 +643,23 @@ button.danger {
   display: flex;
   align-items: center;
   gap: 6px;
+  cursor: pointer;
+  transition:
+    background-color 0.14s ease,
+    color 0.14s ease;
+}
+.document-tab:hover {
+  background: var(--hover);
+}
+:root:not([data-theme='dark']):not([data-theme='monokai-pro-dark']) .document-tab:hover {
+  background: #d9dde3;
 }
 .document-tab.active {
   background: var(--panel);
   box-shadow: inset 0 2px var(--accent);
+}
+.document-tab.active:hover {
+  background: color-mix(in srgb, var(--panel) 76%, var(--hover));
 }
 .document-tab.dragging {
   opacity: 0.72;
@@ -651,6 +716,13 @@ button.danger {
   font-size: 16px;
   font-weight: 400;
   color: var(--muted);
+  border-radius: 3px;
+  transition:
+    background-color 0.14s ease,
+    color 0.14s ease;
+}
+.document-tab b:hover {
+  color: var(--accent);
 }
 .add-tab {
   width: 38px;
@@ -912,6 +984,11 @@ button.danger {
   line-height: 1.5;
   padding-left: 52px;
 }
+.editor-host .vditor-preview > .vditor-reset::after {
+  content: '';
+  display: block;
+  height: var(--editor-bottom, 0px);
+}
 .app-scrollbar::-webkit-scrollbar {
   width: 9px;
   height: 9px;
@@ -963,11 +1040,17 @@ html[data-scrollbar-mode='hidden'] .app-scrollbar::-webkit-scrollbar {
 }
 .editor-host .vditor-ir .vditor-reset,
 .editor-host .vditor-wysiwyg .vditor-reset {
-  padding-right: calc((100% - var(--editor-text-width)) / 2) !important;
-  padding-left: calc((100% - var(--editor-text-width)) / 2) !important;
+  padding-right: max(32px, calc((100% - var(--editor-text-width)) / 2)) !important;
+  padding-left: max(32px, calc((100% - var(--editor-text-width)) / 2)) !important;
+  scrollbar-gutter: stable both-edges;
 }
 .editor-host .vditor-sv {
   flex: 0 0 var(--split-source-width, 50%);
+  scroll-timeline-name: --sv-source-scroll;
+  scroll-timeline-axis: block;
+}
+.editor-host .vditor-content {
+  timeline-scope: --sv-source-scroll;
 }
 .editor-host.sv-editor-only .vditor-sv {
   width: 100% !important;
@@ -1006,6 +1089,14 @@ html[data-scrollbar-mode='hidden'] .app-scrollbar::-webkit-scrollbar {
 .editor-host .vditor-preview .vditor-reset pre {
   font-size: var(--preview-code-size);
 }
+/* Vditor renders raw HTML inside a PRE wrapper in IR and WYSIWYG. The wrapper
+   is a rendered surface, not source code, so restore the configured rendered
+   text presentation while leaving its hidden/expanded source marker monospace. */
+.editor-host .vditor-ir [data-type='html-block'] > .vditor-ir__preview,
+.editor-host .vditor-wysiwyg [data-type='html-block'] > .vditor-wysiwyg__preview {
+  font-family: var(--rendered-font) !important;
+  font-size: var(--rendered-size) !important;
+}
 .editor-host .vditor-ir [data-type='code-block'] pre,
 .editor-host .vditor-ir [data-type='code-block'] code,
 .editor-host .vditor-ir [data-type='code-block-info'],
@@ -1022,6 +1113,30 @@ html[data-scrollbar-mode='hidden'] .app-scrollbar::-webkit-scrollbar {
 }
 .editor-host .vditor-wysiwyg > .vditor-reset + .vditor-panel {
   display: none !important;
+}
+.editor-host.toolbar-preview {
+  position: fixed;
+  z-index: -1;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+#app.toolbar-preview-active .vditor-toolbar__item {
+  pointer-events: none;
+}
+#app.toolbar-preview-active .vditor-toolbar__item .vditor-tooltipped,
+#app.toolbar-preview-active .vditor-toolbar__item .vditor-tooltipped:hover,
+#app.toolbar-preview-active .vditor-toolbar__item .vditor-tooltipped:focus,
+#app.toolbar-preview-active .vditor-toolbar__item .vditor-menu--current,
+#app.toolbar-preview-active .vditor-toolbar__item button,
+#app.toolbar-preview-active .vditor-toolbar__item button:hover,
+#app.toolbar-preview-active .vditor-toolbar__item button:focus {
+  color: var(--disabled-control-color) !important;
+  cursor: default !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
 }
 :root[data-theme='monokai-pro-dark'] .editor-host,
 :root[data-theme='monokai-pro-dark'] .editor-host .vditor-content,
@@ -1041,13 +1156,17 @@ html[data-scrollbar-mode='hidden'] .app-scrollbar::-webkit-scrollbar {
 :root[data-theme='monokai-pro-dark']
   .editor-host
   :is(.vditor-ir, .vditor-wysiwyg)
-  pre:not(.vditor-reset),
+  [data-type='code-block']
+  pre,
 :root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview pre,
 :root[data-theme='monokai-pro-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) code,
 :root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview code {
   background-color: var(--monokai-code-bg);
 }
-:root[data-theme='monokai-pro-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) a,
+:root[data-theme='monokai-pro-dark']
+  .editor-host
+  :is(.vditor-ir, .vditor-wysiwyg)
+  :is(a, .vditor-ir__link),
 :root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview a {
   color: #78dce8;
 }
@@ -1246,10 +1365,24 @@ html[data-scrollbar-mode='hidden'] .app-scrollbar::-webkit-scrollbar {
   font-family: var(--source-font);
   font-size: var(--source-size);
   text-align: right;
+  pointer-events: none;
+  user-select: none;
 }
 .sv-line-number-canvas {
   position: relative;
   min-height: 100%;
+}
+.sv-line-number-canvas.scroll-linked {
+  animation: sv-line-number-scroll 1ms linear both;
+  animation-timeline: --sv-source-scroll;
+}
+@keyframes sv-line-number-scroll {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(calc(-1 * var(--sv-scroll-range)));
+  }
 }
 .sv-line-number {
   position: absolute;
@@ -1305,6 +1438,67 @@ html[data-scrollbar-mode='hidden'] .app-scrollbar::-webkit-scrollbar {
   flex: 0 0 auto;
   gap: 13px;
 }
+.status-mode-picker {
+  position: relative;
+}
+#statusMode {
+  display: inline-block;
+  border-radius: 3px;
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+#statusMode:hover,
+#statusMode:focus-visible,
+#statusMode[aria-expanded='true'] {
+  color: var(--text);
+  background: var(--hover);
+}
+#statusMode:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+#statusMode[aria-disabled='true'] {
+  cursor: default;
+  color: color-mix(in srgb, var(--muted) 55%, transparent);
+}
+#statusMode[aria-disabled='true']:hover {
+  background: transparent;
+}
+.status-mode-menu {
+  position: absolute;
+  z-index: 2000;
+  right: -5px;
+  bottom: calc(100% + 6px);
+  min-width: 116px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.28);
+}
+.status-mode-menu button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 9px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  text-align: left;
+}
+.status-mode-menu button:hover,
+.status-mode-menu button:focus-visible {
+  background: var(--hover);
+  color: var(--text);
+}
+.status-mode-menu .checkmark {
+  width: 14px;
+  display: inline-block;
+  font-style: normal;
+}
 #statusPath {
   min-width: 0;
   overflow: hidden;
@@ -1319,6 +1513,20 @@ html[data-scrollbar-mode='hidden'] .app-scrollbar::-webkit-scrollbar {
 }
 #statusMessage.error {
   color: var(--danger);
+}
+.document-link-tooltip {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  max-width: min(320px, calc(100vw - 16px));
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--panel);
+  box-shadow: 0 3px 12px rgb(0 0 0 / 18%);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.25;
 }
 .status-icon {
   width: 21px;
@@ -1605,6 +1813,9 @@ body.settings-card-resizing {
   cursor: move;
   user-select: none;
 }
+.settings-card > header {
+  padding-block: 8px;
+}
 .modal-card > footer {
   justify-content: flex-end;
   border-top: 1px solid var(--border);
@@ -1656,6 +1867,12 @@ body.settings-card-resizing {
 }
 .confirm-card > header {
   cursor: default;
+}
+.confirm-card.confirm-card-draggable > header {
+  cursor: move;
+}
+body.confirm-card-dragging {
+  user-select: none;
 }
 .confirm-content {
   min-height: 112px;
@@ -1827,9 +2044,24 @@ body.settings-card-resizing {
 }
 .about-reset {
   width: 100%;
+  display: grid;
+  grid-template-columns: max-content;
+  justify-items: stretch;
+  gap: 14px;
   padding-top: 28px;
   border-top: 1px solid var(--border);
   text-align: left;
+}
+.about-reset #resetSettings {
+  width: 100%;
+  text-align: center;
+}
+.about-devtools-setting {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+  cursor: pointer;
 }
 .settings-content h3 {
   margin: 0 0 20px;
@@ -1974,7 +2206,7 @@ body.settings-card-resizing {
 .theme-option-monokai .theme-preview-h4 {
   stroke: #78dce8;
 }
-.settings-content label:not(.check) {
+.settings-content section > label:not(.check):not(.about-devtools-setting):not(.theme-option) {
   display: grid;
   grid-template-columns: minmax(150px, 1fr) minmax(180px, 1.4fr);
   align-items: center;
@@ -1989,6 +2221,14 @@ body.settings-card-resizing {
   border-radius: 5px;
   background: var(--bg);
   padding: 7px;
+}
+.settings-content select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+.settings-content :is(select, input[type='checkbox'], input[type='range']) {
+  accent-color: var(--accent);
 }
 .check {
   display: block;
@@ -2023,7 +2263,7 @@ body.settings-card-resizing {
 .context-menu {
   position: fixed;
   z-index: 2000;
-  min-width: 165px;
+  min-width: 210px;
   padding: 5px;
   background: var(--panel);
   border: 1px solid var(--border);
@@ -2031,14 +2271,27 @@ body.settings-card-resizing {
   box-shadow: 0 8px 28px rgb(0 0 0 / 0.25);
 }
 .context-menu button {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
   width: 100%;
   border: 0;
   text-align: left;
   background: transparent;
 }
+.context-menu button small {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
 .context-menu button:hover:not(:disabled) {
   background: var(--hover);
+}
+.context-menu hr {
+  margin: 4px 5px;
+  border: 0;
+  border-top: 1px solid var(--border);
 }
 .context-menu button:disabled {
   color: color-mix(in srgb, var(--muted) 55%, transparent);
@@ -2131,7 +2384,7 @@ body.settings-card-resizing {
   background: var(--hover);
 }
 .titlebar-file-actions .icon-btn:disabled {
-  color: color-mix(in srgb, var(--muted) 42%, transparent);
+  color: var(--disabled-control-color);
   background: transparent;
   cursor: default;
 }
@@ -2146,7 +2399,7 @@ body.settings-card-resizing {
 }
 #app.sidebar-collapsed .titlebar-file-actions {
   width: auto;
-  padding-inline: 7px;
+  padding-inline: 5px;
   overflow: visible;
 }
 #app.sidebar-collapsed .titlebar-file-actions .icon-btn:not(.titlebar-sidebar-toggle) {
@@ -2340,6 +2593,12 @@ body[data-platform='darwin'] .modal {
   border-bottom: 0;
   box-shadow: none;
   transition:
+    padding 0.16s ease,
+    gap 0.16s ease,
+    border-width 0.16s ease;
+}
+#app.sidebar-transitioning .toolbar-sidebar-tabs {
+  transition:
     width 0.16s ease,
     padding 0.16s ease,
     gap 0.16s ease,
@@ -2391,6 +2650,7 @@ body[data-platform='darwin'] .modal {
 .app-menu-popup button:disabled:hover,
 .app-menu-popup button:disabled:focus-visible {
   background: transparent;
+  color: color-mix(in srgb, var(--muted) 55%, transparent);
 }
 @media (prefers-reduced-motion: reduce) {
   .sidebar,
@@ -2405,6 +2665,17 @@ body[data-platform='darwin'] .modal {
     display: none;
   }
 }
+
+/* Keep the Vditor Desktop menu highlight centered on the pointer. */
+.app-menu-bar > button[data-menu='main']:hover {
+  background-color: color-mix(in srgb, var(--panel) 82%, transparent);
+  background-image: radial-gradient(
+    circle 118px at var(--button-glow-x, 50%) var(--button-glow-y, 50%),
+    color-mix(in srgb, var(--accent) 21%, transparent),
+    transparent 78%
+  );
+}
+
 .window-controls button {
   width: 45px;
   height: 100%;

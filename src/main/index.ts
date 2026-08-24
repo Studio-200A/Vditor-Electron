@@ -1,4 +1,14 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, screen, shell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeTheme,
+  screen,
+  shell,
+} from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'path';
 import { watch, FSWatcher } from 'chokidar';
@@ -6,6 +16,8 @@ import { resolveApplicationPaths } from './app-paths';
 import { registerAppProtocol } from './protocol';
 import { createAppMenu } from './menu';
 import { extractOpenFilePaths } from './open-files';
+import { allowedExternalUrl } from './external-url';
+import { resolveRelativeMarkdownLink } from './resolve-markdown-link';
 import { FileManagerService } from './services/file-manager';
 import { SettingsStore } from './services/settings-store';
 import { AppSettings, DEFAULT_SETTINGS } from './services/app-state';
@@ -25,31 +37,6 @@ const applicationPaths = resolveApplicationPaths();
 fs.mkdirSync(applicationPaths.chromiumDir, { recursive: true });
 app.setPath('userData', applicationPaths.chromiumDir);
 app.setPath('sessionData', applicationPaths.chromiumDir);
-
-function readBuildInfo(): { tag: string; commit: string; commitShort: string; repository: string } {
-  try {
-    const contents = fs.readFileSync(path.join(__dirname, '..', 'build-info.json'), 'utf8');
-    const info = JSON.parse(contents) as Partial<{
-      commit: string;
-      commitShort: string;
-      repository: string;
-      tag: string;
-    }>;
-    return {
-      tag: info.tag || '',
-      commit: info.commit || '',
-      commitShort: info.commitShort || info.commit?.slice(0, 12) || '',
-      repository: info.repository || 'https://github.com/Studio-200A/Vditor-Electron',
-    };
-  } catch {
-    return {
-      tag: '',
-      commit: '',
-      commitShort: '',
-      repository: 'https://github.com/Studio-200A/Vditor-Electron',
-    };
-  }
-}
 
 function isWindowMaximized(): boolean {
   return windowMaximizedState;
@@ -212,6 +199,19 @@ function initialWindowBackground(settings: AppSettings): string {
   return theme === 'dark' ? '#17181a' : '#f7f7f8';
 }
 
+function isDevToolsShortcut(input: Electron.Input): boolean {
+  if (input.key.toLowerCase() !== 'i') return false;
+  return (input.control || input.meta) && input.shift;
+}
+
+function updateApplicationMenu(settings = settingsStore.getAll()): void {
+  if (process.platform !== 'darwin') {
+    Menu.setApplicationMenu(null);
+    return;
+  }
+  Menu.setApplicationMenu(createAppMenu(getEffectiveLocale(settings), settings.editMode));
+}
+
 function createWindow(): void {
   const settings = settingsStore.getAll();
   const normalBounds = initialWindowBounds(settings);
@@ -243,6 +243,10 @@ function createWindow(): void {
   rendererReady = false;
   mainWindow.webContents.on('did-start-loading', () => {
     rendererReady = false;
+  });
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.key === 'F12' || (!settingsStore.get('devToolsEnabled') && isDevToolsShortcut(input)))
+      event.preventDefault();
   });
   windowMaximizedState = settings.windowMaximized;
   boundsBeforeMaximize = { ...normalBounds };
@@ -351,6 +355,9 @@ function registerIpcHandlers(): void {
   ipcMain.handle('file:relative', (_event, from: string, to: string) =>
     path.relative(from, to).split(path.sep).join('/'),
   );
+  ipcMain.handle('file:resolveMarkdownLink', (_event, sourceFile: unknown, href: unknown) =>
+    resolveRelativeMarkdownLink(sourceFile, href),
+  );
   ipcMain.handle('file:watch', async (_event, rootPath?: string) => {
     if (watcher) await watcher.close();
     watcher = null;
@@ -372,18 +379,16 @@ function registerIpcHandlers(): void {
   ipcMain.handle('app:saveSettings', (_event, settings: Partial<AppSettings>) => {
     const savedSettings = settingsStore.update(settings);
     if (
-      process.platform === 'darwin' &&
-      (Object.hasOwn(settings, 'locale') || Object.hasOwn(settings, 'editMode'))
+      Object.hasOwn(settings, 'locale') ||
+      Object.hasOwn(settings, 'editMode') ||
+      Object.hasOwn(settings, 'devToolsEnabled')
     )
-      Menu.setApplicationMenu(
-        createAppMenu(getEffectiveLocale(savedSettings), savedSettings.editMode),
-      );
+      updateApplicationMenu(savedSettings);
     return savedSettings;
   });
   ipcMain.handle('app:resetSettings', () => {
     const settings = settingsStore.reset();
-    if (process.platform === 'darwin')
-      Menu.setApplicationMenu(createAppMenu(getEffectiveLocale(settings), settings.editMode));
+    updateApplicationMenu(settings);
     return settings;
   });
   ipcMain.handle('app:getSettingsPath', () => settingsStore.getPath());
@@ -400,30 +405,27 @@ function registerIpcHandlers(): void {
   );
   ipcMain.handle('app:isFullscreen', () => mainWindow?.isFullScreen() || false);
   ipcMain.handle('app:isMaximized', () => isWindowMaximized());
-  ipcMain.handle('app:getInfo', () => {
-    const build = readBuildInfo();
-    return {
-      app: app.getVersion(),
-      electron: process.versions.electron,
-      node: process.versions.node,
-      platform: process.platform,
-      vditor: '3.11.3',
-      commit: build.commit,
-      commitShort: build.commitShort,
-      commitTag: build.tag,
-      commitUrl: build.commit ? `${build.repository}/commit/${build.commit}` : build.repository,
-    };
-  });
+  ipcMain.handle('app:getInfo', () => ({
+    app: app.getVersion(),
+    electron: process.versions.electron,
+    node: process.versions.node,
+    platform: process.platform,
+    vditor: '3.11.3',
+  }));
   ipcMain.handle('app:setZoomFactor', (_event, zoom: number) => {
     const factor = Math.min(2, Math.max(0.75, Number(zoom) / 100));
     mainWindow?.webContents.setZoomFactor(factor);
     return factor;
   });
-  ipcMain.handle('app:openExternal', (_event, url: string) => {
-    const parsed = new URL(url);
-    if (!['https:', 'http:', 'mailto:'].includes(parsed.protocol))
-      throw new Error('Unsupported URL protocol');
-    return shell.openExternal(url);
+  ipcMain.handle('app:readClipboard', (event) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents)
+      throw new Error('Clipboard access is limited to the application window');
+    return { text: clipboard.readText(), html: clipboard.readHTML() };
+  });
+  ipcMain.handle('app:openExternal', (_event, url: unknown) => {
+    const externalUrl = allowedExternalUrl(url);
+    if (!externalUrl) throw new Error('Unsupported URL protocol');
+    return shell.openExternal(externalUrl);
   });
   ipcMain.handle('app:showItemInFolder', (_event, filePath: string) =>
     shell.showItemInFolder(path.resolve(filePath)),
@@ -455,7 +457,15 @@ function registerIpcHandlers(): void {
     toggleWindowMaximized();
   });
   ipcMain.on('window:close', () => mainWindow?.close());
-  ipcMain.on('app:toggleDevTools', () => mainWindow?.webContents.toggleDevTools());
+  ipcMain.on('app:toggleDevTools', (event) => {
+    if (
+      !mainWindow ||
+      event.sender !== mainWindow.webContents ||
+      !settingsStore.get('devToolsEnabled')
+    )
+      return;
+    mainWindow.webContents.toggleDevTools();
+  });
   ipcMain.on('app:closeConfirmed', () => {
     closeConfirmed = true;
     mainWindow?.close();
@@ -483,11 +493,7 @@ if (!ownsSingleInstanceLock) {
     settingsStore = new SettingsStore(applicationPaths.configDir);
     fileManager = new FileManagerService();
     registerIpcHandlers();
-    Menu.setApplicationMenu(
-      process.platform === 'darwin'
-        ? createAppMenu(getEffectiveLocale(), settingsStore.get('editMode'))
-        : null,
-    );
+    updateApplicationMenu();
     nativeTheme.on('updated', () =>
       send('app:systemThemeChanged', nativeTheme.shouldUseDarkColors ? 'dark' : 'classic'),
     );
@@ -506,13 +512,14 @@ app.on('before-quit', () => {
 });
 app.on('web-contents-created', (_event, contents) => {
   contents.on('will-navigate', (event, navigationUrl) => {
-    if (new URL(navigationUrl).protocol !== 'app:') {
-      event.preventDefault();
-      void shell.openExternal(navigationUrl);
-    }
+    if (new URL(navigationUrl).protocol === 'app:') return;
+    event.preventDefault();
+    const externalUrl = allowedExternalUrl(navigationUrl);
+    if (externalUrl) void shell.openExternal(externalUrl);
   });
   contents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url);
+    const externalUrl = allowedExternalUrl(url);
+    if (externalUrl) void shell.openExternal(externalUrl);
     return { action: 'deny' };
   });
 });

@@ -81,8 +81,8 @@ Vditor 的 `setValue()` 异步重渲染，`getValue()` 可能暂时返回旧 DOM
 - 样式：`src/renderer/styles/app.css` 的 `.find-widget` 和 `::highlight` 区段。
 - 本地化：`src/renderer/locales.js` 的 `find.*`、`menu.find`，包含 `en_US`、`zh_Hans`、`zh_Hant`。
 - 替换图标来自 VS Code 源码，已复制到：
-  - `src/renderer/assets/replace.svg`
-  - `src/renderer/assets/replace-all.svg`
+   - `src/renderer/assets/replace.svg`
+   - `src/renderer/assets/replace-all.svg`
 
 ## 测试入口
 
@@ -96,8 +96,8 @@ Vditor 的 `setValue()` 异步重渲染，`getValue()` 可能暂时返回旧 DOM
 - `npm run lint` 通过。
 - `npm run typecheck` 通过。
 - `npm run check:vditor` 通过。
-- Vitest `74/74` 通过。
-- Electron E2E `56/56` 通过。
+- Vitest 单元测试通过。
+- Electron E2E 通过。
 
 ## 后续约束
 
@@ -107,11 +107,13 @@ Vditor 的 `setValue()` 异步重渲染，`getValue()` 可能暂时返回旧 DOM
 
 ---
 
-# 功能实现：0.1.3 工作区 UI 改版
+# 功能实现：工作区 UI 改版
+
+## 实现版本：0.1.3
 
 ## 当前状态
 
-核心工作区 UI 已在 0.1.3 实现并通过自动化回归。文件保存原子化、工作区外 watcher、删除/目录移动恢复和跨重启冲突恢复不属于本轮已交付范围，见 `docs/11-0.2.0-DEVELOPMENT-PLAN.md`。
+核心工作区 UI 已在 0.1.3 实现并通过自动化回归。文件保存原子化、工作区外 watcher、删除/目录移动恢复和跨重启冲突恢复不属于本轮已交付范围，见 `docs/12-0.2.0-DEVELOPMENT-PLAN.md`。
 
 ## 顶部结构
 
@@ -153,3 +155,89 @@ Status bar
 - macOS 原生菜单：`src/main/menu.ts`
 - 文案：`src/renderer/locales.js`
 - 回归：`tests/unit/renderer-shell.test.ts`、`tests/e2e/app.spec.ts`
+
+---
+
+# Vditor 3.11.3：模式切换与工具栏内部耦合
+
+## 记录版本：0.1.5
+
+## 现象
+
+Desktop 侧栏已作为唯一的大纲入口，原生 Vditor 大纲面板关闭且入口隐藏。实现过程中确认：Vditor 3.11.3 的 `setEditMode()` 仍会直接读取并显示/隐藏 `outline` 工具项，即使 `outline.enable` 为 `false`。
+
+另一个关联现象发生在从 WYSIWYG 或 IR 切入 SV：Vditor 会隐藏 `outdent`、`indent`，并为它们加上 disabled class；但 Desktop 在 SV 中自行基于 source selection 实现列表缩进。若在模式切换后再异步恢复这两个按钮，会造成工具栏内容在一个切换中发生两次布局更新，表现为轻微的内容闪烁。
+
+## 失败尝试与原因
+
+1. 从 Vditor toolbar 配置中直接移除 `outline`。
+
+    - 失败原因：Vditor 的私有模式切换实现仍假定该项存在，会继续访问其内部 toolbar 元素；关闭大纲面板不等于移除该内部结构。
+
+2. 在 Vditor 切换模式后的 `setTimeout(..., 50)` 中调用 `syncSplitToolbarActions()`，把 SV 的 `outdent` / `indent` 改回 `display: block` 并移除 disabled class。
+
+    - 失败原因：Vditor 已在同步切换中把按钮隐藏，50ms 后应用再次改变 display，形成“先隐藏、再插回”的两阶段工具栏重排。功能可用，但 WYSIWYG/IR → SV 可见闪烁；快捷键切换也不应依赖鼠标点击后的补偿路径。
+
+## 正确处理方法
+
+- 保留 `outline` 作为运行时内部 toolbar 项，`outline.enable: false` 禁用原生面板；由 `vditor-adapter.js` 为该私有项添加应用 data attribute，再用应用 CSS 的 `display: none !important` 隐藏入口。
+- adapter 在初始化时为 `outdent` / `indent` 添加稳定占位 data attribute。应用 CSS 在 SV 中持续覆盖 Vditor 的隐藏和禁用外观；实际命令仍由 renderer capture 阶段的 source-selection 逻辑处理。
+- 删除模式切换后的延迟 display 改写。应用仍可在延迟回调更新自身模式状态、行号和滚动位置，但不得再二次改变这两个工具栏项的布局。
+
+## 注意事项与验证
+
+- 所有 Vditor 私有 toolbar 查询、`closest()` 和 data attribute 标记必须留在 `src/renderer/vditor-adapter.js`；`app.js` 只调用语义化 adapter API。
+- 这是 Vditor 3.11.3 的私有契约。升级 Vditor 时，须检查 `setEditMode()` 对 `outline`、`outdent`、`indent` 的显示和 disabled 行为，并同步更新 `docs/20-VDITOR-UPGRADE.md`。
+- 回归覆盖：adapter 单测验证标记；Electron E2E 验证从 WYSIWYG 与 IR 切入 SV 时两个列表按钮只保留 Vditor 同步 show/hide 的两次 style 更新、不会再出现延迟补偿更新，且最终仍可见；另保留 SV 列表缩进/反缩进功能测试。
+- 大纲对齐 Vditor 原生功能时，当前编辑区的直接 H1–H6 DOM 才是准则。Electron 验证显示 IR 对 Setext 和围栏内 ATX 样式文本的即时结果不等同于完整 Markdown 语义；因此不要把“原生等价”写成“完整 Markdown 标题解析”。若需跨模式一致的 Setext/围栏语义，应单独决策并实现独立 Markdown 解析与目标定位，不能隐式改变原生对齐范围。
+- 原生对齐实现只保留一份 snapshot：preview 可见时取 preview，否则取当前模式编辑区。不要再把原生 DOM 标题、Markdown fallback 和另一套目标数组按下标拼接；集合不一致时行号、折叠 key 和跳转目标都会错位。Outline 视图隐藏期间无需调用 `getValue()` 或重建树，切换到该视图时再刷新即可。
+- SV preview 在模式切换后异步渲染，不能用固定延迟补偿。由 adapter 的可清理 MutationObserver 监听模式 style 与内容变化并触发防抖刷新；标签重建、关闭时必须 disconnect，避免旧 host 与回调泄漏。
+
+## 模式切换后的内容位置只能近似对应
+
+Vditor 3.11.3 切换模式时先序列化当前 Markdown，再分别通过 `Md2VditorDOM`、`Md2VditorIRDOM` 或 `processSpinVditorSVDOM` 重建目标模式的私有 DOM。三种模式没有共享的版面节点，也没有公开的跨模式源码位置到滚动坐标映射 API。
+
+因此，即使 WYSIWYG 与 IR 使用相同内容主题，两者的标记展开、块结构和预览节点仍可能产生不同高度；包含复杂原始 HTML 的文档在 SV 源码与渲染模式之间高度差异更明显。Desktop 在切换前保存滚动进度，并在目标模式首帧绘制前按目标滚动范围恢复，从而避免闪回文档开头；恢复结果遵从 Vditor 各模式的实际排版，只保证近似文档进度，不保证同一语义节点严格对齐。
+
+除非未来由 Vditor 提供稳定的源码位置映射能力，否则不要在 Desktop 层按私有 DOM 节点、HTML 文本或估算行高建立跨模式锚点。这会把上游模式差异变成更脆弱的应用层启发式，并在原始 HTML、表格、代码块和异步预览中产生新的偏差。升级 Vditor 时应重新检查模式转换 API；若上游新增稳定映射接口，再单独评估精确位置恢复。
+
+## SV 行号与文档末尾留白必须分层
+
+GNOME Text Editor 的 `EditorSourceView` 通过 `gtk_text_view_set_bottom_margin()` 提供与可见区域高度相关的 overscroll，行号仍由 GtkSourceView gutter 按文本 buffer 的实际行渲染。留白属于视图滚动范围，不属于文档内容，也不会生成行号。
+
+Desktop 的对应实现保持同一边界：Vditor 3.11.3 的 `--editor-bottom` / `::after` 只负责 SV 的末尾滚动留白；应用 gutter 从 SV DOM 的原始文本生成逻辑行并剔除尾部换行，正文内部空行仍正常编号。Vditor 会在模式转换时规范化块分隔并序列化末尾换行，不能直接用 `getValue().split("\n")` 的尾部空 segment 生成行号。
+
+SV 的原始 HTML marker 可在一个元素内包含多行和嵌套的 `data-type="newline"`；实际文本行数可能高于 marker 数，不能在 marker 用尽后按固定行高猜算，否则行号会延伸进 overscroll。行号位置应取逻辑源码行所有 client rect 中视觉最上方的 rect，不能假定 `Range.getClientRects()` 的第一个结果一定是行首；长行折行时，该假定会把行号放到换行标记末端。滚动监听还须跟随 Vditor 替换后的当前 SV 节点，并在旧节点上清理。
+
+# Vditor undo 的连续编辑合并窗口
+
+## 记录版本：0.1.5
+
+Vditor 3.11.3 会以 `undoDelay`（Desktop 当前配置为 500ms）防抖写入 undo 栈。连续编辑若间隔不超过该窗口，会合并为同一个撤销步骤；例如先清空一个表格单元格、随即在表格外输入文字，单次 Ctrl/Cmd+Z 可能同时回退两项更改，并把光标恢复到该合并步骤保存的表格位置。
+
+这不是 Desktop 的表格选择修复额外写入 undo 项，也不是内容损坏：等待超过 500ms 后再进行下一次编辑，两个操作会形成独立历史项，内容撤销结果正常。Desktop 遵从 Vditor 的原生连续输入分组行为，不为表格删除单独强制提交 undo 边界。
+
+## 超过合并窗口后的光标恢复异常
+
+即使每次编辑之间已等待超过 `undoDelay`，Vditor 3.11.3 的内容 undo 与光标恢复仍不是同一个可靠性等级。已人工确认的混合场景如下：
+
+1. 在表格单元格内输入字符后删除；
+2. 等待约 3 秒，确保该编辑已单独写入 undo 栈；
+3. 在表格外的标题中输入字符，再等待约 3 秒；
+4. 按 Ctrl/Cmd+Z。
+
+标题中的字符会正确消失，但光标会回到此前编辑过的表格单元格；另有偶发情况会回到文首。因为等待已经超过合并窗口，这不是 `undoDelay` 造成的操作粘连。
+
+上游实现的原因是 undo 快照通过私有 `wbr` 光标标记保存位置。`recordFirstPosition()` 只在初始 undo 状态记录一次选区，而 `renderDiff()` 在撤销时恢复上一条快照的标记；跨块、跨位置编辑时，该标记可以属于较早的表格编辑，而不是刚被撤销的标题编辑。标记缺失或结构重建后无法稳定定位时，Vditor 的 selection fallback 也不能保证预期位置；人工观察中包括光标回到文首。当前只记录可观察行为，不把文首情况归因到某一个未单独验证的上游分支。
+
+该问题发生在没有 Desktop 表格整格选择接管的普通“输入后删除”路径，因此可确认是 Vditor 3.11.3 的上游光标恢复缺陷/限制，而非 Desktop 本轮修改造成。尚未对比更早 Vditor 版本或核对上游 issue 历史，不能把它表述为“版本回归”。Desktop 当前遵从 upstream：保证内容撤销正确，不在应用层用私有 DOM 猜测跨块光标位置。升级 Vditor 时应复核 `undoDelay`、`recordFirstPosition()`、`Undo.renderDiff()` 与跨块撤销后的光标恢复表现；若上游提供稳定选择位置 API，再单独评估修复。
+
+## 编辑区右键菜单的 Vditor 私有表格边界
+
+Vditor 3.11.3 没有公开的编辑器右键菜单或表格行列 API。WYSIWYG 的浮动工具栏和 IR 的键盘分支最终都依赖同一组内部 table DOM 操作；Desktop 不能伪造快捷键，也不能把 Markdown 整体取出、修改后再 `setValue()`，否则会丢失当前选区和 undo 上下文。
+
+Desktop 因此只在 adapter 中保存/恢复编辑 Range、识别真实 `td` / `th`、执行与上游一致的行列 DOM 变化，并派发到 Vditor 当前模式的 input 处理器，使内容序列化、预览、修改状态和 undo 仍由 Vditor 负责。删除表头行按上游语义禁用；删除唯一一列让上游对应的 table 删除边界继续生效。任何 Vditor 升级都必须人工复核 WYSIWYG、IR 的四项操作、光标和 Markdown 输出，并单独观察 Vditor 自身 undo 行为；若上游提供稳定公共表格 API，应替换该私有适配。
+
+当前自动化覆盖菜单可见性、Range 恢复和四项表格 DOM 结果；剪切、复制、两种粘贴和四项表格行列操作已完成人工验收。Vditor undo 栈及跨块光标恢复仍属于上游限制，不作为右键菜单能力承诺；不能把该场景改为 Desktop 自建 undo，或以 `getValue()` / `setValue()` 回写来伪造撤销，否则会越过 Vditor 的选区与历史边界。
+
+右键菜单自身是应用层共享的 `#contextMenu`：文件树和编辑区不再争用不同容器。编辑菜单仅捕获当前活动标签的可编辑表面，SV preview、查找输入框、设置与文件树不被接管；菜单在视窗边界内定位，`Escape`、外部点击、标签/模式切换、重建和标签关闭都会清理保存的 Range。撤销/重做不在右键菜单中提供，继续使用 Ctrl/Cmd+Z、Ctrl/Cmd+Shift+Z 与 Vditor 工具栏，避免将 Vditor 3.11.3 的私有 undo 快照限制伪装成稳定的菜单命令。由于 Chromium 的 `execCommand('paste')` 不能可靠地向 Vditor 传递剪贴板数据，preload 只暴露 `readClipboard()`，由 adapter 构造 Vditor 既有的 paste 事件；纯文本粘贴不传递 HTML。

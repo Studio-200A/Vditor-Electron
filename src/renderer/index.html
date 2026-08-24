@@ -42,7 +42,7 @@
             data-i18n-title="toolbar.newFile"
             aria-label="New File"
           >
-            <svg viewBox="0 0 24"><path d="M6 3h8l4 4v14H6zM14 3v5h5M12 11v6M9 14h6" /></svg>
+            <svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v5h5M12 11v6M9 14h6" /></svg>
           </button>
           <button
             id="openFile"
@@ -50,7 +50,9 @@
             data-i18n-title="toolbar.openFile"
             aria-label="Open File"
           >
-            <svg viewBox="0 0 24"><path d="M3.5 7.5h6l1.8 2h9.2v9h-17zM3.5 7.5V5.5h6l1.8 2" /></svg>
+            <svg viewBox="0 0 24 24">
+              <path d="M3.5 7.5h6l1.8 2h9.2v9h-17zM3.5 7.5V5.5h6l1.8 2" />
+            </svg>
           </button>
           <button
             id="saveFile"
@@ -58,7 +60,7 @@
             data-i18n-title="toolbar.saveFile"
             aria-label="Save File"
           >
-            <svg viewBox="0 0 24"><path d="M5 3h12l2 2v16H5zM8 3v6h8V3M8 21v-7h8v7" /></svg>
+            <svg viewBox="0 0 24 24"><path d="M5 3h12l2 2v16H5zM8 3v6h8V3M8 21v-7h8v7" /></svg>
           </button>
         </div>
         <div id="tabBar" class="tabbar">
@@ -214,12 +216,34 @@
           </div>
         </main>
       </div>
+      <div id="documentLinkTooltip" class="document-link-tooltip" role="tooltip" hidden></div>
       <footer class="statusbar">
         <div class="status-left"><span id="statusPath"></span><span id="statusMessage"></span></div>
         <div class="status-right">
-          <span id="statusMode">IR</span><span id="statusWords">0 词</span
-          ><span id="statusChars">0 字符</span><span id="statusLines">1 行</span>
-          <span id="statusEncoding">UTF-8</span><span id="statusLineEnding">LF</span>
+          <div class="status-mode-picker">
+            <span
+              id="statusMode"
+              role="button"
+              tabindex="0"
+              aria-haspopup="menu"
+              aria-expanded="false"
+              >IR</span
+            >
+            <div id="statusModeMenu" class="status-mode-menu hidden" role="menu">
+              <button type="button" data-status-mode="wysiwyg" role="menuitemradio">
+                <i class="checkmark" aria-hidden="true"></i><span>WYSIWYG</span>
+              </button>
+              <button type="button" data-status-mode="ir" role="menuitemradio">
+                <i class="checkmark" aria-hidden="true"></i><span>IR</span>
+              </button>
+              <button type="button" data-status-mode="sv" role="menuitemradio">
+                <i class="checkmark" aria-hidden="true"></i><span>SV</span>
+              </button>
+            </div>
+          </div>
+          <span id="statusWords">0 词</span><span id="statusChars">0 字符</span
+          ><span id="statusLines">1 行</span> <span id="statusEncoding">UTF-8</span
+          ><span id="statusLineEnding">LF</span>
           <button
             id="statusSettings"
             class="status-icon"
@@ -241,7 +265,7 @@
             <input id="statusThemeToggle" type="checkbox" />
             <span aria-hidden="true"></span>
           </label>
-          <span id="statusVersion">v0.1.0</span>
+          <span id="statusVersion">v0.1.5</span>
         </div>
       </footer>
     </div>
@@ -1182,13 +1206,6 @@
                 <h3>Vditor Desktop</h3>
                 <p class="version-info">
                   <span id="versionInfo"></span>
-                  <span id="commitSeparator" class="hidden"> · </span>
-                  <button
-                    id="commitInfo"
-                    type="button"
-                    class="about-link hidden"
-                    data-external=""
-                  ></button>
                 </p>
                 <p class="about-credit">
                   <span data-i18n="about.basedOnPrefix">Based on the </span
@@ -1234,6 +1251,13 @@
                 <button id="resetSettings" type="button" class="danger" data-i18n="settings.reset">
                   Restore defaults
                 </button>
+                <label class="about-devtools-setting">
+                  <span>Chrome DevTools</span>
+                  <span class="theme-switch">
+                    <input name="devToolsEnabled" type="checkbox" />
+                    <span aria-hidden="true"></span>
+                  </span>
+                </label>
               </div>
             </section>
           </form>

@@ -210,8 +210,32 @@ test('creates numbered tabs and shows the empty state after closing all tabs', a
     const { page } = running;
     await expect(page.locator('.document-tab')).toHaveCount(0);
     await expect(page.locator('#noTabs')).toBeVisible();
-    await expect(page.locator('#app')).toHaveClass(/toolbar-unavailable/);
-    await expect(page.locator('#vditorToolbarMount')).toBeHidden();
+    await expect(page.locator('#app')).not.toHaveClass(/toolbar-unavailable/);
+    await expect(page.locator('#vditorToolbarMount > .vditor-toolbar')).toBeVisible();
+    await expect
+      .poll(() =>
+        page
+          .locator('#vditorToolbarMount > .vditor-toolbar button')
+          .evaluateAll(
+            (buttons) => buttons.length > 0 && buttons.every((button) => button.disabled),
+          ),
+      )
+      .toBe(true);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const save = document.querySelector('#saveFile');
+          const buttons = Array.from(
+            document.querySelectorAll(
+              '#vditorToolbarMount > .vditor-toolbar .vditor-toolbar__item button',
+            ),
+          );
+          if (!(save instanceof HTMLElement) || !buttons.length) return false;
+          const saveColor = getComputedStyle(save).color;
+          return buttons.every((button) => getComputedStyle(button).color === saveColor);
+        }),
+      )
+      .toBe(true);
     await expect
       .poll(() =>
         page
@@ -221,10 +245,23 @@ test('creates numbered tabs and shows the empty state after closing all tabs', a
       .toBe('drag');
     await page.locator('[data-menu="main"]').click();
     await expect(page.locator('.app-menu-popup button', { hasText: 'Close Tab' })).toHaveCount(0);
+    const editModeMenu = page.locator('.app-menu-popup button.has-submenu', {
+      hasText: 'Editing Mode',
+    });
+    await expect(editModeMenu).toBeDisabled();
+    await editModeMenu.hover();
+    await expect(page.locator('.app-menu-popup.submenu')).toHaveCount(0);
     await page.locator('.app-menu-popup button.has-submenu', { hasText: 'Layout' }).click();
     const toolbarItem = page.locator('.app-menu-popup.submenu button', { hasText: 'Show Toolbar' });
-    await expect(toolbarItem).toBeDisabled();
-    await expect(toolbarItem.locator('.checkmark')).toHaveText('');
+    await expect(toolbarItem).toBeEnabled();
+    await expect(toolbarItem.locator('.checkmark')).toHaveText('✓');
+    await toolbarItem.click();
+    await expect(page.locator('#vditorToolbarMount')).toBeHidden();
+    await page.locator('[data-menu="main"]').click();
+    await page.locator('[data-menu="main"]').click();
+    await page.locator('.app-menu-popup button.has-submenu', { hasText: 'Layout' }).click();
+    await page.locator('.app-menu-popup.submenu button', { hasText: 'Show Toolbar' }).click();
+    await expect(page.locator('#vditorToolbarMount > .vditor-toolbar')).toBeVisible();
     await page.locator('[data-menu="main"]').click();
     await expect(page.locator('.app-menu-popup')).toHaveCount(0);
 
@@ -376,6 +413,30 @@ test('reorders tabs by dragging within the unified workbench bar', async () => {
   }
 });
 
+test('scrolls overflowing document tabs with the mouse wheel', async () => {
+  const running = await launchApp();
+  try {
+    const { page } = running;
+    for (let index = 0; index < 5; index += 1) await createNewTab(page);
+    const tabBar = page.locator('#tabBar');
+    await tabBar.evaluate((node) => {
+      node.style.flex = '0 0 240px';
+    });
+    const before = await tabBar.evaluate((node) => ({
+      clientWidth: node.clientWidth,
+      scrollLeft: node.scrollLeft,
+      scrollWidth: node.scrollWidth,
+    }));
+    expect(before.scrollLeft).toBe(0);
+    expect(before.scrollWidth).toBeGreaterThan(before.clientWidth);
+    await tabBar.hover();
+    await page.mouse.wheel(0, 160);
+    await expect.poll(() => tabBar.evaluate((node) => node.scrollLeft)).toBeGreaterThan(0);
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('opens the View > Layout submenu and toggles the unified toolbar', async () => {
   const running = await launchApp({ sidebarVisible: true });
   try {
@@ -401,6 +462,67 @@ test('opens the View > Layout submenu and toggles the unified toolbar', async ()
   }
 });
 
+test('keeps wrapped toolbar menus out of editor geometry and retains the hidden-toolbar shadow', async () => {
+  const running = await launchApp({ sidebarVisible: true });
+  try {
+    const { app, page } = running;
+    await createNewTab(page);
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(760, 700));
+    await expect(page.locator('#app')).toHaveClass(/toolbar-wrapped/);
+    const codeTheme = page.locator('#vditorToolbarMount button[data-type="code-theme"]');
+    const geometry = () =>
+      page.evaluate(() => {
+        const toolbar = document.querySelector('#vditorToolbarMount > .vditor-toolbar');
+        const main = document.querySelector('.main-area');
+        if (!toolbar || !main) throw new Error('Toolbar layout is unavailable');
+        return {
+          toolbarHeight: toolbar.getBoundingClientRect().height,
+          mainTop: main.getBoundingClientRect().top,
+          mainPaddingTop: getComputedStyle(main).paddingTop,
+        };
+      });
+    const beforeMenu = await geometry();
+
+    await codeTheme.click();
+    await expect(page.locator('#vditorToolbarMount .vditor-hint:visible')).toHaveCount(1);
+    expect(await geometry()).toEqual(beforeMenu);
+
+    const layoutMenu = () =>
+      page.locator('.app-menu-popup:not(.submenu) button.has-submenu', { hasText: 'Layout' });
+    await page.locator('[data-menu="main"]').click();
+    await layoutMenu().click();
+    await page.locator('.app-menu-popup.submenu button', { hasText: 'Show Toolbar' }).click();
+    await expect(page.locator('#app')).toHaveClass(/toolbar-hidden/);
+    const titlebarShadow = () =>
+      page.locator('#windowTitlebar').evaluate((node) => {
+        const style = getComputedStyle(node, '::after');
+        return {
+          height: Number.parseFloat(style.height),
+          left: Number.parseFloat(style.left),
+          shadow: style.boxShadow,
+        };
+      });
+    await expect
+      .poll(async () => {
+        const shadow = await titlebarShadow();
+        return shadow.shadow !== 'none' && shadow.shadow !== '' && shadow.height > 30;
+      })
+      .toBe(true);
+    const visibleSidebarShadow = await titlebarShadow();
+    const sidebarWidth = await page
+      .locator('#sidebar')
+      .evaluate((node) => node.getBoundingClientRect().width);
+    expect(visibleSidebarShadow.left).toBeCloseTo(sidebarWidth, 0);
+
+    await page.locator('#toggleSidebar').click();
+    await expect(page.locator('#app')).toHaveClass(/sidebar-collapsed/);
+    await expect.poll(async () => (await titlebarShadow()).left).toBe(0);
+    expect((await titlebarShadow()).height).toBeGreaterThan(30);
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('switches among all three modes from the View > Editing Mode submenu', async () => {
   const running = await launchApp({ editMode: 'ir' });
   try {
@@ -420,7 +542,7 @@ test('switches among all three modes from the View > Editing Mode submenu', asyn
     ).toContainText('✓');
     await page.locator('.app-menu-popup.submenu button', { hasText: 'WYSIWYG Mode' }).click();
     await expect(page.locator('.editor-host.active .vditor-wysiwyg')).toBeVisible();
-    await expect.poll(() => readSetting(testRoot, 'editor', 'editMode')).toBe('wysiwyg');
+    await expect.poll(() => readSetting(testRoot, 'editor', 'editMode')).toBe('ir');
 
     await openEditingMode();
     await page
@@ -432,17 +554,17 @@ test('switches among all three modes from the View > Editing Mode submenu', asyn
     await page.locator('.app-menu-popup.submenu button', { hasText: 'Split Preview Mode' }).click();
     await expect(page.locator('.editor-host.active .vditor-sv')).toBeVisible();
     await expect(page.locator('.editor-host.active .vditor-preview')).toBeVisible();
-    await expect.poll(() => readSetting(testRoot, 'editor', 'editMode')).toBe('sv');
+    await expect.poll(() => readSetting(testRoot, 'editor', 'editMode')).toBe('ir');
   } finally {
     await closeApp(running);
   }
 });
 
 test('switches to split view and renders source line numbers', async () => {
-  const running = await launchApp();
+  const markdown = `## Heading\n\n${'long-line '.repeat(80)}\n\nlast`;
+  const running = await launchApp({ editMode: 'ir' }, { 'line-numbers.md': markdown });
   try {
     const { page } = running;
-    await createNewTab(page);
     const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
     await modeTrigger.click();
     await page.locator('#vditorToolbarMount button[data-mode="sv"]').click();
@@ -450,8 +572,12 @@ test('switches to split view and renders source line numbers', async () => {
     await expect(page.locator('.editor-host.active .vditor-sv')).toBeVisible();
     await expect(page.locator('.editor-host.active .sv-line-numbers')).toBeVisible();
     const source = page.locator('.editor-host.active .vditor-sv');
-    await source.fill(`## Heading\n${'long-line '.repeat(80)}\nlast`);
-    await expect(page.locator('.editor-host.active .sv-line-number')).toHaveCount(3);
+    const gutter = page.locator('.editor-host.active .sv-line-numbers');
+    const lineNumberCanvas = page.locator('.editor-host.active .sv-line-number-canvas');
+    await expect(gutter).toHaveCSS('pointer-events', 'none');
+    await expect(gutter).toHaveCSS('user-select', 'none');
+    await expect(lineNumberCanvas).toHaveClass(/scroll-linked/);
+    await expect(page.locator('.editor-host.active .sv-line-number')).toHaveCount(5);
     await expect
       .poll(() =>
         source.evaluate((node) => {
@@ -477,6 +603,60 @@ test('switches to split view and renders source line numbers', async () => {
         }),
       )
       .toBeLessThan(4);
+    await source.evaluate((node) => {
+      node.scrollTop = node.scrollHeight;
+      node.dispatchEvent(new Event('scroll'));
+    });
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const source = document.querySelector('.editor-host.active .vditor-sv');
+          const canvas = document.querySelector('.editor-host.active .sv-line-number-canvas');
+          if (!(source instanceof HTMLElement) || !(canvas instanceof HTMLElement))
+            return Number.POSITIVE_INFINITY;
+          const transform = new DOMMatrixReadOnly(getComputedStyle(canvas).transform);
+          return Math.abs(transform.m42 + source.scrollTop);
+        }),
+      )
+      .toBeLessThan(1);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const source = document.querySelector('.editor-host.active .vditor-sv');
+          const lastNumber = document.querySelector(
+            '.editor-host.active .sv-line-number:last-child',
+          );
+          if (!(source instanceof HTMLElement) || !lastNumber) return Number.POSITIVE_INFINITY;
+          const walker = document.createTreeWalker(source, NodeFilter.SHOW_TEXT);
+          let text = walker.nextNode();
+          while (text && text.textContent !== 'last') text = walker.nextNode();
+          if (!text) return Number.POSITIVE_INFINITY;
+          const range = document.createRange();
+          range.selectNodeContents(text);
+          const textRect = range.getBoundingClientRect();
+          const numberRect = lastNumber.getBoundingClientRect();
+          return Math.abs(
+            textRect.top + textRect.height / 2 - (numberRect.top + numberRect.height / 2),
+          );
+        }),
+      )
+      .toBeLessThan(4);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const source = document.querySelector('.editor-host.active .vditor-sv');
+          const lastNumber = document.querySelector(
+            '.editor-host.active .sv-line-number:last-child',
+          );
+          if (!(source instanceof HTMLElement) || !(lastNumber instanceof HTMLElement))
+            return false;
+          const spacerHeight = Number.parseFloat(getComputedStyle(source, '::after').height);
+          return (
+            lastNumber.offsetTop + lastNumber.offsetHeight <= source.scrollHeight - spacerHeight
+          );
+        }),
+      )
+      .toBe(true);
 
     const resizer = page.locator('.editor-host.active .sv-split-resizer');
     await expect(resizer).toBeVisible();
@@ -538,6 +718,257 @@ test('switches to split view and renders source line numbers', async () => {
   }
 });
 
+test('does not number Vditor SV bottom spacer after README source', async () => {
+  const markdown = fs.readFileSync(path.join(projectRoot, 'README_CN.md'), 'utf8');
+  const running = await launchApp({ editMode: 'sv' }, { 'README_CN.md': markdown });
+  try {
+    const { page } = running;
+    await expect(page.locator('.editor-host.active .vditor-sv')).toBeVisible();
+    await expect(page.locator('.editor-host.active .sv-line-numbers')).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const numbers = Array.from(
+            document.querySelectorAll('.editor-host.active .sv-line-number'),
+          );
+          return (
+            numbers.length > 0 &&
+            numbers.every((number, index) => number.textContent === String(index + 1))
+          );
+        }),
+      )
+      .toBe(true);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const source = document.querySelector('.editor-host.active .vditor-sv');
+          const lastNumber = document.querySelector(
+            '.editor-host.active .sv-line-number:last-child',
+          );
+          if (!(source instanceof HTMLElement) || !(lastNumber instanceof HTMLElement))
+            return false;
+          const spacerHeight = Number.parseFloat(getComputedStyle(source, '::after').height);
+          return (
+            lastNumber.offsetTop + lastNumber.offsetHeight <= source.scrollHeight - spacerHeight
+          );
+        }),
+      )
+      .toBe(true);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps blank SV line numbers in flow after fullscreen scrolling', async () => {
+  const markdown = Array.from({ length: 60 }, (_, index) =>
+    index % 2 === 0 ? `line ${index + 1}` : '',
+  ).join('\n');
+  const running = await launchApp(
+    { editMode: 'sv', toolbarVisible: false },
+    { 'sv-blank-lines.md': markdown },
+  );
+  try {
+    const { page } = running;
+    await expect(page.locator('.editor-host.active .vditor-sv')).toBeVisible();
+    await page.keyboard.press('F11');
+    await expect(page.locator('#app')).toHaveClass(/fullscreen/);
+    const source = page.locator('.editor-host.active .vditor-sv');
+    await source.evaluate((node) => {
+      node.scrollTop = 257;
+      node.dispatchEvent(new Event('scroll'));
+    });
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const gutter = document.querySelector('.editor-host.active .sv-line-numbers');
+          const source = document.querySelector('.editor-host.active .vditor-sv');
+          if (!(gutter instanceof HTMLElement) || !(source instanceof HTMLElement)) return null;
+          const gutterTop = gutter.getBoundingClientRect().top;
+          const blankLines = Array.from({ length: 60 }, (_, index) => index + 1).filter(
+            (line) => line % 2 === 0,
+          );
+          const pinnedBlankLines = blankLines.filter((line) => {
+            const number = Array.from(
+              document.querySelectorAll('.editor-host.active .sv-line-number'),
+            ).find((item) => item.textContent === String(line));
+            if (!(number instanceof HTMLElement)) return false;
+            const rect = number.getBoundingClientRect();
+            return rect.top <= gutterTop + 0.5 && rect.bottom > gutterTop + 1;
+          });
+          return pinnedBlankLines;
+        }),
+      )
+      .toEqual([]);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const source = document.querySelector('.editor-host.active .vditor-sv');
+          const numbers = Array.from(
+            document.querySelectorAll('.editor-host.active .sv-line-number'),
+          );
+          if (!(source instanceof HTMLElement)) return Number.POSITIVE_INFINITY;
+          const lines = window.VditorDesktopAdapter.sourceLineRanges(source);
+          return Math.max(
+            ...lines.map((line, index) => {
+              const textRect = line.range.getBoundingClientRect();
+              const numberRect = numbers[index]?.getBoundingClientRect();
+              return textRect.height > 0 && numberRect
+                ? Math.abs(
+                    textRect.top + textRect.height / 2 - (numberRect.top + numberRect.height / 2),
+                  )
+                : 0;
+            }),
+          );
+        }),
+      )
+      .toBeLessThan(0.75);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('deletes a selected nonempty table cell in WYSIWYG and Instant Rendering', async () => {
+  const markdown = '| left | right |\n| --- | --- |\n| alpha | beta |';
+  for (const mode of ['ir', 'wysiwyg'] as const) {
+    const running = await launchApp({ editMode: mode }, { 'table-delete.md': markdown });
+    try {
+      const { page } = running;
+      const modifier =
+        (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+      const cell = page.locator('.editor-host.active tbody td').first();
+      await expect(cell).toContainText('alpha');
+      await cell.click();
+      await page.keyboard.press(`${modifier}+a`);
+      await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe('alpha');
+      await page.keyboard.press('Backspace');
+      await expect(cell).toHaveText('');
+    } finally {
+      await closeApp(running);
+    }
+  }
+});
+
+test('shows the editor context menu only on editable surfaces and restores its Range', async () => {
+  const markdown = 'first paragraph\n\nsecond paragraph';
+  const running = await launchApp({ editMode: 'ir' }, { 'context.md': markdown });
+  try {
+    const { page } = running;
+    const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+    const switchTo = async (mode: 'ir' | 'wysiwyg' | 'sv') => {
+      if (
+        await page
+          .locator(`.editor-host.active .vditor-${mode === 'wysiwyg' ? 'wysiwyg' : mode}`)
+          .isVisible()
+      )
+        return;
+      await modeTrigger.click();
+      await page.locator(`#vditorToolbarMount button[data-mode="${mode}"]`).click();
+      await expect(
+        page.locator(`.editor-host.active .vditor-${mode === 'wysiwyg' ? 'wysiwyg' : mode}`),
+      ).toBeVisible();
+    };
+    for (const mode of ['ir', 'wysiwyg', 'sv'] as const) {
+      await switchTo(mode);
+      const editor = page.locator(
+        `.editor-host.active .${mode === 'sv' ? 'vditor-sv' : `vditor-${mode} .vditor-reset`}`,
+      );
+      await expect(editor).toBeVisible();
+      await editor.evaluate((node) => {
+        const text = document.createTreeWalker(node, NodeFilter.SHOW_TEXT).nextNode();
+        if (!text) throw new Error('Expected editable text');
+        const range = document.createRange();
+        range.setStart(text, Math.min(2, text.textContent?.length || 0));
+        range.collapse(true);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        (node.closest('.vditor-ir, .vditor-wysiwyg, .vditor-sv') as HTMLElement)?.focus();
+      });
+      await editor.click({ button: 'right' });
+      const menu = page.locator('#contextMenu');
+      await expect(menu).toBeVisible();
+      await expect(menu.locator('[data-context-action="paste-plain"]')).toBeVisible();
+      await expect(menu.locator('[data-context-action="select-context"]')).toBeVisible();
+      const bounds = await menu.boundingBox();
+      expect(bounds).not.toBeNull();
+      expect(bounds!.x).toBeGreaterThanOrEqual(0);
+      expect(bounds!.y).toBeGreaterThanOrEqual(0);
+      await menu.locator('[data-context-action="select-context"]').click();
+      await expect
+        .poll(() => page.evaluate(() => window.getSelection()?.toString().trim().length || 0))
+        .toBeGreaterThan(0);
+
+      await page.keyboard.press('Escape');
+      await expect(menu).toBeHidden();
+      if (mode === 'sv') {
+        await page.locator('.editor-host.active .vditor-preview').click({ button: 'right' });
+        await expect(menu).toBeHidden();
+      }
+    }
+    const modifier =
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+    await page.keyboard.press(`${modifier}+f`);
+    await expect(page.locator('#findInput')).toBeVisible();
+    await page.locator('#findInput').click({ button: 'right' });
+    await expect(page.locator('#contextMenu')).toBeHidden();
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('performs table context-menu actions in WYSIWYG and Instant Rendering', async () => {
+  const markdown = '| left | right |\n| --- | --- |\n| alpha | beta |\n| gamma | delta |';
+  for (const mode of ['ir', 'wysiwyg'] as const) {
+    const running = await launchApp({ editMode: mode }, { 'table-context.md': markdown });
+    try {
+      const { page } = running;
+      const menu = page.locator('#contextMenu');
+      const rightClickCell = async () => {
+        await page.locator('.editor-host.active tbody td').first().click({ button: 'right' });
+        await expect(menu).toBeVisible();
+      };
+      await rightClickCell();
+      await expect(menu.locator('[data-context-action="table-insert-row"]')).toBeVisible();
+      await expect(menu.locator('[data-context-action="table-delete-row"]')).toBeEnabled();
+      await expect(menu.locator('[data-context-action="table-insert-column"]')).toBeVisible();
+      await expect(menu.locator('[data-context-action="table-delete-column"]')).toBeVisible();
+      await menu.locator('[data-context-action="table-insert-row"]').click();
+      await expect.poll(() => page.locator('.editor-host.active tbody tr').count()).toBe(3);
+
+      await rightClickCell();
+      await menu.locator('[data-context-action="table-delete-row"]').click();
+      await expect.poll(() => page.locator('.editor-host.active tbody tr').count()).toBe(2);
+
+      await rightClickCell();
+      await menu.locator('[data-context-action="table-insert-column"]').click();
+      await expect
+        .poll(() =>
+          page
+            .locator('.editor-host.active tbody td')
+            .first()
+            .evaluate((cell) => cell.parentElement!.children.length),
+        )
+        .toBe(3);
+
+      await rightClickCell();
+      await menu.locator('[data-context-action="table-delete-column"]').click();
+      await expect
+        .poll(() =>
+          page
+            .locator('.editor-host.active tbody td')
+            .first()
+            .evaluate((cell) => cell.parentElement!.children.length),
+        )
+        .toBe(2);
+
+      await page.locator('.editor-host.active thead th').first().click({ button: 'right' });
+      await expect(menu.locator('[data-context-action="table-delete-row"]')).toBeDisabled();
+    } finally {
+      await closeApp(running);
+    }
+  }
+});
+
 test('satisfies the Vditor DOM integration contract', async () => {
   const running = await launchApp({ editMode: 'sv' });
   try {
@@ -568,6 +999,188 @@ test('satisfies the Vditor DOM integration contract', async () => {
   }
 });
 
+test('selects the current editor context before the complete document with Ctrl/Cmd+A', async () => {
+  const running = await launchApp({ editMode: 'ir' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    const modifier =
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+    const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+    const switchTo = async (mode: 'wysiwyg' | 'ir' | 'sv') => {
+      await modeTrigger.click();
+      await page.locator(`#vditorToolbarMount button[data-mode="${mode}"]`).click();
+      await expect(
+        page.locator(`.editor-host.active .vditor-${mode === 'wysiwyg' ? 'wysiwyg' : mode}`),
+      ).toBeVisible();
+    };
+    const selectionText = () => page.evaluate(() => window.getSelection()?.toString());
+    const placeCaretAtStart = (editor: ReturnType<Page['locator']>) =>
+      editor.evaluate((node) => {
+        const text = document.createTreeWalker(node, NodeFilter.SHOW_TEXT).nextNode();
+        if (!text) throw new Error('Expected editable text');
+        const range = document.createRange();
+        range.setStart(text, 0);
+        range.collapse(true);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        (node.closest('.vditor-ir, .vditor-wysiwyg, .vditor-sv') as HTMLElement)?.focus({
+          preventScroll: true,
+        });
+      });
+
+    const ir = page.locator('.editor-host.active .vditor-ir .vditor-reset');
+    await ir.fill('first paragraph\n\nsecond paragraph');
+    await placeCaretAtStart(ir);
+    await page.keyboard.press(`${modifier}+a`);
+    await expect.poll(selectionText).toBe('first paragraph');
+    await page.keyboard.press(`${modifier}+a`);
+    await expect.poll(selectionText).toContain('second paragraph');
+
+    await switchTo('wysiwyg');
+    const wysiwyg = page.locator('.editor-host.active .vditor-wysiwyg .vditor-reset');
+    await placeCaretAtStart(wysiwyg);
+    await page.keyboard.press(`${modifier}+a`);
+    await expect.poll(selectionText).toBe('first paragraph');
+    await page.keyboard.press(`${modifier}+a`);
+    await expect.poll(selectionText).toContain('second paragraph');
+
+    await switchTo('sv');
+    const source = page.locator('.editor-host.active .vditor-sv');
+    await placeCaretAtStart(source);
+    await page.keyboard.press(`${modifier}+a`);
+    await expect.poll(selectionText).toBe('first paragraph');
+    await page.keyboard.press(`${modifier}+a`);
+    await expect.poll(selectionText).toContain('second paragraph');
+
+    await source.fill('<div>HTML content</div>');
+    const htmlCaretPoint = await source.evaluate((node) => {
+      const text = node.querySelector('.vditor-sv__marker')?.firstChild;
+      if (!text) throw new Error('Expected HTML marker text');
+      const range = document.createRange();
+      range.setStart(text, 6);
+      range.setEnd(text, 7);
+      const rect = range.getBoundingClientRect();
+      return { x: rect.left + 1, y: rect.top + rect.height / 2 };
+    });
+    await page.mouse.click(htmlCaretPoint.x, htmlCaretPoint.y);
+    await page.keyboard.press(`${modifier}+a`);
+    await expect.poll(selectionText).toBe('<div>HTML content</div>');
+    await page.keyboard.press(`${modifier}+a`);
+    await expect.poll(selectionText).toContain('\n');
+
+    await page.keyboard.press(`${modifier}+f`);
+    await expect(page.locator('#findInput')).toBeFocused();
+    await page.keyboard.press(`${modifier}+a`);
+    await expect(page.locator('#findInput')).toHaveValue('');
+
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => window.getSelection()?.removeAllRanges());
+    await page.locator('#statusMode').click();
+    await page.keyboard.press(`${modifier}+a`);
+    await expect.poll(selectionText).toBe('');
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps WYSIWYG code-block selection on the application two-stage path', async () => {
+  const running = await launchApp(
+    { editMode: 'wysiwyg' },
+    { 'code-block.md': 'before\n\n```js\nconst value = 1;\n```\n\nafter' },
+  );
+  try {
+    const { page } = running;
+    const modifier =
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+    const block = page.locator('.editor-host.active [data-type="code-block"]').first();
+    await block.locator('.vditor-wysiwyg__preview').click();
+    const code = block.locator('code').first();
+    await code.waitFor({ state: 'visible' });
+    await code.evaluate((node) => {
+      const text = node.firstChild;
+      if (!text) throw new Error('Expected code text');
+      const range = document.createRange();
+      range.setStart(text, 2);
+      range.collapse(true);
+      window.getSelection()?.removeAllRanges();
+      window.getSelection()?.addRange(range);
+      (node.closest('.vditor-wysiwyg') as HTMLElement)?.focus({ preventScroll: true });
+    });
+    await page.keyboard.press(`${modifier}+a`);
+    await expect
+      .poll(() => page.evaluate(() => window.getSelection()?.toString()))
+      .toContain('const value = 1;');
+    await page.keyboard.press(`${modifier}+a`);
+    await expect
+      .poll(() => page.evaluate(() => window.getSelection()?.toString()))
+      .toContain('before');
+    await expect
+      .poll(() => page.evaluate(() => window.getSelection()?.toString()))
+      .toContain('after');
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('selects README raw HTML source lines at closing-tag boundaries', async () => {
+  const readme = fs.readFileSync(path.join(projectRoot, 'README.md'), 'utf8');
+  const running = await launchApp({ editMode: 'sv' }, { 'selection-readme.md': readme });
+  try {
+    const { page } = running;
+    const source = page.locator('.editor-host.active .vditor-sv');
+    await expect(source).toBeVisible();
+    await source.evaluate((node) => {
+      node.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+      let text = walker.nextNode();
+      while (text && !text.textContent?.includes('code_style-prettier')) text = walker.nextNode();
+      if (!text?.textContent) throw new Error('README badge HTML line is missing');
+      const range = document.createRange();
+      range.setStart(text, text.textContent.length);
+      range.collapse(true);
+      window.getSelection()?.removeAllRanges();
+      window.getSelection()?.addRange(range);
+      (node as HTMLElement).focus({ preventScroll: true });
+    });
+    const modifier =
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+    await page.keyboard.press(`${modifier}+a`);
+    await expect
+      .poll(() => page.evaluate(() => window.getSelection()?.toString()))
+      .toBe(
+        '  <a href="https://github.com/prettier/prettier"><img src="https://img.shields.io/badge/code_style-prettier-ff69b4.svg" alt="code style: prettier" /></a>',
+      );
+    const selectClosingParagraph = async (occurrence: number) => {
+      await source.evaluate((node, targetOccurrence) => {
+        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+        const closings = [];
+        let text = walker.nextNode();
+        while (text) {
+          if (text.textContent === '</p>') closings.push(text);
+          text = walker.nextNode();
+        }
+        const target = closings[targetOccurrence];
+        if (!target?.textContent) throw new Error('README closing paragraph tag is missing');
+        node.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+        const range = document.createRange();
+        range.setStart(target, target.textContent.length);
+        range.collapse(true);
+        window.getSelection()?.removeAllRanges();
+        window.getSelection()?.addRange(range);
+        (node as HTMLElement).focus({ preventScroll: true });
+      }, occurrence);
+      await page.keyboard.press(`${modifier}+a`);
+      await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe('</p>');
+    };
+    await selectClosingParagraph(0);
+    await selectClosingParagraph(2);
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('navigates outline headings in instant, WYSIWYG, and both split panes', async () => {
   const running = await launchApp({ editMode: 'ir', sidebarVisible: true });
   try {
@@ -581,14 +1194,46 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
       'target body',
     ].join('\n');
     const ir = page.locator('.editor-host.active .vditor-ir');
+    const linkModifier = (
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control'
+    ) as 'Control' | 'Meta';
+    const modifierLabel = linkModifier === 'Meta' ? 'Cmd' : 'Ctrl';
     const scrollTop = (editor: ReturnType<Page['locator']>) =>
       editor.evaluate((node) =>
         Math.max(node.scrollTop, node.querySelector(':scope > .vditor-reset')?.scrollTop || 0),
       );
+    const headingIsVisible = (editor: ReturnType<Page['locator']>, selector: string, index = 0) =>
+      editor.evaluate(
+        (node, target) => {
+          const heading = node.querySelectorAll(target.selector)[target.index];
+          const scroller = node.matches('.vditor-preview, .vditor-sv')
+            ? node
+            : node.querySelector(':scope > .vditor-reset') || node;
+          if (!heading || !scroller) return false;
+          const headingRect = heading.getBoundingClientRect();
+          const scrollerRect = scroller.getBoundingClientRect();
+          return headingRect.top >= scrollerRect.top && headingRect.bottom <= scrollerRect.bottom;
+        },
+        { selector, index },
+      );
     await ir.locator('.vditor-reset').fill(markdown);
     await expect(ir.locator('h2')).toHaveCount(1);
-    await ir.locator('[data-type="a"] .vditor-ir__link').click();
+    const irLink = ir.locator('[data-type="a"] .vditor-ir__link');
+    await irLink.hover();
+    await expect(irLink.locator('..')).not.toHaveAttribute('title');
+    await expect(page.locator('#documentLinkTooltip')).toBeVisible();
+    await expect(page.locator('#documentLinkTooltip')).toHaveText(
+      `${modifierLabel}+Click to follow link`,
+    );
+    await expect(irLink).toHaveCSS('cursor', 'text');
+    await page.keyboard.down(linkModifier);
+    await expect(irLink).toHaveCSS('cursor', 'pointer');
+    await page.keyboard.up(linkModifier);
+    await irLink.click();
+    await expect.poll(() => scrollTop(ir)).toBe(0);
+    await irLink.click({ modifiers: [linkModifier] });
     await expect.poll(() => scrollTop(ir)).toBeGreaterThan(0);
+    await page.waitForTimeout(300);
     await ir.evaluate((node) => {
       node.scrollTop = 0;
       const reset = node.querySelector(':scope > .vditor-reset');
@@ -607,7 +1252,7 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
     await topToggle.click();
     await expect(target).toBeVisible();
     await target.click();
-    await expect.poll(() => scrollTop(ir)).toBeGreaterThan(0);
+    await expect.poll(() => headingIsVisible(ir, 'h2')).toBe(true);
 
     const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
     await modeTrigger.click();
@@ -619,15 +1264,16 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
       const reset = node.querySelector(':scope > .vditor-reset');
       if (reset) reset.scrollTop = 0;
     });
-    await wysiwyg.locator('a[href="#target"]').click();
+    await wysiwyg.locator('a[href="#target"]').click({ modifiers: [linkModifier] });
     await expect.poll(() => scrollTop(wysiwyg)).toBeGreaterThan(0);
+    await page.waitForTimeout(300);
     await wysiwyg.evaluate((node) => {
       node.scrollTop = 0;
       const reset = node.querySelector(':scope > .vditor-reset');
       if (reset) reset.scrollTop = 0;
     });
     await target.click();
-    await expect.poll(() => scrollTop(wysiwyg)).toBeGreaterThan(0);
+    await expect.poll(() => headingIsVisible(wysiwyg, 'h2')).toBe(true);
 
     await modeTrigger.click();
     await page.locator('#vditorToolbarMount button[data-mode="sv"]').click();
@@ -641,8 +1287,9 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
     await preview.evaluate((node) => {
       node.scrollTop = 0;
     });
-    await preview.locator('a[href="#target"]').click();
+    await preview.locator('a[href="#target"]').click({ modifiers: [linkModifier] });
     await expect.poll(() => preview.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+    await page.waitForTimeout(300);
     await source.evaluate((node) => {
       node.scrollTop = 0;
     });
@@ -650,8 +1297,232 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
       node.scrollTop = 0;
     });
     await target.click();
+    await expect.poll(() => headingIsVisible(source, '[data-type="heading-marker"]', 1)).toBe(true);
+    await expect.poll(() => headingIsVisible(preview, 'h2')).toBe(true);
+
+    await source.evaluate((node) => {
+      node.scrollTop = 0;
+    });
+    await preview.evaluate((node) => {
+      node.scrollTop = 0;
+    });
+    await preview.evaluate((node) => {
+      const heading = node.querySelector('h2');
+      if (!heading?.id) throw new Error('Vditor preview heading is missing its target id');
+      const toc = document.createElement('div');
+      toc.className = 'vditor-toc';
+      const tocTarget = document.createElement('span');
+      tocTarget.dataset.targetId = heading.id;
+      tocTarget.textContent = heading.textContent || '';
+      toc.append(tocTarget);
+      node.prepend(toc);
+    });
+    const tocTarget = preview.locator('.vditor-toc [data-target-id]');
+    await expect(tocTarget).toBeVisible();
+    await tocTarget.hover();
+    await expect(page.locator('#documentLinkTooltip')).toHaveText(
+      `${modifierLabel}+Click to follow link`,
+    );
+    await tocTarget.click();
+    await expect.poll(() => preview.evaluate((node) => node.scrollTop)).toBeLessThan(4);
+    await tocTarget.click({ modifiers: [linkModifier] });
     await expect.poll(() => source.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
     await expect.poll(() => preview.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps a dynamic half-height bottom spacer in every editor mode', async () => {
+  const running = await launchApp({ editMode: 'ir' });
+  try {
+    const { app, page } = running;
+    await createNewTab(page);
+    const spacer = (selector: string) =>
+      page.evaluate((editorSelector) => {
+        const host = document.querySelector('.editor-host.active');
+        const editor = host?.querySelector(editorSelector);
+        const content =
+          editorSelector === '.vditor-sv' ? editor : editor?.querySelector('.vditor-reset');
+        if (!host || !editor || !content)
+          throw new Error(`Missing Vditor surface: ${editorSelector}`);
+        return {
+          hostHeight: host.clientHeight,
+          variable: editor.style.getPropertyValue('--editor-bottom'),
+          afterHeight: Number.parseFloat(getComputedStyle(content, '::after').height),
+        };
+      }, selector);
+    const expectSpacer = async (selector: string) => {
+      await expect
+        .poll(async () => {
+          const value = await spacer(selector);
+          return (
+            value.variable === `${Math.round(value.hostHeight / 2)}px` &&
+            Math.abs(value.afterHeight - value.hostHeight / 2) < 1
+          );
+        })
+        .toBe(true);
+      const value = await spacer(selector);
+      expect(value.variable).toBe(`${Math.round(value.hostHeight / 2)}px`);
+      expect(value.afterHeight).toBe(Math.round(value.hostHeight / 2));
+    };
+
+    await expectSpacer('.vditor-ir');
+    const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+    await modeTrigger.click();
+    await page.locator('#vditorToolbarMount button[data-mode="wysiwyg"]').click();
+    await expectSpacer('.vditor-wysiwyg');
+    await modeTrigger.click();
+    await page.locator('#vditorToolbarMount button[data-mode="sv"]').click();
+    await expectSpacer('.vditor-sv');
+    await expectSpacer('.vditor-preview');
+
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(760, 700));
+    await expectSpacer('.vditor-sv');
+    await expectSpacer('.vditor-preview');
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('hides Vditor native outline controls while keeping the Desktop outline available', async () => {
+  const running = await launchApp({
+    editMode: 'ir',
+    sidebarVisible: true,
+    toolbarItems: [
+      'headings',
+      'outline',
+      'outdent',
+      'indent',
+      'edit-mode',
+      'both',
+      'preview',
+      'code-theme',
+      'content-theme',
+    ],
+  });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    await page.locator('.editor-host.active .vditor-ir .vditor-reset').fill('# Desktop outline');
+    const nativeOutline = page.locator('#vditorToolbarMount button[data-type="outline"]');
+    await expect(nativeOutline).toBeHidden();
+    await page.locator('.sidebar-tabs [data-view="outline"]').click();
+    await expect(page.locator('#outlineTree button', { hasText: 'Desktop outline' })).toBeVisible();
+
+    const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+    await modeTrigger.click();
+    await page.locator('#vditorToolbarMount button[data-mode="wysiwyg"]').click();
+    await expect(nativeOutline).toBeHidden();
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('matches Vditor native heading semantics in the Desktop outline', async () => {
+  const markdown = [
+    'Setext level one',
+    '================',
+    '',
+    'Setext level two',
+    '----------------',
+    '',
+    '```markdown',
+    '# Not a heading',
+    '```',
+    '',
+    '## ATX level two',
+  ].join('\n');
+  const running = await launchApp(
+    { editMode: 'ir', sidebarVisible: true },
+    { 'semantic-outline.md': markdown },
+  );
+  try {
+    const { page } = running;
+    await page.locator('.sidebar-tabs [data-view="outline"]').click();
+    const nativeHeadings = () =>
+      page.locator('.editor-host.active').evaluate((host) => {
+        const adapter = window.VditorDesktopAdapter;
+        const mode = ['wysiwyg', 'ir', 'sv'].find(
+          (candidate) => host.querySelector(`.vditor-${candidate}`)?.getClientRects().length,
+        );
+        return adapter.outlineSnapshot(host, mode).map(({ level, text }) => ({ level, text }));
+      });
+    const outlineMatchesNative = async () => {
+      const native = await nativeHeadings();
+      const desktop = await page.locator('#outlineTree .outline-item').allTextContents();
+      return native.length > 0 && desktop.join('\n') === native.map(({ text }) => text).join('\n');
+    };
+    await expect.poll(outlineMatchesNative).toBe(true);
+
+    const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+    await modeTrigger.click();
+    await page.locator('#vditorToolbarMount button[data-mode="sv"]').click();
+    await expect.poll(outlineMatchesNative).toBe(true);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('opens relative Markdown links from every editor mode and follows their fragments', async () => {
+  const running = await launchApp(
+    { editMode: 'ir' },
+    { 'source.md': '[Open target](target.md#target)' },
+  );
+  try {
+    const { page, testRoot } = running;
+    fs.writeFileSync(
+      path.join(testRoot, 'target.md'),
+      [
+        '# Top',
+        ...Array.from({ length: 70 }, (_, index) => `paragraph ${index + 1}`),
+        '## Target',
+      ].join('\n'),
+    );
+    await page.waitForSelector('.editor-host.active .vditor-ir');
+    const linkModifier = (
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control'
+    ) as 'Control' | 'Meta';
+    const targetScrollTop = () =>
+      page.locator('.editor-host.active .vditor-ir').evaluate((node) => {
+        const reset = node.querySelector(':scope > .vditor-reset');
+        return Math.max(node.scrollTop, reset?.scrollTop || 0);
+      });
+    const follow = async (link: ReturnType<Page['locator']>) => {
+      await link.click({ modifiers: [linkModifier] });
+      await expect(page.locator('.document-tab', { hasText: 'target.md' })).toHaveCount(1);
+      await expect(page.locator('.editor-host.active .vditor-ir h2')).toHaveText(/Target$/);
+      await expect.poll(targetScrollTop).toBeGreaterThan(0);
+      await page.locator('.document-tab', { hasText: 'source.md' }).click();
+    };
+
+    await follow(page.locator('.editor-host.active .vditor-ir .vditor-ir__link'));
+
+    const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+    await modeTrigger.click();
+    await page.locator('#vditorToolbarMount button[data-mode="wysiwyg"]').click();
+    await follow(page.locator('.editor-host.active .vditor-wysiwyg a[href="target.md#target"]'));
+
+    await modeTrigger.click();
+    await page.locator('#vditorToolbarMount button[data-mode="sv"]').click();
+    await follow(page.locator('.editor-host.active .vditor-preview a[href="target.md#target"]'));
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('rejects unsafe external URL protocols at the privileged IPC boundary', async () => {
+  const running = await launchApp();
+  try {
+    const message = await running.page.evaluate(async () => {
+      try {
+        await window.appAPI.openExternal('javascript:alert(1)');
+        return '';
+      } catch (error) {
+        return error instanceof Error ? error.message : String(error);
+      }
+    });
+    expect(message).toContain('Unsupported URL protocol');
   } finally {
     await closeApp(running);
   }
@@ -673,6 +1544,35 @@ test('hides the custom titlebar while Electron is fullscreen', async () => {
     await page.keyboard.press('F11');
     await expect(page.locator('#app')).not.toHaveClass(/fullscreen/);
     await expect(page.locator('#windowTitlebar')).toBeVisible();
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps the empty outline message below controls and non-selectable in fullscreen', async () => {
+  const running = await launchApp({ sidebarVisible: true });
+  try {
+    const { page } = running;
+    await page.locator('.sidebar-tabs [data-view="outline"]').click();
+    const empty = page.locator('#outlineTree > .empty');
+    await expect(empty).toHaveText('Open a document first');
+    await expect(empty).toHaveCSS('user-select', 'none');
+
+    await page.keyboard.press('F11');
+    await expect(page.locator('#app')).toHaveClass(/fullscreen/);
+    await expect(page.locator('#windowTitlebar')).toBeHidden();
+    const tabsBox = await page.locator('header.titlebar .toolbar-sidebar-tabs').boundingBox();
+    const emptyBox = await empty.boundingBox();
+    if (!tabsBox || !emptyBox) throw new Error('Fullscreen outline controls have no bounds');
+    expect(emptyBox.y).toBeGreaterThanOrEqual(tabsBox.y + tabsBox.height - 1);
+
+    await page.evaluate(() => window.getSelection()?.removeAllRanges());
+    await page.mouse.move(emptyBox.x + 12, emptyBox.y + emptyBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(emptyBox.x + emptyBox.width - 12, emptyBox.y + emptyBox.height / 2);
+    await page.mouse.up();
+    await expect.poll(() => page.evaluate(() => window.getSelection()?.toString() || '')).toBe('');
+    await page.keyboard.press('F11');
   } finally {
     await closeApp(running);
   }
@@ -796,6 +1696,74 @@ test('keeps list indentation actions available in split-view mode', async () => 
   }
 });
 
+test('keeps split-view list toolbar actions stable while changing modes', async () => {
+  const running = await launchApp({ editMode: 'ir' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+    const switchTo = async (mode: 'wysiwyg' | 'ir' | 'sv') => {
+      await modeTrigger.click();
+      await page.locator(`#vditorToolbarMount button[data-mode="${mode}"]`).click();
+      await expect(
+        page.locator(`.editor-host.active .vditor-${mode === 'wysiwyg' ? 'wysiwyg' : mode}`),
+      ).toBeVisible();
+    };
+    const observeSplitActionMutations = () =>
+      page.evaluate(() => {
+        const actions = ['outdent', 'indent'].map((type) => {
+          const button = document.querySelector(`#vditorToolbarMount button[data-type="${type}"]`);
+          const item = button?.closest('.vditor-toolbar__item');
+          if (!item) throw new Error(`Missing ${type} toolbar item`);
+          return item;
+        });
+        (
+          window as typeof window & { splitToolbarActionChanges?: number[] }
+        ).splitToolbarActionChanges = [0, 0];
+        const changes = (window as typeof window & { splitToolbarActionChanges: number[] })
+          .splitToolbarActionChanges;
+        const observer = new MutationObserver((records) => {
+          records.forEach((record) => {
+            const index = actions.indexOf(record.target as HTMLElement);
+            if (index >= 0 && record.attributeName === 'style') changes[index] += 1;
+          });
+        });
+        actions.forEach((item) =>
+          observer.observe(item, { attributes: true, attributeFilter: ['style'] }),
+        );
+        (
+          window as typeof window & { splitToolbarActionObserver?: MutationObserver }
+        ).splitToolbarActionObserver = observer;
+      });
+    const readSplitActionMutations = () =>
+      page.evaluate(() => {
+        (
+          window as typeof window & { splitToolbarActionObserver?: MutationObserver }
+        ).splitToolbarActionObserver?.disconnect();
+        return (window as typeof window & { splitToolbarActionChanges?: number[] })
+          .splitToolbarActionChanges;
+      });
+
+    await switchTo('wysiwyg');
+    await observeSplitActionMutations();
+    await switchTo('sv');
+    await page.waitForTimeout(75);
+    // Vditor performs its own single mode-transition update. Desktop keeps the
+    // actions visible with CSS, so it must not add the former delayed rewrite.
+    expect(await readSplitActionMutations()).toEqual([1, 1]);
+    await expect(page.locator('#vditorToolbarMount button[data-type="outdent"]')).toBeVisible();
+    await expect(page.locator('#vditorToolbarMount button[data-type="indent"]')).toBeVisible();
+
+    await switchTo('ir');
+    await observeSplitActionMutations();
+    await switchTo('sv');
+    await page.waitForTimeout(75);
+    expect(await readSplitActionMutations()).toEqual([1, 1]);
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('shows whitespace and applies Tab spaces and automatic indentation in split view', async () => {
   const running = await launchApp({
     editMode: 'sv',
@@ -874,6 +1842,13 @@ test('shows whitespace and applies Tab spaces and automatic indentation in split
     liveTransforms.forEach(({ delta, transform }) => {
       const renderedDelta = Number(transform.match(/translateY\((-?[\d.]+)px\)/)?.[1]);
       expect(renderedDelta).toBeCloseTo(delta, 2);
+    });
+    // Vditor keeps a scrollable tail after the last source line. At the exact
+    // bottom there need not be a whitespace character in the viewport, so
+    // verify redraw after returning to a position that contains source text.
+    await source.evaluate((node) => {
+      node.scrollTop = (node.scrollHeight - node.clientHeight) * 0.75;
+      node.dispatchEvent(new Event('scroll'));
     });
     await expect
       .poll(() => whitespaceCanvas.evaluate((canvas) => Number(canvas.dataset.markerCount || 0)))
@@ -996,6 +1971,49 @@ test('shows only the workspace name and refresh action in the explorer header', 
         rows.every((row) => !row.draggable && !row.hasAttribute('draggable')),
       ),
     ).toBe(true);
+  } finally {
+    await closeApp(running);
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('shows the move-to-trash confirmation as a draggable in-window dialog', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-trash-dialog-'));
+  fs.writeFileSync(path.join(workspace, 'README.md'), '# Read me');
+  const running = await launchApp({
+    restoreWorkspace: true,
+    sidebarVisible: true,
+    session: { workspacePath: workspace, activeFilePath: null, openFiles: [] },
+  });
+  try {
+    const { page } = running;
+    const file = page.locator('#fileTree > .tree-file').filter({ hasText: 'README.md' });
+    await file.click({ button: 'right' });
+    await page.locator('#contextMenu button', { hasText: 'Move to Trash' }).click();
+
+    const dialog = page.locator('#confirmModal');
+    const card = dialog.locator('.confirm-card');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator('#confirmMessage')).toHaveText('Move “README.md” to Trash?');
+    await expect(card).toHaveClass(/confirm-card-draggable/);
+
+    const dialogBox = await dialog.boundingBox();
+    const initialCardBox = await card.boundingBox();
+    const headerBox = await card.locator(':scope > header').boundingBox();
+    if (!dialogBox || !initialCardBox || !headerBox)
+      throw new Error('Move-to-trash dialog has incomplete drag chrome');
+    await page.mouse.move(headerBox.x + 40, headerBox.y + headerBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(headerBox.x + 90, headerBox.y + 60, { steps: 5 });
+    await page.mouse.up();
+    const movedCardBox = await card.boundingBox();
+    if (!movedCardBox) throw new Error('Move-to-trash dialog card disappeared while dragging');
+    expect(movedCardBox.x).toBeGreaterThan(initialCardBox.x + 20);
+    expect(movedCardBox.y).toBeGreaterThan(initialCardBox.y + 20);
+
+    await dialog.locator('#confirmActions [data-action="cancel"]').click();
+    await expect(dialog).toBeHidden();
+    expect(fs.existsSync(path.join(workspace, 'README.md'))).toBe(true);
   } finally {
     await closeApp(running);
     fs.rmSync(workspace, { recursive: true, force: true });
@@ -1257,11 +2275,11 @@ test('links Light and Dark content themes to the application theme', async () =>
     const { page, testRoot } = running;
     await createNewTab(page);
 
-    await page.locator('.theme-switch span').click();
+    await page.locator('#statusThemeToggle + span').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await expect.poll(() => readSetting(testRoot, 'appearance', 'contentTheme')).toBe('dark');
 
-    await page.locator('.theme-switch span').click();
+    await page.locator('#statusThemeToggle + span').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'classic');
     await expect.poll(() => readSetting(testRoot, 'appearance', 'contentTheme')).toBe('light');
 
@@ -1272,7 +2290,7 @@ test('links Light and Dark content themes to the application theme', async () =>
     await expect.poll(() => readSetting(testRoot, 'appearance', 'contentTheme')).toBe('ant-design');
     await page.locator('#saveSettings').click();
 
-    await page.locator('.theme-switch span').click();
+    await page.locator('#statusThemeToggle + span').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await expect.poll(() => readSetting(testRoot, 'appearance', 'contentTheme')).toBe('ant-design');
   } finally {
@@ -1346,13 +2364,13 @@ test('remembers which dark theme the status toggle should restore', async () => 
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'monokai-pro-dark');
     await expect(page.locator('#statusThemeToggle')).toBeChecked();
 
-    await page.locator('.theme-switch span').click();
+    await page.locator('#statusThemeToggle + span').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'classic');
     await expect
       .poll(() => readSetting(testRoot, 'appearance', 'lastDarkTheme'))
       .toBe('monokai-pro-dark');
 
-    await page.locator('.theme-switch span').click();
+    await page.locator('#statusThemeToggle + span').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'monokai-pro-dark');
     await expect.poll(() => readSetting(testRoot, 'appearance', 'theme')).toBe('monokai-pro-dark');
 
@@ -1360,9 +2378,9 @@ test('remembers which dark theme the status toggle should restore', async () => 
     await page.locator('.theme-option-dark').click();
     await expect.poll(() => readSetting(testRoot, 'appearance', 'lastDarkTheme')).toBe('dark');
     await page.locator('#saveSettings').click();
-    await page.locator('.theme-switch span').click();
+    await page.locator('#statusThemeToggle + span').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'classic');
-    await page.locator('.theme-switch span').click();
+    await page.locator('#statusThemeToggle + span').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   } finally {
     await closeApp(running);
@@ -1643,6 +2661,46 @@ test('preserves the editor scroll position when settings rebuild the editor', as
   }
 });
 
+test('restores the editor scroll position before the first paint after changing modes', async () => {
+  const running = await launchApp({ editMode: 'ir' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    const markdown = Array.from({ length: 100 }, (_, index) => `paragraph ${index + 1}`).join('\n');
+    const reset = page.locator('.editor-host.active .vditor-ir .vditor-reset');
+    await reset.fill(markdown);
+    await expect(reset).toContainText('paragraph 100');
+    await reset.evaluate((node) => {
+      node.scrollTop = 420;
+      node.parentElement!.scrollTop = 420;
+    });
+    const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+    const switchTo = async (mode: 'wysiwyg' | 'sv') => {
+      await modeTrigger.click();
+      await page.locator(`#vditorToolbarMount button[data-mode="${mode}"]`).click();
+      return page.evaluate(
+        (currentMode) =>
+          new Promise<number>((resolve) =>
+            requestAnimationFrame(() => {
+              const selector =
+                currentMode === 'sv'
+                  ? '.editor-host.active .vditor-sv'
+                  : '.editor-host.active .vditor-wysiwyg .vditor-reset';
+              const scroller = document.querySelector(selector);
+              resolve(scroller instanceof HTMLElement ? scroller.scrollTop : 0);
+            }),
+          ),
+        mode,
+      );
+    };
+
+    expect(await switchTo('wysiwyg')).toBeGreaterThan(100);
+    expect(await switchTo('sv')).toBeGreaterThan(100);
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('applies the editor paragraph-width slider in WYSIWYG mode', async () => {
   const running = await launchApp();
   try {
@@ -1728,7 +2786,7 @@ test('filters and remembers code-block themes separately for light and dark mode
       .poll(() => readSetting(testRoot, 'appearance', 'lightCodeTheme'))
       .toBe('atom-one-light');
 
-    await page.locator('.theme-switch span').click();
+    await page.locator('#statusThemeToggle + span').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await expect.poll(() => readSetting(testRoot, 'appearance', 'codeTheme')).toBe('monokai');
     await page.locator('#vditorToolbarMount button[data-type="code-theme"]').click();
@@ -1739,11 +2797,11 @@ test('filters and remembers code-block themes separately for light and dark mode
       .poll(() => readSetting(testRoot, 'appearance', 'darkCodeTheme'))
       .toBe('monokai-sublime');
 
-    await page.locator('.theme-switch span').click();
+    await page.locator('#statusThemeToggle + span').click();
     await expect
       .poll(() => readSetting(testRoot, 'appearance', 'codeTheme'))
       .toBe('atom-one-light');
-    await page.locator('.theme-switch span').click();
+    await page.locator('#statusThemeToggle + span').click();
     await expect
       .poll(() => readSetting(testRoot, 'appearance', 'codeTheme'))
       .toBe('monokai-sublime');
@@ -1810,6 +2868,51 @@ test('omits Vditor web fullscreen and applies the configured font to editable co
   }
 });
 
+test('uses the rendered text font for raw HTML previews in every rendered mode', async () => {
+  const running = await launchApp(
+    {
+      editMode: 'ir',
+      previewFontFamily: 'Georgia, serif',
+      previewFontSize: 19,
+      previewCodeFontFamily: 'Courier New, monospace',
+      previewCodeFontSize: 13,
+    },
+    { 'raw-html-font.md': '<p>Rendered HTML text</p>' },
+  );
+  try {
+    const { page } = running;
+    const assertRenderedHTML = async (selector: string) => {
+      const preview = page.locator(selector);
+      await expect(preview).toBeVisible();
+      await expect(preview).toHaveCSS('font-family', /Georgia/);
+      await expect(preview).toHaveCSS('font-size', '19px');
+    };
+    const switchFromStatus = async (mode: 'wysiwyg' | 'sv') => {
+      await page.locator('#statusMode').click();
+      await page.locator(`#statusModeMenu button[data-status-mode="${mode}"]`).click();
+    };
+
+    await assertRenderedHTML(
+      '.editor-host.active .vditor-ir [data-type="html-block"] > .vditor-ir__preview',
+    );
+    await expect(
+      page.locator(
+        '.editor-host.active .vditor-ir [data-type="html-block"] > .vditor-ir__marker--pre code',
+      ),
+    ).toHaveCSS('font-family', /Courier New/);
+
+    await switchFromStatus('wysiwyg');
+    await assertRenderedHTML(
+      '.editor-host.active .vditor-wysiwyg [data-type="html-block"] > .vditor-wysiwyg__preview',
+    );
+
+    await switchFromStatus('sv');
+    await assertRenderedHTML('.editor-host.active .vditor-preview > .vditor-reset');
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('renders the redesigned status bar and scales titlebar menu text', async () => {
   const running = await launchApp({ uiZoom: 150 });
   try {
@@ -1826,7 +2929,7 @@ test('renders the redesigned status bar and scales titlebar menu text', async ()
       )
       .toBe(18);
 
-    await page.locator('.theme-switch span').click();
+    await page.locator('#statusThemeToggle + span').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await page.locator('#statusSettings').click();
     await expect(page.locator('#settingsModal')).toBeVisible();
@@ -1846,13 +2949,6 @@ test('shows the localized About page with project links and reset at the bottom'
   const running = await launchApp({ locale: 'zh_Hans' });
   try {
     const { page } = running;
-    const buildInfo = JSON.parse(
-      fs.readFileSync(path.join(projectRoot, 'dist/build-info.json'), 'utf8'),
-    ) as {
-      commit: string;
-      commitShort: string;
-      tag: string;
-    };
     await page.locator('#statusSettings').click();
     await expect(page.locator('.settings-card > header h2')).toHaveText('Vditor Desktop 设置');
     const fontsNav = page.locator('.settings-nav [data-panel="fonts"]');
@@ -1867,18 +2963,7 @@ test('shows the localized About page with project links and reset at the bottom'
     await expect(about).toBeVisible();
     await expect(about.locator('.about-logo')).toBeVisible();
     await expect(about).toContainText('基于 Vditor 项目打造');
-    await expect(about.locator('[data-external]')).toHaveCount(8);
-    const commitInfo = about.locator('#commitInfo');
-    if (buildInfo.commit) {
-      await expect(commitInfo).toHaveText(buildInfo.commitShort);
-      await expect(commitInfo).toHaveAttribute('title', `${buildInfo.tag} · ${buildInfo.commit}`);
-      await expect(commitInfo).toHaveAttribute(
-        'data-external',
-        /github\.com\/Studio-200A\/Vditor-Electron\/commit\/[0-9a-f]{40}$/,
-      );
-    } else {
-      await expect(commitInfo).toBeHidden();
-    }
+    await expect(about.locator('[data-external]')).toHaveCount(7);
     const panelBox = await about.boundingBox();
     const logoBox = await about.locator('.about-logo').boundingBox();
     const sourceBox = await about.locator('.about-source').boundingBox();
@@ -1893,6 +2978,61 @@ test('shows the localized About page with project links and reset at the bottom'
     );
     await page.locator('.settings-nav [data-panel="appearance"]').click();
     await expect(page.locator('#resetSettingsPage')).toBeVisible();
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('only opens Chrome DevTools after enabling its persisted setting', async () => {
+  const running = await launchApp();
+  try {
+    const { app, page, testRoot } = running;
+    const devToolsOpen = () =>
+      app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].webContents.isDevToolsOpened(),
+      );
+    const sendShortcut = (keyCode: string, modifiers: string[] = []) =>
+      app.evaluate(
+        ({ BrowserWindow }, { keyCode, modifiers }) =>
+          BrowserWindow.getAllWindows()[0].webContents.sendInputEvent({
+            type: 'keyDown',
+            keyCode,
+            modifiers,
+          }),
+        { keyCode, modifiers },
+      );
+    await page.evaluate(() =>
+      (document.querySelector('#statusSettings') as HTMLButtonElement).click(),
+    );
+    await page.evaluate(() =>
+      (document.querySelector('.settings-nav [data-panel="about"]') as HTMLButtonElement).click(),
+    );
+    const toggle = page.locator('[name="devToolsEnabled"]');
+    await expect(toggle).not.toBeChecked();
+
+    await sendShortcut('I', ['control', 'shift']);
+    await expect.poll(devToolsOpen).toBe(false);
+
+    await page.evaluate(() =>
+      (document.querySelector('.about-devtools-setting') as HTMLLabelElement).click(),
+    );
+    await expect(toggle).toBeChecked();
+    await expect.poll(() => readSetting(testRoot, 'application', 'devToolsEnabled')).toBe(true);
+    await sendShortcut('I', ['control', 'shift']);
+    await expect.poll(devToolsOpen).toBe(true);
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].webContents.closeDevTools(),
+    );
+    await sendShortcut('F12');
+    await expect.poll(devToolsOpen).toBe(false);
+
+    await page.evaluate(() =>
+      (document.querySelector('.about-devtools-setting') as HTMLLabelElement).click(),
+    );
+    await expect(toggle).not.toBeChecked();
+    await expect.poll(() => readSetting(testRoot, 'application', 'devToolsEnabled')).toBe(false);
+    await sendShortcut('I', ['control', 'shift']);
+    await expect.poll(devToolsOpen).toBe(false);
   } finally {
     await closeApp(running);
   }
@@ -1930,7 +3070,7 @@ test('uses the file name in the title and matches all chrome background colors',
     expect(new Set(lightColors).size).toBe(1);
     await expect(page.locator('#tabBar')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 
-    await page.locator('.theme-switch span').click();
+    await page.locator('#statusThemeToggle + span').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     const darkColors = await chromeColors();
     expect(new Set(darkColors).size).toBe(1);
@@ -1957,6 +3097,8 @@ test('shows a localized themed dialog when closing a window with unsaved changes
     await expect(dialog.locator('#confirmMessage')).toHaveText('有 1 个文档包含未保存的更改。');
     await expect(dialog.locator('#confirmDetail')).toContainText('Untitled 1');
     await expect(dialog.locator('#confirmActions button')).toHaveText(['取消', '不保存', '保存']);
+    const card = dialog.locator('.confirm-card');
+    await expect(card.locator('[data-settings-resize]')).toHaveCount(0);
     const colors = await dialog.evaluate((node) =>
       ['header', '.confirm-content', 'footer'].map(
         (selector) => getComputedStyle(node.querySelector(selector)).backgroundColor,
@@ -1966,6 +3108,34 @@ test('shows a localized themed dialog when closing a window with unsaved changes
     const dialogBox = await dialog.boundingBox();
     const appBox = await page.locator('#app').boundingBox();
     expect(dialogBox).toEqual(appBox);
+    const initialCardBox = await card.boundingBox();
+    const headerBox = await card.locator(':scope > header').boundingBox();
+    if (!dialogBox || !initialCardBox || !headerBox)
+      throw new Error('Unsaved changes dialog has incomplete drag chrome');
+    await page.mouse.move(headerBox.x + 40, headerBox.y + headerBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(
+      dialogBox.x + dialogBox.width + 160,
+      dialogBox.y + dialogBox.height + 160,
+      {
+        steps: 5,
+      },
+    );
+    await page.mouse.up();
+    const movedCardBox = await card.boundingBox();
+    if (!movedCardBox) throw new Error('Unsaved changes dialog card disappeared while dragging');
+    expect(movedCardBox.x).toBeGreaterThan(initialCardBox.x + 20);
+    expect(movedCardBox.y).toBeGreaterThan(initialCardBox.y + 20);
+    expect(movedCardBox.width).toBeCloseTo(initialCardBox.width, 0);
+    expect(movedCardBox.height).toBeCloseTo(initialCardBox.height, 0);
+    expect(movedCardBox.x).toBeGreaterThanOrEqual(dialogBox.x - 1);
+    expect(movedCardBox.y).toBeGreaterThanOrEqual(dialogBox.y - 1);
+    expect(movedCardBox.x + movedCardBox.width).toBeLessThanOrEqual(
+      dialogBox.x + dialogBox.width + 1,
+    );
+    expect(movedCardBox.y + movedCardBox.height).toBeLessThanOrEqual(
+      dialogBox.y + dialogBox.height + 1,
+    );
     await dialog.locator('button', { hasText: '取消' }).click();
     await expect(dialog).toBeHidden();
   } finally {

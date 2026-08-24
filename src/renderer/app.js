@@ -7,6 +7,7 @@
   const state = {
     tabs: [],
     activeId: null,
+    toolbarPreview: null,
     workspace: '',
     settings: null,
     defaultSettings: null,
@@ -66,7 +67,10 @@
   let tabDragPointerId = null;
   let tabDragGhost = null;
   let tabDragMoved = false;
-  const scrollAnimations = new WeakMap();
+  let hoveredDocumentLink = null;
+  let editorSelectionActive = false;
+  let pendingTableCellSelection = null;
+  let contextMenuState = null;
 
   function resolveLocale(locale) {
     if (locale && locale !== 'system' && LOCALES[locale]) return locale;
@@ -83,6 +87,13 @@
     return String(value).replace(/\{(\w+)\}/g, (_match, name) => params[name] ?? `{${name}}`);
   }
 
+  function updateMainMenuGlow(event) {
+    const button = event.currentTarget;
+    const rect = button.getBoundingClientRect();
+    button.style.setProperty('--button-glow-x', `${event.clientX - rect.left}px`);
+    button.style.setProperty('--button-glow-y', `${event.clientY - rect.top}px`);
+  }
+
   function updateMaximizedState(maximized) {
     document.body.classList.toggle('window-maximized', maximized);
     const button = $('#windowMaximize');
@@ -96,14 +107,24 @@
     if (!confirmResolver) return;
     const resolve = confirmResolver;
     confirmResolver = null;
+    setConfirmDialogDraggable(false);
     $('#confirmModal').classList.add('hidden');
     $('#confirmActions').replaceChildren();
     resolve(action);
   }
 
-  function showConfirmDialog({ title, message, detail = '', actions } = {}) {
+  function setConfirmDialogDraggable(draggable) {
+    const card = $('#confirmModal .confirm-card');
+    card.classList.toggle('confirm-card-draggable', draggable);
+    card.style.removeProperty('position');
+    card.style.removeProperty('left');
+    card.style.removeProperty('top');
+  }
+
+  function showConfirmDialog({ title, message, detail = '', actions, draggable = false } = {}) {
     if (confirmResolver) closeConfirmDialog('cancel');
     const modal = $('#confirmModal');
+    setConfirmDialogDraggable(draggable);
     $('#confirmTitle').textContent = title || t('dialog.confirmTitle');
     $('#confirmMessage').textContent = message || '';
     $('#confirmDetail').textContent = detail;
@@ -140,6 +161,7 @@
       title: t('dialog.unsavedTitle'),
       message,
       detail,
+      draggable: true,
       actions: [
         { id: 'cancel', label: t('dialog.cancel') },
         { id: 'discard', label: t('dialog.dontSave') },
@@ -191,6 +213,110 @@
   function activeTab() {
     return state.tabs.find((tab) => tab.id === state.activeId) || null;
   }
+
+  function destroyToolbarPreview() {
+    const preview = state.toolbarPreview;
+    if (!preview) return;
+    restoreEditorToolbar(preview);
+    try {
+      preview.vditor?.destroy();
+    } catch (_) {}
+    preview.host.remove();
+    state.toolbarPreview = null;
+  }
+
+  function createToolbarPreview() {
+    if (state.tabs.length || state.toolbarPreview) return;
+    const host = document.createElement('section');
+    host.className = 'editor-host toolbar-preview';
+    const preview = {
+      id: 'toolbar-preview',
+      filePath: null,
+      title: '',
+      content: '',
+      savedContent: '',
+      encoding: 'utf-8',
+      lineEnding: 'LF',
+      baseDir: '',
+      modified: false,
+      mode: state.settings.editMode,
+      vditor: null,
+      ready: false,
+      toolbar: null,
+      toolbarPreview: true,
+      host,
+    };
+    state.toolbarPreview = preview;
+    $('#editorArea').appendChild(host);
+    ensureEditor(preview);
+  }
+
+  function disableToolbarPreview(preview) {
+    preview.vditor?.disabled();
+    preview.toolbar?.querySelectorAll('button, input').forEach((control) => {
+      control.disabled = true;
+      control.tabIndex = -1;
+    });
+  }
+
+  function selectEditorContextOrAll(event) {
+    if (event.altKey || event.key.toLowerCase() !== 'a') return false;
+    const tab = activeTab();
+    const mode = tab?.vditor?.getCurrentMode();
+    const editorTarget = VDITOR.isEditableTarget(tab?.host, mode, event.target)
+      ? event.target
+      : document.activeElement;
+    if (
+      !editorSelectionActive ||
+      !tab?.ready ||
+      !mode ||
+      !VDITOR.isEditableTarget(tab.host, mode, editorTarget)
+    )
+      return false;
+    const selection = VDITOR.selectCurrentContextOrAll(tab.host, mode);
+    if (!selection) return false;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    return true;
+  }
+
+  function selectedTableCellForBackspace(event) {
+    if (
+      event.key !== 'Backspace' ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.altKey ||
+      event.shiftKey
+    )
+      return false;
+    const tab = activeTab();
+    const mode = tab?.vditor?.getCurrentMode();
+    if (!tab?.ready || !mode || !VDITOR.isEditableTarget(tab.host, mode, event.target))
+      return false;
+    return VDITOR.selectedTableCell(tab.host, mode);
+  }
+
+  function updateEditorSelectionActivity(target, preserveEditorHost = false) {
+    const tab = activeTab();
+    const mode = tab?.vditor?.getCurrentMode();
+    if (tab?.ready && mode && VDITOR.isEditableTarget(tab.host, mode, target)) {
+      editorSelectionActive = true;
+      return;
+    }
+    const element = target?.nodeType === Node.ELEMENT_NODE ? target : target?.parentElement;
+    if (preserveEditorHost && element && tab?.host.contains(element)) return;
+    editorSelectionActive = false;
+  }
+
+  function keepsNativeSelectAll(target) {
+    const element = target?.nodeType === Node.ELEMENT_NODE ? target : target?.parentElement;
+    if (!element) return false;
+    const tab = activeTab();
+    const mode = tab?.vditor?.getCurrentMode();
+    if (tab?.ready && mode && VDITOR.isEditableTarget(tab.host, mode, element)) return false;
+    return Boolean(element.closest('input,textarea,select') || element.isContentEditable);
+  }
+
   function escapeHTML(value) {
     const node = document.createElement('div');
     node.textContent = String(value);
@@ -576,12 +702,34 @@
   function disconnectSplitLineNumbers(tab) {
     tab.lineObserver?.disconnect();
     tab.lineResizeObserver?.disconnect();
+    if (tab.lineScrollSource && tab.lineScrollHandler)
+      tab.lineScrollSource.removeEventListener('scroll', tab.lineScrollHandler);
     if (tab.lineNumberFrame) cancelAnimationFrame(tab.lineNumberFrame);
     if (tab.whitespaceFrame) cancelAnimationFrame(tab.whitespaceFrame);
     tab.lineObserver = null;
     tab.lineResizeObserver = null;
+    tab.lineScrollSource = null;
+    tab.lineScrollHandler = null;
     tab.lineNumberFrame = null;
     tab.whitespaceFrame = null;
+  }
+
+  function updateEditorBottomSpacer(tab) {
+    if (!tab?.host) return;
+    VDITOR.setEditorBottomSpacer(tab.host, tab.host.clientHeight / 2);
+  }
+
+  function observeEditorBottomSpacer(tab) {
+    tab.bottomSpacerObserver?.disconnect();
+    updateEditorBottomSpacer(tab);
+    if (typeof ResizeObserver !== 'function') return;
+    tab.bottomSpacerObserver = new ResizeObserver(() => updateEditorBottomSpacer(tab));
+    tab.bottomSpacerObserver.observe(tab.host);
+  }
+
+  function disconnectEditorBottomSpacer(tab) {
+    tab.bottomSpacerObserver?.disconnect();
+    tab.bottomSpacerObserver = null;
   }
 
   function renderWhitespaceMarkers(tab, sv) {
@@ -716,15 +864,25 @@
       gutter = document.createElement('div');
       gutter.className = 'sv-line-numbers';
       content.insertBefore(gutter, content.firstChild);
-      sv.addEventListener('scroll', () => {
-        gutter.scrollTop = sv.scrollTop;
-        const canvas = content.querySelector('.sv-whitespace-canvas');
+    }
+    if (tab.lineScrollSource !== sv) {
+      if (tab.lineScrollSource && tab.lineScrollHandler)
+        tab.lineScrollSource.removeEventListener('scroll', tab.lineScrollHandler);
+      tab.lineScrollSource = sv;
+      tab.lineScrollHandler = () => {
+        const currentContent = VDITOR.editorParts(tab.host).content;
+        const currentGutter = currentContent?.querySelector(':scope > .sv-line-numbers');
+        const lineNumberCanvas = currentGutter?.querySelector(':scope > .sv-line-number-canvas');
+        if (lineNumberCanvas && !lineNumberCanvas.classList.contains('scroll-linked'))
+          lineNumberCanvas.style.transform = `translateY(${-sv.scrollTop}px)`;
+        const canvas = currentContent?.querySelector('.sv-whitespace-canvas');
         if (canvas) {
           const renderedScrollTop = Number(canvas.dataset.scrollTop || 0);
           canvas.style.transform = `translateY(${renderedScrollTop - sv.scrollTop}px)`;
         }
         scheduleWhitespaceMarkers(tab, sv);
-      });
+      };
+      sv.addEventListener('scroll', tab.lineScrollHandler);
     }
     const isSplitView = tab.vditor.getCurrentMode() === 'sv';
     syncSplitViewLayout(tab);
@@ -739,40 +897,56 @@
       return;
     }
 
-    const count = Math.max(1, currentContent(tab).split(/\r?\n/).length);
     const style = getComputedStyle(sv);
     const lineHeight =
       Number.parseFloat(style.lineHeight) || Number.parseFloat(style.fontSize) * 1.5;
     const svRect = sv.getBoundingClientRect();
-    const newlines = VDITOR.sourceNewlines(sv);
-    const positions = [];
-    let startContainer = sv;
-    let startOffset = 0;
-    for (let index = 0; index < count; index += 1) {
-      const newline = newlines[index];
+    // Vditor can represent several textual source lines inside one private
+    // newline marker (notably table and HTML syntax). Measure the actual
+    // source text lines, otherwise positions after the final marker are only
+    // guessed and spill into the editor's trailing spacer.
+    const sourceLines = VDITOR.sourceLineRanges(sv);
+    if (!sourceLines.length) {
       const range = document.createRange();
-      range.setStart(startContainer, startOffset);
-      if (newline) range.setEndBefore(newline);
-      else range.setEnd(sv, sv.childNodes.length);
-      const rect = Array.from(range.getClientRects()).find((item) => item.height > 0);
-      const fallbackRect = newline?.getBoundingClientRect();
-      const measuredRect = rect || fallbackRect;
+      range.selectNodeContents(sv);
+      sourceLines.push({ range, fallbackRange: range.cloneRange() });
+    }
+    const positions = [];
+    for (let index = 0; index < sourceLines.length; index += 1) {
+      const { range, fallbackRange } = sourceLines[index];
+      // Raw HTML markers and wrapped source lines can return client rects in
+      // an order that ends at the newline marker. The line number belongs at
+      // the visually topmost rect of the logical source line.
+      const rect = Array.from(range.getClientRects())
+        .filter((item) => item.height > 0)
+        .reduce((topmost, item) => (!topmost || item.top < topmost.top ? item : topmost), null);
+      const fallbackRect = fallbackRange.getBoundingClientRect();
+      // Empty source lines have a zero-sized fallback range. It is not a
+      // layout position: treating it as one places every such line at the
+      // top of the gutter after the scroll-linked transform is applied.
+      const measuredRect = rect || (fallbackRect.height > 0 ? fallbackRect : null);
       const measuredTop = measuredRect
-        ? measuredRect.top -
-          svRect.top +
-          sv.scrollTop +
-          Math.max(0, (measuredRect.height - lineHeight) / 2)
-        : (positions[index - 1] ?? (Number.parseFloat(style.paddingTop) || 0)) + lineHeight;
+        ? measuredRect.top - svRect.top + sv.scrollTop + (measuredRect.height - lineHeight) / 2
+        : index === 0
+          ? Number.parseFloat(style.paddingTop) || 0
+          : positions[index - 1] + lineHeight;
       positions.push(measuredTop);
-      if (newline?.parentNode) {
-        startContainer = newline.parentNode;
-        startOffset = Array.prototype.indexOf.call(startContainer.childNodes, newline) + 1;
-      }
     }
 
     const canvas = document.createElement('div');
     canvas.className = 'sv-line-number-canvas';
-    canvas.style.height = `${Math.max(sv.scrollHeight, positions.at(-1) + lineHeight)}px`;
+    // Match SV's complete scroll range so source lines and gutter stay aligned.
+    // Only actual Markdown lines receive spans; the trailing editor spacer is
+    // therefore an empty, unnumbered part of this canvas.
+    canvas.style.height = `${Math.max(sv.scrollHeight, (positions.at(-1) || 0) + lineHeight)}px`;
+    const scrollRange = Math.max(0, sv.scrollHeight - sv.clientHeight);
+    // Keep the gutter on the source element's compositor scroll timeline when
+    // Chromium supports it. The scroll-event transform remains a fallback for
+    // older engines, but it trails a compositor scroll by one visual frame.
+    const scrollLinked = CSS.supports?.('animation-timeline: scroll()');
+    canvas.classList.toggle('scroll-linked', Boolean(scrollLinked));
+    canvas.style.setProperty('--sv-scroll-range', `${scrollRange}px`);
+    if (!scrollLinked) canvas.style.transform = `translateY(${-sv.scrollTop}px)`;
     positions.forEach((top, index) => {
       const number = document.createElement('span');
       number.className = 'sv-line-number';
@@ -781,7 +955,6 @@
       canvas.appendChild(number);
     });
     gutter.replaceChildren(canvas);
-    gutter.scrollTop = sv.scrollTop;
     renderWhitespaceMarkers(tab, sv);
   }
 
@@ -854,6 +1027,36 @@
     element.addEventListener('scroll', reveal, { passive: true });
   }
 
+  function setupTabWheelScrolling(tabBar) {
+    tabBar.addEventListener(
+      'wheel',
+      (event) => {
+        if (tabBar.scrollWidth <= tabBar.clientWidth) return;
+        const rawDelta =
+          Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+        if (!rawDelta) return;
+        const delta =
+          event.deltaMode === WheelEvent.DOM_DELTA_LINE
+            ? rawDelta * 16
+            : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+              ? rawDelta * tabBar.clientWidth
+              : rawDelta;
+        const maximumLeft = Math.max(0, tabBar.scrollWidth - tabBar.clientWidth);
+        const nextLeft = Math.min(maximumLeft, Math.max(0, tabBar.scrollLeft + delta));
+        if (nextLeft === tabBar.scrollLeft) return;
+        event.preventDefault();
+        tabBar.scrollLeft = nextLeft;
+      },
+      { passive: false },
+    );
+  }
+
+  function effectiveToolbarItems(toolbarItems) {
+    const configured = toolbarItems?.length ? toolbarItems : DEFAULT_TOOLBAR;
+    // Vditor 3.11.3 mode transitions still address this internal toolbar item.
+    return configured.includes('outline') ? configured : [...configured, 'outline'];
+  }
+
   function editorOptions(tab) {
     const s = state.settings;
     const wasModified = tab.modified;
@@ -875,10 +1078,15 @@
       typewriterMode: s.typewriterMode,
       tab: s.tabInsertSpaces ? ' '.repeat(Number(s.tabSize) || 4) : '\t',
       rtl: s.rtl,
-      toolbar: s.toolbarItems && s.toolbarItems.length ? s.toolbarItems : DEFAULT_TOOLBAR,
+      toolbar: effectiveToolbarItems(s.toolbarItems),
       // The Vditor toolbar is mounted into the application toolbar. Its visibility
       // is controlled as one layout part from View > Layout.
       toolbarConfig: { hide: false, pin: false },
+      // Desktop owns the single outline experience in the application sidebar.
+      outline: { enable: false, position: 'left' },
+      // Application-level capture owns modifier-click navigation. Normal clicks
+      // must still reach Vditor so IR can place its caret and expand link Markdown.
+      link: { isOpen: false },
       cache: { enable: false },
       undoDelay: 500,
       preview: {
@@ -902,9 +1110,11 @@
           paragraphBeginningSpace: s.paragraphBeginningSpace,
           fixTermTypo: s.fixTermTypo,
           gfmAutoLink: s.gfmAutoLink,
+          // Resolve Markdown-relative resources before Vditor inserts their DOM nodes.
+          // Doing this in the adapter observer is too late to prevent an initial app:// request.
+          linkBase: localResourceBase(tab.baseDir),
           listStyle: s.listStyle,
           sanitize: s.sanitize,
-          linkBase: localResourceBase(tab.baseDir),
           codeBlockPreview: true,
           mathBlockPreview: true,
         },
@@ -926,6 +1136,10 @@
           tab.host,
           tab.host.dataset.localResourceBase,
         );
+        tab.outlineObserver?.disconnect();
+        tab.outlineObserver = VDITOR.observeOutlineChanges(tab.host, () => {
+          if (tab.id === state.activeId) scheduleOutline();
+        });
         setupDocumentAnchorNavigation(tab);
         VDITOR.scrollContainers(tab.host).forEach(setupAutoHideScrollbar);
         const normalized = currentContent(tab);
@@ -934,6 +1148,8 @@
         tab.modified = wasModified || normalized !== tab.savedContent;
         tab.ready = true;
         tab.toolbar = VDITOR.editorParts(tab.host).toolbar;
+        VDITOR.hideNativeOutlineControl(tab.toolbar);
+        VDITOR.keepSplitToolbarActionsAvailable(tab.toolbar);
         tab.toolbar.addEventListener(
           'click',
           (event) => handleVditorToolbarClick(tab, event),
@@ -944,17 +1160,23 @@
           (event) => preserveSplitToolbarSelection(tab, event),
           true,
         );
-        syncSplitToolbarActions(tab);
         syncCodeThemeControls(isDarkTheme(appTheme), state.settings.codeTheme);
-        if (tab.id === state.activeId) mountEditorToolbar(tab);
+        if (tab.id === state.activeId || tab.toolbarPreview) mountEditorToolbar(tab);
+        if (tab.toolbarPreview) {
+          disableToolbarPreview(tab);
+          syncToolbarWrapHeight();
+          return;
+        }
         renderTabs();
         updateActiveUI();
         observeSplitLineNumbers(tab);
+        observeEditorBottomSpacer(tab);
         ensureSplitResizer(tab);
         setupSplitEditorEnhancements(tab);
         scheduleSplitLineNumbers(tab);
         setTimeout(() => tab.vditor && tab.vditor.focus(), 0);
         restoreEditorScroll(tab);
+        requestAnimationFrame(() => scrollToPendingAnchor(tab));
       },
       input: (value) => onEditorInput(tab, value),
       blur: (value) => {
@@ -1027,16 +1249,23 @@
     }
     if (button === trigger) {
       if (type === 'both' || type === 'preview')
-        setTimeout(() => scheduleSplitLineNumbers(tab), 50);
+        setTimeout(() => {
+          scheduleSplitLineNumbers(tab);
+        }, 50);
       return;
     }
     if (type === 'edit-mode' && ['wysiwyg', 'ir', 'sv'].includes(button.dataset.mode)) {
+      if (button.dataset.mode !== tab.vditor?.getCurrentMode()) {
+        closeContextMenu();
+        tab.pendingScroll = captureEditorScroll(tab);
+        // Vditor rebuilds the target mode synchronously during this click.
+        // Restore before the next paint so the newly visible editor never
+        // presents its default top position for a frame.
+        requestAnimationFrame(() => restoreEditorScroll(tab));
+      }
       setTimeout(() => {
         if (!tab.vditor) return;
         tab.mode = tab.vditor.getCurrentMode();
-        state.settings.editMode = tab.mode;
-        window.appAPI.saveSettings({ editMode: tab.mode });
-        syncSplitToolbarActions(tab);
         updateActiveUI();
         scheduleSplitLineNumbers(tab);
       }, 50);
@@ -1074,16 +1303,6 @@
     }
   }
 
-  function syncSplitToolbarActions(tab) {
-    if (!tab.toolbar || tab.vditor?.getCurrentMode() !== 'sv') return;
-    ['outdent', 'indent'].forEach((type) => {
-      const button = VDITOR.toolbarButton(tab.toolbar, type);
-      const item = button?.closest(VDITOR.selectors.toolbarItem);
-      if (item) item.style.display = 'block';
-      button?.classList.remove('vditor-menu--disabled');
-    });
-  }
-
   function ensureEditor(tab) {
     if (tab.vditor) return;
     tab.ready = false;
@@ -1097,38 +1316,54 @@
 
   function captureEditorScroll(tab) {
     if (!tab?.vditor) return null;
-    const parts = VDITOR.editorParts(tab.host);
     const mode = tab.vditor.getCurrentMode();
-    const editor = parts[mode === 'sv' ? 'source' : mode === 'ir' ? 'instantRendering' : 'wysiwyg'];
-    const containers = [editor, editor?.querySelector(VDITOR.selectors.reset)].filter(Boolean);
+    const scroller = VDITOR.editorScrollContainer(tab.host, mode);
+    if (!scroller) return null;
+    const maximumTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
     return {
       mode,
-      positions: containers.map((container) => ({
-        scrollTop: container.scrollTop,
-        scrollLeft: container.scrollLeft,
-      })),
+      scrollTop: scroller.scrollTop,
+      scrollLeft: scroller.scrollLeft,
+      progress: maximumTop ? scroller.scrollTop / maximumTop : 0,
     };
   }
 
   function restoreEditorScroll(tab) {
     const saved = tab.pendingScroll;
     if (!saved) return;
-    tab.pendingScroll = null;
     const restore = () => {
-      const parts = VDITOR.editorParts(tab.host);
       const mode = tab.vditor?.getCurrentMode() || tab.mode;
-      const editor =
-        parts[mode === 'sv' ? 'source' : mode === 'ir' ? 'instantRendering' : 'wysiwyg'];
-      const containers = [editor, editor?.querySelector(VDITOR.selectors.reset)].filter(Boolean);
-      containers.forEach((container, index) => {
-        const position = saved.positions[index];
-        if (!position) return;
-        container.scrollTop = position.scrollTop;
-        container.scrollLeft = position.scrollLeft;
-      });
+      const scroller = VDITOR.editorScrollContainer(tab.host, mode);
+      if (!scroller) return false;
+      const maximumTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+      const maximumLeft = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+      const top =
+        mode === saved.mode
+          ? Math.min(maximumTop, Math.max(0, saved.scrollTop))
+          : maximumTop * Math.min(1, Math.max(0, saved.progress));
+      scroller.scrollTop = top;
+      scroller.scrollLeft = Math.min(maximumLeft, Math.max(0, saved.scrollLeft));
       scheduleSplitLineNumbers(tab);
+      return maximumTop > 0 || saved.scrollTop === 0;
     };
-    requestAnimationFrame(() => requestAnimationFrame(restore));
+    // Vditor may finish a mode render after `after` has already run. Restore
+    // before the first paint, then repeat across the next frames and once
+    // after its short asynchronous render work so that it cannot reset the
+    // reconstructed editor back to the document start.
+    const restoreUntilStable = (frame = 0) => {
+      if (tab.pendingScroll !== saved) return;
+      restore();
+      if (frame < 3) {
+        requestAnimationFrame(() => restoreUntilStable(frame + 1));
+        return;
+      }
+      setTimeout(() => {
+        if (tab.pendingScroll !== saved) return;
+        restore();
+        tab.pendingScroll = null;
+      }, 80);
+    };
+    restoreUntilStable();
   }
 
   function restoreEditorToolbar(tab) {
@@ -1149,10 +1384,14 @@
   }
 
   function rebuildEditor(tab, mode) {
+    if (contextMenuState?.tab === tab) closeContextMenu();
     tab.pendingScroll = captureEditorScroll(tab);
     disconnectSplitLineNumbers(tab);
+    disconnectEditorBottomSpacer(tab);
     tab.resourceObserver?.disconnect();
     tab.resourceObserver = null;
+    tab.outlineObserver?.disconnect();
+    tab.outlineObserver = null;
     if (tab.vditor) {
       restoreEditorToolbar(tab);
       try {
@@ -1174,7 +1413,9 @@
     baseDir = '',
     activate = true,
     untitledNumber = null,
+    pendingAnchor = '',
   } = {}) {
+    destroyToolbarPreview();
     if (state.tabs.length >= 20) {
       showMessage(t('message.maxTabs'), true);
       return null;
@@ -1201,11 +1442,14 @@
       lineResizeObserver: null,
       lineNumberFrame: null,
       whitespaceFrame: null,
+      bottomSpacerObserver: null,
       outlineCollapsed: new Set(),
+      outlineObserver: null,
       resourceObserver: null,
       splitResizer: null,
       externalConflict: null,
       externalChangeIgnored: false,
+      pendingAnchor,
       host: document.createElement('section'),
     };
     tab.host.className = 'editor-host';
@@ -1218,15 +1462,13 @@
         setTimeout(() => {
           if (!tab.vditor) return;
           tab.mode = tab.vditor.getCurrentMode();
-          state.settings.editMode = tab.mode;
-          window.appAPI.saveSettings({ editMode: tab.mode });
-          syncSplitToolbarActions(tab);
           if (tab.id === state.activeId) updateActiveUI();
           scheduleSplitLineNumbers(tab);
         }, 50);
       },
       true,
     );
+    tab.host.addEventListener('contextmenu', (event) => showEditorContextMenu(tab, event), true);
     $('#editorArea').appendChild(tab.host);
     state.tabs.push(tab);
     renderTabs();
@@ -1242,7 +1484,15 @@
     if (tab) switchTab(tab.id);
   }
 
-  async function openPath(filePath, activate = true) {
+  function scrollToPendingAnchor(tab) {
+    if (!tab.pendingAnchor || tab.id !== state.activeId || !tab.ready) return;
+    const href = `#${tab.pendingAnchor}`;
+    tab.pendingAnchor = '';
+    const headingIndex = VDITOR.headingIndexForAnchor(tab.host, href);
+    if (headingIndex >= 0) scrollToHeading(tab, headingIndex);
+  }
+
+  async function openPath(filePath, activate = true, pendingAnchor = '') {
     const normalizedPath = normalizedFilePath(filePath);
     const existing = state.tabs.find(
       (tab) => normalizedFilePath(tabTargetPath(tab)) === normalizedPath,
@@ -1255,6 +1505,10 @@
         renderTabs();
       }
       if (activate) switchTab(existing.id);
+      if (pendingAnchor) {
+        existing.pendingAnchor = pendingAnchor;
+        requestAnimationFrame(() => scrollToPendingAnchor(existing));
+      }
       return existing;
     }
     try {
@@ -1266,6 +1520,7 @@
         encoding: result.encoding,
         baseDir,
         activate,
+        pendingAnchor,
       });
       rememberRecent(filePath);
       return tab;
@@ -1298,10 +1553,13 @@
   function switchTab(id) {
     const tab = state.tabs.find((item) => item.id === id);
     if (!tab) return;
+    closeContextMenu();
     restoreEditorToolbar(activeTab());
     state.activeId = id;
     state.tabs.forEach((item) => item.host.classList.toggle('active', item.id === id));
     ensureEditor(tab);
+    requestAnimationFrame(() => updateEditorBottomSpacer(tab));
+    requestAnimationFrame(() => scrollToPendingAnchor(tab));
     if (tab.toolbar) mountEditorToolbar(tab);
     scheduleSplitLineNumbers(tab);
     renderTabs();
@@ -1314,6 +1572,7 @@
   async function closeTab(id, { discard = false } = {}) {
     const tab = state.tabs.find((item) => item.id === id);
     if (!tab) return;
+    if (contextMenuState?.tab === tab) closeContextMenu();
     if (tab.modified && !discard) {
       const action = await showUnsavedDialog(
         t('confirm.closeDirty', { title: tab.title }),
@@ -1323,8 +1582,11 @@
     }
     clearTimeout(tab.saveTimer);
     disconnectSplitLineNumbers(tab);
+    disconnectEditorBottomSpacer(tab);
     tab.resourceObserver?.disconnect();
     tab.resourceObserver = null;
+    tab.outlineObserver?.disconnect();
+    tab.outlineObserver = null;
     restoreEditorToolbar(tab);
     if (tab.vditor) {
       try {
@@ -1337,6 +1599,7 @@
     if (!state.tabs.length) {
       state.activeId = null;
       $('#vditorToolbarMount').innerHTML = '';
+      createToolbarPreview();
       renderTabs();
       updateActiveUI();
       renderOutline();
@@ -1435,10 +1698,7 @@
     tab.content = value;
     tab.modified = value !== tab.savedContent;
     renderTabs();
-    if (tab.id === state.activeId) {
-      updateActiveUI();
-      scheduleOutline();
-    }
+    if (tab.id === state.activeId) updateActiveUI();
     scheduleSplitLineNumbers(tab);
     if (
       state.settings.autoSave &&
@@ -1506,7 +1766,8 @@
   function updateActiveUI() {
     updateEmptyState();
     const tab = activeTab();
-    $('#app').classList.toggle('toolbar-unavailable', !tab);
+    $('#app').classList.remove('toolbar-unavailable');
+    $('#app').classList.toggle('toolbar-preview-active', !tab);
     syncTopControlsWidth();
     if (!tab) {
       updateExternalChangeBanner(null);
@@ -1515,6 +1776,8 @@
       $('#windowTitle').textContent = 'Vditor Desktop';
       $('#statusPath').textContent = '';
       $('#statusMode').textContent = '—';
+      $('#statusMode').setAttribute('aria-disabled', 'true');
+      closeStatusModeMenu();
       $('#statusWords').textContent = t('status.words', { count: 0 });
       $('#statusChars').textContent = t('status.chars', { count: 0 });
       $('#statusLines').textContent = t('status.lines', { count: 0 });
@@ -1533,6 +1796,8 @@
     const currentMode = tab.vditor && tab.ready ? tab.vditor.getCurrentMode() : tab.mode;
     tab.mode = currentMode;
     $('#statusMode').textContent = currentMode.toUpperCase();
+    $('#statusMode').setAttribute('aria-disabled', 'false');
+    syncStatusModeMenu(currentMode);
     const chars = content.replace(/\s/g, '').length;
     const latinWords = (content.match(/[A-Za-z0-9_]+/g) || []).length;
     const hanChars = (content.match(/[\u3400-\u9fff]/g) || []).length;
@@ -1546,6 +1811,40 @@
       const node = $(`.tree-file[data-path="${CSS.escape(tab.filePath)}"]`);
       if (node) node.classList.add('active');
     }
+  }
+
+  function syncStatusModeMenu(mode) {
+    $$('#statusModeMenu [data-status-mode]').forEach((button) => {
+      const selected = button.dataset.statusMode === mode;
+      button.setAttribute('aria-checked', String(selected));
+      button.querySelector('.checkmark').textContent = selected ? '✓' : '';
+    });
+  }
+
+  function closeStatusModeMenu() {
+    $('#statusModeMenu').classList.add('hidden');
+    $('#statusMode').setAttribute('aria-expanded', 'false');
+  }
+
+  function toggleStatusModeMenu() {
+    const tab = activeTab();
+    if (!tab?.vditor || !tab.ready) return;
+    const menu = $('#statusModeMenu');
+    const willOpen = menu.classList.contains('hidden');
+    if (!willOpen) {
+      closeStatusModeMenu();
+      return;
+    }
+    syncStatusModeMenu(tab.vditor.getCurrentMode());
+    menu.classList.remove('hidden');
+    $('#statusMode').setAttribute('aria-expanded', 'true');
+  }
+
+  function selectStatusMode(mode) {
+    const tab = activeTab();
+    closeStatusModeMenu();
+    if (!tab?.vditor || !tab.ready || mode === tab.vditor.getCurrentMode()) return;
+    VDITOR.selectEditMode(tab.toolbar, mode);
   }
 
   function updateEmptyState() {
@@ -1725,62 +2024,159 @@
     scheduleTreeNameEllipses();
   }
 
+  function closeContextMenu() {
+    const menu = $('#contextMenu');
+    if (!menu) return;
+    menu.classList.add('hidden');
+    menu.replaceChildren();
+    contextMenuState = null;
+  }
+
+  function showContextMenu(event, items, menuState = null) {
+    const menu = $('#contextMenu');
+    closeContextMenu();
+    contextMenuState = menuState;
+    items.forEach((item) => {
+      if (item.separator) {
+        menu.appendChild(document.createElement('hr'));
+        return;
+      }
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.contextAction = item.id || '';
+      button.disabled = Boolean(item.disabled);
+      const label = document.createElement('span');
+      label.textContent = item.label;
+      button.appendChild(label);
+      if (item.shortcut) {
+        const shortcut = document.createElement('small');
+        shortcut.textContent = item.shortcut;
+        button.appendChild(shortcut);
+      }
+      button.addEventListener('pointerdown', (pointerEvent) => {
+        pointerEvent.preventDefault();
+        pointerEvent.stopPropagation();
+      });
+      button.addEventListener('mousedown', (mouseEvent) => mouseEvent.preventDefault());
+      button.addEventListener('click', (clickEvent) => {
+        clickEvent.stopPropagation();
+        const savedState = contextMenuState;
+        closeContextMenu();
+        if (!button.disabled) void item.action?.(savedState);
+      });
+      menu.appendChild(button);
+    });
+    menu.style.visibility = 'hidden';
+    menu.classList.remove('hidden');
+    const margin = 6;
+    menu.style.left = `${Math.max(margin, Math.min(event.clientX, window.innerWidth - menu.offsetWidth - margin))}px`;
+    menu.style.top = `${Math.max(margin, Math.min(event.clientY, window.innerHeight - menu.offsetHeight - margin))}px`;
+    menu.style.visibility = '';
+  }
+
+  function editorShortcut(key) {
+    const modifier = window.appAPI.platform === 'darwin' ? 'Cmd' : 'Ctrl';
+    return `${modifier}+${key}`;
+  }
+
+  async function runEditorContextAction(menuState, action) {
+    const { tab, mode, selection, table } = menuState || {};
+    if (!tab?.ready || tab !== activeTab() || tab.vditor?.getCurrentMode() !== mode) return;
+    if (!VDITOR.restoreEditorSelection(selection)) return;
+    if (action === 'select-context') {
+      VDITOR.selectCurrentContextOrAll(tab.host, mode);
+      return;
+    }
+    if (action.startsWith('table-')) {
+      VDITOR.performTableAction(table, action.slice('table-'.length), tab.vditor);
+      return;
+    }
+    let clipboard = null;
+    if (action === 'paste' || action === 'paste-plain')
+      clipboard = await window.appAPI.readClipboard();
+    VDITOR.executeEditorCommand(tab.host, mode, action, clipboard);
+  }
+
+  function showEditorContextMenu(tab, event) {
+    if (tab !== activeTab() || !tab.ready) return;
+    const mode = tab.vditor?.getCurrentMode();
+    if (!mode || !VDITOR.isEditableTarget(tab.host, mode, event.target)) return;
+    const selection = VDITOR.captureEditorSelection(
+      tab.host,
+      mode,
+      event.target,
+      event.clientX,
+      event.clientY,
+    );
+    if (!selection) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const table = VDITOR.tableContext(tab.host, mode, event.target);
+    const hasSelection = !selection.range.collapsed;
+    const menuState = { tab, mode, selection, table };
+    const action = (id, label, options = {}) => ({
+      id,
+      label: t(label),
+      shortcut: options.shortcut,
+      disabled: options.disabled,
+      action: (state) => runEditorContextAction(state, id),
+    });
+    const items = [
+      action('cut', 'context.cut', { shortcut: editorShortcut('X'), disabled: !hasSelection }),
+      action('copy', 'context.copy', { shortcut: editorShortcut('C'), disabled: !hasSelection }),
+      action('paste', 'context.paste', { shortcut: editorShortcut('V') }),
+      action('paste-plain', 'context.pastePlain'),
+      action('delete', 'context.delete', { disabled: !hasSelection }),
+      action('select-context', 'context.selectContext', { shortcut: editorShortcut('A') }),
+    ];
+    if (table) {
+      items.push(
+        { separator: true },
+        action('table-insert-row', 'context.insertRow'),
+        action('table-delete-row', 'context.deleteRow', { disabled: table.cell.tagName === 'TH' }),
+        action('table-insert-column', 'context.insertColumn'),
+        action('table-delete-column', 'context.deleteColumn'),
+      );
+    }
+    showContextMenu(event, items, menuState);
+  }
+
   function showTreeMenu(event, entry, row) {
     event.preventDefault();
-    const menu = $('#contextMenu');
-    menu.innerHTML = '';
     const actions =
       entry.type === 'directory'
         ? [
-            [t('context.newFile'), () => createExplorerItem(entry.path, 'file')],
-            [t('context.newFolder'), () => createExplorerItem(entry.path, 'directory')],
+            { label: t('context.newFile'), action: () => createExplorerItem(entry.path, 'file') },
+            {
+              label: t('context.newFolder'),
+              action: () => createExplorerItem(entry.path, 'directory'),
+            },
           ]
         : [];
     actions.push(
-      [t('context.rename'), () => renameExplorerItem(entry, row)],
-      [t('context.trash'), () => deleteExplorerItem(entry)],
-      [t('context.reveal'), () => window.appAPI.showItemInFolder(entry.path)],
+      { label: t('context.rename'), action: () => renameExplorerItem(entry, row) },
+      { label: t('context.trash'), action: () => deleteExplorerItem(entry) },
+      { label: t('context.reveal'), action: () => window.appAPI.showItemInFolder(entry.path) },
     );
-    actions.forEach(([label, fn]) => {
-      const button = document.createElement('button');
-      button.textContent = label;
-      button.onclick = () => {
-        menu.classList.add('hidden');
-        fn();
-      };
-      menu.appendChild(button);
-    });
-    menu.style.left = `${event.clientX}px`;
-    menu.style.top = `${event.clientY}px`;
-    menu.classList.remove('hidden');
+    showContextMenu(event, actions);
   }
 
   function showWorkspaceTreeMenu(event) {
     event.preventDefault();
-    const menu = $('#contextMenu');
-    menu.innerHTML = '';
     const actions = [
-      [t('context.changeWorkspace'), chooseFolder],
-      [t('context.newFile'), createWorkspaceUntitledFile, !state.workspace],
-      [
-        t('context.openWorkspace'),
-        () => window.appAPI.openDirectory(state.workspace),
-        !state.workspace,
-      ],
+      { label: t('context.changeWorkspace'), action: chooseFolder },
+      {
+        label: t('context.newFile'),
+        action: createWorkspaceUntitledFile,
+        disabled: !state.workspace,
+      },
+      {
+        label: t('context.openWorkspace'),
+        action: () => window.appAPI.openDirectory(state.workspace),
+        disabled: !state.workspace,
+      },
     ];
-    actions.forEach(([label, fn, disabled]) => {
-      const button = document.createElement('button');
-      button.textContent = label;
-      button.disabled = Boolean(disabled);
-      button.onclick = () => {
-        menu.classList.add('hidden');
-        void fn();
-      };
-      menu.appendChild(button);
-    });
-    menu.style.left = `${event.clientX}px`;
-    menu.style.top = `${event.clientY}px`;
-    menu.classList.remove('hidden');
+    showContextMenu(event, actions);
   }
 
   async function createWorkspaceUntitledFile() {
@@ -1875,6 +2271,7 @@
   async function deleteExplorerItem(entry) {
     const proceed = await confirmDialog({
       message: t('workspace.delete', { name: entry.name }),
+      draggable: true,
     });
     if (!proceed) return;
     try {
@@ -1891,10 +2288,12 @@
   }
 
   function scheduleOutline() {
+    if (!$('#outlineView').classList.contains('active')) return;
     clearTimeout(state.outlineTimer);
     state.outlineTimer = setTimeout(renderOutline, 300);
   }
   function renderOutline() {
+    if (!$('#outlineView').classList.contains('active')) return;
     const tab = activeTab();
     const target = $('#outlineTree');
     target.innerHTML = '';
@@ -1902,13 +2301,7 @@
       target.innerHTML = `<div class="empty">${escapeHTML(t('sidebar.noDocument'))}</div>`;
       return;
     }
-    const headings = [];
-    currentContent(tab)
-      .split('\n')
-      .forEach((line, index) => {
-        const match = line.match(/^(#{1,6})\s+(.+?)\s*#*$/);
-        if (match) headings.push({ level: match[1].length, text: match[2], line: index });
-      });
+    const headings = VDITOR.outlineSnapshot(tab.host, tab.mode);
     if (!headings.length) {
       target.innerHTML = `<div class="empty">${escapeHTML(t('sidebar.noHeadings'))}</div>`;
       return;
@@ -1918,8 +2311,7 @@
     headings.forEach((heading, index) => {
       const node = {
         ...heading,
-        index,
-        key: `${heading.line}:${heading.level}:${heading.text}`,
+        outlineIndex: index,
         children: [],
       };
       while (stack.length && stack.at(-1).level >= node.level) stack.pop();
@@ -1959,8 +2351,7 @@
       button.type = 'button';
       button.className = 'outline-item';
       button.textContent = node.text;
-      button.title = t('outline.line', { line: node.line + 1 });
-      button.onclick = () => scrollToHeading(tab, node.index);
+      button.onclick = () => scrollToOutlineHeading(tab, node.outlineIndex);
       row.appendChild(button);
       wrapper.appendChild(row);
       if (node.children.length) {
@@ -1981,52 +2372,176 @@
       [innerScroller, editor].find(
         (candidate) => candidate && candidate.scrollHeight > candidate.clientHeight + 1,
       ) || editor;
+    scrollHeadingIntoContainer(scroller, heading);
+  }
+  function scrollHeadingIntoContainer(scroller, heading) {
+    if (!scroller || !heading || !scroller.getClientRects().length) return;
     const scrollerRect = scroller.getBoundingClientRect();
     const headingRect = heading.getBoundingClientRect();
-    const top =
-      scroller.scrollTop +
-      headingRect.top -
-      scrollerRect.top -
-      Math.max(0, (scroller.clientHeight - headingRect.height) / 2);
-    const destination = Math.max(0, top);
-    const start = scroller.scrollTop;
-    const distance = destination - start;
-    const previousAnimation = scrollAnimations.get(scroller);
-    if (previousAnimation) cancelAnimationFrame(previousAnimation);
-    if (Math.abs(distance) < 1 || matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      scroller.scrollTop = destination;
-      return;
-    }
-    const duration = Math.min(240, Math.max(140, Math.abs(distance) * 0.16));
-    const startedAt = performance.now();
-    const step = (now) => {
-      const progress = Math.min(1, (now - startedAt) / duration);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      scroller.scrollTop = start + distance * eased;
-      if (progress < 1) scrollAnimations.set(scroller, requestAnimationFrame(step));
-      else scrollAnimations.delete(scroller);
-    };
-    scrollAnimations.set(scroller, requestAnimationFrame(step));
+    const top = scroller.scrollTop + headingRect.top - scrollerRect.top - scroller.clientHeight / 6;
+    VDITOR.animateDocumentNavigationScroll(scroller, top);
   }
   function scrollToHeading(tab, headingIndex) {
     VDITOR.headingTargets(tab.host, headingIndex).forEach(({ editor, heading }) => {
       scrollHeadingIntoEditor(editor, heading);
     });
   }
+  function scrollToOutlineHeading(tab, headingIndex) {
+    VDITOR.outlineHeadingTargets(tab.host, tab.mode, headingIndex).forEach(
+      ({ scroller, heading }) => scrollHeadingIntoContainer(scroller, heading),
+    );
+  }
+
+  function documentNavigationTooltip() {
+    return t('link.followWithModifier', {
+      modifier: window.appAPI.platform === 'darwin' ? 'Cmd' : 'Ctrl',
+    });
+  }
+
+  function hasDocumentNavigationModifier(event) {
+    return window.appAPI.platform === 'darwin' ? event.metaKey : event.ctrlKey;
+  }
+
+  function isSupportedExternalLink(href) {
+    try {
+      return ['https:', 'http:', 'mailto:'].includes(new URL(href).protocol);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function isPotentialRelativeMarkdownLink(href) {
+    const rawPath = href.split('#', 1)[0].trim();
+    if (!rawPath || rawPath.startsWith('/') || rawPath.startsWith('\\')) return false;
+    if (/^[a-z][a-z\d+.-]*:/i.test(rawPath)) return false;
+    try {
+      return /\.(?:md|markdown|mdown|mkd|mkdn)$/i.test(decodeURIComponent(rawPath));
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function documentLinkTarget(tab, target) {
+    const link = VDITOR.documentLink(target, tab.host);
+    if (!link) return null;
+    if (link.href.startsWith('#')) {
+      const headingIndex = VDITOR.headingIndexForAnchor(tab.host, link.href);
+      return headingIndex < 0 ? null : { link, headingIndex };
+    }
+    if (isSupportedExternalLink(link.href)) return { link, headingIndex: null, external: true };
+    return isPotentialRelativeMarkdownLink(link.href)
+      ? { link, headingIndex: null, external: false }
+      : null;
+  }
+
+  async function openRelativeMarkdownLink(tab, href) {
+    if (!tab.filePath) {
+      showMessage(t('message.linkSaveFirst'), true);
+      return;
+    }
+    let resolution;
+    try {
+      resolution = await window.fileAPI.resolveMarkdownLink(tab.filePath, href);
+    } catch (_) {
+      showMessage(t('message.linkTargetMissing'), true);
+      return;
+    }
+    if (resolution.kind !== 'resolved') {
+      const key =
+        resolution.code === 'not-found' ? 'message.linkTargetMissing' : 'message.linkUnsupported';
+      showMessage(t(key), true);
+      return;
+    }
+    await openPath(resolution.filePath, true, resolution.fragment);
+  }
+
+  function setHoveredDocumentLink(target, event) {
+    if (hoveredDocumentLink?.link.element !== target.link.element) {
+      clearHoveredDocumentLink();
+      hoveredDocumentLink = target;
+    }
+    VDITOR.setDocumentLinkHint(
+      target.link,
+      documentNavigationTooltip(),
+      hasDocumentNavigationModifier(event) ? 'pointer' : 'text',
+    );
+    showDocumentLinkTooltip(event);
+  }
+
+  function clearHoveredDocumentLink() {
+    if (!hoveredDocumentLink) return;
+    VDITOR.clearDocumentLinkHint(hoveredDocumentLink.link);
+    hoveredDocumentLink = null;
+    $('#documentLinkTooltip').hidden = true;
+  }
+
+  function updateHoveredDocumentLinkCursor(event) {
+    if (!hoveredDocumentLink) return;
+    VDITOR.setDocumentLinkHint(
+      hoveredDocumentLink.link,
+      documentNavigationTooltip(),
+      hasDocumentNavigationModifier(event) ? 'pointer' : 'text',
+    );
+  }
+
+  function showDocumentLinkTooltip(event) {
+    const tooltip = $('#documentLinkTooltip');
+    tooltip.textContent = documentNavigationTooltip();
+    tooltip.hidden = false;
+    const left = Math.min(window.innerWidth - tooltip.offsetWidth - 8, event.clientX + 12);
+    tooltip.style.left = `${Math.max(8, left)}px`;
+    tooltip.style.top = `${Math.min(window.innerHeight - tooltip.offsetHeight - 8, event.clientY + 18)}px`;
+  }
 
   function setupDocumentAnchorNavigation(tab) {
     if (tab.host.dataset.anchorNavigation === 'true') return;
     tab.host.dataset.anchorNavigation = 'true';
     tab.host.addEventListener(
+      'mouseover',
+      (event) => {
+        const target = documentLinkTarget(tab, event.target);
+        if (target) setHoveredDocumentLink(target, event);
+      },
+      true,
+    );
+    tab.host.addEventListener(
+      'mouseout',
+      (event) => {
+        if (!hoveredDocumentLink || hoveredDocumentLink.link.element.contains(event.relatedTarget))
+          return;
+        clearHoveredDocumentLink();
+      },
+      true,
+    );
+    tab.host.addEventListener(
+      'mousemove',
+      (event) => {
+        if (hoveredDocumentLink) showDocumentLinkTooltip(event);
+      },
+      true,
+    );
+    tab.host.addEventListener(
       'click',
       (event) => {
-        const link = VDITOR.documentAnchor(event.target, tab.host);
-        if (!link) return;
-        const headingIndex = VDITOR.headingIndexForAnchor(tab.host, link.href);
-        if (headingIndex < 0) return;
-        event.preventDefault();
-        event.stopPropagation();
-        scrollToHeading(tab, headingIndex);
+        const target = documentLinkTarget(tab, event.target);
+        if (!target) return;
+        setHoveredDocumentLink(target, event);
+        if (hasDocumentNavigationModifier(event) || target.link.kind === 'toc') {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        if (hasDocumentNavigationModifier(event)) {
+          if (target.headingIndex !== null) scrollToHeading(tab, target.headingIndex);
+          else if (target.external) void window.appAPI.openExternal(target.link.href);
+          else void openRelativeMarkdownLink(tab, target.link.href);
+          return;
+        }
+        if (VDITOR.expandInstantLinkForEditing(target.link)) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        if (target.link.kind === 'toc') VDITOR.focusDocumentLink(target.link);
       },
       true,
     );
@@ -2217,6 +2732,10 @@
       tab.mode = openModes.get(tab.id) || tab.mode;
       rebuildEditor(tab);
     });
+    if (!state.tabs.length) {
+      destroyToolbarPreview();
+      createToolbarPreview();
+    }
     showMessage(t('message.settingsSaved'));
   }
 
@@ -2401,6 +2920,49 @@
     });
   }
 
+  function setupConfirmDialogDrag() {
+    const modal = $('#confirmModal');
+    const card = $('.confirm-card', modal);
+    const header = card.querySelector(':scope > header');
+    const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value));
+    const setPosition = (left, top) => {
+      const maximumLeft = Math.max(0, modal.clientWidth - card.offsetWidth);
+      const maximumTop = Math.max(0, modal.clientHeight - card.offsetHeight);
+      card.style.left = `${Math.round(clamp(left, 0, maximumLeft))}px`;
+      card.style.top = `${Math.round(clamp(top, 0, maximumTop))}px`;
+    };
+
+    header.addEventListener('mousedown', (event) => {
+      if (event.button !== 0 || !card.classList.contains('confirm-card-draggable')) return;
+      event.preventDefault();
+      const modalBounds = modal.getBoundingClientRect();
+      const cardBounds = card.getBoundingClientRect();
+      card.style.position = 'absolute';
+      setPosition(cardBounds.left - modalBounds.left, cardBounds.top - modalBounds.top);
+      const offsetX = event.clientX - cardBounds.left;
+      const offsetY = event.clientY - cardBounds.top;
+      document.body.classList.add('confirm-card-dragging');
+      const move = (moveEvent) => {
+        setPosition(
+          moveEvent.clientX - modalBounds.left - offsetX,
+          moveEvent.clientY - modalBounds.top - offsetY,
+        );
+      };
+      const up = () => {
+        document.body.classList.remove('confirm-card-dragging');
+        window.removeEventListener('mousemove', move);
+        window.removeEventListener('mouseup', up);
+      };
+      window.addEventListener('mousemove', move);
+      window.addEventListener('mouseup', up);
+    });
+
+    window.addEventListener('resize', () => {
+      if (card.style.position !== 'absolute') return;
+      setPosition(Number.parseFloat(card.style.left) || 0, Number.parseFloat(card.style.top) || 0);
+    });
+  }
+
   async function handleExternalChange(change) {
     if (state.workspace) {
       clearTimeout(state.treeTimer);
@@ -2462,8 +3024,6 @@
         if (tab && value !== tab.mode) {
           rebuildEditor(tab, value);
         }
-        state.settings.editMode = value;
-        window.appAPI.saveSettings({ editMode: value });
       },
       theme: async () => {
         state.settings.theme = value;
@@ -2507,6 +3067,7 @@
         null,
         {
           label: 'menu.editMode',
+          disabled: () => !activeTab(),
           children: [
             [
               'menu.editModeWysiwyg',
@@ -2526,7 +3087,6 @@
               () => setLayoutPart('toolbar'),
               '',
               () => state.settings.toolbarVisible !== false,
-              () => !activeTab(),
             ],
             [
               'menu.layoutSidebar',
@@ -2564,8 +3124,10 @@
         const button = document.createElement('button');
         if (item.children) {
           button.className = 'has-submenu';
+          button.disabled = item.disabled ? item.disabled() : false;
           button.innerHTML = `<span><i class="checkmark"></i>${escapeHTML(t(item.label))}</span>`;
           const openSubmenu = (event) => {
+            if (button.disabled) return;
             event.stopPropagation();
             $$('.app-menu-popup.submenu').forEach((menu) => menu.remove());
             const submenu = document.createElement('div');
@@ -2673,6 +3235,21 @@
     const appLeft = app.getBoundingClientRect().left;
     const sidebarWidth = sidebar.getBoundingClientRect().right - appLeft;
     applyTopControlsWidth(sidebarWidth, menu.getBoundingClientRect().width);
+  }
+
+  function syncToolbarWrapHeight() {
+    const app = $('#app');
+    const mount = $('#vditorToolbarMount');
+    const toolbar = activeTab()?.toolbar || state.toolbarPreview?.toolbar;
+    const hidden =
+      app.classList.contains('toolbar-hidden') || app.classList.contains('toolbar-unavailable');
+    // Vditor menus are absolutely positioned but contribute to scrollHeight.
+    // Only the toolbar's rendered box represents wrapped control rows.
+    const toolbarHeight =
+      !hidden && toolbar?.parentElement === mount ? toolbar.getBoundingClientRect().height : 0;
+    const extraHeight = Math.max(0, Math.ceil(toolbarHeight - 38));
+    app.classList.toggle('toolbar-wrapped', extraHeight > 0);
+    app.style.setProperty('--toolbar-wrap-height', `${extraHeight}px`);
   }
 
   function applyTopControlsWidth(sidebarWidth, menuWidth) {
@@ -2806,6 +3383,21 @@
     $('#emptyNewFile').onclick = newTab;
     $('#emptyOpenFile').onclick = chooseFiles;
     $('#toggleSidebar').onclick = () => toggleSidebar();
+    $('#statusMode').onclick = (event) => {
+      event.stopPropagation();
+      toggleStatusModeMenu();
+    };
+    $('#statusMode').onkeydown = (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      toggleStatusModeMenu();
+    };
+    $('#statusModeMenu').onclick = (event) => {
+      const button = event.target.closest('[data-status-mode]');
+      if (!button) return;
+      event.stopPropagation();
+      selectStatusMode(button.dataset.statusMode);
+    };
     $('#statusSettings').onclick = openSettings;
     $('#statusThemeToggle').onchange = async (event) => {
       const theme = event.target.checked ? darkThemePreference() : 'classic';
@@ -2874,16 +3466,75 @@
       }
     };
     setupSettingsDrag();
+    setupConfirmDialogDrag();
     $('#openSettingsFolder').onclick = async () =>
       window.appAPI.showItemInFolder(await window.appAPI.getSettingsPath());
     $$('[data-external]').forEach((button) => {
       button.onclick = () => window.appAPI.openExternal(button.dataset.external);
     });
-    document.addEventListener('click', () => $('#contextMenu').classList.add('hidden'));
+    document.addEventListener('click', () => closeStatusModeMenu());
+    document.addEventListener('pointerdown', (event) => {
+      if (!event.target.closest('#contextMenu')) closeContextMenu();
+    });
+    $('.app-menu-bar > button[data-menu="main"]')?.addEventListener(
+      'mousemove',
+      updateMainMenuGlow,
+      { passive: true },
+    );
+    document.addEventListener(
+      'pointerdown',
+      (event) => updateEditorSelectionActivity(event.target),
+      true,
+    );
+    document.addEventListener(
+      'focusin',
+      (event) => updateEditorSelectionActivity(event.target, true),
+      true,
+    );
+    document.addEventListener('keydown', updateHoveredDocumentLinkCursor, true);
+    document.addEventListener('keyup', updateHoveredDocumentLinkCursor, true);
+    document.addEventListener(
+      'keydown',
+      (event) => {
+        const tableCellSelection = selectedTableCellForBackspace(event);
+        pendingTableCellSelection = tableCellSelection
+          ? { event, selection: tableCellSelection }
+          : null;
+        if ((event.ctrlKey || event.metaKey) && selectEditorContextOrAll(event)) return;
+      },
+      true,
+    );
+    window.addEventListener('blur', () => {
+      editorSelectionActive = false;
+      closeContextMenu();
+      clearHoveredDocumentLink();
+    });
     document.addEventListener('keydown', (event) => {
+      if (pendingTableCellSelection?.event === event) {
+        const { selection } = pendingTableCellSelection;
+        pendingTableCellSelection = null;
+        if (!event.defaultPrevented)
+          VDITOR.selectTableCellContents(selection.cell, selection.editor);
+      }
+      if (event.key === 'Escape' && !$('#contextMenu').classList.contains('hidden')) {
+        event.preventDefault();
+        closeContextMenu();
+        return;
+      }
       if (event.key === 'Escape' && !$('#confirmModal').classList.contains('hidden')) {
         event.preventDefault();
         closeConfirmDialog('cancel');
+        return;
+      }
+      if (event.key === 'Escape' && !$('#statusModeMenu').classList.contains('hidden')) {
+        event.preventDefault();
+        closeStatusModeMenu();
+        $('#statusMode').focus({ preventScroll: true });
+        return;
+      }
+      if (event.key === 'Escape' && !$('#settingsModal').classList.contains('hidden')) {
+        event.preventDefault();
+        void closeSettings();
         return;
       }
       if (event.key === 'Alt' && $('#app').classList.contains('fullscreen')) {
@@ -2909,6 +3560,11 @@
       }
       if (!(event.ctrlKey || event.metaKey)) return;
       const key = event.key.toLowerCase();
+      if (key === 'a') {
+        if (selectEditorContextOrAll(event)) return;
+        if (!keepsNativeSelectAll(event.target)) event.preventDefault();
+        return;
+      }
       if (key === 'i' && event.shiftKey) {
         event.preventDefault();
         window.appAPI.toggleDevTools();
@@ -2979,10 +3635,20 @@
     });
     topControlsObserver.observe($('#sidebar'));
     topControlsObserver.observe($('#appMenuBar'));
+    const toolbarMount = $('#vditorToolbarMount');
+    new ResizeObserver(syncToolbarWrapHeight).observe(toolbarMount);
+    new MutationObserver(() => requestAnimationFrame(syncToolbarWrapHeight)).observe(toolbarMount, {
+      attributes: true,
+      childList: true,
+      subtree: true,
+      attributeFilter: ['hidden', 'style'],
+    });
+    syncToolbarWrapHeight();
     setupAutoHideScrollbar($('#fileTree'));
     setupAutoHideScrollbar($('#outlineTree'));
     setupAutoHideScrollbar($('#settingsForm'));
     setupAutoHideScrollbar($('#tabBar'));
+    setupTabWheelScrolling($('#tabBar'));
     setupAutoHideScrollbar($('.confirm-content'));
     window.appAPI.onMenuAction(handleMenu);
     window.appAPI.onSystemThemeChanged((theme) => {
@@ -3057,14 +3723,6 @@
     const info = await window.appAPI.getInfo();
     $('#statusVersion').textContent = `v${info.app}`;
     $('#versionInfo').textContent = `Version ${info.app} · Electron ${info.electron}`;
-    if (info.commitShort) {
-      $('#commitSeparator').classList.remove('hidden');
-      const commit = $('#commitInfo');
-      commit.textContent = info.commitShort;
-      commit.title = info.commitTag ? `${info.commitTag} · ${info.commit}` : info.commit;
-      commit.dataset.external = info.commitUrl;
-      commit.classList.remove('hidden');
-    }
     const session = state.settings.session;
     if (state.settings.restoreWorkspace && session?.workspacePath)
       await setWorkspace(session.workspacePath);
@@ -3073,7 +3731,10 @@
       const active = state.tabs.find((tab) => tab.filePath === session.activeFilePath);
       if (active) switchTab(active.id);
     }
-    if (!state.tabs.length) updateActiveUI();
+    if (!state.tabs.length) {
+      createToolbarPreview();
+      updateActiveUI();
+    }
     syncTopControlsWidth();
     window.appAPI.rendererReady();
   }

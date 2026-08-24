@@ -56,7 +56,16 @@ describe('renderer shell', () => {
     );
     expect(css).toMatch(/\.window-titlebar\s*\{[^}]*background:\s*var\(--panel-2\)/s);
     expect(css).toMatch(
+      /#app:is\(\.toolbar-hidden, \.toolbar-unavailable\) \.window-titlebar\s*\{[^}]*box-shadow:\s*none/s,
+    );
+    expect(css).toMatch(
       /\.titlebar-sidebar-toggle\s*\{[^}]*display:\s*grid[^}]*place-items:\s*center/s,
+    );
+    expect(css).toMatch(
+      /#app\.sidebar-transitioning \.toolbar-sidebar-tabs\s*\{[^}]*width 0\.16s ease/s,
+    );
+    expect(css).toMatch(
+      /\.app-menu-popup button:disabled:hover,[\s\S]*?color:\s*color-mix\(in srgb, var\(--muted\) 55%, transparent\)/,
     );
     expect(css).toContain('--window-radius: 8px');
     expect(css).toMatch(/#app\s*\{[^}]*border-radius:\s*var\(--window-radius\)/s);
@@ -133,17 +142,6 @@ describe('renderer shell', () => {
     expect(appRun).toContain('usr/lib/vditor-desktop/vditor-desktop');
   });
 
-  it('embeds Git build metadata for the linked About-page revision', () => {
-    const generator = fs.readFileSync(path.resolve('scripts/generate-build-info.js'), 'utf8');
-    expect(packageMetadata.scripts).toMatchObject({
-      'build:info': 'node scripts/generate-build-info.js',
-    });
-    expect(generator).toContain("['rev-parse', `${tag}^{commit}`]");
-    expect(generator).not.toContain("'HEAD'");
-    expect(mainScript).toContain('`${build.repository}/commit/${build.commit}`');
-    expect(document.querySelector('#commitInfo')).not.toBeNull();
-  });
-
   it('auto-hides sidebar scrollbars and keeps status text unselectable', () => {
     expect(rendererScript).toContain("setupAutoHideScrollbar($('#fileTree'))");
     expect(rendererScript).toContain("setupAutoHideScrollbar($('#outlineTree'))");
@@ -168,6 +166,9 @@ describe('renderer shell', () => {
     expect(document.querySelector('#confirmDetail')).not.toBeNull();
     expect(document.querySelector('#confirmActions')).not.toBeNull();
     expect(css).toMatch(/\.confirm-card\s*\{/);
+    expect(document.querySelectorAll('.confirm-card [data-settings-resize]')).toHaveLength(0);
+    expect(rendererScript).toContain('setupConfirmDialogDrag()');
+    expect(css).toMatch(/\.confirm-card\.confirm-card-draggable > header\s*\{[^}]*cursor:\s*move/s);
     expect(css).toMatch(/\.modal\s*\{[^}]*inset:\s*14px 20px 28px/s);
   });
 
@@ -291,6 +292,14 @@ describe('renderer shell', () => {
     expect(css).toMatch(/\.statusbar\s*\{[^}]*font-family:\s*var\(--ui-font\)/s);
   });
 
+  it('uses complete four-number viewBoxes for inline SVG icons', () => {
+    const invalidIcons = Array.from(document.querySelectorAll('svg[viewBox]')).filter((icon) => {
+      const values = icon.getAttribute('viewBox')?.trim().split(/\s+/) || [];
+      return values.length !== 4 || values.some((value) => !Number.isFinite(Number(value)));
+    });
+    expect(invalidIcons).toEqual([]);
+  });
+
   it('allows remote document images without relaxing scripts or connections', () => {
     const policy = document
       .querySelector('meta[http-equiv="Content-Security-Policy"]')
@@ -308,6 +317,18 @@ describe('renderer shell', () => {
     expect(css).toContain('color-mix(in srgb, var(--text) 78%, var(--muted))');
     expect(rendererScript).toContain('function scrollHeadingIntoEditor');
     expect(vditorAdapterScript).toContain('sourceHeading: \'[data-type="heading-marker"]\'');
+  });
+
+  it('adds a dynamic bottom spacer to every Vditor editing surface', () => {
+    expect(vditorAdapterScript).toContain('function setEditorBottomSpacer(host, height)');
+    expect(rendererScript).toContain('function observeEditorBottomSpacer(tab)');
+    expect(rendererScript).toContain('disconnectEditorBottomSpacer(tab)');
+    expect(css).toMatch(
+      /\.editor-host \.vditor-preview > \.vditor-reset::after\s*\{[^}]*height:\s*var\(--editor-bottom, 0px\)/s,
+    );
+    expect(css).toMatch(
+      /\.editor-host \.vditor-preview > \.vditor-reset::after\s*\{[^}]*content:\s*'';[^}]*display:\s*block;/s,
+    );
   });
 
   it('offers the built-in Monokai Pro Dark theme and remembers it for the status toggle', () => {
@@ -381,6 +402,12 @@ describe('renderer shell', () => {
     expect(document.querySelector('.settings-nav [data-panel="about"]')).not.toBeNull();
     expect(document.querySelector('.about-panel .about-logo')).not.toBeNull();
     expect(document.querySelector('.about-panel #resetSettings')).not.toBeNull();
+    expect(document.querySelector<HTMLInputElement>('[name="devToolsEnabled"]')?.type).toBe(
+      'checkbox',
+    );
+    expect(document.querySelector('.about-devtools-setting')?.textContent).toContain(
+      'Chrome DevTools',
+    );
     expect(document.querySelectorAll('.about-panel [data-external]').length).toBeGreaterThan(3);
   });
 

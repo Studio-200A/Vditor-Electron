@@ -28,6 +28,8 @@ contextBridge.exposeInMainWorld('fileAPI', {
   basename: (filePath: string) => ipcRenderer.invoke('file:basename', filePath),
   dirname: (filePath: string) => ipcRenderer.invoke('file:dirname', filePath),
   relative: (from: string, to: string) => ipcRenderer.invoke('file:relative', from, to),
+  resolveMarkdownLink: (sourceFile: string, href: string) =>
+    ipcRenderer.invoke('file:resolveMarkdownLink', sourceFile, href),
   watch: (rootPath?: string) => ipcRenderer.invoke('file:watch', rootPath),
   onChanged: (callback: (event: { event: string; path: string }) => void) =>
     on('file:changed', callback),
@@ -49,6 +51,7 @@ contextBridge.exposeInMainWorld('appAPI', {
   isMaximized: () => ipcRenderer.invoke('app:isMaximized'),
   getInfo: () => ipcRenderer.invoke('app:getInfo'),
   setZoomFactor: (zoom: number) => ipcRenderer.invoke('app:setZoomFactor', zoom),
+  readClipboard: () => ipcRenderer.invoke('app:readClipboard'),
   openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
   showItemInFolder: (filePath: string) => ipcRenderer.invoke('app:showItemInFolder', filePath),
   openDirectory: (dirPath: string) => ipcRenderer.invoke('app:openDirectory', dirPath),
