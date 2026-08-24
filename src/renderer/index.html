@@ -141,6 +141,28 @@
         </aside>
         <main class="main-area">
           <div id="editorArea" class="editor-area">
+            <section
+              id="recoveryBanner"
+              class="external-change-banner recovery-banner hidden"
+              role="status"
+            >
+              <img class="recovery-banner-icon" src="assets/warning.svg" alt="" />
+              <div class="recovery-banner-copy">
+                <strong id="recoveryMessage"></strong>
+                <span id="recoveryDetail"></span>
+              </div>
+              <div class="recovery-banner-actions">
+                <button id="recoverySave" type="button" data-i18n="recovery.save">
+                  Save This Version
+                </button>
+                <button id="recoverySaveAs" type="button" data-i18n="recovery.saveAs">
+                  Save As
+                </button>
+                <button id="recoveryDiscard" type="button" data-i18n="recovery.discard">
+                  Discard Recovery
+                </button>
+              </div>
+            </section>
             <section id="externalChangeBanner" class="external-change-banner hidden" role="status">
               <span id="externalChangeMessage"></span>
               <div class="external-change-actions">

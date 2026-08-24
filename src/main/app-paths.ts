@@ -71,7 +71,7 @@ export function resolveApplicationPaths(
   return {
     configDir,
     configFile: pathApi.join(configDir, 'config.toml'),
-    recoveryDir: pathApi.join(configDir, 'recovery'),
+    recoveryDir: pathApi.join(pathApi.dirname(chromiumDir), 'recovery'),
     chromiumDir,
   };
 }

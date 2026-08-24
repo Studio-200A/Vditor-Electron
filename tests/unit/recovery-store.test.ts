@@ -11,6 +11,7 @@ import {
 
 describe('RecoveryStore', () => {
   let configDir: string;
+  let recoveryDir: string;
   let store: RecoveryStore;
 
   const snapshot = (overrides: Partial<RecoverySnapshot> = {}): RecoverySnapshot => ({
@@ -29,7 +30,8 @@ describe('RecoveryStore', () => {
 
   beforeEach(() => {
     configDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-recovery-'));
-    store = new RecoveryStore(configDir);
+    recoveryDir = path.join(configDir, 'recovery-data');
+    store = new RecoveryStore(recoveryDir);
   });
 
   afterEach(() => {
@@ -39,7 +41,6 @@ describe('RecoveryStore', () => {
   it('stores private recovery data outside config.toml and lists metadata without document bodies', async () => {
     await store.save(snapshot());
 
-    const recoveryDir = path.join(configDir, 'recovery');
     const recoveryPath = path.join(recoveryDir, `${snapshot().id}.json`);
     expect(await store.listCandidates()).toEqual([
       { id: snapshot().id, title: 'Untitled 1', updatedAt: 1_725_000_000_000 },
@@ -55,7 +56,7 @@ describe('RecoveryStore', () => {
 
     await expect(store.restore(snapshot().id)).resolves.toMatchObject({
       content: 'Recovered text',
-      diskChanged: false,
+      diskState: 'unchanged',
     });
     await store.discard(snapshot().id);
     await expect(store.listCandidates()).resolves.toEqual([]);
@@ -74,11 +75,17 @@ describe('RecoveryStore', () => {
     );
     fs.writeFileSync(filePath, 'Changed outside the app');
 
-    await expect(store.restore(snapshot().id)).resolves.toMatchObject({ diskChanged: true });
+    await expect(store.restore(snapshot().id)).resolves.toMatchObject({ diskState: 'changed' });
+  });
+
+  it('marks a missing saved document as unavailable', async () => {
+    const filePath = path.join(configDir, 'missing.md');
+    await store.save(snapshot({ filePath, title: 'missing.md' }));
+
+    await expect(store.restore(snapshot().id)).resolves.toMatchObject({ diskState: 'unavailable' });
   });
 
   it('removes damaged, unsupported, and oversized snapshots without exposing their content', async () => {
-    const recoveryDir = path.join(configDir, 'recovery');
     fs.mkdirSync(recoveryDir, { recursive: true });
     fs.writeFileSync(path.join(recoveryDir, 'broken.json'), '{not json');
     fs.writeFileSync(

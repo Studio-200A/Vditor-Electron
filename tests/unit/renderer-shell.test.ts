@@ -200,6 +200,17 @@ describe('renderer shell', () => {
     expect(document.querySelector('#emptyOpenFile')).not.toBeNull();
   });
 
+  it('uses the existing fixed document banner for recovery warnings', () => {
+    const recoveryBanner = document.querySelector('#recoveryBanner');
+    expect(recoveryBanner).not.toBeNull();
+    expect(recoveryBanner?.classList.contains('external-change-banner')).toBe(true);
+    expect(recoveryBanner?.querySelector('img[src="assets/warning.svg"]')).not.toBeNull();
+    expect(recoveryBanner?.querySelector('#recoverySave')).not.toBeNull();
+    expect(recoveryBanner?.querySelector('#recoverySaveAs')).not.toBeNull();
+    expect(recoveryBanner?.querySelector('#recoveryDiscard')).not.toBeNull();
+    expect(css).toContain('.recovery-banner');
+  });
+
   it('provides a localized document find and replace widget', () => {
     const nativeMenu = fs.readFileSync(path.resolve('src/main/menu.ts'), 'utf8');
     expect(document.querySelector('#findWidget.hidden')).not.toBeNull();

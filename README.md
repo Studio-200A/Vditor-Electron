@@ -70,6 +70,7 @@ Switch modes from the unified toolbar or **View → Editing Mode**. Split Previe
 - Collapse the explorer to give the editor more room; its file actions fold away with it while menus and shortcuts remain available.
 - Save, Save As, export HTML or PDF, and recover the last workspace and window state.
 - Save documents safely through a same-directory temporary file; unchanged files are not rewritten, and a failed save keeps the original file and your unsaved editor content intact.
+- Recover unsaved work after an unexpected exit. Recovered documents open directly with a warning banner: save the recovered version when its original file is unchanged, or save elsewhere when the disk version changed or the original file is unavailable.
 - Find and replace text in the active document with a compact `Ctrl/Cmd + F` panel.
 - Detect changes to files in the active workspace. Clean documents reload automatically; documents with local edits show a persistent conflict banner and pause autosave until you choose how to proceed.
 - Paste or upload images to a configurable relative assets directory. Relative local images and online images can be previewed in all three modes.
@@ -143,13 +144,15 @@ Linux is the primary development and validation platform at present. Windows and
 
 Application configuration and Chromium user data are kept separate:
 
-| Platform | Configuration                                                                             | Chromium data                                                                    |
-| -------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Linux    | `${XDG_CONFIG_HOME:-~/.config}/vditor-desktop/config.toml`                                | `${XDG_DATA_HOME:-~/.local/share}/vditor-desktop/chromium/`                      |
-| Windows  | `%APPDATA%\\vditor-desktop\\config.toml`                                                  | `%LOCALAPPDATA%\\vditor-desktop\\chromium\\`                                     |
-| macOS    | `~/Library/Application Support/com.github.studio-200a.vditor-electron/Config/config.toml` | `~/Library/Application Support/com.github.studio-200a.vditor-electron/Chromium/` |
+| Platform | Configuration | Chromium data | Recovery data |
+| -------- | ------------- | ------------- | ------------- |
+| Linux    | `${XDG_CONFIG_HOME:-~/.config}/vditor-desktop/config.toml` | `${XDG_DATA_HOME:-~/.local/share}/vditor-desktop/chromium/` | `${XDG_DATA_HOME:-~/.local/share}/vditor-desktop/recovery/` |
+| Windows  | `%APPDATA%\\vditor-desktop\\config.toml` | `%LOCALAPPDATA%\\vditor-desktop\\chromium\\` | `%LOCALAPPDATA%\\vditor-desktop\\recovery\\` |
+| macOS    | `~/Library/Application Support/com.github.studio-200a.vditor-electron/Config/config.toml` | `~/Library/Application Support/com.github.studio-200a.vditor-electron/Chromium/` | `~/Library/Application Support/com.github.studio-200a.vditor-electron/recovery/` |
 
 The TOML file is human-readable and grouped by application, appearance, typography, editor, preview, files, workspace, window, and session settings.
+
+Crash-recovery snapshots are stored separately in the private application data directory shown above. They are removed after saving or discarding the recovered document and are never served as local document resources.
 
 ## Build and test
 

@@ -1422,6 +1422,7 @@
     title: providedTitle = '',
     mode = state.settings.editMode,
     recoverySnapshotId = null,
+    recoveryState = null,
   } = {}) {
     destroyToolbarPreview();
     if (state.tabs.length >= 20) {
@@ -1461,6 +1462,7 @@
       externalConflict: null,
       externalChangeIgnored: false,
       recoverySnapshotId,
+      recoveryState,
       recoveryTimer: null,
       recoveryRevision: 0,
       recoveryOperation: Promise.resolve(),
@@ -1742,6 +1744,7 @@
 
   async function saveTab(tab = activeTab(), saveAs = false) {
     if (!tab) return false;
+    const previousPath = tab.filePath;
     let destination = tab.filePath;
     if (!destination || saveAs)
       destination = await window.fileAPI.saveFileDialog(
@@ -1780,8 +1783,12 @@
       tab.encoding = 'utf-8';
       tab.baseDir = await window.fileAPI.dirname(destination);
       await discardRecoverySnapshot(tab);
+      tab.recoveryState = null;
       if (previousBaseDir !== tab.baseDir) rebuildEditor(tab);
       rememberRecent(destination);
+      if (state.workspace && (!previousPath || saveAs || previousPath !== destination)) {
+        await refreshTree();
+      }
       renderTabs();
       updateActiveUI();
       persistSession();
@@ -1861,22 +1868,9 @@
       return;
     }
     for (const candidate of candidates) {
-      const action = await showConfirmDialog({
-        title: t('recovery.title'),
-        message: t('recovery.found', { title: candidate.title }),
-        detail: t('recovery.detail'),
-        actions: [
-          { id: 'discard', label: t('recovery.discard') },
-          { id: 'restore', label: t('recovery.restore'), primary: true },
-        ],
-      });
-      if (action !== 'restore') {
-        await window.appAPI.discardRecovery(candidate.id);
-        continue;
-      }
       const snapshot = await window.appAPI.restoreRecovery(candidate.id);
       if (!snapshot) continue;
-      if (snapshot.diskChanged) {
+      if (snapshot.diskState !== 'unchanged') {
         createTab({
           title: t('recovery.conflictTitle', { title: snapshot.title }),
           content: snapshot.content,
@@ -1885,8 +1879,8 @@
           baseDir: snapshot.filePath ? await window.fileAPI.dirname(snapshot.filePath) : '',
           mode: snapshot.mode,
           recoverySnapshotId: snapshot.id,
+          recoveryState: snapshot.diskState,
         });
-        showMessage(t('recovery.conflictMessage', { title: snapshot.title }), true);
       } else {
         createTab({
           filePath: snapshot.filePath,
@@ -1896,6 +1890,7 @@
           baseDir: snapshot.filePath ? await window.fileAPI.dirname(snapshot.filePath) : '',
           mode: snapshot.mode,
           recoverySnapshotId: snapshot.id,
+          recoveryState: 'unchanged',
         });
       }
     }
@@ -1909,6 +1904,7 @@
     syncTopControlsWidth();
     if (!tab) {
       updateExternalChangeBanner(null);
+      updateRecoveryBanner(null);
       $('#saveFile').disabled = true;
       document.title = 'Vditor Desktop';
       $('#windowTitle').textContent = 'Vditor Desktop';
@@ -1924,6 +1920,7 @@
       return;
     }
     updateExternalChangeBanner(tab);
+    updateRecoveryBanner(tab);
     $('#saveFile').disabled = false;
     const content = currentContent(tab);
     tab.content = content;
@@ -2000,6 +1997,42 @@
     $('#externalChangeMessage').textContent = t('external.changed', {
       name: fileName(conflict.path),
     });
+  }
+
+  function updateRecoveryBanner(tab) {
+    const banner = $('#recoveryBanner');
+    const recoveryState = tab?.recoveryState;
+    banner.classList.toggle('hidden', !recoveryState);
+    if (!recoveryState) return;
+
+    const changed = recoveryState === 'changed';
+    const unavailable = recoveryState === 'unavailable';
+    $('#recoveryMessage').textContent = t(
+      changed ? 'recovery.changed' : unavailable ? 'recovery.unavailable' : 'recovery.restored',
+    );
+    $('#recoveryDetail').textContent = t(
+      changed
+        ? 'recovery.changedDetail'
+        : unavailable
+          ? 'recovery.unavailableDetail'
+          : 'recovery.restoredDetail',
+    );
+    $('#recoverySave').classList.toggle('hidden', recoveryState !== 'unchanged');
+  }
+
+  async function saveRecoveredVersion(tab) {
+    if (!tab?.recoveryState) return;
+    await saveTab(tab);
+  }
+
+  async function saveRecoveredAs(tab) {
+    if (!tab?.recoveryState) return;
+    await saveTab(tab, true);
+  }
+
+  async function discardRecoveredVersion(tab) {
+    if (!tab?.recoveryState) return;
+    await closeTab(tab.id, { discard: true });
   }
 
   async function reloadExternalChange(tab) {
@@ -3493,6 +3526,9 @@
     $('#findClose').onclick = closeFind;
     $('#externalReload').onclick = () => void reloadExternalChange(activeTab());
     $('#externalIgnore').onclick = () => ignoreExternalChange(activeTab());
+    $('#recoverySave').onclick = () => void saveRecoveredVersion(activeTab());
+    $('#recoverySaveAs').onclick = () => void saveRecoveredAs(activeTab());
+    $('#recoveryDiscard').onclick = () => void discardRecoveredVersion(activeTab());
     $('#replaceOne').onclick = replaceFindMatch;
     $('#replaceAll').onclick = replaceAllFindMatches;
     $('#findInput').addEventListener('input', () => {
@@ -3882,12 +3918,12 @@
     const session = state.settings.session;
     if (state.settings.restoreWorkspace && session?.workspacePath)
       await setWorkspace(session.workspacePath);
-    await restoreRecoverySnapshots();
     if (state.settings.restoreTabs && session?.openFiles?.length) {
       await openPaths(session.openFiles);
       const active = state.tabs.find((tab) => tab.filePath === session.activeFilePath);
       if (active) switchTab(active.id);
     }
+    await restoreRecoverySnapshots();
     if (!state.tabs.length) {
       createToolbarPreview();
       updateActiveUI();

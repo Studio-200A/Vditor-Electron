@@ -527,7 +527,7 @@ if (!ownsSingleInstanceLock) {
   void app.whenReady().then(() => {
     registerAppProtocol();
     settingsStore = new SettingsStore(applicationPaths.configDir);
-    recoveryStore = new RecoveryStore(applicationPaths.configDir);
+    recoveryStore = new RecoveryStore(applicationPaths.recoveryDir);
     fileManager = new FileManagerService();
     registerIpcHandlers();
     updateApplicationMenu();

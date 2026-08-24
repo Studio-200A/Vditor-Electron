@@ -71,6 +71,7 @@ Vditor Desktop 是一款基于 [Electron](https://github.com/electron/electron) 
 - 收起资源管理器可扩大编辑空间；新建、打开、保存按钮会随之收起，但菜单和快捷键始终可用。
 - 支持保存、另存为、导出 HTML 或 PDF，并恢复上次工作区和窗口状态。
 - 文档保存会先在同目录写入临时文件；内容未变化时不会重写，保存失败时会保留原文件和编辑器中的未保存内容。
+- 异常退出后可恢复未保存内容。恢复文档会直接打开并显示警示横幅：原文件未变化时可保存此版本；磁盘版本已变化或原文件不可用时只能另存为。
 - 使用 `Ctrl/Cmd + F` 打开紧凑面板，在当前文档中查找和替换文本。
 - 监控当前工作区中的文件变化；没有本地修改的文档会自动重载，有本地修改的文档会显示持久冲突横幅，并在处理前暂停自动保存。
 - 粘贴或上传图片到可配置的相对资源目录；相对路径图片和在线图片可以在三种模式中预览。
@@ -146,13 +147,15 @@ Portable 压缩包中的 desktop 文件使用 `/path/to/vditor-desktop` 作为�
 应用配置和 Chromium 用户数据相互分离：
 
 
-| 平台    | 配置文件                                                                                  | Chromium 数据                                                                    |
-| ------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Linux   | `${XDG_CONFIG_HOME:-~/.config}/vditor-desktop/config.toml`                                | `${XDG_DATA_HOME:-~/.local/share}/vditor-desktop/chromium/`                      |
-| Windows | `%APPDATA%\\vditor-desktop\\config.toml`                                                  | `%LOCALAPPDATA%\\vditor-desktop\\chromium\\`                                     |
-| macOS   | `~/Library/Application Support/com.github.studio-200a.vditor-electron/Config/config.toml` | `~/Library/Application Support/com.github.studio-200a.vditor-electron/Chromium/` |
+| 平台    | 配置文件 | Chromium 数据 | 恢复数据 |
+| ------- | -------- | ------------- | -------- |
+| Linux   | `${XDG_CONFIG_HOME:-~/.config}/vditor-desktop/config.toml` | `${XDG_DATA_HOME:-~/.local/share}/vditor-desktop/chromium/` | `${XDG_DATA_HOME:-~/.local/share}/vditor-desktop/recovery/` |
+| Windows | `%APPDATA%\\vditor-desktop\\config.toml` | `%LOCALAPPDATA%\\vditor-desktop\\chromium\\` | `%LOCALAPPDATA%\\vditor-desktop\\recovery\\` |
+| macOS   | `~/Library/Application Support/com.github.studio-200a.vditor-electron/Config/config.toml` | `~/Library/Application Support/com.github.studio-200a.vditor-electron/Chromium/` | `~/Library/Application Support/com.github.studio-200a.vditor-electron/recovery/` |
 
 TOML 配置文件可直接阅读，按应用、外观、字体、编辑器、预览、文件、工作区、窗口和会话设置分类。
+
+异常恢复快照单独存放在上表所列的私有应用数据目录中；保存或放弃恢复后会删除，且不会被作为本地文档资源提供。
 
 ## 构建与测试
 

@@ -133,6 +133,10 @@ button.primary {
   background: var(--accent);
   border-color: var(--accent);
 }
+:where(button, a[href], input, select, textarea, [tabindex]:not([tabindex='-1'])):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 :root[data-theme='monokai-pro-dark'] button.primary {
   color: #2d2a2e;
 }
@@ -774,6 +778,36 @@ button.danger {
 .external-change-actions button {
   white-space: nowrap;
 }
+.recovery-banner {
+  align-items: flex-start;
+  border-color: color-mix(in srgb, #d03827 58%, var(--border));
+}
+.recovery-banner-icon {
+  align-self: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+}
+.recovery-banner-copy {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 2px;
+}
+.recovery-banner-copy span {
+  font-size: 0.9em;
+}
+.recovery-banner-actions {
+  align-self: center;
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.recovery-banner-actions button {
+  white-space: nowrap;
+}
 @media (max-width: 700px) {
   .external-change-banner {
     align-items: stretch;
@@ -782,6 +816,13 @@ button.danger {
   .external-change-actions {
     justify-content: flex-end;
     flex-wrap: wrap;
+  }
+  .recovery-banner {
+    align-items: stretch;
+  }
+  .recovery-banner-actions {
+    align-self: auto;
+    justify-content: flex-end;
   }
 }
 .find-widget {

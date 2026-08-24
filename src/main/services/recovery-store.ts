@@ -25,7 +25,7 @@ export interface RecoveryCandidate {
 }
 
 export interface RestoredRecoverySnapshot extends RecoverySnapshot {
-  diskChanged: boolean;
+  diskState: 'unchanged' | 'changed' | 'unavailable';
 }
 
 const RECOVERY_ID = /^[a-z0-9-]{8,128}$/i;
@@ -35,8 +35,8 @@ export class RecoveryStore {
   private readonly recoveryDir: string;
   private readonly writer = new SafeFileWriter(fs.promises, 0o600);
 
-  constructor(configDir: string) {
-    this.recoveryDir = path.join(configDir, 'recovery');
+  constructor(recoveryDir: string) {
+    this.recoveryDir = recoveryDir;
   }
 
   async save(snapshot: unknown): Promise<void> {
@@ -70,8 +70,8 @@ export class RecoveryStore {
     if (!RECOVERY_ID.test(id)) return null;
     const snapshot = await this.readSnapshot(this.snapshotPath(id));
     if (!snapshot) return null;
-    const diskChanged = await this.diskChanged(snapshot);
-    return { ...snapshot, diskChanged };
+    const diskState = await this.diskState(snapshot);
+    return { ...snapshot, diskState };
   }
 
   async discard(id: string): Promise<void> {
@@ -136,13 +136,16 @@ export class RecoveryStore {
       throw new Error('Recovery snapshot exceeds the size limit');
   }
 
-  private async diskChanged(snapshot: RecoverySnapshot): Promise<boolean> {
-    if (!snapshot.filePath) return false;
+  private async diskState(
+    snapshot: RecoverySnapshot,
+  ): Promise<'unchanged' | 'changed' | 'unavailable'> {
+    if (!snapshot.filePath) return 'unchanged';
     try {
-      return (await fs.promises.readFile(snapshot.filePath, 'utf8')) !== snapshot.savedContent;
+      return (await fs.promises.readFile(snapshot.filePath, 'utf8')) === snapshot.savedContent
+        ? 'unchanged'
+        : 'changed';
     } catch {
-      // A missing or unreadable original is handled like a changed disk version.
-      return true;
+      return 'unavailable';
     }
   }
 

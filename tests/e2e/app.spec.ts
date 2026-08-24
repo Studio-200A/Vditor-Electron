@@ -148,7 +148,7 @@ test('auto-saves a changed Markdown document through the document write path', a
   }
 });
 
-test('restores a persisted recovery snapshot and clears it on save', async () => {
+test('directly restores a persisted recovery snapshot and clears it on save', async () => {
   const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-recovery-e2e-'));
   const configDir = path.join(testRoot, 'config');
   const filePath = path.join(testRoot, 'recovery target.md');
@@ -162,7 +162,8 @@ test('restores a persisted recovery snapshot and clears it on save', async () =>
     restoreTabs: false,
     restoreWorkspace: false,
   });
-  const recoveryStore = new RecoveryStore(configDir);
+  const recoveryDir = path.join(testRoot, 'recovery');
+  const recoveryStore = new RecoveryStore(recoveryDir);
   await recoveryStore.save({
     schemaVersion: RECOVERY_SCHEMA_VERSION,
     id: '756c51d8-34de-4618-a7c3-04cf367a3815',
@@ -175,7 +176,6 @@ test('restores a persisted recovery snapshot and clears it on save', async () =>
     mode: 'sv',
     updatedAt: Date.now(),
   });
-  const recoveryDir = path.join(configDir, 'recovery');
   let restored: ElectronApplication | null = null;
   try {
     restored = await electron.launch({
@@ -190,19 +190,91 @@ test('restores a persisted recovery snapshot and clears it on save', async () =>
     });
     const restoredPage = await restored.firstWindow();
     await restoredPage.waitForSelector('#appMenuBar[data-ready="true"]');
-    await expect(restoredPage.locator('#confirmModal')).toBeVisible();
-    await restoredPage
-      .locator('#confirmActions [data-action="restore"]')
-      .evaluate((button) => (button as HTMLButtonElement).click());
     await expect(restoredPage.locator('.editor-host.active .vditor-sv')).toContainText(
       'Recovered after crash',
     );
+    await expect(restoredPage.locator('#confirmModal')).toBeHidden();
+    await expect(restoredPage.locator('#recoveryBanner')).toBeVisible();
+    await expect(restoredPage.locator('.recovery-banner-icon')).toHaveAttribute(
+      'src',
+      'assets/warning.svg',
+    );
+    await expect(restoredPage.locator('#recoveryMessage')).toHaveText(
+      'Recovered unsaved changes from the last unexpected exit.',
+    );
+    await expect(restoredPage.locator('#recoverySave')).toBeVisible();
+    await expect(restoredPage.locator('#recoverySaveAs')).toBeVisible();
+    await expect(restoredPage.locator('#recoveryDiscard')).toBeVisible();
 
-    await restoredPage.keyboard.press('Control+s');
+    await restoredPage.locator('#recoverySave').click();
     await expect
       .poll(() => fs.readFileSync(filePath, 'utf8').trimEnd())
       .toBe('Recovered after crash');
     await expect.poll(() => fs.readdirSync(recoveryDir)).toEqual([]);
+    await expect(restoredPage.locator('#recoveryBanner')).toBeHidden();
+  } finally {
+    if (restored) {
+      restored.process().kill('SIGKILL');
+    }
+    fs.rmSync(testRoot, { recursive: true, force: true });
+  }
+});
+
+test('prevents direct overwrite when a recovered document conflicts with disk', async () => {
+  const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-recovery-conflict-e2e-'));
+  const configDir = path.join(testRoot, 'config');
+  const filePath = path.join(testRoot, 'recovery target.md');
+  fs.mkdirSync(configDir);
+  fs.writeFileSync(filePath, 'Current disk content');
+  new SettingsStore(configDir).update({
+    locale: 'en_US',
+    systemTheme: false,
+    editMode: 'sv',
+    autoSave: false,
+    restoreTabs: false,
+    restoreWorkspace: false,
+  });
+  const recoveryStore = new RecoveryStore(path.join(testRoot, 'recovery'));
+  await recoveryStore.save({
+    schemaVersion: RECOVERY_SCHEMA_VERSION,
+    id: '9e44b135-20bf-4e1c-9981-b169657868b4',
+    filePath,
+    title: 'recovery target.md',
+    content: 'Recovered after crash',
+    savedContent: 'Original disk content',
+    encoding: 'utf-8',
+    lineEnding: 'LF',
+    mode: 'sv',
+    updatedAt: Date.now(),
+  });
+  let restored: ElectronApplication | null = null;
+  try {
+    restored = await electron.launch({
+      args: ['.'],
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        ELECTRON_DISABLE_SECURITY_WARNINGS: 'true',
+        VDITOR_DESKTOP_CONFIG_DIR: configDir,
+        VDITOR_DESKTOP_DATA_DIR: path.join(testRoot, 'chromium'),
+      },
+    });
+    const restoredPage = await restored.firstWindow();
+    await restoredPage.waitForSelector('#appMenuBar[data-ready="true"]');
+    await expect(restoredPage.locator('.editor-host.active .vditor-sv')).toContainText(
+      'Recovered after crash',
+    );
+    await expect(restoredPage.locator('#recoveryBanner')).toBeVisible();
+    await expect(restoredPage.locator('#recoveryMessage')).toHaveText(
+      'Recovered unsaved changes, but the original file was modified after the interruption.',
+    );
+    await expect(restoredPage.locator('#recoveryDetail')).toHaveText(
+      'To avoid overwriting the newer disk version, save the recovered content to another location.',
+    );
+    await expect(restoredPage.locator('#recoverySave')).toBeHidden();
+    await expect(restoredPage.locator('#recoverySaveAs')).toBeVisible();
+    await expect(restoredPage.locator('#recoveryDiscard')).toBeVisible();
+    expect(fs.readFileSync(filePath, 'utf8')).toBe('Current disk content');
   } finally {
     if (restored) {
       restored.process().kill('SIGKILL');

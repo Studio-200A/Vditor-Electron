@@ -1,8 +1,8 @@
 # Vditor-Electron Code Structure World Map
 
 - **生成时间：** 2026-08-24
-- **基于的工作区：** `dev-0.2.0`，HEAD `66020a743d93a83a259f6774906950df8601c430`（包含未提交的批次 1 安全文档保存改动；提交状态以 `git status --short` 为准）
-- **文档版本：** v1.3
+- **基于的工作区：** `dev-0.2.0`，HEAD `0182430824892f3d03b762bf7226372a1c9c0a2d`（包含批次 1、2 的已提交基线及本轮未提交修正；提交状态以 `git status --short` 为准）
+- **文档版本：** v1.4
 - **对应 package.json 版本号：** 0.1.5
 
 ---
@@ -74,13 +74,14 @@ Vditor-Electron/
 │   │   ├── protocol.ts            # app:// 与 local-file:// 协议注册
 │   │   ├── external-url.ts         # 外部 URL 协议白名单校验
 │   │   ├── menu.ts                # macOS 原生菜单构建（Menu.buildFromTemplate）
-│   │   ├── app-paths.ts           # 平台路径解析（config / chromium 数据目录）
+│   │   ├── app-paths.ts           # 平台路径解析（config / chromium / recovery 数据目录）
 │   │   ├── open-files.ts          # CLI / OS 文件关联参数解析
 │   │   ├── resolve-markdown-link.ts # 相对 Markdown 链接安全解析
 │   │   ├── ipc/                   # （空目录，预留 IPC handler 分层）
 │   │   └── services/              # 主进程服务层
 │   │       ├── file-manager.ts    # 文件读写、目录操作、编码探测与文档写入错误映射
 │   │       ├── safe-file-writer.ts # 同目录临时文件、同步、替换与失败清理
+│   │       ├── recovery-store.ts  # 私有恢复快照的校验、原子写入、读取与清理
 │   │       ├── settings-store.ts  # TOML 配置读写、深合并、原子保存
 │   │       └── app-state.ts       # AppSettings 接口与默认值定义
 ├── src/renderer/                  # 渲染进程（纯 JavaScript + HTML + CSS）
@@ -132,6 +133,7 @@ Vditor-Electron/
 2. app.whenReady() 回调：
    ├── registerAppProtocol()              // 注册 app:// 与 local-file://
    ├── new SettingsStore(configDir)       // 加载 TOML 配置
+   ├── new RecoveryStore(recoveryDir)      // 初始化私有恢复快照存储
    ├── new FileManagerService()           // 初始化文件服务
    ├── registerIpcHandlers()              // 注册所有 IPC 通道
    ├── Menu.setApplicationMenu(...)       // macOS 设置原生菜单，其他平台置 null
@@ -313,6 +315,10 @@ webPreferences: {
 | `onMaximizedChanged(callback)`   | `window:maximizedChanged`    | on           | `(maximized)`          | 取消订阅函数                                |
 | `onOpenFiles(callback)`          | `app:openFiles`              | on           | `(paths)`              | 取消订阅函数                                |
 | `readClipboard()`                | `app:readClipboard`          | invoke       | 无                     | `{ text: string, html: string }`             |
+| `getRecoveryCandidates()`        | `app:getRecoveryCandidates`  | invoke       | 无                     | `{ id, title, updatedAt }[]`                 |
+| `restoreRecovery(id)`            | `app:restoreRecovery`        | invoke       | `string`               | 恢复快照或 `null`（含 `diskState`）          |
+| `saveRecovery(snapshot)`         | `app:saveRecovery`           | invoke       | 恢复快照               | `void`                                       |
+| `discardRecovery(id)`            | `app:discardRecovery`        | invoke       | `string`               | `void`                                       |
 
 ### 5.4 事件订阅清理机制
 
@@ -346,8 +352,9 @@ webPreferences: {
 7. 应用演示设置（CSS 变量、缩放）
 8. 解析并应用主题
 9. 恢复工作区（`restoreWorkspace`）
-10. 恢复标签页（`restoreTabs`）
-11. 发送 `rendererReady()`，触发主进程 `flushPendingOpenFiles()`
+10. 恢复正常标签页（`restoreTabs`）
+11. 读取并直接打开恢复快照；恢复标签显示文档级警示横幅
+12. 发送 `rendererReady()`，触发主进程 `flushPendingOpenFiles()`
 
 ### 6.2 路由结构
 
@@ -373,6 +380,8 @@ const state = {
 ```
 
 持久化策略：每次标签/工作区状态变更调用 `persistSession()`，通过 `saveSettings({ session })` 写入 TOML。
+
+恢复运行时状态属于各 `tab`：`recoverySnapshotId`、防抖 timer、串行操作 Promise、revision 与 `recoveryState`。它们不进入 session；脏标签只将经过白名单投影的恢复快照经 `app:saveRecovery` 写入私有目录。
 
 ---
 
@@ -653,6 +662,10 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `app:openDirectory`          | `dirPath`                         | `void`                                      | `shell.openPath`                             |
 | `app:exportPDF`              | `html, defaultPath?`              | `string \| null`                            | 隐藏 BrowserWindow 加载 HTML 后 `printToPDF` |
 | `app:readClipboard`          | 无                                | `{ text: string, html: string }`             | 读取编辑区右键菜单所需的系统剪贴板文本和 HTML 数据 |
+| `app:getRecoveryCandidates`  | 无                                | `{ id, title, updatedAt }[]`                  | 返回不含正文的有效恢复快照元数据              |
+| `app:restoreRecovery`        | `id: string`                      | 恢复快照或 `null`                              | 校验快照并标记 `unchanged` / `changed` / `unavailable` 磁盘状态 |
+| `app:saveRecovery`           | 恢复快照                          | `void`                                        | 校验大小/字段后原子写入私有 recovery 目录     |
+| `app:discardRecovery`        | `id: string`                      | `void`                                        | 删除对应恢复快照                              |
 
 #### send 通道（render → main，无返回值）
 
@@ -732,7 +745,7 @@ saveTab(tab, saveAs = false)
   ├── fileAPI.writeDocument(destination, content)
   │   └── main: SafeFileWriter 同目录临时文件 → write → sync → close → rename
   ├── 成功：记录 expectedSavedContent；仅实际写入时标记 renderer 忽略窗口
-  └── 更新 tab.filePath/title/baseDir，清除冲突标记，持久化会话
+  └── 更新 tab.filePath/title/baseDir，清除冲突与 recovery 状态；首次保存或另存为时主动刷新工作区树，再持久化会话
 ```
 
 **自动保存：**
@@ -806,6 +819,8 @@ if ((state.ignoredChanges.get(change.path) || 0) > Date.now()) return;
   baseDir: string,              // 文件父目录（用于 localResourceBase）
   externalConflict: null | { kind: 'modified', path },
   externalChangeIgnored: boolean,
+  recoverySnapshotId: string | null,
+  recoveryState: null | 'unchanged' | 'changed' | 'unavailable',
 }
 ```
 
@@ -828,6 +843,18 @@ function rememberRecent(filePath) {
 ```
 
 记录在 `AppSettings.recentFiles` 字段中，每次打开文件时更新。当前未在 UI 显示最近文件列表（数据已就绪，展示层待实现）。
+
+### 9.7 异常退出恢复
+
+`RecoveryStore` 将单个脏标签的版本化快照写入 Chromium 数据目录同级的私有 `recovery/` 应用数据目录；每份快照有稳定 UUID、2 MiB 上限、正文与保存基线，目录/文件权限在 POSIX 平台尽量收紧为 `0700` / `0600`。候选列表只返回元数据，正文仅在指定 ID 的恢复请求后返回。
+
+渲染器对脏标签以 500 ms 防抖保存快照，并以每个标签的串行 operation 链避免旧写入覆盖新状态。启动时先按 `restoreTabs` 还原正常会话，再直接打开恢复标签。`#recoveryBanner` 使用通用 `assets/warning.svg` 并按磁盘状态显示：
+
+- `unchanged`：保存此版本、另存为或放弃恢复；
+- `changed`：原文件已变化，只能另存为或放弃恢复；
+- `unavailable`：原文件不存在或不可读，只能另存为或放弃恢复。
+
+“放弃恢复”关闭恢复标签并删除快照，使界面回到用户设置决定的正常会话或无标签状态；成功保存同样清理快照。恢复目录不属于 `local-file://` 的资源根。
 
 ---
 
@@ -856,7 +883,7 @@ function rememberRecent(filePath) {
 
 #### 编辑区（`app.js:1153` 起的 `ensureEditor()` 及相关编辑器生命周期函数，`index.html:141-213`）
 
-- **职责：** 承载所有标签页的 Vditor 编辑器 host、无标签时的 toolbar 预览 host、空状态引导、外部变更横幅、查找替换组件
+- **职责：** 承载所有标签页的 Vditor 编辑器 host、无标签时的 toolbar 预览 host、空状态引导、外部变更与异常恢复横幅、查找替换组件
 - **实现：** `ensureEditor()`、`switchTab()` 切换 active 类；编辑器重建和三种模式切换均保存主滚动容器的位置，跨模式按文档滚动进度恢复，SV 始终以源码区为准
 
 #### 查找替换（`app.js:335-417`，`index.html:153-206`）
@@ -873,7 +900,7 @@ function rememberRecent(filePath) {
 #### 文件树（`app.js:1799` 起的 `appendDirectory()` / `showTreeMenu()`，`index.html:127-131`）
 
 - **职责：** 懒加载工作区目录树、文件展开状态持久化、文件名省略（canvas 测量）、右键菜单（新建/重命名/回收站/在管理器中显示）
-- **实现：** `appendDirectory()`、`showTreeMenu()`、`renameExplorerItem()`、`middleEllipsis()`
+- **实现：** `appendDirectory()`、`showTreeMenu()`、`renameExplorerItem()`、`middleEllipsis()`；首次保存或另存为后直接调用 `refreshTree()`，避免自身保存事件被抑制时遗漏新文件。
 - **过滤：** 仅显示 `fileExplorer.visibleExtensions` 中的扩展名，隐藏以 `.` 开头的文件
 
 #### 文档大纲（`app.js:2019` 起的 `renderOutline()`，`index.html:133-136`）
@@ -974,6 +1001,7 @@ function rememberRecent(filePath) {
 │   └── main.main-area
 │       └── #editorArea（编辑区）
 │           ├── .editor-host（每个 tab 一个，由 JS 动态创建）
+│           ├── #recoveryBanner（异常恢复横幅与 warning.svg）
 │           ├── #externalChangeBanner（外部变更横幅）
 │           ├── #findWidget（查找替换）
 │           └── #noTabs（空状态）
@@ -1035,6 +1063,8 @@ function rememberRecent(filePath) {
 :root[data-theme='dark']       { --bg: #17181a; ... color-scheme: dark; }
 :root[data-theme='monokai-pro-dark'] { --bg: #2d2a2e; ... color-scheme: dark; }
 ```
+
+应用自有可交互控件的 `:focus-visible` 统一使用 `--accent` 的 2px outline；因此 Light、Dark 与 Monokai Pro Dark 均保持键盘焦点可见且与当前主题一致。
 
 切换路径：
 
@@ -1426,6 +1456,7 @@ flowchart TB
 | `tests/unit/resolve-markdown-link.test.ts` | `src/main/resolve-markdown-link.ts` | 相对 Markdown 路径、`../`、百分号编码、片段、Windows 路径、缺失/绝对/协议/非 Markdown/非法编码目标拒绝 |
 | `tests/unit/file-manager.test.ts`   | `src/main/services/file-manager.ts` 与 `safe-file-writer.ts` | UTF-8 读取、UTF-8 BOM 检测与剥离、GB18030 回退、同目录安全替换、权限保持、无变化跳过、临时创建/替换失败保留原文件及清理、权限错误映射、文件/目录创建、路径逃逸拒绝（`../`）、目录优先自然排序、重命名、二进制图片写入 |
 | `tests/unit/settings-store.test.ts` | `src/main/services/settings-store.ts`   | 首次加载返回默认值、TOML 部分深合并与默认值、未知字段丢弃、`set` 持久化（含 TOML 段结构验证）、`update` 多字段快照（含 `workspaceTreeStates` 数组）、设置对话框尺寸持久化（`window.settingsDialog`）、`getAll` 返回克隆副本、`reset` 重置内存和磁盘                                                                                                                                                                                                                                                               |
+| `tests/unit/recovery-store.test.ts` | `src/main/services/recovery-store.ts` | 私有目录/文件权限、候选元数据不含正文、原子写入与显式清理、损坏/未知 schema/超限快照移除，以及 `unchanged` / `changed` / `unavailable` 三种磁盘状态 |
 | `tests/unit/vditor-adapter.test.ts` | `src/renderer/vditor-adapter.js`        | 冻结的 selectors 对象、`validateHost` 成功（toolbar 通过 `mountedToolbar` 参数提供）、代码主题亮/暗分界点（`ant-design` 前为 dark 组）、DOM 漂移检测（缺少 source 节点时 `valid: false`）、列表 `marker`/`padding` 解析、动态尾部留白写入全部 Vditor 表面、hash anchor 到标题索引（IR 内部链接 + 元素 id + slug）、原生大纲 snapshot、标题间普通块时的准确目标节点及 SV preview 外层滚动容器、跨多 span 文本节点的匹配与选区                                                                                                                                                                                                   |
 | `tests/unit/renderer-shell.test.ts` | 渲染器壳（HTML/CSS/JS/preload）静态结构 | 标题栏 / 菜单 / 窗口控件 DOM；三种编辑模式菜单项；en/zh_Hans/zh_Hant 键完整性对等；Linux 发布脚本；自动隐藏滚动条样式；第二实例文件转发；确认对话框（未保存变更可拖动、无调整尺寸手柄）；设置对话框 8 方向调整手柄；空标签恢复；查找替换控件带 SVG；文件树无 draggable；折叠/展开/中间省略；设置面板分类；关于面板；UI/编辑器/预览缩放；状态栏控件；CSP img-src/connect-src；大纲无标题态；Monokai Pro Dark 主题；亮/暗代码主题分离；字体子分组；工作区头部；编辑文本宽度范围；无过时占位符/工具栏设置项；适配器脚本加载顺序；设置路径页脚/重置当前页 |
 
@@ -1487,7 +1518,9 @@ flowchart TB
 #### 文件读写与外部变更
 
 - 手动保存与自动保存写回磁盘；工作区中的自动保存不会丢失活动文件选中态
+- 首次保存或另存为后立即刷新工作区文件树
 - 安全写入成功、无变化跳过、临时写入失败、替换失败与权限错误映射
+- 预置恢复快照启动后直接显示正文和警示横幅；正常状态保存后清理，磁盘冲突状态不会提供直接覆盖操作
 - 干净工作区文件外部修改时自动重载（无冲突横幅）
 - 本地有未保存修改的文件受外部修改时显示冲突横幅（`!` 冲突标记 + `#externalChangeBanner`）
 - "忽略外部变更"后保存覆盖本地内容
@@ -1513,6 +1546,7 @@ flowchart TB
 - Monokai Pro Dark H1–H6 调色板（粉/黄/绿/青/紫/橙）在三模式下均正确
 - `lastDarkTheme` 偏好持久化（`dark` 与 `monokai-pro-dark` 切换）
 - 编辑 / 焦点 / 失焦状态下背景颜色稳定
+- 所有应用控件的键盘可见焦点使用当前主题 accent 色
 - 文件标签名 → 窗口标题 → `document.title` 同步；标题栏 / 状态栏 / 标签栏背景色在亮/暗主题下一致
 
 #### 设置对话框
