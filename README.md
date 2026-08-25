@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  A calm, local-first Markdown editor for people who want the power of Vditor in a focused desktop workspace.
+  Your Markdown files, on your own machine, in a desktop editor built for focus — not a browser tab, not another cloud account, just Vditor's full editing power in a calm workspace.
 </p>
 
 <p align="center">
@@ -18,7 +18,7 @@
 
 </p>
 
-Vditor Desktop is a local Markdown writing app built with [Electron](https://github.com/electron/electron) and [Vditor](https://github.com/Vanessa219/vditor). Your files remain ordinary Markdown files on your computer, while the app adds the details that make a desktop editor feel complete: tabs, workspaces, a file explorer, document outline, themes, session recovery, and native file associations.
+Vditor Desktop takes the writing experience of [Vditor](https://github.com/Vanessa219/vditor) — **one of the most capable Markdown editors around** — and gives it the desktop app it deserves. There's no proprietary format and no lock-in: what you write is exactly what sits on disk, an ordinary `.md` file, at all times. Around that, the app fills in everything a real desktop tool needs but a browser-based editor can't offer on its own: tabs, workspaces, a file explorer, Vditor's built-in outline, themes, session recovery, and native file associations.
 
 ![Vditor Desktop light theme](assets/screenshot-light.webp)
 
@@ -42,15 +42,14 @@ Vditor Desktop is a local Markdown writing app built with [Electron](https://git
 
 ## Why Vditor Desktop
 
-- **Markdown without lock-in.** Open and save regular `.md` files directly. There is no account, cloud sync, proprietary document format, or required service.
-- **Three ways to write.** Move between WYSIWYG, instant rendering, and split preview mode without leaving the document.
-- **Desktop-grade file handling.** Open files from the command line or a file manager, work with a folder as a workspace, and recover tabs and window state between sessions.
-- **Workspace-aware file operations.** Create numbered untitled documents, create and rename files inline, open a workspace from the explorer context menu, and move files to the trash without leaving the editor.
-- **Editing context menu.** Right-click in any editable mode for clipboard, deletion, and context selection actions; rendered table cells also offer row and column actions.
-- **Predictable menus.** Opening a sidebar or editor context menu automatically closes the open application menu.
-- **A focused interface.** A compact workbench bar keeps menus, file actions, tabs, and window controls together, while the editor toolbar appears only when needed.
-- **Rich Markdown.** Keep Vditor's support for formulas, diagrams, charts, footnotes, syntax highlighting, tables of contents, and media previews.
-- **Local-first by design.** Configuration and Chromium data are stored locally in platform-appropriate directories. The application does not upload your documents.
+- **Your files stay yours.** No account, no cloud sync, no proprietary format. What you write is a plain `.md` file on your disk, readable and portable with any other editor, forever.
+- **Write however your brain works that day.** WYSIWYG when you want to see the finished page, instant rendering when you want syntax and style at once, split preview when you want source and output side by side — switch anytime, mid-document.
+- **A real desktop citizen, not a wrapped webpage.** Open files straight from the terminal or your file manager, treat any folder as a project, and pick up right where you left off — tabs, layout, and all — the next time you launch it.
+- **The file tree is part of the editor, not an afterthought.** Create, rename, and organize files without leaving your document; open new workspaces or send files to the trash straight from the explorer's right-click menu.
+- **Small conveniences that add up.** Right-click for clipboard and selection actions wherever you're writing, get row/column controls on rendered tables, and never fight a stray menu that forgot to close itself when you opened another one.
+- **An interface that gets out of the way.** A single, compact bar holds your menus, file actions, tabs, and window controls; the editing toolbar only shows up when you actually need it.
+- **All the Markdown power you'd expect from Vditor.** Math, diagrams, charts, footnotes, syntax highlighting, a table of contents, and inline media preview — kept faithful to upstream and presented in full.
+- **Local-first.** Configuration and app data live in the standard local directory for your platform. There's nothing to upload, because there's nowhere for it to go.
 
 ## Editing modes
 
@@ -64,15 +63,16 @@ Switch modes from the unified toolbar or **View → Editing Mode**. Split Previe
 
 ## A workspace that stays out of the way
 
-- Open a folder as a workspace and browse its Markdown files in the explorer.
-- Expand and collapse directories, filter by extension, create and rename files, move items to the trash, or reveal them in the system file manager.
-- Read an H1–H6 document outline and jump to headings from any editing mode.
-- Keep multiple documents open in numbered untitled tabs, with independent undo history and modified state.
-- Drag tabs to arrange them in the order that fits your work.
-- Collapse the explorer to give the editor more room; its file actions fold away with it while menus and shortcuts remain available.
-- Save, Save As, export HTML or PDF, and recover the last workspace and window state.
-- Find and replace text in the active document with a compact `Ctrl/Cmd + F` panel.
-- Paste or upload images to a configurable relative assets directory. Relative local images and online images can be previewed in all three modes.
+Most days you're not managing an editor — you're just writing. Vditor Desktop tries to keep the surrounding tools quiet until you actually reach for them.
+
+- Point it at a folder and it becomes your project: browse its Markdown files right in the explorer, no separate import step.
+- Navigate the way you would in any file manager — expand, collapse, filter by extension, rename, trash, or jump straight to the system file manager — all without leaving the editor.
+- Never lose your place in a long document: jump to any H1–H6 heading from a live outline, in any editing mode.
+- Work on several documents at once, each with its own undo history and unsaved-changes indicator, and drag tabs into whatever order makes sense to you.
+- Need more screen for writing? Collapse the explorer and it steps aside — the shortcuts and menu still work exactly the same.
+- Save, Save As, export to HTML or PDF, and pick up your last session automatically the next time you open the app.
+- Find and replace without a heavyweight dialog — a compact `Ctrl/Cmd + F` panel does the job.
+- Drop images straight into your document; they land in a configurable assets folder and preview correctly in all three editing modes, whether they're local or online.
 
 Directory renames/deletes and workspace-level resource limits remain planned work; keep backups of important documents.
 
@@ -132,35 +132,35 @@ release/vditor-desktop-x86_64-<version>-portable.AppImage
 
 The portable desktop entry uses `/path/to/vditor-desktop` as an installation-path placeholder. Replace it with the actual extraction path before installing the entry into your desktop environment. The AppImage can be run after making it executable.
 
-Linux is the primary development and validation platform at present. Windows and macOS-specific window and data-directory adaptations are included, but physical-device watcher, permission, path-case, packaging, and release validation is still pending.
+Linux is the primary development and validation platform at present. Windows and macOS-specific window and data-directory adaptations are included, but physical-device watcher, permission, path-case, packaging, and release validation are still pending.
 
 ## Everyday shortcuts
 
-| Action            | Shortcut               |
-| ----------------- | ---------------------- |
-| New file          | `Ctrl/Cmd + N`         |
-| Open file         | `Ctrl/Cmd + O`         |
-| Save              | `Ctrl/Cmd + S`         |
-| Save As           | `Ctrl/Cmd + Shift + S` |
-| Find and replace  | `Ctrl/Cmd + F`         |
-| Select context / all | `Ctrl/Cmd + A`      |
-| Close tab         | `Ctrl/Cmd + W`         |
-| Toggle explorer   | `Ctrl/Cmd + B`         |
-| Open settings     | `Ctrl/Cmd + ,`         |
+| Action                                | Shortcut               |
+| ------------------------------------- | ---------------------- |
+| New file                              | `Ctrl/Cmd + N`         |
+| Open file                             | `Ctrl/Cmd + O`         |
+| Save                                  | `Ctrl/Cmd + S`         |
+| Save As                               | `Ctrl/Cmd + Shift + S` |
+| Find and replace                      | `Ctrl/Cmd + F`         |
+| Select context / all                  | `Ctrl/Cmd + A`         |
+| Close tab                             | `Ctrl/Cmd + W`         |
+| Toggle explorer                       | `Ctrl/Cmd + B`         |
+| Open settings                         | `Ctrl/Cmd + ,`         |
 | Toggle Chrome DevTools (when enabled) | `Ctrl/Cmd + Shift + I` |
-| Toggle fullscreen | `F11`                  |
+| Toggle fullscreen                     | `F11`                  |
 
 ## Configuration and data
 
 Application configuration and Chromium user data are kept separate:
 
-| Platform | Configuration | Chromium data | Recovery data |
-| -------- | ------------- | ------------- | ------------- |
-| Linux    | `${XDG_CONFIG_HOME:-~/.config}/vditor-desktop/config.toml` | `${XDG_DATA_HOME:-~/.local/share}/vditor-desktop/chromium/` | `${XDG_DATA_HOME:-~/.local/share}/vditor-desktop/recovery/` |
-| Windows  | `%APPDATA%\\vditor-desktop\\config.toml` | `%LOCALAPPDATA%\\vditor-desktop\\chromium\\` | `%LOCALAPPDATA%\\vditor-desktop\\recovery\\` |
+| Platform | Configuration                                                                             | Chromium data                                                                    | Recovery data                                                                    |
+| -------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Linux    | `${XDG_CONFIG_HOME:-~/.config}/vditor-desktop/config.toml`                                | `${XDG_DATA_HOME:-~/.local/share}/vditor-desktop/chromium/`                      | `${XDG_DATA_HOME:-~/.local/share}/vditor-desktop/recovery/`                      |
+| Windows  | `%APPDATA%\\vditor-desktop\\config.toml`                                                  | `%LOCALAPPDATA%\\vditor-desktop\\chromium\\`                                     | `%LOCALAPPDATA%\\vditor-desktop\\recovery\\`                                     |
 | macOS    | `~/Library/Application Support/com.github.studio-200a.vditor-electron/Config/config.toml` | `~/Library/Application Support/com.github.studio-200a.vditor-electron/Chromium/` | `~/Library/Application Support/com.github.studio-200a.vditor-electron/recovery/` |
 
-The TOML file is human-readable and grouped by application, appearance, typography, editor, preview, files, workspace, window, and session settings.
+The TOML file is human-readable and grouped by application, appearance, fonts, editor, preview, files, workspace, window, and session settings.
 
 Crash-recovery snapshots are stored separately in the private application data directory shown above. They are removed after saving or discarding the recovered document and are never served as local document resources.
 
