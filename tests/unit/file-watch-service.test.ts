@@ -132,6 +132,39 @@ describe('FileWatchService', () => {
     expect(events).toEqual([{ event: 'add', path: path.join(root, 'new.md'), scope: 'workspace' }]);
   });
 
+  it('reports a reappeared open workspace document to both document and tree consumers', async () => {
+    vi.useFakeTimers();
+    const root = path.resolve('/workspace');
+    const documentPath = path.join(root, 'reappeared.md');
+    const events: FileChangeEvent[] = [];
+    let documentWatcher: FakeWatcher | undefined;
+    const service = new FileWatchService(
+      async () => ({ content: 'reappeared content', encoding: 'utf-8' }),
+      (event) => events.push(event),
+      (paths) => {
+        const watcher = new FakeWatcher();
+        if (paths === documentPath) documentWatcher = watcher;
+        return watcher as unknown as FSWatcher;
+      },
+    );
+
+    await service.setWorkspace(root);
+    await service.watchDocument(documentPath);
+    documentWatcher?.emit('add', documentPath);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(events).toEqual([
+      {
+        event: 'add',
+        path: documentPath,
+        scope: 'document',
+        content: 'reappeared content',
+        encoding: 'utf-8',
+      },
+      { event: 'add', path: documentPath, scope: 'workspace' },
+    ]);
+  });
+
   it('reconciles a transient unlink as changed content after atomic replacement', async () => {
     vi.useFakeTimers();
     const documentPath = path.resolve('/outside/note.md');
@@ -163,6 +196,35 @@ describe('FileWatchService', () => {
         scope: 'document',
         content: 'replacement',
         encoding: 'utf-8',
+      },
+    ]);
+  });
+
+  it('reports unreadable documents without misclassifying them as deleted', async () => {
+    vi.useFakeTimers();
+    const documentPath = path.resolve('/outside/locked.md');
+    const unreadable = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+    const events: FileChangeEvent[] = [];
+    let watcher: FakeWatcher | undefined;
+    const service = new FileWatchService(
+      async () => Promise.reject(unreadable),
+      (event) => events.push(event),
+      () => {
+        watcher = new FakeWatcher();
+        return watcher as unknown as FSWatcher;
+      },
+    );
+
+    await service.watchDocument(documentPath);
+    watcher?.emit('change', documentPath);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(events).toEqual([
+      {
+        event: 'unreadable',
+        path: documentPath,
+        scope: 'document',
+        error: 'permission-denied',
       },
     ]);
   });

@@ -37,11 +37,12 @@ contextBridge.exposeInMainWorld('fileAPI', {
   unwatchDocument: (filePath: string) => ipcRenderer.invoke('file:unwatchDocument', filePath),
   onChanged: (
     callback: (event: {
-      event: 'add' | 'change' | 'unlink';
+      event: 'add' | 'change' | 'unlink' | 'unreadable';
       path: string;
       scope: 'workspace' | 'document';
       content?: string;
       encoding?: string;
+      error?: 'permission-denied' | 'read-failed';
     }) => void,
   ) => on('file:changed', callback),
   getDroppedPath: (file: File) => webUtils.getPathForFile(file),
@@ -68,6 +69,7 @@ contextBridge.exposeInMainWorld('appAPI', {
   getInfo: () => ipcRenderer.invoke('app:getInfo'),
   setZoomFactor: (zoom: number) => ipcRenderer.invoke('app:setZoomFactor', zoom),
   readClipboard: () => ipcRenderer.invoke('app:readClipboard'),
+  writeClipboard: (text: string) => ipcRenderer.invoke('app:writeClipboard', text),
   openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
   showItemInFolder: (filePath: string) => ipcRenderer.invoke('app:showItemInFolder', filePath),
   openDirectory: (dirPath: string) => ipcRenderer.invoke('app:openDirectory', dirPath),

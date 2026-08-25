@@ -5,6 +5,8 @@
 ### New Features
 
 - **feat(recovery):** After an unexpected exit, unsaved documents now open directly with a persistent warning banner. The banner clearly distinguishes an unchanged original file from a changed or unavailable one, and only allows direct saving when it is safe; other recovery states can be saved elsewhere or discarded.
+- **feat(external file state):** Open documents now distinguish external deletion, reappearance, and unreadable/permission states. Autosave pauses while a target is unavailable, and the editor keeps its in-memory content until the user chooses an explicit resolution.
+- **feat(recreate backup):** Recreating an unavailable file copies the content captured before the unavailable state to the system clipboard and shows a five-second localized confirmation notice. The clipboard backup is not contaminated by edits made while the persistent notice is visible.
 
 ### Bug Fixes
 
@@ -14,9 +16,13 @@
 - **fix(save):** Save documents through a synced same-directory temporary file before replacement, preserving existing permissions and keeping the original file intact on write or replacement failure.
 - **fix(autosave):** Prevented an application's own atomic-save events from refreshing the workspace explorer or clearing the active file selection.
 - **fix(file explorer):** Refresh the active workspace tree immediately after a first save or Save As, without reintroducing save-event flicker for ordinary saves.
+- **fix(external file state):** A file that reappears in the active workspace now refreshes the sidebar without rebuilding it for ordinary document content events; reappearance does not silently replace the editor content.
+- **fix(save baseline):** Recovery-save validation now compares the disk against the recovery snapshot's last saved baseline, allowing a safe recovered version to be written when the original file is unchanged.
 - **fix(accessibility):** Use the active theme accent for keyboard-visible focus rings across application controls.
 
 ### Project Maintenance
+
+- **docs(0.2.0):** Updated the README, architecture map, development plan, execution tracker, and known behavior notes to reflect the completed recovery and external-file state work and the remaining directory/path and cross-platform validation scope.
 
 ## 0.1.5 - Editing Experience Improvement
 
@@ -37,6 +43,7 @@
 - **fix(workbench chrome):** Kept the sidebar controls aligned while resizing the explorer, including when no document is open or the editor toolbar is hidden.
 - **fix(title bar):** Kept the sidebar toggle fixed in place as related file actions fold away, and limited title-bar shadows to the visible editor-toolbar boundary.
 - **fix(menus):** Kept unavailable layout commands visually disabled when hovered or focused.
+- **fix(menus):** Automatically close the application menu before showing a sidebar or editor context menu.
 - **fix(empty workbench):** Kept the editing-mode menu disabled without a document, while showing a default-mode Vditor toolbar preview; the preview is now fully disabled and gray like other unavailable controls, while its visibility remains configurable from View > Layout.
 - **fix(tabs):** Improved light-theme tab hover feedback and made close controls use an accent-only hover state.
 - **fix(toolbar layout):** Let the editor toolbar expand vertically when its controls wrap in narrower windows, without adding empty space above the sidebar or shifting the editor when a toolbar menu opens; kept toolbar, sidebar-tab, and hidden-toolbar shadows aligned with their visible boundaries.

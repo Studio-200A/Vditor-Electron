@@ -29,6 +29,7 @@ Vditor Desktop is a local Markdown writing app built with [Electron](https://git
 - [Why Vditor Desktop](#why-vditor-desktop)
 - [Editing modes](#editing-modes)
 - [A workspace that stays out of the way](#a-workspace-that-stays-out-of-the-way)
+- [Protecting Your Work, Thoughtfully](#protecting-your-work-thoughtfully)
 - [Themes and languages](#themes-and-languages)
 - [Install and run](#install-and-run)
 - [Everyday shortcuts](#everyday-shortcuts)
@@ -46,6 +47,7 @@ Vditor Desktop is a local Markdown writing app built with [Electron](https://git
 - **Desktop-grade file handling.** Open files from the command line or a file manager, work with a folder as a workspace, and recover tabs and window state between sessions.
 - **Workspace-aware file operations.** Create numbered untitled documents, create and rename files inline, open a workspace from the explorer context menu, and move files to the trash without leaving the editor.
 - **Editing context menu.** Right-click in any editable mode for clipboard, deletion, and context selection actions; rendered table cells also offer row and column actions.
+- **Predictable menus.** Opening a sidebar or editor context menu automatically closes the open application menu.
 - **A focused interface.** A compact workbench bar keeps menus, file actions, tabs, and window controls together, while the editor toolbar appears only when needed.
 - **Rich Markdown.** Keep Vditor's support for formulas, diagrams, charts, footnotes, syntax highlighting, tables of contents, and media previews.
 - **Local-first by design.** Configuration and Chromium data are stored locally in platform-appropriate directories. The application does not upload your documents.
@@ -69,14 +71,21 @@ Switch modes from the unified toolbar or **View → Editing Mode**. Split Previe
 - Drag tabs to arrange them in the order that fits your work.
 - Collapse the explorer to give the editor more room; its file actions fold away with it while menus and shortcuts remain available.
 - Save, Save As, export HTML or PDF, and recover the last workspace and window state.
-- Save documents safely through a same-directory temporary file; unchanged files are not rewritten, and a failed save keeps the original file and your unsaved editor content intact.
-- Recover unsaved work after an unexpected exit. Recovered documents open directly with a warning banner: save the recovered version when its original file is unchanged, or save elsewhere when the disk version changed or the original file is unavailable.
 - Find and replace text in the active document with a compact `Ctrl/Cmd + F` panel.
-- Detect changes to open files, whether they are in the active workspace or opened independently. Clean documents reload automatically; documents with local edits show a persistent conflict banner and pause autosave until you choose how to proceed.
-- The conflict banner can reload the latest stable disk version, save the current content elsewhere, ignore the external change, or request an explicitly confirmed overwrite; a later disk change invalidates an older overwrite confirmation.
 - Paste or upload images to a configurable relative assets directory. Relative local images and online images can be previewed in all three modes.
 
-External file monitoring covers every open file, including files opened outside the active workspace. File deletion recovery, directory moves, and conflict recovery across application restarts remain planned reliability work; keep backups of important documents.
+Directory renames/deletes and workspace-level resource limits remain planned work; keep backups of important documents.
+
+## Protecting Your Work, Thoughtfully
+
+Vditor Desktop treats your writing as something to protect, not something to overwrite. Behind the simple Markdown workflow are several safeguards designed to keep an unexpected exit, a second editor, or a changing file system from silently taking your work away:
+
+- **Careful saves.** Documents are written through a temporary file in the same directory. Unchanged files are not rewritten, and a failed save leaves both the original file and your unsaved editor content intact.
+- **Recovery after an unexpected exit.** Unsaved work is captured in a private recovery snapshot. When you return, the app checks whether the original file is still the same before offering to save the recovered version; if it is not safe, you can save the recovered content elsewhere.
+- **Awareness of outside changes.** Every open file is monitored, including files opened outside the active workspace. Clean documents can reload automatically, while documents with local edits pause autosave and keep a persistent notice until you decide what should happen.
+- **Guided conflict resolution.** You can reload the stable disk version, save your current writing elsewhere, keep it as an untitled document, ignore the external change, or explicitly confirm an overwrite. If the disk changes again, the old overwrite confirmation is discarded.
+- **Protection from missing or unreadable files.** If a file is deleted or loses read/write access, the editor keeps its in-memory content and pauses autosave instead of recreating or overwriting the file silently. When access returns, the disk version is never inserted into the editor without your decision.
+- **A recoverable recreation.** If you explicitly recreate a missing file, the app copies the content captured when the file became unavailable to the system clipboard and shows a five-second confirmation notice. Edits made afterward remain separate, so the backup represents the protected version you may need.
 
 ## Themes and languages
 
@@ -123,7 +132,7 @@ release/vditor-desktop-x86_64-<version>-portable.AppImage
 
 The portable desktop entry uses `/path/to/vditor-desktop` as an installation-path placeholder. Replace it with the actual extraction path before installing the entry into your desktop environment. The AppImage can be run after making it executable.
 
-Linux is the primary development and validation platform at present. Windows and macOS-specific window and data-directory adaptations are included for future platform builds.
+Linux is the primary development and validation platform at present. Windows and macOS-specific window and data-directory adaptations are included, but physical-device watcher, permission, path-case, packaging, and release validation is still pending.
 
 ## Everyday shortcuts
 

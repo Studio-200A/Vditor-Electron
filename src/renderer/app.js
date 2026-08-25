@@ -49,7 +49,9 @@
     'content-theme',
   ];
   let messageTimer;
+  let temporaryDocumentNoticeTimer;
   let appMenuCloseHandler;
+  let closeAppMenu = () => {};
   let appMenuBlurHandler;
   let settingsSaveTimer;
   let settingsCloseTimer;
@@ -413,6 +415,18 @@
       target.textContent = '';
       target.classList.remove('error');
     }, 4500);
+  }
+
+  function showTemporaryDocumentNotice(message, error = false) {
+    const notice = $('#temporaryDocumentNotice');
+    $('#temporaryDocumentNoticeMessage').textContent = message;
+    notice.classList.toggle('error', error);
+    notice.classList.remove('hidden');
+    clearTimeout(temporaryDocumentNoticeTimer);
+    temporaryDocumentNoticeTimer = setTimeout(() => {
+      notice.classList.add('hidden');
+      notice.classList.remove('error');
+    }, 5000);
   }
 
   function findWidgetVisible() {
@@ -1432,6 +1446,7 @@
     mode = state.settings.editMode,
     recoverySnapshotId = null,
     recoveryState = null,
+    expectedSavedContent = savedContent,
   } = {}) {
     destroyToolbarPreview();
     if (state.tabs.length >= 20) {
@@ -1453,7 +1468,7 @@
       lineEnding: detectLineEnding(content),
       baseDir,
       modified: content !== savedContent,
-      expectedSavedContent: content,
+      expectedSavedContent,
       mode,
       vditor: null,
       ready: false,
@@ -1470,6 +1485,7 @@
       splitResizer: null,
       externalConflict: null,
       externalChangeIgnored: false,
+      externalFileState: null,
       recoverySnapshotId,
       recoveryState,
       recoveryTimer: null,
@@ -1605,7 +1621,19 @@
     const tab = state.tabs.find((item) => item.id === id);
     if (!tab) return;
     if (contextMenuState?.tab === tab) closeContextMenu();
-    if (tab.modified && !discard) {
+    if (tab.externalFileState && !tab.modified && !discard) {
+      const action = await showConfirmDialog({
+        title: t('external.closeTitle'),
+        message: t('external.closeMessage', { name: tab.title }),
+        detail: t('external.closeDetail'),
+        actions: [
+          { id: 'cancel', label: t('dialog.cancel') },
+          { id: 'confirm', label: t('external.close'), primary: true, danger: true },
+        ],
+        draggable: true,
+      });
+      if (action !== 'confirm') return;
+    } else if (tab.modified && !discard) {
       const action = await showUnsavedDialog(
         t('confirm.closeDirty', { title: tab.title }),
         t('confirm.closeDirtyDetail'),
@@ -1654,7 +1682,7 @@
       button.className = `document-tab${tab.id === state.activeId ? ' active' : ''}`;
       button.dataset.id = tab.id;
       button.title = tab.filePath || tab.title;
-      button.innerHTML = `<span>${escapeHTML(tab.title)}</span>${tab.externalConflict ? `<i class="conflict" title="${escapeHTML(t('external.changed', { name: tab.title }))}">!</i>` : ''}<i class="dirty">${tab.modified ? '●' : ''}</i><b title="${escapeHTML(t('tab.close'))}">×</b>`;
+      button.innerHTML = `<span>${escapeHTML(tab.title)}</span>${tab.externalConflict || tab.externalFileState ? `<i class="conflict" title="${escapeHTML(t('external.needsAttention', { name: tab.title }))}">!</i>` : ''}<i class="dirty">${tab.modified ? '●' : ''}</i><b title="${escapeHTML(t('tab.close'))}">×</b>`;
       button.addEventListener('click', (event) => {
         if (tabDragMoved) return;
         if (event.target.tagName === 'B') closeTab(tab.id);
@@ -1740,7 +1768,8 @@
       tab.filePath &&
       tab.modified &&
       !tab.externalConflict &&
-      !tab.externalChangeIgnored
+      !tab.externalChangeIgnored &&
+      !tab.externalFileState
     ) {
       clearTimeout(tab.saveTimer);
       tab.saveTimer = setTimeout(() => saveTab(tab), state.settings.autoSaveDelay);
@@ -1758,7 +1787,16 @@
     }
   }
 
-  async function saveTab(tab = activeTab(), saveAs = false, overwriteConflict = null) {
+  function recreateClipboardSnapshot(tab) {
+    return state.settings.autoSave ? currentContent(tab) : tab.savedContent;
+  }
+
+  async function saveTab(
+    tab = activeTab(),
+    saveAs = false,
+    overwriteConflict = null,
+    recreateFileState = null,
+  ) {
     if (!tab) return false;
     const previousPath = tab.filePath;
     let destination = tab.filePath;
@@ -1771,6 +1809,13 @@
     const conflict = tab.externalConflict;
     const writesConflictedPath =
       conflict && normalizedFilePath(destination) === normalizedFilePath(conflict.path);
+    const fileState = tab.externalFileState;
+    const writesUnavailablePath =
+      fileState && normalizedFilePath(destination) === normalizedFilePath(fileState.path);
+    if (writesUnavailablePath && recreateFileState !== fileState.version) {
+      showMessage(t('external.resolveFileStateBeforeSave'), true);
+      return false;
+    }
     if (writesConflictedPath && !overwriteConflict) {
       if (tab.externalChangeIgnored) return confirmExternalOverwrite(tab);
       showMessage(t('external.resolveBeforeSave'), true);
@@ -1779,6 +1824,57 @@
     if (writesConflictedPath && overwriteConflict !== conflict.version) {
       showMessage(t('external.changedAgain', { name: tab.title }), true);
       return false;
+    }
+    if (
+      tab.filePath &&
+      normalizedFilePath(destination) === normalizedFilePath(tab.filePath) &&
+      !fileState &&
+      !conflict
+    ) {
+      const exists = await window.fileAPI.exists(destination);
+      if (!exists) {
+        clearTimeout(tab.saveTimer);
+        tab.externalFileState = {
+          kind: 'deleted',
+          path: destination,
+          clipboardContent: recreateClipboardSnapshot(tab),
+          detectedAt: Date.now(),
+          version: 1,
+        };
+        renderTabs();
+        if (tab.id === state.activeId) updateActiveUI();
+        return false;
+      }
+      try {
+        const diskVersion = await window.fileAPI.readFile(destination);
+        if (diskVersion.content !== tab.expectedSavedContent) {
+          clearTimeout(tab.saveTimer);
+          tab.externalConflict = {
+            kind: 'modified',
+            path: destination,
+            content: diskVersion.content,
+            encoding: diskVersion.encoding || tab.encoding,
+            detectedAt: Date.now(),
+            version: (tab.externalConflict?.version || 0) + 1,
+          };
+          tab.externalChangeIgnored = false;
+          renderTabs();
+          if (tab.id === state.activeId) updateActiveUI();
+          return false;
+        }
+      } catch (_) {
+        clearTimeout(tab.saveTimer);
+        tab.externalFileState = {
+          kind: 'unreadable',
+          path: destination,
+          clipboardContent: recreateClipboardSnapshot(tab),
+          detectedAt: Date.now(),
+          version: 1,
+        };
+        renderTabs();
+        if (tab.id === state.activeId) updateActiveUI();
+        return false;
+      }
     }
     try {
       const content = tab.pendingEditorContent ? tab.content : currentContent(tab);
@@ -1807,6 +1903,7 @@
       tab.modified = false;
       tab.externalConflict = null;
       tab.externalChangeIgnored = false;
+      tab.externalFileState = null;
       tab.encoding = 'utf-8';
       tab.baseDir = await window.fileAPI.dirname(destination);
       await releaseDocumentWatch(previousPath);
@@ -1935,6 +2032,7 @@
     syncTopControlsWidth();
     if (!tab) {
       updateExternalChangeBanner(null);
+      updateExternalFileStateBanner(null);
       updateRecoveryBanner(null);
       $('#saveFile').disabled = true;
       document.title = 'Vditor Desktop';
@@ -1951,6 +2049,7 @@
       return;
     }
     updateExternalChangeBanner(tab);
+    updateExternalFileStateBanner(tab);
     updateRecoveryBanner(tab);
     $('#saveFile').disabled = false;
     const content = currentContent(tab);
@@ -2034,6 +2133,30 @@
     });
   }
 
+  function updateExternalFileStateBanner(tab) {
+    const banner = $('#externalFileStateBanner');
+    const fileState = tab?.externalFileState;
+    banner.classList.toggle('hidden', !fileState);
+    if (!fileState) return;
+    const name = fileName(fileState.path);
+    const messageKey =
+      fileState.kind === 'deleted'
+        ? 'external.deleted'
+        : fileState.kind === 'reappeared'
+          ? 'external.reappeared'
+          : 'external.unreadable';
+    const detailKey =
+      fileState.kind === 'deleted'
+        ? 'external.deletedDetail'
+        : fileState.kind === 'reappeared'
+          ? 'external.reappearedDetail'
+          : 'external.unreadableDetail';
+    $('#externalFileStateMessage').textContent = t(messageKey, { name });
+    $('#externalFileStateDetail').textContent = t(detailKey);
+    $('#externalFileReload').classList.toggle('hidden', fileState.kind !== 'reappeared');
+    $('#externalFileRecreate').classList.toggle('hidden', fileState.kind === 'unreadable');
+  }
+
   function updateRecoveryBanner(tab) {
     const banner = $('#recoveryBanner');
     const recoveryState = tab?.recoveryState;
@@ -2114,6 +2237,107 @@
       return false;
     }
     return saveTab(tab, false, conflict.version);
+  }
+
+  async function reloadReappearedFile(tab) {
+    const fileState = tab?.externalFileState;
+    if (fileState?.kind !== 'reappeared' || typeof fileState.content !== 'string') return;
+    const relatedTabs = state.tabs.filter(
+      (item) => normalizedFilePath(tabTargetPath(item)) === normalizedFilePath(fileState.path),
+    );
+    for (const item of relatedTabs) {
+      clearTimeout(item.saveTimer);
+      item.content = fileState.content;
+      item.savedContent = fileState.content;
+      item.expectedSavedContent = fileState.content;
+      item.modified = false;
+      item.encoding = fileState.encoding || item.encoding;
+      item.lineEnding = detectLineEnding(fileState.content);
+      item.externalConflict = null;
+      item.externalChangeIgnored = false;
+      item.externalFileState = null;
+      if (item.vditor) item.vditor.setValue(fileState.content, true);
+    }
+    renderTabs();
+    updateActiveUI();
+    renderOutline();
+    persistSession();
+    showMessage(t('external.reloaded', { name: tab.title }));
+  }
+
+  async function keepExternalFileAsUntitled(tab) {
+    if (!tab?.externalFileState) return;
+    const previousPath = tab.filePath;
+    clearTimeout(tab.saveTimer);
+    tab.filePath = null;
+    tab.baseDir = '';
+    tab.title = t('tab.untitled', { number: ++state.untitledCounter });
+    tab.savedContent = '';
+    tab.expectedSavedContent = '';
+    tab.modified = tab.content !== '';
+    tab.externalConflict = null;
+    tab.externalChangeIgnored = false;
+    tab.externalFileState = null;
+    await releaseDocumentWatch(previousPath);
+    scheduleRecoverySnapshot(tab);
+    renderTabs();
+    updateActiveUI();
+    persistSession();
+  }
+
+  async function confirmExternalFileRecreate(tab) {
+    const fileState = tab?.externalFileState;
+    if (!fileState || fileState.kind === 'unreadable') return false;
+    const action = await showConfirmDialog({
+      title: t('external.recreateTitle'),
+      message: t('external.recreateMessage', { name: fileName(fileState.path) }),
+      detail: t('external.recreateDetail'),
+      actions: [
+        { id: 'cancel', label: t('dialog.cancel') },
+        { id: 'confirm', label: t('external.recreate'), primary: true, danger: true },
+      ],
+      draggable: true,
+    });
+    if (action !== 'confirm') return false;
+    if (tab.externalFileState?.version !== fileState.version) {
+      showMessage(t('external.changedAgain', { name: tab.title }), true);
+      return false;
+    }
+    const previousContent = fileState.clipboardContent || '';
+    const recreated = await saveTab(tab, false, null, fileState.version);
+    if (!recreated) return false;
+    if (!previousContent) {
+      const message = t('external.recreated');
+      showMessage(message);
+      showTemporaryDocumentNotice(message);
+      return true;
+    }
+    try {
+      await window.appAPI.writeClipboard(previousContent);
+      const message = t('external.recreatedCopied');
+      showMessage(message);
+      showTemporaryDocumentNotice(message);
+    } catch (_) {
+      const message = t('external.recreatedClipboardFailed');
+      showMessage(message, true);
+      showTemporaryDocumentNotice(message, true);
+    }
+    return true;
+  }
+
+  async function confirmExternalFileClose(tab) {
+    if (!tab?.externalFileState) return;
+    const action = await showConfirmDialog({
+      title: t('external.closeTitle'),
+      message: t('external.closeMessage', { name: tab.title }),
+      detail: t('external.closeDetail'),
+      actions: [
+        { id: 'cancel', label: t('dialog.cancel') },
+        { id: 'confirm', label: t('external.close'), primary: true, danger: true },
+      ],
+      draggable: true,
+    });
+    if (action === 'confirm') await closeTab(tab.id, { discard: true });
   }
 
   function ignoreExternalChange(tab) {
@@ -2263,6 +2487,7 @@
 
   function showContextMenu(event, items, menuState = null) {
     const menu = $('#contextMenu');
+    closeAppMenu();
     closeContextMenu();
     contextMenuState = menuState;
     items.forEach((item) => {
@@ -3208,7 +3433,7 @@
   }
 
   async function handleExternalChange(change) {
-    if (!['add', 'change', 'unlink'].includes(change.event)) return;
+    if (!['add', 'change', 'unlink', 'unreadable'].includes(change.event)) return;
     if (change.scope === 'workspace') {
       clearTimeout(state.treeTimer);
       state.treeTimer = setTimeout(refreshTree, 300);
@@ -3220,10 +3445,50 @@
     );
     for (const tab of tabs) {
       if (change.event === 'unlink') {
-        if (tab.filePath) showMessage(t('external.deleted', { name: tab.title }), true);
+        clearTimeout(tab.saveTimer);
+        tab.externalConflict = null;
+        tab.externalChangeIgnored = false;
+        tab.externalFileState = {
+          kind: 'deleted',
+          path: change.path,
+          clipboardContent:
+            tab.externalFileState?.clipboardContent ?? recreateClipboardSnapshot(tab),
+          detectedAt: Date.now(),
+          version: (tab.externalFileState?.version || 0) + 1,
+        };
+        continue;
+      }
+      if (change.event === 'unreadable') {
+        clearTimeout(tab.saveTimer);
+        tab.externalConflict = null;
+        tab.externalChangeIgnored = false;
+        tab.externalFileState = {
+          kind: 'unreadable',
+          path: change.path,
+          error: change.error,
+          clipboardContent:
+            tab.externalFileState?.clipboardContent ?? recreateClipboardSnapshot(tab),
+          detectedAt: Date.now(),
+          version: (tab.externalFileState?.version || 0) + 1,
+        };
         continue;
       }
       if (typeof change.content !== 'string') continue;
+      if (tab.externalFileState) {
+        clearTimeout(tab.saveTimer);
+        tab.externalConflict = null;
+        tab.externalChangeIgnored = false;
+        tab.externalFileState = {
+          kind: 'reappeared',
+          path: change.path,
+          content: change.content,
+          encoding: change.encoding || tab.encoding,
+          clipboardContent: tab.externalFileState.clipboardContent,
+          detectedAt: Date.now(),
+          version: tab.externalFileState.version + 1,
+        };
+        continue;
+      }
       if (change.content === tab.expectedSavedContent) {
         tab.externalConflict = null;
         tab.externalChangeIgnored = false;
@@ -3254,6 +3519,7 @@
     }
     renderTabs();
     updateExternalChangeBanner(activeTab());
+    updateExternalFileStateBanner(activeTab());
   }
 
   function handleMenu(action, value) {
@@ -3370,6 +3636,7 @@
       $('#windowTitlebar').classList.remove('app-menu-open');
       reopenMenuOnHover = false;
     };
+    closeAppMenu = close;
     const fillPopup = (popup, items) => {
       items.forEach((item) => {
         if (!item) {
@@ -3596,6 +3863,11 @@
     $('#externalSaveAs').onclick = () => void saveTab(activeTab(), true);
     $('#externalOverwrite').onclick = () => void confirmExternalOverwrite(activeTab());
     $('#externalIgnore').onclick = () => ignoreExternalChange(activeTab());
+    $('#externalFileReload').onclick = () => void reloadReappearedFile(activeTab());
+    $('#externalFileSaveAs').onclick = () => void saveTab(activeTab(), true);
+    $('#externalFileKeepUntitled').onclick = () => void keepExternalFileAsUntitled(activeTab());
+    $('#externalFileRecreate').onclick = () => void confirmExternalFileRecreate(activeTab());
+    $('#externalFileClose').onclick = () => void confirmExternalFileClose(activeTab());
     $('#recoverySave').onclick = () => void saveRecoveredVersion(activeTab());
     $('#recoverySaveAs').onclick = () => void saveRecoveredAs(activeTab());
     $('#recoveryDiscard').onclick = () => void discardRecoveredVersion(activeTab());
@@ -3924,6 +4196,12 @@
     });
     window.fileAPI.onChanged(handleExternalChange);
     window.appAPI.onRequestClose(async () => {
+      const unresolvedFileState = state.tabs.find((tab) => tab.externalFileState);
+      if (unresolvedFileState) {
+        switchTab(unresolvedFileState.id);
+        showMessage(t('external.resolveFileStateBeforeSave'), true);
+        return;
+      }
       const dirty = state.tabs.filter((tab) => tab.modified);
       if (!dirty.length) {
         window.appAPI.closeConfirmed();

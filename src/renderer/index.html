@@ -200,6 +200,63 @@
                 </button>
               </div>
             </section>
+            <section
+              id="externalFileStateBanner"
+              class="external-change-banner persistent-banner hidden"
+              role="status"
+            >
+              <div class="persistent-banner-content">
+                <img class="persistent-banner-icon" src="assets/warning.svg" alt="" />
+                <div class="persistent-banner-copy">
+                  <strong id="externalFileStateMessage"></strong>
+                  <span id="externalFileStateDetail"></span>
+                </div>
+              </div>
+              <div class="persistent-banner-actions">
+                <button
+                  id="externalFileReload"
+                  type="button"
+                  class="hidden"
+                  data-i18n="external.reload"
+                >
+                  Discard Tab Changes and Reload
+                </button>
+                <button id="externalFileSaveAs" type="button" data-i18n="external.saveAs">
+                  Save Current Content As
+                </button>
+                <button
+                  id="externalFileKeepUntitled"
+                  type="button"
+                  data-i18n="external.keepUntitled"
+                >
+                  Keep as Untitled
+                </button>
+                <button
+                  id="externalFileRecreate"
+                  class="danger"
+                  type="button"
+                  data-i18n="external.recreate"
+                >
+                  Recreate File
+                </button>
+                <button
+                  id="externalFileClose"
+                  class="danger"
+                  type="button"
+                  data-i18n="external.close"
+                >
+                  Close Without Saving
+                </button>
+              </div>
+            </section>
+            <section
+              id="temporaryDocumentNotice"
+              class="temporary-document-notice hidden"
+              role="status"
+            >
+              <img class="temporary-document-notice-icon" src="assets/notification.svg" alt="" />
+              <span id="temporaryDocumentNoticeMessage"></span>
+            </section>
             <section id="findWidget" class="find-widget hidden" aria-label="Find and replace">
               <div class="find-row">
                 <button

@@ -1,8 +1,8 @@
 # Vditor-Electron Code Structure World Map
 
-- **生成时间：** 2026-08-24
-- **基于的工作区：** `dev-0.2.0`，当前批次 4 代码状态（提交状态以 `git status --short` 为准）
-- **文档版本：** v1.5
+- **生成时间：** 2026-08-25
+- **基于的工作区：** `dev-0.2.0`，`7abe1e7` 加上当前工作区中的批次 5 实现（提交状态以 `git status --short` 为准）
+- **文档版本：** v1.6
 - **对应 package.json 版本号：** 0.1.5
 
 ---
@@ -15,7 +15,7 @@
 
 **核心功能：** 多标签页 Markdown 编辑、三种编辑模式（IR/SV/WYSIWYG）、分栏预览、文件树侧栏、文档大纲、查找替换、图片插入与压缩、HTML/PDF 导出、TOML 配置持久化、三语国际化（英/简/繁）。
 
-**开发阶段：** 早期可用（v0.1.x），核心编辑链路和设置系统已完成，架构方向明确（详见 AGENTS.md），但存在渲染器集中度过高、安全边界待强化等技术债。
+**开发阶段：** 0.2.0 阶段开发中。保存、恢复、工作区内外 watcher、外部修改冲突及外部删除/重新出现/不可读状态已有实现和测试；目录级路径一致性、工作区监听资源边界、安全边界和跨平台实体机验证仍在后续批次。
 
 ---
 
@@ -92,7 +92,7 @@ Vditor-Electron/
 │   ├── locales.js                 # 三语字典（en_US / zh_Hans / zh_Hant）
 │   ├── styles/
 │   │   └── app.css                # 单一应用样式文件（含主题变量、Vditor 覆盖）
-│   └── assets/                    # 内嵌 SVG 图标资源
+│   └── assets/                    # 内嵌 SVG 图标资源（warning / notification 等）
 ├── static/
 │   └── dist/                      # [自动生成] 离线 Vditor 构建产物（由 build:assets 复制）
 ├── dist/                          # [自动生成] 主进程编译输出（tsc）
@@ -319,6 +319,7 @@ webPreferences: {
 | `onMaximizedChanged(callback)`   | `window:maximizedChanged`    | on           | `(maximized)`          | 取消订阅函数                                |
 | `onOpenFiles(callback)`          | `app:openFiles`              | on           | `(paths)`              | 取消订阅函数                                |
 | `readClipboard()`                | `app:readClipboard`          | invoke       | 无                     | `{ text: string, html: string }`             |
+| `writeClipboard(text)`           | `app:writeClipboard`         | invoke       | `string`               | `void`                                       |
 | `getRecoveryCandidates()`        | `app:getRecoveryCandidates`  | invoke       | 无                     | `{ id, title, updatedAt }[]`                 |
 | `restoreRecovery(id)`            | `app:restoreRecovery`        | invoke       | `string`               | 恢复快照或 `null`（含 `diskState`）          |
 | `saveRecovery(snapshot)`         | `app:saveRecovery`           | invoke       | 恢复快照               | `void`                                       |
@@ -384,7 +385,7 @@ const state = {
 
 持久化策略：每次标签/工作区状态变更调用 `persistSession()`，通过 `saveSettings({ session })` 写入 TOML。
 
-恢复运行时状态属于各 `tab`：`recoverySnapshotId`、防抖 timer、串行操作 Promise、revision 与 `recoveryState`。外部变更状态包含 `expectedSavedContent`、`externalConflict` 与 `externalChangeIgnored`；文档 watcher 的实际句柄、timer 和 binding generation 仅由主进程 `FileWatchService` 持有。它们都不进入 session；脏标签只将经过白名单投影的恢复快照经 `app:saveRecovery` 写入私有目录。
+恢复运行时状态属于各 `tab`：`recoverySnapshotId`、防抖 timer、串行操作 Promise、revision 与 `recoveryState`。外部变更状态包含 `expectedSavedContent`、`externalConflict`、`externalChangeIgnored` 和独立的 `externalFileState`（`deleted` / `reappeared` / `unreadable`）；文件不可访问时冻结的重建剪贴板正文也只存在运行时标签状态中。文档 watcher 的实际句柄、timer 和 binding generation 仅由主进程 `FileWatchService` 持有。它们都不进入 session；脏标签只将经过白名单投影的恢复快照经 `app:saveRecovery` 写入私有目录。
 
 ---
 
@@ -668,6 +669,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `app:openDirectory`          | `dirPath`                         | `void`                                      | `shell.openPath`                             |
 | `app:exportPDF`              | `html, defaultPath?`              | `string \| null`                            | 隐藏 BrowserWindow 加载 HTML 后 `printToPDF` |
 | `app:readClipboard`          | 无                                | `{ text: string, html: string }`             | 读取编辑区右键菜单所需的系统剪贴板文本和 HTML 数据 |
+| `app:writeClipboard`         | `text: string`                    | `void`                                        | 在用户确认重建文件后写入冻结的此前正文备份       |
 | `app:getRecoveryCandidates`  | 无                                | `{ id, title, updatedAt }[]`                  | 返回不含正文的有效恢复快照元数据              |
 | `app:restoreRecovery`        | `id: string`                      | 恢复快照或 `null`                              | 校验快照并标记 `unchanged` / `changed` / `unavailable` 磁盘状态 |
 | `app:saveRecovery`           | 恢复快照                          | `void`                                        | 校验大小/字段后原子写入私有 recovery 目录     |
@@ -794,7 +796,8 @@ onEditorInput(tab, value)
 - 标签已修改：设置 `externalConflict`，保存检测时间、稳定磁盘正文、编码和递增版本，显示“重载/另存/忽略/明确覆盖”持久横幅。
 - 横幅期间再次收到不同稳定正文：更新冲突快照并使旧的覆盖确认失效；正文回到 `expectedSavedContent` 时清除冲突。
 - 选择“忽略外部更改”后隐藏横幅但保留冲突快照，暂停自动保存；后续普通保存仍需明确确认覆盖。
-- 文件删除：在状态栏显示删除通知（不自动关闭已打开标签）
+- 文件删除或不可读：发送独立的文档事件，渲染器进入持久保护状态并暂停自动保存；不会静默重建文件或关闭标签。
+- 文件重新出现：发送稳定正文事件和一次工作区结构 `add`，使标签保留内存正文、由用户决定是否重载，同时让 sidebar 重新显示文件。
 
 ### 9.5 多标签页文件状态
 
@@ -820,6 +823,15 @@ onEditorInput(tab, value)
       version: number,            // 用于使过期覆盖确认失效
     },
   externalChangeIgnored: boolean,
+  externalFileState:
+    null | {
+      kind: 'deleted' | 'reappeared' | 'unreadable',
+      path: string,
+      clipboardContent?: string,
+      content?: string,
+      encoding?: string,
+      version: number,
+    },
   recoverySnapshotId: string | null,
   recoveryState: null | 'unchanged' | 'changed' | 'unavailable',
 }
@@ -856,6 +868,8 @@ function rememberRecent(filePath) {
 - `unavailable`：原文件不存在或不可读，只能另存为或放弃恢复。
 
 “放弃恢复”关闭恢复标签并删除快照，使界面回到用户设置决定的正常会话或无标签状态；成功保存同样清理快照。恢复目录不属于 `local-file://` 的资源根。
+
+外部文件不可访问时使用独立的 `externalFileState`，不复用 `recoveryState`：`deleted` / `unreadable` 持续显示文档横幅并暂停自动保存；`reappeared` 表示磁盘正文已恢复可读但可能与内存正文冲突，必须由用户决定是否重载或写回。删除状态下确认重建成功后，通过 `app:writeClipboard` 复制首次进入不可访问状态时冻结的正文，并显示带 `notification.svg` 的 5 秒非驻留提示。
 
 ---
 
@@ -903,6 +917,7 @@ function rememberRecent(filePath) {
 - **职责：** 懒加载工作区目录树、文件展开状态持久化、文件名省略（canvas 测量）、右键菜单（新建/重命名/回收站/在管理器中显示）
 - **实现：** `appendDirectory()`、`showTreeMenu()`、`renameExplorerItem()`、`middleEllipsis()`；首次保存或另存为后直接调用 `refreshTree()`，避免自身保存事件被抑制时遗漏新文件。
 - **过滤：** 仅显示 `fileExplorer.visibleExtensions` 中的扩展名，隐藏以 `.` 开头的文件
+- **资源边界：** 工作区最大读取深度尚未进入当前设置模型；将 Home 作为工作区时的递归 watcher 资源边界属于 0.2.0 版本 Tracker 批次 5.1。
 
 #### 文档大纲（`app.js:2019` 起的 `renderOutline()`，`index.html:133-136`）
 
@@ -961,6 +976,7 @@ function rememberRecent(filePath) {
 - `restoreWorkspace`（启动时恢复工作区，checkbox）
 - `autoSave`（自动保存，checkbox）
 - `autoSaveDelay`（自动保存延迟，250–60000 ms）
+- 工作区最大读取深度尚未进入当前设置模型；计划在 0.2.0 批次 5.1 以 7–12 的滑块加入 Files & Session。
 - `pasteImagesDir`（图片目录，相对路径）
 - `imageMaxWidth`（图片最大宽度，0–10000）
 - `imageQuality`（图片质量，0.1–1，步进 0.05）
@@ -982,6 +998,7 @@ function rememberRecent(filePath) {
 #### 右键菜单（`app.js:1965` 起的 `showContextMenu()` / `showEditorContextMenu()`，`#contextMenu`）
 
 - **职责：** 文件树节点、工作区根目录和编辑区真实可编辑表面的共享上下文菜单；编辑区提供剪切、复制、粘贴、纯文本粘贴、删除、当前上下文选择，以及 WYSIWYG / IR 表格行列操作。撤销/重做继续使用快捷键和 Vditor 工具栏。
+- **菜单互斥：** 右键菜单显示前通过共享关闭回调收回自定义主菜单，避免主菜单与 sidebar/编辑区上下文菜单同时显示。
 
 ### 10.2 逻辑组件嵌套关系
 
@@ -1004,6 +1021,8 @@ function rememberRecent(filePath) {
 │           ├── .editor-host（每个 tab 一个，由 JS 动态创建）
 │           ├── #recoveryBanner（异常恢复横幅；与外部冲突共用 persistent-banner 结构和 warning.svg）
 │           ├── #externalChangeBanner（外部变更横幅；重载/另存/忽略/明确覆盖）
+│           ├── #externalFileStateBanner（删除/重新出现/不可读状态；按状态提供独立动作）
+│           ├── #temporaryDocumentNotice（重建成功后的 5 秒非驻留通知；notification.svg）
 │           ├── #findWidget（查找替换）
 │           └── #noTabs（空状态）
 └── footer.statusbar（状态栏）
@@ -1457,7 +1476,7 @@ flowchart TB
 | `tests/unit/external-url.test.ts`   | `src/main/external-url.ts`              | 仅允许 `http:` / `https:` / `mailto:`；拒绝非字符串、相对路径、应用/文件/脚本/data 协议 |
 | `tests/unit/resolve-markdown-link.test.ts` | `src/main/resolve-markdown-link.ts` | 相对 Markdown 路径、`../`、百分号编码、片段、Windows 路径、缺失/绝对/协议/非 Markdown/非法编码目标拒绝 |
 | `tests/unit/file-manager.test.ts`   | `src/main/services/file-manager.ts` 与 `safe-file-writer.ts` | UTF-8 读取、UTF-8 BOM 检测与剥离、GB18030 回退、同目录安全替换、权限保持、无变化跳过、临时创建/替换失败保留原文件及清理、权限错误映射、文件/目录创建、路径逃逸拒绝（`../`）、目录优先自然排序、重命名、二进制图片写入 |
-| `tests/unit/file-watch-service.test.ts` | `src/main/services/file-watch-service.ts` | 工作区结构与文档内容 watcher 分工、同路径去重、稳定等待、瞬态 `unlink` 重核、符号链接规范路径、释放后的迟到读取，以及 Linux raw rename 重绑 |
+| `tests/unit/file-watch-service.test.ts` | `src/main/services/file-watch-service.ts` | 工作区结构与文档内容 watcher 分工、同路径去重、稳定等待、瞬态 `unlink` 重核、权限不可读事件、工作区内文件重新出现的双 scope 事件、符号链接规范路径、释放后的迟到读取，以及 Linux raw rename 重绑 |
 | `tests/unit/settings-store.test.ts` | `src/main/services/settings-store.ts`   | 首次加载返回默认值、TOML 部分深合并与默认值、未知字段丢弃、`set` 持久化（含 TOML 段结构验证）、`update` 多字段快照（含 `workspaceTreeStates` 数组）、设置对话框尺寸持久化（`window.settingsDialog`）、`getAll` 返回克隆副本、`reset` 重置内存和磁盘                                                                                                                                                                                                                                                               |
 | `tests/unit/recovery-store.test.ts` | `src/main/services/recovery-store.ts` | 私有目录/文件权限、候选元数据不含正文、原子写入与显式清理、损坏/未知 schema/超限快照移除，以及 `unchanged` / `changed` / `unavailable` 三种磁盘状态 |
 | `tests/unit/vditor-adapter.test.ts` | `src/renderer/vditor-adapter.js`        | 冻结的 selectors 对象、`validateHost` 成功（toolbar 通过 `mountedToolbar` 参数提供）、代码主题亮/暗分界点（`ant-design` 前为 dark 组）、DOM 漂移检测（缺少 source 节点时 `valid: false`）、列表 `marker`/`padding` 解析、动态尾部留白写入全部 Vditor 表面、hash anchor 到标题索引（IR 内部链接 + 元素 id + slug）、原生大纲 snapshot、标题间普通块时的准确目标节点及 SV preview 外层滚动容器、跨多 span 文本节点的匹配与选区                                                                                                                                                                                                   |
@@ -1524,9 +1543,11 @@ flowchart TB
 - 首次保存或另存为后立即刷新工作区文件树
 - 安全写入成功、无变化跳过、临时写入失败、替换失败与权限错误映射
 - 预置恢复快照启动后直接显示正文和警示横幅；正常状态保存后清理，磁盘冲突状态不会提供直接覆盖操作
+- 恢复快照保存以快照的 `savedContent` 作为磁盘基线，原文件未变化时可以安全写回恢复正文
 - 干净的工作区内外打开文件外部修改时自动重载（无冲突横幅）；原子替换、切换工作区和关闭后从文件树重开仍继续监听
 - 本地有未保存修改的文件受外部修改时显示冲突横幅（`!` 冲突标记 + `#externalChangeBanner`），自身自动保存不误报冲突
 - 冲突横幅提供重载、另存当前内容、忽略外部更改和明确覆盖；忽略后保存仍需二次确认，覆盖确认期间的再次磁盘变化会使旧确认失效
+- 外部删除或权限不可读进入 `#externalFileStateBanner`，暂停自动保存并保留内存正文；重新出现不静默重载，确认重建后通过系统剪贴板备份首次不可访问时的正文，并显示 5 秒 `#temporaryDocumentNotice`
 - CRLF 保留（写入磁盘后 `#statusLineEnding` = CRLF）
 
 #### 查找替换

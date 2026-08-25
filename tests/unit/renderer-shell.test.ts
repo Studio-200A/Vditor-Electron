@@ -200,24 +200,44 @@ describe('renderer shell', () => {
     expect(document.querySelector('#emptyOpenFile')).not.toBeNull();
   });
 
-  it('uses one persistent document banner structure for recovery and external conflicts', () => {
+  it('uses one persistent document banner structure for recovery and external file states', () => {
     const recoveryBanner = document.querySelector('#recoveryBanner');
     const externalBanner = document.querySelector('#externalChangeBanner');
+    const externalFileStateBanner = document.querySelector('#externalFileStateBanner');
     expect(recoveryBanner).not.toBeNull();
     expect(externalBanner).not.toBeNull();
+    expect(externalFileStateBanner).not.toBeNull();
     expect(recoveryBanner?.classList.contains('external-change-banner')).toBe(true);
     expect(externalBanner?.classList.contains('external-change-banner')).toBe(true);
     expect(recoveryBanner?.classList.contains('persistent-banner')).toBe(true);
     expect(externalBanner?.classList.contains('persistent-banner')).toBe(true);
+    expect(externalFileStateBanner?.classList.contains('persistent-banner')).toBe(true);
     expect(recoveryBanner?.querySelector('.persistent-banner-content')).not.toBeNull();
     expect(externalBanner?.querySelector('.persistent-banner-content')).not.toBeNull();
+    expect(externalFileStateBanner?.querySelector('.persistent-banner-content')).not.toBeNull();
     expect(recoveryBanner?.querySelector('img[src="assets/warning.svg"]')).not.toBeNull();
     expect(externalBanner?.querySelector('img[src="assets/warning.svg"]')).not.toBeNull();
+    expect(externalFileStateBanner?.querySelector('img[src="assets/warning.svg"]')).not.toBeNull();
     expect(recoveryBanner?.querySelector('#recoverySave')).not.toBeNull();
     expect(recoveryBanner?.querySelector('#recoverySaveAs')).not.toBeNull();
     expect(recoveryBanner?.querySelector('#recoveryDiscard')).not.toBeNull();
     expect(externalBanner?.querySelector('#externalSaveAs')).not.toBeNull();
     expect(externalBanner?.querySelector('#externalOverwrite')).not.toBeNull();
+    expect(externalFileStateBanner?.querySelector('#externalFileReload')).not.toBeNull();
+    expect(externalFileStateBanner?.querySelector('#externalFileSaveAs')).not.toBeNull();
+    expect(externalFileStateBanner?.querySelector('#externalFileKeepUntitled')).not.toBeNull();
+    expect(externalFileStateBanner?.querySelector('#externalFileRecreate')).not.toBeNull();
+    expect(externalFileStateBanner?.querySelector('#externalFileClose')).not.toBeNull();
+    expect(document.querySelector('#temporaryDocumentNotice.hidden')).not.toBeNull();
+    expect(document.querySelector('#temporaryDocumentNoticeMessage')).not.toBeNull();
+    expect(
+      document.querySelector('#temporaryDocumentNotice img[src="assets/notification.svg"]'),
+    ).not.toBeNull();
+    expect(css).toContain('.temporary-document-notice');
+    expect(rendererScript).toContain('showTemporaryDocumentNotice');
+    expect(rendererScript).toContain("kind: 'deleted'");
+    expect(rendererScript).toContain("kind: 'reappeared'");
+    expect(rendererScript).toContain("kind: 'unreadable'");
     expect(css).toContain('.persistent-banner');
   });
 

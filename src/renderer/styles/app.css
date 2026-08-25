@@ -819,6 +819,33 @@ button.primary.danger {
   border-color: color-mix(in srgb, var(--danger) 58%, var(--border));
   background: color-mix(in srgb, var(--panel) 94%, var(--danger));
 }
+.temporary-document-notice {
+  position: absolute;
+  z-index: 13;
+  top: 8px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  max-width: min(620px, calc(100% - 32px));
+  gap: 8px;
+  padding: 10px 14px;
+  color: var(--text);
+  font-size: 15px;
+  background: color-mix(in srgb, var(--panel) 94%, var(--accent));
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
+  border-radius: 8px;
+  box-shadow: 0 5px 18px rgb(0 0 0 / 0.2);
+  transform: translateX(-50%);
+}
+.temporary-document-notice-icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+.temporary-document-notice.error {
+  border-color: color-mix(in srgb, var(--danger) 58%, var(--border));
+  background: color-mix(in srgb, var(--panel) 94%, var(--danger));
+}
 .find-widget {
   position: absolute;
   top: 8px;

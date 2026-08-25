@@ -3,11 +3,12 @@ import * as fs from 'node:fs';
 import { watch, ChokidarOptions, FSWatcher } from 'chokidar';
 
 export type FileChangeEvent = {
-  event: 'add' | 'change' | 'unlink';
+  event: 'add' | 'change' | 'unlink' | 'unreadable';
   path: string;
   scope: 'workspace' | 'document';
   content?: string;
   encoding?: string;
+  error?: 'permission-denied' | 'read-failed';
 };
 
 type WatcherFactory = (paths: string | string[], options: ChokidarOptions) => FSWatcher;
@@ -80,9 +81,13 @@ export class FileWatchService {
     this.documents.set(identity, binding);
     watcher.on('all', (eventName, changedPath) => {
       if (!this.isCurrentBinding(binding, binding.generation)) return;
-      if (!this.toChangeEvent(eventName) || this.normalizePath(changedPath) !== binding.identity)
-        return;
-      this.scheduleDocumentRead(binding, eventName === 'unlink' ? WATCHER_STABILITY_THRESHOLD : 0);
+      const event = this.toChangeEvent(eventName);
+      if (!event || this.normalizePath(changedPath) !== binding.identity) return;
+      this.scheduleDocumentRead(
+        binding,
+        event === 'unlink' ? WATCHER_STABILITY_THRESHOLD : 0,
+        event,
+      );
     });
     watcher.on('raw', (eventName) => {
       if (process.platform !== 'linux' || eventName !== 'rename') return;
@@ -130,7 +135,7 @@ export class FileWatchService {
       if (!this.isCurrentBinding(binding, generation)) return;
       binding.watcher.unwatch(binding.identity);
       binding.watcher.add(binding.identity);
-      this.scheduleDocumentRead(binding, WATCHER_STABILITY_THRESHOLD);
+      this.scheduleDocumentRead(binding, WATCHER_STABILITY_THRESHOLD, 'change');
     }, LINUX_RENAME_REBIND_DELAY);
   }
 
@@ -145,12 +150,16 @@ export class FileWatchService {
       this.send({ event, path: path.resolve(changedPath), scope: 'workspace' });
   }
 
-  private scheduleDocumentRead(binding: DocumentBinding, delay: number): void {
+  private scheduleDocumentRead(
+    binding: DocumentBinding,
+    delay: number,
+    event: FileChangeEvent['event'] = 'change',
+  ): void {
     const generation = binding.generation;
     if (binding.timer) clearTimeout(binding.timer);
     binding.timer = setTimeout(() => {
       binding.timer = null;
-      void this.readStableDocument(binding, generation, 0);
+      void this.readStableDocument(binding, generation, 0, event);
     }, delay);
   }
 
@@ -158,18 +167,35 @@ export class FileWatchService {
     binding: DocumentBinding,
     generation: number,
     attempt: number,
+    event: FileChangeEvent['event'],
   ): Promise<void> {
     if (!this.isCurrentBinding(binding, generation)) return;
     try {
       const result = await this.readDocument(binding.identity);
       if (!this.isCurrentBinding(binding, generation)) return;
-      this.send({ event: 'change', path: binding.path, scope: 'document', ...result });
+      this.send({
+        event: event === 'add' ? 'add' : 'change',
+        path: binding.path,
+        scope: 'document',
+        ...result,
+      });
+      if (event === 'add' && this.isInWorkspace(binding.identity))
+        this.send({ event: 'add', path: binding.path, scope: 'workspace' });
     } catch (error) {
-      if (!this.isCurrentBinding(binding, generation) || !this.isMissingFileError(error)) return;
+      if (!this.isCurrentBinding(binding, generation)) return;
+      if (!this.isMissingFileError(error)) {
+        this.send({
+          event: 'unreadable',
+          path: binding.path,
+          scope: 'document',
+          error: this.isPermissionError(error) ? 'permission-denied' : 'read-failed',
+        });
+        return;
+      }
       if (attempt < 2) {
         binding.timer = setTimeout(() => {
           binding.timer = null;
-          void this.readStableDocument(binding, generation, attempt + 1);
+          void this.readStableDocument(binding, generation, attempt + 1, event);
         }, WATCHER_STABILITY_POLL_INTERVAL);
         return;
       }
@@ -185,6 +211,15 @@ export class FileWatchService {
       error !== null &&
       'code' in error &&
       (error.code === 'ENOENT' || error.code === 'ENOTDIR')
+    );
+  }
+
+  private isPermissionError(error: unknown): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error.code === 'EACCES' || error.code === 'EPERM')
     );
   }
 

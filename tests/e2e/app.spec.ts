@@ -1094,6 +1094,43 @@ test('shows the editor context menu only on editable surfaces and restores its R
   }
 });
 
+test('closes the app menu before opening sidebar or editor context menus', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-menu-context-'));
+  const filePath = path.join(workspace, 'context.md');
+  fs.writeFileSync(filePath, 'context menu content');
+  const running = await launchApp({
+    restoreTabs: true,
+    restoreWorkspace: true,
+    sidebarVisible: true,
+    session: { workspacePath: workspace, activeFilePath: filePath, openFiles: [filePath] },
+  });
+  try {
+    const { page } = running;
+    const appMenu = page.locator('.app-menu-popup');
+    const contextMenu = page.locator('#contextMenu');
+    const mainMenu = page.locator('#appMenuBar [data-menu="main"]');
+    const file = page.locator(`#fileTree .tree-file[data-path="${filePath}"]`);
+    await expect(file).toBeVisible();
+
+    await mainMenu.click();
+    await expect(appMenu).toBeVisible();
+    await file.dispatchEvent('contextmenu', { button: 2, clientX: 120, clientY: 120 });
+    await expect(contextMenu).toBeVisible();
+    await expect(appMenu).toHaveCount(0);
+
+    await contextMenu.press('Escape');
+    await expect(contextMenu).toBeHidden();
+    await mainMenu.click();
+    await expect(appMenu).toBeVisible();
+    await page.locator('.editor-host.active .vditor-ir .vditor-reset').click({ button: 'right' });
+    await expect(contextMenu).toBeVisible();
+    await expect(appMenu).toHaveCount(0);
+  } finally {
+    await closeApp(running);
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 test('disables context-menu paste actions when the clipboard is empty', async () => {
   const running = await launchApp({}, { 'context-paste.md': 'editable content' });
   try {
@@ -2464,6 +2501,179 @@ test('resolves external file conflicts without silently overwriting disk changes
     await expect
       .poll(() => fs.readFileSync(modifiedPath, 'utf8'))
       .toContain('Direct overwrite local changes');
+  } finally {
+    await closeApp(running);
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('protects open documents when files are deleted and reappear outside the app', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-external-delete-'));
+  const cleanPath = path.join(workspace, 'clean.md');
+  const modifiedPath = path.join(workspace, 'modified.md');
+  fs.writeFileSync(cleanPath, 'Clean disk content');
+  fs.writeFileSync(modifiedPath, 'Original disk content');
+  const running = await launchApp({
+    autoSave: true,
+    autoSaveDelay: 100,
+    editMode: 'sv',
+    restoreTabs: true,
+    restoreWorkspace: true,
+    session: {
+      workspacePath: workspace,
+      activeFilePath: cleanPath,
+      openFiles: [cleanPath, modifiedPath],
+    },
+  });
+  try {
+    const { app, page } = running;
+    const editor = page.locator('.editor-host.active .vditor-sv');
+    const banner = page.locator('#externalFileStateBanner');
+    const confirm = page.locator('#confirmModal');
+    const reappearedFileRow = page.locator(`#fileTree .tree-file[data-path="${modifiedPath}"]`);
+    await app.evaluate(({ clipboard }) => {
+      let copiedText = '';
+      clipboard.writeText = (text) => {
+        copiedText = text;
+      };
+      clipboard.readText = () => copiedText;
+      clipboard.readHTML = () => '';
+    });
+    await expect(editor).toContainText('Clean disk content');
+
+    fs.rmSync(cleanPath);
+    await expect(banner).toBeVisible();
+    await expect(page.locator('#externalFileStateMessage')).toHaveText(
+      '“clean.md” is currently unavailable.',
+    );
+    await editor.fill('Kept after deletion');
+    await page.waitForTimeout(350);
+    expect(fs.existsSync(cleanPath)).toBe(false);
+    await expect(editor).toContainText('Kept after deletion');
+    await page.evaluate(() => window.appAPI.closeWindow());
+    await expect(banner).toBeVisible();
+    await expect(page.locator('#statusMessage')).toHaveText(
+      'Resolve the unavailable file before saving to its original path.',
+    );
+
+    await page.locator('#externalFileClose').click();
+    await expect(confirm).toBeVisible();
+    await confirm.locator('#confirmActions [data-action="cancel"]').click();
+    await expect(banner).toBeVisible();
+    await page.locator('#externalFileKeepUntitled').click();
+    await expect(banner).toBeHidden();
+    expect(fs.existsSync(cleanPath)).toBe(false);
+
+    await page.locator('.document-tab').filter({ hasText: 'modified.md' }).click();
+    await editor.fill('Kept local content');
+    fs.rmSync(modifiedPath);
+    await expect(banner).toBeVisible();
+    await expect(page.locator('#externalFileStateMessage')).toHaveText(
+      '“modified.md” is currently unavailable.',
+    );
+
+    fs.writeFileSync(modifiedPath, 'Reappeared disk content');
+    await expect(page.locator('#externalFileStateMessage')).toHaveText(
+      '“modified.md” is available again, but its disk version may conflict.',
+    );
+    await expect(reappearedFileRow).toBeVisible();
+    await expect(editor).toContainText('Kept local content');
+    await page.locator('#externalFileReload').click();
+    await expect(editor).toContainText('Reappeared disk content');
+    await expect(banner).toBeHidden();
+
+    await editor.fill('Content to recreate');
+    fs.rmSync(modifiedPath);
+    await expect(banner).toBeVisible();
+    await editor.fill('Content entered after deletion');
+    await page.locator('#externalFileRecreate').click();
+    await expect(confirm).toBeVisible();
+    expect(fs.existsSync(modifiedPath)).toBe(false);
+    await confirm.locator('#confirmActions [data-action="cancel"]').click();
+    expect(fs.existsSync(modifiedPath)).toBe(false);
+    await page.locator('#externalFileRecreate').click();
+    await expect(confirm).toBeVisible();
+    await confirm.locator('#confirmActions [data-action="confirm"]').click();
+    await expect
+      .poll(() => fs.readFileSync(modifiedPath, 'utf8'))
+      .toContain('Content entered after deletion');
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.appAPI.readClipboard().then(({ text }) => text.trim())),
+      )
+      .toBe('Content to recreate');
+    await expect(page.locator('#statusMessage')).toHaveText(
+      'File recreated. Previous content was copied to the clipboard.',
+    );
+    await expect(page.locator('#temporaryDocumentNotice')).toHaveText(
+      'File recreated. Previous content was copied to the clipboard.',
+    );
+    await expect(banner).toBeHidden();
+
+    await editor.fill('Content when clipboard fails');
+    fs.rmSync(modifiedPath);
+    await expect(banner).toBeVisible();
+    await app.evaluate(({ clipboard }) => {
+      clipboard.writeText = () => {
+        throw new Error('clipboard unavailable');
+      };
+    });
+    await page.locator('#externalFileRecreate').click();
+    await expect(confirm).toBeVisible();
+    await confirm.locator('#confirmActions [data-action="confirm"]').click();
+    await expect
+      .poll(() => fs.readFileSync(modifiedPath, 'utf8'))
+      .toContain('Content when clipboard fails');
+    await expect(page.locator('#statusMessage')).toHaveText(
+      'File recreated, but the previous content could not be copied to the clipboard.',
+    );
+    await expect(page.locator('#temporaryDocumentNotice')).toHaveText(
+      'File recreated, but the previous content could not be copied to the clipboard.',
+    );
+  } finally {
+    await closeApp(running);
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('copies the last saved content when recreating a deleted file with auto-save disabled', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-recreate-snapshot-'));
+  const filePath = path.join(workspace, 'snapshot.md');
+  fs.writeFileSync(filePath, 'Last saved content');
+  const running = await launchApp({
+    autoSave: false,
+    editMode: 'sv',
+    restoreTabs: true,
+    restoreWorkspace: true,
+    session: { workspacePath: workspace, activeFilePath: filePath, openFiles: [filePath] },
+  });
+  try {
+    const { app, page } = running;
+    const editor = page.locator('.editor-host.active .vditor-sv');
+    await app.evaluate(({ clipboard }) => {
+      let copiedText = '';
+      clipboard.writeText = (text) => {
+        copiedText = text;
+      };
+      clipboard.readText = () => copiedText;
+      clipboard.readHTML = () => '';
+    });
+    await editor.fill('Unsaved content before deletion');
+    fs.rmSync(filePath);
+    await expect(page.locator('#externalFileStateBanner')).toBeVisible();
+    await editor.fill('Content entered after deletion');
+    await page.locator('#externalFileRecreate').click();
+    const confirm = page.locator('#confirmModal');
+    await expect(confirm).toBeVisible();
+    await confirm.locator('#confirmActions [data-action="confirm"]').click();
+    await expect
+      .poll(() => fs.readFileSync(filePath, 'utf8'))
+      .toContain('Content entered after deletion');
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.appAPI.readClipboard().then(({ text }) => text.trim())),
+      )
+      .toBe('Last saved content');
   } finally {
     await closeApp(running);
     fs.rmSync(workspace, { recursive: true, force: true });

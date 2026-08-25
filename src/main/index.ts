@@ -431,6 +431,12 @@ function registerIpcHandlers(): void {
       throw new Error('Clipboard access is limited to the application window');
     return { text: clipboard.readText(), html: clipboard.readHTML() };
   });
+  ipcMain.handle('app:writeClipboard', (event, text: unknown) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents)
+      throw new Error('Clipboard access is limited to the application window');
+    if (typeof text !== 'string') throw new Error('Clipboard text must be a string');
+    clipboard.writeText(text);
+  });
   ipcMain.handle('app:openExternal', (_event, url: unknown) => {
     const externalUrl = allowedExternalUrl(url);
     if (!externalUrl) throw new Error('Unsupported URL protocol');
