@@ -148,6 +148,68 @@ describe('FileManagerService', () => {
     expect(entries.map((entry) => entry.name)).toEqual(['folder', 'note2.md', 'note10.md']);
   });
 
+  it('skips entries that disappear or become inaccessible during a directory read', async () => {
+    const available = path.join(root, 'available.md');
+    const unavailable = path.join(root, 'unavailable.md');
+    fs.writeFileSync(available, 'available');
+    fs.writeFileSync(unavailable, 'unavailable');
+    const originalStat = fs.promises.stat;
+    vi.spyOn(fs.promises, 'stat').mockImplementation(async (filePath, ...args) => {
+      if (filePath === unavailable)
+        throw Object.assign(new Error('entry disappeared'), { code: 'ENOENT' });
+      return originalStat(filePath, ...args);
+    });
+
+    await expect(service.listDir(root)).resolves.toEqual([
+      expect.objectContaining({ name: 'available.md' }),
+    ]);
+  });
+
+  it('returns an empty result when the requested directory has disappeared', async () => {
+    const missing = path.join(root, 'missing');
+
+    await expect(service.listDir(missing)).resolves.toEqual([]);
+  });
+
+  it.runIf(process.platform !== 'win32')(
+    'classifies symbolic-link directories by their resolved workspace target',
+    async () => {
+      const workspace = path.join(root, 'workspace');
+      const inside = path.join(workspace, 'inside');
+      const outside = path.join(root, 'outside');
+      fs.mkdirSync(inside, { recursive: true });
+      fs.mkdirSync(outside);
+      fs.symlinkSync(inside, path.join(workspace, 'inside-link'), 'dir');
+      fs.symlinkSync(outside, path.join(workspace, 'outside-link'), 'dir');
+
+      const entries = await service.listDir(workspace, workspace);
+
+      expect(entries).toEqual([
+        expect.objectContaining({
+          name: 'inside',
+          type: 'directory',
+        }),
+        expect.objectContaining({
+          name: 'inside-link',
+          type: 'directory',
+          link: expect.objectContaining({
+            targetPath: inside,
+            status: 'inside-workspace',
+            workspaceDepth: 1,
+          }),
+        }),
+        expect.objectContaining({
+          name: 'outside-link',
+          type: 'directory',
+          link: expect.objectContaining({
+            targetPath: outside,
+            status: 'outside-workspace',
+          }),
+        }),
+      ]);
+    },
+  );
+
   it('renames items', async () => {
     const original = path.join(root, 'old.md');
     fs.writeFileSync(original, 'content');

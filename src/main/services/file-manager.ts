@@ -14,6 +14,12 @@ export interface DirEntry {
   type: 'file' | 'directory';
   size: number;
   modifiedAt: number;
+  link?: {
+    targetPath: string;
+    status: 'inside-workspace' | 'outside-workspace';
+    workspaceDepth: number;
+    targetsWorkspaceRoot: boolean;
+  };
 }
 
 export class FileManagerService {
@@ -67,26 +73,85 @@ export class FileManagerService {
     return fs.existsSync(path.resolve(filePath));
   }
 
-  async listDir(dirPath: string): Promise<DirEntry[]> {
+  async listDir(dirPath: string, workspacePath?: string): Promise<DirEntry[]> {
     const resolved = path.resolve(dirPath);
-    const entries = await fs.promises.readdir(resolved, { withFileTypes: true });
+    const workspaceRoot = workspacePath ? await this.realPathOrResolved(workspacePath) : null;
+    let entries: fs.Dirent[];
+    try {
+      entries = await fs.promises.readdir(resolved, { withFileTypes: true });
+    } catch (error) {
+      if (this.isUnavailableEntryError(error)) return [];
+      throw error;
+    }
     const result = await Promise.all(
       entries.map(async (entry) => {
         const entryPath = path.join(resolved, entry.name);
-        const stat = await fs.promises.stat(entryPath);
-        return {
-          name: entry.name,
-          path: entryPath,
-          type: entry.isDirectory() ? ('directory' as const) : ('file' as const),
-          size: stat.size,
-          modifiedAt: stat.mtimeMs,
-        };
+        try {
+          const stat = await fs.promises.stat(entryPath);
+          const isDirectory = stat.isDirectory();
+          const targetPath = entry.isSymbolicLink()
+            ? await this.realPathOrResolved(entryPath)
+            : null;
+          const link =
+            isDirectory && targetPath && workspaceRoot
+              ? {
+                  targetPath,
+                  status: this.isWithinDirectory(workspaceRoot, targetPath)
+                    ? ('inside-workspace' as const)
+                    : ('outside-workspace' as const),
+                  workspaceDepth: this.workspaceDepth(workspaceRoot, targetPath),
+                  targetsWorkspaceRoot: targetPath === workspaceRoot,
+                }
+              : undefined;
+          return {
+            name: entry.name,
+            path: entryPath,
+            type: isDirectory ? ('directory' as const) : ('file' as const),
+            size: stat.size,
+            modifiedAt: stat.mtimeMs,
+            ...(link ? { link } : {}),
+          };
+        } catch (error) {
+          if (this.isUnavailableEntryError(error)) return null;
+          throw error;
+        }
       }),
     );
-    return result.sort((a, b) => {
-      if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
-      return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
-    });
+    return result
+      .filter((entry): entry is DirEntry => entry !== null)
+      .sort((a, b) => {
+        if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+        return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+      });
+  }
+
+  private isUnavailableEntryError(error: unknown): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      ['EACCES', 'ENOENT', 'ENOTDIR', 'EPERM'].includes(String(error.code))
+    );
+  }
+
+  private async realPathOrResolved(filePath: string): Promise<string> {
+    const resolved = path.resolve(filePath);
+    try {
+      return await fs.promises.realpath(resolved);
+    } catch (error) {
+      if (this.isUnavailableEntryError(error)) return resolved;
+      throw error;
+    }
+  }
+
+  private isWithinDirectory(rootPath: string, targetPath: string): boolean {
+    const relative = path.relative(rootPath, targetPath);
+    return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..');
+  }
+
+  private workspaceDepth(rootPath: string, targetPath: string): number {
+    const relative = path.relative(rootPath, targetPath);
+    return relative ? relative.split(path.sep).length : 0;
   }
 
   async createItem(parentDir: string, name: string, type: 'file' | 'directory'): Promise<string> {

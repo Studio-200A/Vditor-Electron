@@ -559,6 +559,18 @@ describe('renderer shell', () => {
     expect(document.querySelector('[name="restoreWorkspace"]')).not.toBeNull();
   });
 
+  it('provides a bounded workspace directory read-depth setting', () => {
+    const input = document.querySelector('[name="workspaceReadDepth"]') as HTMLInputElement;
+    expect(input).not.toBeNull();
+    expect(input.type).toBe('range');
+    expect(input.min).toBe('7');
+    expect(input.max).toBe('12');
+    expect(input.step).toBe('1');
+    expect(document.querySelector('#workspaceReadDepthValue')).not.toBeNull();
+    expect(rendererScript).toContain('syncWorkspaceReadDepthValue');
+    expect(css).toMatch(/\.tree-depth-notice\s*\{[^}]*user-select:\s*none/s);
+  });
+
   it('loads the Vditor compatibility adapter before the application renderer', () => {
     const scripts = Array.from(document.querySelectorAll('script')).map((script) => script.src);
     expect(scripts.at(-2)).toContain('vditor-adapter.js');

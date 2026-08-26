@@ -3,11 +3,16 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ChokidarOptions, FSWatcher } from 'chokidar';
-import { FileChangeEvent, FileWatchService } from '../../src/main/services/file-watch-service';
+import {
+  FileChangeEvent,
+  FileWatchService,
+  normalizeWorkspaceReadDepth,
+} from '../../src/main/services/file-watch-service';
 
 class FakeWatcher {
   private callback: ((event: string, changedPath: string) => void) | null = null;
   private rawCallback: ((event: string, changedPath: string) => void) | null = null;
+  private errorCallback: (() => void) | null = null;
   closed = false;
   added: string[] = [];
   unwatched: string[] = [];
@@ -15,6 +20,7 @@ class FakeWatcher {
   on(event: string, callback: (eventName: string, changedPath: string) => void): this {
     if (event === 'all') this.callback = callback;
     if (event === 'raw') this.rawCallback = callback;
+    if (event === 'error') this.errorCallback = () => callback('error', '');
     return this;
   }
 
@@ -30,6 +36,10 @@ class FakeWatcher {
     this.rawCallback?.(event, changedPath);
   }
 
+  emitError(): void {
+    this.errorCallback?.();
+  }
+
   add(filePath: string): this {
     this.added.push(filePath);
     return this;
@@ -43,6 +53,74 @@ class FakeWatcher {
 
 describe('FileWatchService', () => {
   afterEach(() => vi.useRealTimers());
+
+  it('normalizes workspace read depth to the supported bounds', () => {
+    expect(normalizeWorkspaceReadDepth(undefined)).toBe(7);
+    expect(normalizeWorkspaceReadDepth(6)).toBe(7);
+    expect(normalizeWorkspaceReadDepth(7)).toBe(7);
+    expect(normalizeWorkspaceReadDepth(12)).toBe(12);
+    expect(normalizeWorkspaceReadDepth(13)).toBe(12);
+  });
+
+  it('recreates the workspace watcher when its read depth changes', async () => {
+    const root = path.resolve('/workspace');
+    const watchers: Array<{ options: ChokidarOptions; watcher: FakeWatcher }> = [];
+    const service = new FileWatchService(
+      async () => ({ content: '', encoding: 'utf-8' }),
+      () => undefined,
+      (_paths, options) => {
+        const watcher = new FakeWatcher();
+        watchers.push({ options, watcher });
+        return watcher as unknown as FSWatcher;
+      },
+    );
+
+    await service.setWorkspace(root, 7);
+    await service.setWorkspace(root, 12);
+
+    expect(watchers.map(({ options }) => options.depth)).toEqual([7, 12]);
+    expect(watchers[0].watcher.closed).toBe(true);
+  });
+
+  it('reports a workspace watcher resource error only once', async () => {
+    const root = path.resolve('/workspace');
+    const events: FileChangeEvent[] = [];
+    let watcher: FakeWatcher | undefined;
+    const service = new FileWatchService(
+      async () => ({ content: '', encoding: 'utf-8' }),
+      (event) => events.push(event),
+      () => {
+        watcher = new FakeWatcher();
+        return watcher as unknown as FSWatcher;
+      },
+    );
+
+    await service.setWorkspace(root, 7);
+    watcher?.emitError();
+    watcher?.emitError();
+
+    expect(watcher?.closed).toBe(true);
+    expect(events).toEqual([
+      { event: 'watch-error', path: root, scope: 'workspace', error: 'resource-limit' },
+    ]);
+  });
+
+  it('degrades cleanly when creating a workspace watcher fails', async () => {
+    const root = path.resolve('/workspace');
+    const events: FileChangeEvent[] = [];
+    const service = new FileWatchService(
+      async () => ({ content: '', encoding: 'utf-8' }),
+      (event) => events.push(event),
+      () => {
+        throw new Error('watcher resource limit');
+      },
+    );
+
+    await expect(service.setWorkspace(root, 7)).resolves.toBeUndefined();
+    expect(events).toEqual([
+      { event: 'watch-error', path: root, scope: 'workspace', error: 'resource-limit' },
+    ]);
+  });
 
   it('uses the workspace watcher for workspace documents and sends stable content separately', async () => {
     vi.useFakeTimers();
@@ -67,7 +145,10 @@ describe('FileWatchService', () => {
     await service.setWorkspace(root);
     await service.watchDocument(documentPath);
     expect(watchers).toHaveLength(2);
-    expect(watchers[0]).toMatchObject({ paths: root, options: { depth: 20 } });
+    expect(watchers[0]).toMatchObject({
+      paths: root,
+      options: { depth: 7, followSymlinks: false },
+    });
     expect(watchers[1]).toMatchObject({ paths: documentPath });
 
     watchers[0].watcher.emit('change', documentPath);

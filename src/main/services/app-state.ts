@@ -1,3 +1,12 @@
+export const WORKSPACE_READ_DEPTH_MIN = 7;
+export const WORKSPACE_READ_DEPTH_MAX = 12;
+
+export function normalizeWorkspaceReadDepth(value: unknown): number {
+  const depth =
+    typeof value === 'number' && Number.isInteger(value) ? value : WORKSPACE_READ_DEPTH_MIN;
+  return Math.min(WORKSPACE_READ_DEPTH_MAX, Math.max(WORKSPACE_READ_DEPTH_MIN, depth));
+}
+
 export interface AppSettings {
   restoreTabs: boolean;
   restoreWorkspace: boolean;
@@ -57,6 +66,7 @@ export interface AppSettings {
   pasteImagesDir: string;
   imageMaxWidth: number;
   imageQuality: number;
+  workspaceReadDepth: number;
   paragraphBeginningSpace: boolean;
   fixTermTypo: boolean;
   gfmAutoLink: boolean;
@@ -154,6 +164,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   pasteImagesDir: './assets',
   imageMaxWidth: 1024,
   imageQuality: 0.85,
+  workspaceReadDepth: WORKSPACE_READ_DEPTH_MIN,
   paragraphBeginningSpace: false,
   fixTermTypo: false,
   gfmAutoLink: true,

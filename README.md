@@ -162,6 +162,10 @@ Application configuration and Chromium user data are kept separate:
 
 The TOML file is human-readable and grouped by application, appearance, fonts, editor, preview, files, workspace, window, and session settings.
 
+Files & Session includes a **Workspace directory read depth** setting (default 7; range 7–12). It bounds both the explorer and workspace monitoring, helping keep very large folders responsive. When you need deeper content, open a narrower folder as the workspace instead.
+
+The explorer recognizes directory links that resolve to a location within the workspace, marks them visually, and applies the same depth limit. Links that resolve outside the workspace remain visible but cannot be expanded. Windows `.lnk` shortcuts and macOS Finder aliases are not directory links and currently remain ordinary files.
+
 Crash-recovery snapshots are stored separately in the private application data directory shown above. They are removed after saving or discarding the recovered document and are never served as local document resources.
 
 ## Build and test

@@ -344,7 +344,9 @@ function registerIpcHandlers(): void {
     fileManager.writeBinaryFile(filePath, bytes),
   );
   ipcMain.handle('file:exists', (_event, filePath: string) => fileManager.exists(filePath));
-  ipcMain.handle('file:listDir', (_event, dirPath: string) => fileManager.listDir(dirPath));
+  ipcMain.handle('file:listDir', (_event, dirPath: string, workspacePath?: string) =>
+    fileManager.listDir(dirPath, workspacePath),
+  );
   ipcMain.handle(
     'file:create',
     (_event, parent: string, name: string, type: 'file' | 'directory') =>
@@ -364,8 +366,8 @@ function registerIpcHandlers(): void {
   ipcMain.handle('file:resolveMarkdownLink', (_event, sourceFile: unknown, href: unknown) =>
     resolveRelativeMarkdownLink(sourceFile, href),
   );
-  ipcMain.handle('file:setWorkspaceWatch', (_event, rootPath?: string) =>
-    fileWatchService.setWorkspace(rootPath),
+  ipcMain.handle('file:setWorkspaceWatch', (_event, rootPath?: string, depth?: number) =>
+    fileWatchService.setWorkspace(rootPath, depth),
   );
   ipcMain.handle('file:watchDocument', (_event, filePath: string) =>
     fileWatchService.watchDocument(filePath),

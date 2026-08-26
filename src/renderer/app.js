@@ -2366,7 +2366,7 @@
     state.workspace = folder || '';
     $('#workspaceName').textContent = folder ? fileName(folder) : t('sidebar.noWorkspace');
     $('#workspaceHeading').title = folder || t('sidebar.openFolder');
-    await window.fileAPI.setWorkspaceWatch(folder || undefined);
+    await window.fileAPI.setWorkspaceWatch(folder || undefined, state.settings.workspaceReadDepth);
     await refreshTree();
     if (folder) {
       const recent = [
@@ -2393,7 +2393,7 @@
       return;
     }
     const content = document.createDocumentFragment();
-    await appendDirectory(content, workspace);
+    await appendDirectory(content, workspace, 0, new Set([workspace]));
     if (state.workspace !== workspace) return;
     root.replaceChildren(content);
     updateActiveTreeSelection();
@@ -2427,10 +2427,10 @@
     void window.appAPI.saveSettings({ workspaceTreeStates });
   }
 
-  async function appendDirectory(container, dirPath) {
+  async function appendDirectory(container, dirPath, depth, ancestorPaths) {
     let entries;
     try {
-      entries = await window.fileAPI.listDir(dirPath);
+      entries = await window.fileAPI.listDir(dirPath, state.workspace);
     } catch (error) {
       showMessage(error.message, true);
       return;
@@ -2446,6 +2446,15 @@
       row.className = `tree-row tree-${entry.type === 'directory' ? 'dir' : 'file'}`;
       row.dataset.path = entry.path;
       row.innerHTML = `<span class="chevron">${entry.type === 'directory' ? '›' : ''}</span><span class="file-icon">${treeIcon(entry.type)}</span><span class="tree-name" data-full-name="${escapeHTML(entry.name)}" title="${escapeHTML(entry.name)}">${escapeHTML(entry.name)}</span>`;
+      if (entry.link) {
+        row.classList.add('tree-link');
+        row.dataset.linkStatus = entry.link.status;
+        const badge = document.createElement('span');
+        badge.className = 'tree-link-badge';
+        badge.setAttribute('aria-hidden', 'true');
+        row.querySelector('.file-icon').appendChild(badge);
+        row.title = t('workspace.linkTitle');
+      }
       container.appendChild(row);
       row.addEventListener('contextmenu', (event) => showTreeMenu(event, entry, row));
       if (entry.type === 'file') row.addEventListener('click', () => openPath(entry.path));
@@ -2453,6 +2462,39 @@
         const children = document.createElement('div');
         children.className = 'tree-children';
         container.appendChild(children);
+        const targetDepth = entry.link?.workspaceDepth ?? depth + 1;
+        const createsLinkCycle =
+          entry.link &&
+          (entry.link.targetsWorkspaceRoot || ancestorPaths.has(entry.link.targetPath));
+        if (entry.link?.status === 'outside-workspace' || createsLinkCycle) {
+          const message = t(
+            createsLinkCycle ? 'workspace.linkCycle' : 'workspace.linkOutsideWorkspace',
+          );
+          row.classList.add(
+            'depth-limited',
+            createsLinkCycle ? 'tree-link-cycle' : 'tree-link-outside',
+          );
+          row.querySelector('.chevron').textContent = '·';
+          const notice = document.createElement('div');
+          notice.className = 'tree-depth-notice';
+          notice.textContent = message;
+          children.classList.add('depth-limit');
+          children.appendChild(notice);
+          row.addEventListener('click', () => showMessage(message));
+          continue;
+        }
+        const atDepthLimit = targetDepth >= state.settings.workspaceReadDepth;
+        if (atDepthLimit) {
+          row.classList.add('depth-limited');
+          row.querySelector('.chevron').textContent = '·';
+          const notice = document.createElement('div');
+          notice.className = 'tree-depth-notice';
+          notice.textContent = t('workspace.depthLimited');
+          children.classList.add('depth-limit');
+          children.appendChild(notice);
+          row.addEventListener('click', () => showMessage(t('workspace.depthLimited')));
+          continue;
+        }
         row.addEventListener('click', async () => {
           const open = row.classList.toggle('expanded');
           row.querySelector('.chevron').textContent = open ? '⌄' : '›';
@@ -2460,7 +2502,12 @@
           persistDirectoryExpansion(entry.path, open);
           if (open && !children.dataset.loaded) {
             children.dataset.loaded = 'true';
-            await appendDirectory(children, entry.path);
+            await appendDirectory(
+              children,
+              entry.path,
+              targetDepth,
+              new Set([...ancestorPaths, entry.link?.targetPath || entry.path]),
+            );
           }
           scheduleTreeNameEllipses();
         });
@@ -2470,7 +2517,12 @@
           row.setAttribute('aria-expanded', 'true');
           row.querySelector('.chevron').textContent = '⌄';
           children.dataset.loaded = 'true';
-          await appendDirectory(children, entry.path);
+          await appendDirectory(
+            children,
+            entry.path,
+            targetDepth,
+            new Set([...ancestorPaths, entry.link?.targetPath || entry.path]),
+          );
         }
       }
     }
@@ -3129,6 +3181,7 @@
     const currentMode = tab?.vditor && tab.ready ? tab.vditor.getCurrentMode() : tab?.mode;
     $('#previewZoomSetting').classList.toggle('hidden', currentMode !== 'sv');
     $('#editorTextWidthValue').textContent = `${$('#editorTextWidth').value}%`;
+    syncWorkspaceReadDepthValue();
     restoreSettingsCardSize();
     const modal = $('#settingsModal');
     clearTimeout(settingsCloseTimer);
@@ -3192,9 +3245,19 @@
     patch.darkCodeTheme = state.settings.darkCodeTheme;
     patch[codePreferenceKey] = patch.codeTheme;
     patch.toolbarConfig = state.settings.toolbarConfig;
+    const previousWorkspaceReadDepth = state.settings.workspaceReadDepth;
+    const previousLocale = state.locale;
     state.settings = await window.appAPI.saveSettings(patch);
     if (closeAfterSave) await closeSettings({ applyPresentation: false });
     applyLocale(state.settings.locale);
+    if (state.workspace && previousWorkspaceReadDepth !== state.settings.workspaceReadDepth)
+      await window.fileAPI.setWorkspaceWatch(state.workspace, state.settings.workspaceReadDepth);
+    if (
+      state.workspace &&
+      (previousWorkspaceReadDepth !== state.settings.workspaceReadDepth ||
+        previousLocale !== state.locale)
+    )
+      await refreshTree();
     applyPresentationSettings();
     await applyTheme(await resolveTheme());
     state.tabs.forEach((tab) => {
@@ -3224,6 +3287,7 @@
     });
     if (panel.dataset.settingsPanel === 'editor')
       $('#editorTextWidthValue').textContent = `${$('#editorTextWidth').value}%`;
+    if (panel.dataset.settingsPanel === 'files') syncWorkspaceReadDepthValue();
     if (panel.dataset.settingsPanel === 'appearance') {
       const theme = panel.querySelector('[name="theme"]:checked')?.value;
       syncCodeThemeSelect(isDarkTheme(theme), preferredCodeTheme(isDarkTheme(theme)));
@@ -3247,6 +3311,12 @@
       () => saveSettings(false),
       input.type === 'text' || input.type === 'number' ? 250 : 0,
     );
+  }
+
+  function syncWorkspaceReadDepthValue() {
+    const input = $('#settingsForm [name="workspaceReadDepth"]');
+    const output = $('#workspaceReadDepthValue');
+    if (input && output) output.textContent = input.value;
   }
 
   function settingsCardLimits() {
@@ -3433,10 +3503,17 @@
   }
 
   async function handleExternalChange(change) {
-    if (!['add', 'change', 'unlink', 'unreadable'].includes(change.event)) return;
+    if (!['add', 'change', 'unlink', 'unreadable', 'watch-error'].includes(change.event)) return;
     if (change.scope === 'workspace') {
-      clearTimeout(state.treeTimer);
-      state.treeTimer = setTimeout(refreshTree, 300);
+      if (change.event === 'watch-error') {
+        showMessage(t('workspace.watchResourceLimit'), true);
+        return;
+      }
+      if (!state.treeTimer)
+        state.treeTimer = setTimeout(() => {
+          state.treeTimer = null;
+          void refreshTree();
+        }, 300);
       return;
     }
     const normalizedPath = normalizedFilePath(change.path);
@@ -3990,6 +4067,7 @@
       $('#editorTextWidthValue').textContent = `${value}%`;
       document.documentElement.style.setProperty('--editor-text-width', `${value}%`);
     };
+    $('#settingsForm [name="workspaceReadDepth"]').oninput = syncWorkspaceReadDepthValue;
     $('#resetSettings').onclick = async () => {
       if (await confirmDialog({ message: t('confirm.resetSettings') })) {
         state.settings = await window.appAPI.resetSettings();

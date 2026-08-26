@@ -1,8 +1,8 @@
 # Vditor-Electron Code Structure World Map
 
-- **生成时间：** 2026-08-25
-- **基于的工作区：** `dev-0.2.0`，`7abe1e7` 加上当前工作区中的批次 5 实现（提交状态以 `git status --short` 为准）
-- **文档版本：** v1.6
+- **生成时间：** 2026-08-26
+- **基于的工作区：** `dev-0.2.0`，`7abe1e7` 加上当前工作区中的批次 5/5.1 实现（提交状态以 `git status --short` 为准）
+- **文档版本：** v1.7
 - **对应 package.json 版本号：** 0.1.5
 
 ---
@@ -15,7 +15,7 @@
 
 **核心功能：** 多标签页 Markdown 编辑、三种编辑模式（IR/SV/WYSIWYG）、分栏预览、文件树侧栏、文档大纲、查找替换、图片插入与压缩、HTML/PDF 导出、TOML 配置持久化、三语国际化（英/简/繁）。
 
-**开发阶段：** 0.2.0 阶段开发中。保存、恢复、工作区内外 watcher、外部修改冲突及外部删除/重新出现/不可读状态已有实现和测试；目录级路径一致性、工作区监听资源边界、安全边界和跨平台实体机验证仍在后续批次。
+**开发阶段：** 0.2.0 阶段开发中。保存、恢复、工作区内外 watcher、外部修改冲突、外部删除/重新出现/不可读状态及工作区读取/监听深度边界已有实现和测试；目录级路径一致性、安全边界和跨平台实体机验证仍在后续批次。
 
 ---
 
@@ -92,7 +92,7 @@ Vditor-Electron/
 │   ├── locales.js                 # 三语字典（en_US / zh_Hans / zh_Hant）
 │   ├── styles/
 │   │   └── app.css                # 单一应用样式文件（含主题变量、Vditor 覆盖）
-│   └── assets/                    # 内嵌 SVG 图标资源（warning / notification 等）
+│   └── assets/                    # 内嵌 SVG 图标资源（warning / notification / symlink 等）
 ├── static/
 │   └── dist/                      # [自动生成] 离线 Vditor 构建产物（由 build:assets 复制）
 ├── dist/                          # [自动生成] 主进程编译输出（tsc）
@@ -641,7 +641,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `file:writeDocument`         | `filePath, content`               | `{ expectedContent, wrote }` 或 `{ error }` | 安全文档写入；将权限等错误映射为领域结果     |
 | `file:writeBinary`           | `filePath, Uint8Array`            | `void`                                      | 写入二进制（图片/PDF）                       |
 | `file:exists`                | `filePath`                        | `boolean`                                   | 文件存在性检查                               |
-| `file:listDir`               | `dirPath`                         | `DirEntry[]`                                | 目录列表（目录优先，自然排序）               |
+| `file:listDir`               | `dirPath, workspacePath?`         | `DirEntry[]`                                | 目录列表（目录优先，自然排序），解析工作区内外目录链接 |
 | `file:create`                | `parent, name, type`              | `string`                                    | 创建文件或目录                               |
 | `file:rename`                | `oldPath, newName`                | `string`                                    | 重命名（不允许跨目录）                       |
 | `file:delete`                | `filePath`                        | `void`                                      | `shell.trashItem` 移至回收站                 |
@@ -649,7 +649,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `file:dirname`               | `filePath`                        | `string`                                    | `path.dirname`                               |
 | `file:relative`              | `from, to`                        | `string`                                    | 斜杠归一化的相对路径                         |
 | `file:resolveMarkdownLink`   | `sourceFile, href`                | `MarkdownLinkResolution`                    | 仅解析已保存文件的相对 Markdown 链接，验证普通文件并返回规范目标路径与片段 |
-| `file:setWorkspaceWatch`     | `rootPath?`                       | `void`                                      | 设置只报告目录结构变化的工作区 watcher       |
+| `file:setWorkspaceWatch`     | `rootPath?, depth?`               | `void`                                      | 按 7–12 深度设置只报告目录结构变化的工作区 watcher，不跟随符号链接 |
 | `file:watchDocument`         | `filePath`                        | `void`                                      | 为每个打开文档建立去重的稳定内容 watcher     |
 | `file:unwatchDocument`       | `filePath`                        | `void`                                      | 关闭对应文档 watcher 并取消迟到读取          |
 | `app:getSettings`            | 无                                | `AppSettings`                               | 返回完整配置副本（structuredClone）          |
@@ -907,17 +907,17 @@ function rememberRecent(filePath) {
 - **实现：** `openFind()`、`refreshFind()`、`moveFindMatch()`、`replaceFindMatch()`、`replaceAllFindMatches()`
 - **注意：** 当前实现通过 `tab.vditor.setValue(content)` 回写替换结果，可能丢失选择/undo 状态（已知问题）
 
-#### 侧栏（`app.js:3005` 起的 `toggleSidebar()`，`index.html:115-139`）
+#### 侧栏（`app.js:3886` 起的 `toggleSidebar()`，`index.html:115-139`）
 
 - **职责：** 左侧可折叠面板，包含文件树视图和大纲视图
 - **实现：** `toggleSidebar()` 带 CSS transition、`appendDirectory()` 懒加载子目录
 
-#### 文件树（`app.js:1799` 起的 `appendDirectory()` / `showTreeMenu()`，`index.html:127-131`）
+#### 文件树（`app.js:2430` 起的 `appendDirectory()` / `showTreeMenu()`，`index.html:127-131`）
 
 - **职责：** 懒加载工作区目录树、文件展开状态持久化、文件名省略（canvas 测量）、右键菜单（新建/重命名/回收站/在管理器中显示）
 - **实现：** `appendDirectory()`、`showTreeMenu()`、`renameExplorerItem()`、`middleEllipsis()`；首次保存或另存为后直接调用 `refreshTree()`，避免自身保存事件被抑制时遗漏新文件。
 - **过滤：** 仅显示 `fileExplorer.visibleExtensions` 中的扩展名，隐藏以 `.` 开头的文件
-- **资源边界：** 工作区最大读取深度尚未进入当前设置模型；将 Home 作为工作区时的递归 watcher 资源边界属于 0.2.0 版本 Tracker 批次 5.1。
+- **资源边界：** `workspaceReadDepth` 在 Files & Session 中以 7–12 滑块持久化（默认 7）。根目录深度为 0，`appendDirectory()` 不读取超过该边界的后代，恢复展开状态同样受限；边界目录显示不可选中的本地化提示，语言切换时文件树会重建。可由 `realpath` 解析的目录链接会携带目标、相对工作区深度与工作区内外状态：内部目标可展开、外部目标灰色不可展开、循环目标被阻止；链接名称使用斜体和图标标记。工作区 watcher 使用相同深度且不跟随链接，资源错误只发送一次降级事件并关闭失效 watcher，手动浏览和刷新仍可用。`FileManagerService.listDir()` 会跳过读取过程中消失、失效或无权限的单个条目，不让一个损坏链接阻断整棵树。
 
 #### 文档大纲（`app.js:2019` 起的 `renderOutline()`，`index.html:133-136`）
 
@@ -929,7 +929,7 @@ function rememberRecent(filePath) {
 - **职责：** 显示当前文件路径、状态消息、编辑模式（IR/SV/WYSIWYG）、词字符行数、编码、行结尾、主题切换、设置快捷入口、版本号；编辑模式文本可展开快捷菜单
 - **实现：** `updateActiveUI()` 汇总状态，`toggleStatusModeMenu()` / `selectStatusMode()` 通过适配器复用 Vditor 的原生模式切换
 
-#### 设置对话框（`app.js:2369` 起的设置保存/关闭逻辑及 `:2565` 的拖拽逻辑，`index.html:249-end`）
+#### 设置对话框（`app.js:3166` 起的设置保存/关闭逻辑及相关拖拽逻辑，`index.html:249-end`）
 
 - **职责：** 模态对话框，包含 6 个面板（Appearance/Fonts/Editor/Preview/Files & Session/About），支持拖拽移动和 8 方向拖拽调整大小，保存后实时应用
 - **实现：** `openSettings()`、`saveSettings()`、`setupSettingsDrag()`、`restoreSettingsCardSize()`
@@ -976,7 +976,7 @@ function rememberRecent(filePath) {
 - `restoreWorkspace`（启动时恢复工作区，checkbox）
 - `autoSave`（自动保存，checkbox）
 - `autoSaveDelay`（自动保存延迟，250–60000 ms）
-- 工作区最大读取深度尚未进入当前设置模型；计划在 0.2.0 批次 5.1 以 7–12 的滑块加入 Files & Session。
+- `workspaceReadDepth`（工作区目录最大读取深度，7–12，默认 7）；过深层级可能影响系统性能或受系统限制，建议改用更窄的工作区访问。
 - `pasteImagesDir`（图片目录，相对路径）
 - `imageMaxWidth`（图片最大宽度，0–10000）
 - `imageQuality`（图片质量，0.1–1，步进 0.05）
@@ -1475,12 +1475,12 @@ flowchart TB
 | `tests/unit/open-files.test.ts`     | `src/main/open-files.ts`                | 绝对/相对/file-URL 路径提取、去重、过滤标志位/目录/不存在的文件/非 Markdown 扩展名                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `tests/unit/external-url.test.ts`   | `src/main/external-url.ts`              | 仅允许 `http:` / `https:` / `mailto:`；拒绝非字符串、相对路径、应用/文件/脚本/data 协议 |
 | `tests/unit/resolve-markdown-link.test.ts` | `src/main/resolve-markdown-link.ts` | 相对 Markdown 路径、`../`、百分号编码、片段、Windows 路径、缺失/绝对/协议/非 Markdown/非法编码目标拒绝 |
-| `tests/unit/file-manager.test.ts`   | `src/main/services/file-manager.ts` 与 `safe-file-writer.ts` | UTF-8 读取、UTF-8 BOM 检测与剥离、GB18030 回退、同目录安全替换、权限保持、无变化跳过、临时创建/替换失败保留原文件及清理、权限错误映射、文件/目录创建、路径逃逸拒绝（`../`）、目录优先自然排序、重命名、二进制图片写入 |
-| `tests/unit/file-watch-service.test.ts` | `src/main/services/file-watch-service.ts` | 工作区结构与文档内容 watcher 分工、同路径去重、稳定等待、瞬态 `unlink` 重核、权限不可读事件、工作区内文件重新出现的双 scope 事件、符号链接规范路径、释放后的迟到读取，以及 Linux raw rename 重绑 |
-| `tests/unit/settings-store.test.ts` | `src/main/services/settings-store.ts`   | 首次加载返回默认值、TOML 部分深合并与默认值、未知字段丢弃、`set` 持久化（含 TOML 段结构验证）、`update` 多字段快照（含 `workspaceTreeStates` 数组）、设置对话框尺寸持久化（`window.settingsDialog`）、`getAll` 返回克隆副本、`reset` 重置内存和磁盘                                                                                                                                                                                                                                                               |
+| `tests/unit/file-manager.test.ts`   | `src/main/services/file-manager.ts` 与 `safe-file-writer.ts` | UTF-8 读取、UTF-8 BOM 检测与剥离、GB18030 回退、同目录安全替换、权限保持、无变化跳过、临时创建/替换失败保留原文件及清理、权限错误映射、文件/目录创建、路径逃逸拒绝（`../`）、目录优先自然排序、目录链接工作区内外分类与深度、重命名、二进制图片写入 |
+| `tests/unit/file-watch-service.test.ts` | `src/main/services/file-watch-service.ts` | 工作区结构与文档内容 watcher 分工、7–12 读取深度规范化及重建、资源错误一次降级、同路径去重、稳定等待、瞬态 `unlink` 重核、权限不可读事件、工作区内文件重新出现的双 scope 事件、符号链接规范路径、释放后的迟到读取，以及 Linux raw rename 重绑 |
+| `tests/unit/settings-store.test.ts` | `src/main/services/settings-store.ts`   | 首次加载返回默认值、TOML 部分深合并与默认值、未知字段丢弃、`set` 持久化（含 TOML 段结构验证）、`update` 多字段快照（含 `workspaceTreeStates` 数组和 `workspaceReadDepth` 边界）、设置对话框尺寸持久化（`window.settingsDialog`）、`getAll` 返回克隆副本、`reset` 重置内存和磁盘                                                                                                                                                                                                                                                               |
 | `tests/unit/recovery-store.test.ts` | `src/main/services/recovery-store.ts` | 私有目录/文件权限、候选元数据不含正文、原子写入与显式清理、损坏/未知 schema/超限快照移除，以及 `unchanged` / `changed` / `unavailable` 三种磁盘状态 |
 | `tests/unit/vditor-adapter.test.ts` | `src/renderer/vditor-adapter.js`        | 冻结的 selectors 对象、`validateHost` 成功（toolbar 通过 `mountedToolbar` 参数提供）、代码主题亮/暗分界点（`ant-design` 前为 dark 组）、DOM 漂移检测（缺少 source 节点时 `valid: false`）、列表 `marker`/`padding` 解析、动态尾部留白写入全部 Vditor 表面、hash anchor 到标题索引（IR 内部链接 + 元素 id + slug）、原生大纲 snapshot、标题间普通块时的准确目标节点及 SV preview 外层滚动容器、跨多 span 文本节点的匹配与选区                                                                                                                                                                                                   |
-| `tests/unit/renderer-shell.test.ts` | 渲染器壳（HTML/CSS/JS/preload）静态结构 | 标题栏 / 菜单 / 窗口控件 DOM；三种编辑模式菜单项；en/zh_Hans/zh_Hant 键完整性对等；Linux 发布脚本；自动隐藏滚动条样式；第二实例文件转发；确认对话框（未保存变更可拖动、无调整尺寸手柄）；设置对话框 8 方向调整手柄；空标签恢复；查找替换控件带 SVG；文件树无 draggable；折叠/展开/中间省略；设置面板分类；关于面板；UI/编辑器/预览缩放；状态栏控件；CSP img-src/connect-src；大纲无标题态；Monokai Pro Dark 主题；亮/暗代码主题分离；字体子分组；工作区头部；编辑文本宽度范围；无过时占位符/工具栏设置项；适配器脚本加载顺序；设置路径页脚/重置当前页 |
+| `tests/unit/renderer-shell.test.ts` | 渲染器壳（HTML/CSS/JS/preload）静态结构 | 标题栏 / 菜单 / 窗口控件 DOM；三种编辑模式菜单项；en/zh_Hans/zh_Hant 键完整性对等；Linux 发布脚本；自动隐藏滚动条样式；第二实例文件转发；确认对话框（未保存变更可拖动、无调整尺寸手柄）；设置对话框 8 方向调整手柄；空标签恢复；查找替换控件带 SVG；文件树无 draggable；折叠/展开/中间省略；链接目录斜体下划线与 SVG 资产；设置面板分类；关于面板；UI/编辑器/预览缩放；状态栏控件；CSP img-src/connect-src；大纲无标题态；Monokai Pro Dark 主题；亮/暗代码主题分离；字体子分组；工作区头部；编辑文本宽度范围；无过时占位符/工具栏设置项；适配器脚本加载顺序；设置路径页脚/重置当前页 |
 
 ### 15.2 E2E 测试（Playwright Electron，单文件 `tests/e2e/app.spec.ts`）
 
@@ -1532,6 +1532,7 @@ flowchart TB
 
 - 文件树头部仅显示工作区名 + 刷新按钮（无搜索 / 无新建文件按钮）
 - 目录折叠/展开，`workspaceTreeStates` 按工作区单独持久化
+- 默认 7、可选 7–12 的目录读取深度；达到边界时不读取更深后代，并显示受限提示；设置变更会立即重建工作区 watcher 和刷新文件树
 - 切换工作区后各自保留展开状态，文件监听器拾取新文件
 - 菜单"打开文件夹"后侧栏自动显示并持久化 `sidebarVisible`
 - 侧栏宽度调整，长文件名中间省略（canvas 测量）

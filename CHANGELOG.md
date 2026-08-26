@@ -4,12 +4,15 @@
 
 ### New Features
 
+- **feat(workspace links):** The explorer now distinguishes real-path-resolvable directory links with an italic, underlined name and a themed link SVG badge. Links into the workspace follow the workspace depth limit; external and cyclic targets remain visible but cannot be expanded.
+- **feat(workspace):** Added a persisted 7–12 workspace directory read-depth control (default 7). The explorer, restored folder expansion, and workspace monitoring share the same boundary, and the explorer explains when a deeper directory is intentionally not read.
 - **feat(recovery):** After an unexpected exit, unsaved documents now open directly with a persistent warning banner. The banner clearly distinguishes an unchanged original file from a changed or unavailable one, and only allows direct saving when it is safe; other recovery states can be saved elsewhere or discarded.
 - **feat(external file state):** Open documents now distinguish external deletion, reappearance, and unreadable/permission states. Autosave pauses while a target is unavailable, and the editor keeps its in-memory content until the user chooses an explicit resolution.
 - **feat(recreate backup):** Recreating an unavailable file copies the content captured before the unavailable state to the system clipboard and shows a five-second localized confirmation notice. The clipboard backup is not contaminated by edits made while the persistent notice is visible.
 
 ### Bug Fixes
 
+- **fix(workspace monitoring):** Workspace watcher resource failures now degrade to one clear in-app notice instead of producing an error storm; manual file browsing and refresh remain available.
 - **fix(external conflicts):** Completed the external-change conflict workflow: stable disk snapshots now drive reloads, autosave pauses while a conflict is unresolved, and users can reload, save the current content elsewhere, ignore the change, or explicitly confirm an overwrite. Repeated disk changes invalidate stale overwrite confirmations, and saving after “ignore” still requires an explicit confirmation.
 - **fix(persistent notices):** Unified recovery and external-conflict banners around the persistent warning style, including the warning SVG, two-row narrow-layout behavior, larger 15px copy and action text, draggable overwrite confirmation, and readable red-and-white danger actions across light, dark, and Monokai themes.
 - **fix(context menu):** Disabled Paste and Paste as Plain Text when the system clipboard has no content to insert.
@@ -22,7 +25,7 @@
 
 ### Project Maintenance
 
-- **docs(0.2.0):** Updated the README, architecture map, development plan, execution tracker, and known behavior notes to reflect the completed recovery and external-file state work and the remaining directory/path and cross-platform validation scope.
+- **docs(0.2.0):** Updated the README, architecture map, development plan, execution tracker, and known behavior notes to reflect the completed recovery, external-file state, workspace-depth, and directory-link work and the remaining directory/path and cross-platform validation scope.
 
 ## 0.1.5 - Editing Experience Improvement
 

@@ -1290,6 +1290,16 @@
                   min="250"
                   max="60000"
               /></label>
+              <label data-i18n-label="settings.workspaceReadDepth"
+                >Workspace directory read depth<span class="range-control"
+                  ><input name="workspaceReadDepth" type="range" min="7" max="12" step="1" />
+                  <output id="workspaceReadDepthValue" for="workspaceReadDepth">7</output></span
+                ></label
+              >
+              <p class="range-setting muted" data-i18n="settings.workspaceReadDepthDescription">
+                Deep directory levels can affect system performance and may be unavailable because
+                of system limits. Open a narrower workspace to access deeper directories.
+              </p>
               <label data-i18n-label="settings.imageDirectory"
                 >Image directory<input name="pasteImagesDir" type="text"
               /></label>

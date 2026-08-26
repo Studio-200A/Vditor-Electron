@@ -79,6 +79,9 @@
       'settings.restoreWorkspace': 'Restore workspace at startup',
       'settings.autoSave': 'Auto save',
       'settings.autoSaveDelay': 'Auto-save delay (ms)',
+      'settings.workspaceReadDepth': 'Workspace directory read depth',
+      'settings.workspaceReadDepthDescription':
+        'Deep directory levels can affect system performance and may be unavailable because of system limits. Open a narrower workspace to access deeper directories.',
       'settings.imageDirectory': 'Image directory',
       'settings.imageMaxWidth': 'Image max width',
       'settings.imageQuality': 'Image quality',
@@ -107,6 +110,12 @@
       'message.savePermissionDenied':
         'Save failed. Check that you can write to the file and its directory.',
       'message.settingsSaved': 'Settings saved',
+      'workspace.depthLimited': 'Maximum workspace directory depth reached.',
+      'workspace.linkTitle': 'Symbolic link directory',
+      'workspace.linkOutsideWorkspace': 'This link points outside the workspace.',
+      'workspace.linkCycle': 'This link creates a directory cycle.',
+      'workspace.watchResourceLimit':
+        'Workspace monitoring is unavailable because of system resource limits. You can still browse files manually; reduce the directory read depth or choose a narrower workspace.',
       'recovery.restored': 'Recovered unsaved changes from the last unexpected exit.',
       'recovery.restoredDetail': 'You can save this version or save it to another location.',
       'recovery.changed':
@@ -340,6 +349,9 @@
       'settings.restoreWorkspace': '启动时恢复工作区',
       'settings.autoSave': '自动保存',
       'settings.autoSaveDelay': '自动保存延迟 (ms)',
+      'settings.workspaceReadDepth': '工作区目录最大读取深度',
+      'settings.workspaceReadDepthDescription':
+        '过深目录层级会影响系统性能，也会由于系统特性限制导致目录无法打开；建议通过修改工作区方式访问更深层级目录。',
       'settings.imageDirectory': '图片目录',
       'settings.imageMaxWidth': '图片最大宽度',
       'settings.imageQuality': '图片质量',
@@ -367,6 +379,12 @@
       'message.saveFailed': '保存失败：{error}',
       'message.savePermissionDenied': '保存失败，请检查文件及所在目录是否有写入权限。',
       'message.settingsSaved': '设置已保存',
+      'workspace.depthLimited': '已达到工作区目录最大读取深度。',
+      'workspace.linkTitle': '符号链接目录',
+      'workspace.linkOutsideWorkspace': '该链接指向工作区外。',
+      'workspace.linkCycle': '该链接会形成目录循环。',
+      'workspace.watchResourceLimit':
+        '工作区监听因系统资源限制不可用。您仍可手动浏览文件；请降低目录读取深度或选择更小范围的工作区。',
       'recovery.restored': '已恢复上次异常退出时未保存的修改。',
       'recovery.restoredDetail': '您可以保存此版本，或选择其他位置保存。',
       'recovery.changed': '已恢复上次异常退出时未保存的修改，但原文件在此后已被修改。',
@@ -592,6 +610,9 @@
       'settings.restoreWorkspace': '啟動時恢復工作區',
       'settings.autoSave': '自動儲存',
       'settings.autoSaveDelay': '自動儲存延遲 (ms)',
+      'settings.workspaceReadDepth': '工作區目錄最大讀取深度',
+      'settings.workspaceReadDepthDescription':
+        '過深目錄層級會影響系統效能，也可能因系統特性限制而無法開啟目錄；建議透過調整工作區方式存取更深層目錄。',
       'settings.imageDirectory': '圖片目錄',
       'settings.imageMaxWidth': '圖片最大寬度',
       'settings.imageQuality': '圖片品質',
@@ -619,6 +640,12 @@
       'message.saveFailed': '儲存失敗：{error}',
       'message.savePermissionDenied': '儲存失敗，請檢查檔案及所在目錄是否有寫入權限。',
       'message.settingsSaved': '設定已儲存',
+      'workspace.depthLimited': '已達到工作區目錄最大讀取深度。',
+      'workspace.linkTitle': '符號連結目錄',
+      'workspace.linkOutsideWorkspace': '該連結指向工作區外。',
+      'workspace.linkCycle': '該連結會形成目錄循環。',
+      'workspace.watchResourceLimit':
+        '工作區監聽因系統資源限制而不可用。您仍可手動瀏覽檔案；請降低目錄讀取深度或選擇較小範圍的工作區。',
       'recovery.restored': '已恢復上次異常結束時未儲存的修改。',
       'recovery.restoredDetail': '您可以儲存此版本，或選擇其他位置儲存。',
       'recovery.changed': '已恢復上次異常結束時未儲存的修改，但原始檔案在此後已被修改。',

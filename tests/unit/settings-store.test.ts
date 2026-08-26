@@ -70,6 +70,17 @@ describe('SettingsStore', () => {
     expect(fs.existsSync(path.join(configDir, 'settings.json'))).toBe(false);
   });
 
+  it('persists workspace directory read depth within its supported bounds', () => {
+    const store = new SettingsStore(configDir);
+    store.update({ workspaceReadDepth: 12 });
+
+    expect(new SettingsStore(configDir).get('workspaceReadDepth')).toBe(12);
+
+    store.update({ workspaceReadDepth: 100 });
+    expect(new SettingsStore(configDir).get('workspaceReadDepth')).toBe(12);
+    expect(fs.readFileSync(store.getPath(), 'utf8')).toContain('workspaceReadDepth = 12');
+  });
+
   it('updates multiple values in a single settings snapshot', () => {
     const store = new SettingsStore(configDir);
     const settings = store.update({

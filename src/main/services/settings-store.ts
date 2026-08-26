@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as TOML from '@iarna/toml';
-import { AppSettings, DEFAULT_SETTINGS } from './app-state';
+import { AppSettings, DEFAULT_SETTINGS, normalizeWorkspaceReadDepth } from './app-state';
 
 type SettingsDocument = {
   application: Pick<AppSettings, 'restoreTabs' | 'restoreWorkspace' | 'devToolsEnabled' | 'locale'>;
@@ -81,6 +81,7 @@ type SettingsDocument = {
     | 'pasteImagesDir'
     | 'imageMaxWidth'
     | 'imageQuality'
+    | 'workspaceReadDepth'
     | 'defaultOpenPath'
     | 'recentPaths'
     | 'recentFiles'
@@ -123,7 +124,11 @@ export class SettingsStore {
       if (fs.existsSync(this.configPath)) {
         const raw = fs.readFileSync(this.configPath, 'utf-8');
         const parsed = TOML.parse(raw) as unknown as Partial<SettingsDocument>;
-        return this.deepMerge(DEFAULT_SETTINGS, this.fromDocument(parsed));
+        const settings = this.deepMerge(DEFAULT_SETTINGS, this.fromDocument(parsed));
+        return {
+          ...settings,
+          workspaceReadDepth: normalizeWorkspaceReadDepth(settings.workspaceReadDepth),
+        };
       }
     } catch {
       console.error('Failed to load settings, using defaults');
@@ -174,7 +179,11 @@ export class SettingsStore {
   }
 
   update(settings: Partial<AppSettings>): AppSettings {
-    this.data = this.deepMerge(this.data, settings);
+    const updated = this.deepMerge(this.data, settings);
+    this.data = {
+      ...updated,
+      workspaceReadDepth: normalizeWorkspaceReadDepth(updated.workspaceReadDepth),
+    };
     this.save();
     return this.getAll();
   }
@@ -252,6 +261,7 @@ export class SettingsStore {
         'pasteImagesDir',
         'imageMaxWidth',
         'imageQuality',
+        'workspaceReadDepth',
         'defaultOpenPath',
         'recentPaths',
         'recentFiles',

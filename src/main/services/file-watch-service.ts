@@ -1,14 +1,21 @@
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { watch, ChokidarOptions, FSWatcher } from 'chokidar';
+import {
+  normalizeWorkspaceReadDepth,
+  WORKSPACE_READ_DEPTH_MAX,
+  WORKSPACE_READ_DEPTH_MIN,
+} from './app-state';
+
+export { normalizeWorkspaceReadDepth, WORKSPACE_READ_DEPTH_MAX, WORKSPACE_READ_DEPTH_MIN };
 
 export type FileChangeEvent = {
-  event: 'add' | 'change' | 'unlink' | 'unreadable';
+  event: 'add' | 'change' | 'unlink' | 'unreadable' | 'watch-error';
   path: string;
   scope: 'workspace' | 'document';
   content?: string;
   encoding?: string;
-  error?: 'permission-denied' | 'read-failed';
+  error?: 'permission-denied' | 'read-failed' | 'resource-limit';
 };
 
 type WatcherFactory = (paths: string | string[], options: ChokidarOptions) => FSWatcher;
@@ -30,7 +37,9 @@ const LINUX_RENAME_REBIND_DELAY = 150;
 
 export class FileWatchService {
   private workspacePath = '';
+  private workspaceDepth = WORKSPACE_READ_DEPTH_MIN;
   private workspaceWatcher: FSWatcher | null = null;
+  private workspaceWatchErrorReported = false;
   private readonly documents = new Map<string, DocumentBinding>();
   private readonly ownDocumentWrites = new Map<string, number>();
 
@@ -40,22 +49,41 @@ export class FileWatchService {
     private readonly createWatcher: WatcherFactory = watch,
   ) {}
 
-  async setWorkspace(workspacePath?: string): Promise<void> {
+  async setWorkspace(workspacePath?: string, requestedDepth?: number): Promise<void> {
     const nextWorkspace = workspacePath ? this.normalizePath(workspacePath) : '';
-    if (nextWorkspace === this.workspacePath) return;
+    const nextDepth = normalizeWorkspaceReadDepth(requestedDepth);
+    if (
+      nextWorkspace === this.workspacePath &&
+      nextDepth === this.workspaceDepth &&
+      this.workspaceWatcher
+    )
+      return;
 
     const previousWatcher = this.workspaceWatcher;
     this.workspaceWatcher = null;
     await previousWatcher?.close();
     this.workspacePath = nextWorkspace;
+    this.workspaceDepth = nextDepth;
+    this.workspaceWatchErrorReported = false;
 
     if (nextWorkspace) {
-      const watcher = this.createWatcher(nextWorkspace, { ignoreInitial: true, depth: 20 });
+      let watcher: FSWatcher;
+      try {
+        watcher = this.createWatcher(nextWorkspace, {
+          ignoreInitial: true,
+          depth: nextDepth,
+          followSymlinks: false,
+        });
+      } catch {
+        this.reportWorkspaceWatchError(nextWorkspace);
+        return;
+      }
       this.workspaceWatcher = watcher;
       watcher.on('all', (eventName, changedPath) => {
         if (!this.isCurrentWorkspaceWatcher(watcher)) return;
         this.handleWorkspaceEvent(eventName, changedPath);
       });
+      watcher.on('error', () => this.reportWorkspaceWatchError(nextWorkspace, watcher));
     }
   }
 
@@ -115,6 +143,7 @@ export class FileWatchService {
     const workspaceWatcher = this.workspaceWatcher;
     this.workspaceWatcher = null;
     this.workspacePath = '';
+    this.workspaceWatchErrorReported = false;
     await workspaceWatcher?.close();
     for (const binding of this.documents.values()) {
       binding.generation++;
@@ -148,6 +177,22 @@ export class FileWatchService {
     if (event === 'change' || path.basename(changedPath).startsWith('.')) return;
     if (!this.isOwnDocumentWriteEvent(identity))
       this.send({ event, path: path.resolve(changedPath), scope: 'workspace' });
+  }
+
+  private reportWorkspaceWatchError(workspacePath: string, watcher?: FSWatcher): void {
+    if (watcher && !this.isCurrentWorkspaceWatcher(watcher)) return;
+    if (workspacePath !== this.workspacePath || this.workspaceWatchErrorReported) return;
+    this.workspaceWatchErrorReported = true;
+    if (watcher) {
+      this.workspaceWatcher = null;
+      void watcher.close().catch(() => undefined);
+    }
+    this.send({
+      event: 'watch-error',
+      path: workspacePath,
+      scope: 'workspace',
+      error: 'resource-limit',
+    });
   }
 
   private scheduleDocumentRead(

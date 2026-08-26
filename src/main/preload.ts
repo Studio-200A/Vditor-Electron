@@ -21,7 +21,8 @@ contextBridge.exposeInMainWorld('fileAPI', {
   writeBinaryFile: (filePath: string, bytes: Uint8Array) =>
     ipcRenderer.invoke('file:writeBinary', filePath, bytes),
   exists: (filePath: string) => ipcRenderer.invoke('file:exists', filePath),
-  listDir: (dirPath: string) => ipcRenderer.invoke('file:listDir', dirPath),
+  listDir: (dirPath: string, workspacePath?: string) =>
+    ipcRenderer.invoke('file:listDir', dirPath, workspacePath),
   createItem: (parent: string, name: string, type: 'file' | 'directory') =>
     ipcRenderer.invoke('file:create', parent, name, type),
   renameItem: (oldPath: string, newName: string) =>
@@ -32,17 +33,18 @@ contextBridge.exposeInMainWorld('fileAPI', {
   relative: (from: string, to: string) => ipcRenderer.invoke('file:relative', from, to),
   resolveMarkdownLink: (sourceFile: string, href: string) =>
     ipcRenderer.invoke('file:resolveMarkdownLink', sourceFile, href),
-  setWorkspaceWatch: (rootPath?: string) => ipcRenderer.invoke('file:setWorkspaceWatch', rootPath),
+  setWorkspaceWatch: (rootPath?: string, depth?: number) =>
+    ipcRenderer.invoke('file:setWorkspaceWatch', rootPath, depth),
   watchDocument: (filePath: string) => ipcRenderer.invoke('file:watchDocument', filePath),
   unwatchDocument: (filePath: string) => ipcRenderer.invoke('file:unwatchDocument', filePath),
   onChanged: (
     callback: (event: {
-      event: 'add' | 'change' | 'unlink' | 'unreadable';
+      event: 'add' | 'change' | 'unlink' | 'unreadable' | 'watch-error';
       path: string;
       scope: 'workspace' | 'document';
       content?: string;
       encoding?: string;
-      error?: 'permission-denied' | 'read-failed';
+      error?: 'permission-denied' | 'read-failed' | 'resource-limit';
     }) => void,
   ) => on('file:changed', callback),
   getDroppedPath: (file: File) => webUtils.getPathForFile(file),

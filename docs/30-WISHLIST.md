@@ -19,6 +19,14 @@
 - renderer 需要差异时消费主修饰键、窗口控制或标题栏安全区等具体能力，不把 `process.platform` 判断扩散到功能控制器。
 - 涉及路径 URL、本地资源、递归遍历或文件改名时，计划必须覆盖 Windows 盘符、大小写不敏感卷、符号链接、保留文件名和文件占用等语义。
 
+## 平台快捷方式文件支持
+
+状态：暂缓，不纳入 0.2.0。
+
+Windows `.lnk` 与 macOS Finder alias 是平台快捷方式文件格式，而不是可由 Node `realpath` 统一处理的目录链接。当前目录树仅支持真实路径可解析的目录链接（symlink 与 Windows junction）；`.lnk` 和 Finder alias 继续按普通文件处理。
+
+未来若支持，必须单独定义：平台专用目标解析与失败行为、目标在工作区内外的授权判断、循环与不存在目标处理、链接图标/tooltip/无障碍文案，以及 Windows 与 macOS 实机验证。不得把快捷方式解析结果直接当作已授权的本地资源路径。
+
 ## Minimap
 
 - 实现类似 VS Code Monaco Editor 的 minimap 小地图导航功能。

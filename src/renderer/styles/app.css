@@ -502,6 +502,53 @@ button.primary.danger {
 .tree-row.expanded + .tree-children {
   display: block;
 }
+.tree-children.depth-limit {
+  display: block;
+}
+.tree-row.depth-limited {
+  color: var(--muted);
+}
+.tree-row.depth-limited .chevron {
+  font-size: 16px;
+}
+.tree-row.tree-link .tree-name {
+  font-style: italic;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.file-icon {
+  position: relative;
+}
+.tree-link-badge {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--panel);
+  border-radius: 50%;
+  background: var(--panel-2);
+}
+.tree-link-badge::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-color: var(--accent);
+  -webkit-mask: url('../assets/symlink.svg') center / 100% 100% no-repeat;
+  mask: url('../assets/symlink.svg') center / 100% 100% no-repeat;
+  content: '';
+}
+.tree-row.tree-link-outside,
+.tree-row.tree-link-cycle {
+  color: var(--muted);
+}
+.tree-depth-notice {
+  padding: 2px 8px 6px 26px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  user-select: none;
+}
 .empty-action {
   display: block;
   margin: 40px auto;

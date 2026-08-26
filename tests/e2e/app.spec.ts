@@ -2261,6 +2261,88 @@ test('shows the move-to-trash confirmation as a draggable in-window dialog', asy
   }
 });
 
+test('limits workspace tree reads to the selected directory depth and persists the setting', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-workspace-depth-'));
+  const outsideWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-workspace-outside-'));
+  const directories: string[] = [];
+  let currentDirectory = workspace;
+  for (let depth = 1; depth <= 8; depth++) {
+    currentDirectory = path.join(currentDirectory, `level-${depth}`);
+    directories.push(currentDirectory);
+    fs.mkdirSync(currentDirectory);
+  }
+  fs.writeFileSync(path.join(directories[0], 'note-1.md'), '# Level 1');
+  fs.writeFileSync(path.join(currentDirectory, 'deep.md'), '# Deep');
+  const insideLink = path.join(workspace, 'inside-link');
+  const outsideLink = path.join(workspace, 'outside-link');
+  const cycleLink = path.join(workspace, 'cycle-link');
+  fs.symlinkSync(directories[0], insideLink, 'dir');
+  fs.symlinkSync(outsideWorkspace, outsideLink, 'dir');
+  fs.symlinkSync(workspace, cycleLink, 'dir');
+  const running = await launchApp({
+    restoreWorkspace: true,
+    sidebarVisible: true,
+    workspaceReadDepth: 7,
+    session: { workspacePath: workspace, activeFilePath: null, openFiles: [] },
+  });
+  try {
+    const { page } = running;
+    const internalLink = page.locator(`#fileTree .tree-dir[data-path="${insideLink}"]`);
+    await expect(internalLink).toHaveClass(/tree-link/);
+    await expect(internalLink.locator('.tree-name')).toHaveCSS('font-style', 'italic');
+    await expect(internalLink.locator('.tree-name')).toHaveCSS('text-decoration-line', 'underline');
+    await expect(internalLink.locator('.tree-link-badge')).toBeVisible();
+    await internalLink.click();
+    await expect(
+      page.locator(`#fileTree .tree-dir[data-path="${insideLink}"] + .tree-children .tree-file`),
+    ).toContainText('note-1.md');
+    await expect(page.locator(`#fileTree .tree-dir[data-path="${outsideLink}"]`)).toHaveClass(
+      /tree-link-outside/,
+    );
+    await expect(page.locator(`#fileTree .tree-dir[data-path="${cycleLink}"]`)).toHaveClass(
+      /tree-link-cycle/,
+    );
+    await expect(
+      page.locator('#fileTree .tree-depth-notice').filter({ hasText: 'outside the workspace' }),
+    ).toBeVisible();
+    for (const directory of directories.slice(0, 6)) {
+      await page.locator(`#fileTree .tree-dir[data-path="${directory}"]`).click();
+    }
+    const limitedDirectory = page.locator(`#fileTree .tree-dir[data-path="${directories[6]}"]`);
+    await expect(limitedDirectory).toHaveClass(/depth-limited/);
+    const depthNotice = page
+      .locator('#fileTree .tree-depth-notice')
+      .filter({ hasText: 'Maximum workspace directory depth reached.' });
+    await expect(depthNotice).toBeVisible();
+    await expect(page.locator('#fileTree .tree-file').filter({ hasText: 'deep.md' })).toHaveCount(
+      0,
+    );
+
+    await page.locator('#statusSettings').click();
+    await page.locator('[name="locale"]').selectOption('zh_Hans');
+    await expect(
+      page
+        .locator('#fileTree .tree-depth-notice')
+        .filter({ hasText: '已达到工作区目录最大读取深度。' }),
+    ).toBeVisible();
+    await page.locator('.settings-nav [data-panel="files"]').click();
+    const depthInput = page.locator('[name="workspaceReadDepth"]');
+    await depthInput.fill('12');
+    await expect(page.locator('#workspaceReadDepthValue')).toHaveText('12');
+    await expect.poll(() => readSetting(running.testRoot, 'files', 'workspaceReadDepth')).toBe(12);
+    await page.locator('#saveSettings').click();
+    await expect(page.locator('#settingsModal')).toBeHidden();
+    for (const directory of directories.slice(6)) {
+      await page.locator(`#fileTree .tree-dir[data-path="${directory}"]`).click();
+    }
+    await expect(page.locator('#fileTree .tree-file').filter({ hasText: 'deep.md' })).toBeVisible();
+  } finally {
+    await closeApp(running);
+    fs.rmSync(workspace, { recursive: true, force: true });
+    fs.rmSync(outsideWorkspace, { recursive: true, force: true });
+  }
+});
+
 test('restores directory expansion separately for each workspace after refreshes and switches', async () => {
   const workspaceA = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-workspace-a-'));
   const workspaceB = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-workspace-b-'));
