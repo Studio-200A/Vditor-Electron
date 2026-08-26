@@ -44,6 +44,7 @@ describe('SettingsStore', () => {
       TOML.stringify({
         theme: 'dark',
         application: { sessionRestore: false, unknownSetting: true },
+        appearance: { lastLightTheme: 'claude-light', lastDarkTheme: 'claude-dark' },
         unknownSection: { theme: 'dark' },
       }),
     );
@@ -51,7 +52,11 @@ describe('SettingsStore', () => {
     const settings = new SettingsStore(configDir).getAll() as Record<string, unknown>;
     expect(settings).not.toHaveProperty('sessionRestore');
     expect(settings).not.toHaveProperty('unknownSetting');
+    expect(settings).not.toHaveProperty('lastLightTheme');
+    expect(settings).not.toHaveProperty('lastDarkTheme');
     expect(settings.theme).toBe(DEFAULT_SETTINGS.theme);
+    expect(settings.lightTheme).toBe(DEFAULT_SETTINGS.lightTheme);
+    expect(settings.darkTheme).toBe(DEFAULT_SETTINGS.darkTheme);
   });
 
   it('persists changed values', () => {
@@ -85,7 +90,7 @@ describe('SettingsStore', () => {
     const store = new SettingsStore(configDir);
     const settings = store.update({
       theme: 'monokai-pro-dark',
-      lastDarkTheme: 'monokai-pro-dark',
+      darkTheme: 'monokai-pro-dark',
       devToolsEnabled: true,
       lightCodeTheme: 'atom-one-light',
       darkCodeTheme: 'monokai-sublime',
@@ -97,7 +102,7 @@ describe('SettingsStore', () => {
     });
 
     expect(settings.theme).toBe('monokai-pro-dark');
-    expect(settings.lastDarkTheme).toBe('monokai-pro-dark');
+    expect(settings.darkTheme).toBe('monokai-pro-dark');
     expect(settings.devToolsEnabled).toBe(true);
     expect(settings.lightCodeTheme).toBe('atom-one-light');
     expect(settings.darkCodeTheme).toBe('monokai-sublime');
@@ -107,6 +112,22 @@ describe('SettingsStore', () => {
       { workspacePath: '/notes', expandedPaths: ['/notes/docs', '/notes/assets'] },
     ]);
     expect(new SettingsStore(configDir).getAll()).toEqual(settings);
+  });
+
+  it('persists separately selected light and dark theme preferences', () => {
+    const store = new SettingsStore(configDir);
+    const settings = store.update({
+      theme: 'claude-dark',
+      lightTheme: 'claude-light',
+      darkTheme: 'claude-dark',
+    });
+
+    expect(settings).toMatchObject({
+      theme: 'claude-dark',
+      lightTheme: 'claude-light',
+      darkTheme: 'claude-dark',
+    });
+    expect(new SettingsStore(configDir).getAll()).toMatchObject(settings);
   });
 
   it('persists the settings dialog size in the window section', () => {

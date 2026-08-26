@@ -10,7 +10,8 @@ type SettingsDocument = {
     AppSettings,
     | 'systemTheme'
     | 'theme'
-    | 'lastDarkTheme'
+    | 'lightTheme'
+    | 'darkTheme'
     | 'contentTheme'
     | 'codeTheme'
     | 'lightCodeTheme'
@@ -194,7 +195,8 @@ export class SettingsStore {
       appearance: pick(settings, [
         'systemTheme',
         'theme',
-        'lastDarkTheme',
+        'lightTheme',
+        'darkTheme',
         'contentTheme',
         'codeTheme',
         'lightCodeTheme',

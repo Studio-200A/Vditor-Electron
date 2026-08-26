@@ -484,10 +484,15 @@
                 <span data-i18n="settings.followSystemTheme">Follow system theme</span></label
               >
               <fieldset class="theme-setting">
-                <legend data-i18n="settings.appTheme">App theme</legend>
-                <div class="theme-picker">
+                <legend data-i18n="settings.lightAppTheme">Light app theme</legend>
+                <div class="theme-picker theme-picker-light">
                   <label class="theme-option theme-option-light">
-                    <input class="theme-option-input" name="theme" type="radio" value="classic" />
+                    <input
+                      class="theme-option-input"
+                      name="lightTheme"
+                      type="radio"
+                      value="classic"
+                    />
                     <span class="theme-preview">
                       <svg viewBox="0 0 120 72" aria-hidden="true">
                         <rect
@@ -510,8 +515,42 @@
                     </span>
                     <span data-i18n="theme.light">Light</span>
                   </label>
+                  <label class="theme-option theme-option-claude-light">
+                    <input
+                      class="theme-option-input"
+                      name="lightTheme"
+                      type="radio"
+                      value="claude-light"
+                    />
+                    <span class="theme-preview">
+                      <svg viewBox="0 0 120 72" aria-hidden="true">
+                        <rect
+                          class="theme-preview-window"
+                          x="1"
+                          y="1"
+                          width="118"
+                          height="70"
+                          rx="6"
+                        />
+                        <path
+                          class="theme-preview-chrome"
+                          d="M1 7a6 6 0 0 1 6-6h106a6 6 0 0 1 6 6v12H1z"
+                        />
+                        <rect class="theme-preview-sidebar" x="1" y="19" width="29" height="52" />
+                        <path class="theme-preview-muted" d="M8 28h14M8 36h10M8 44h14" />
+                        <path class="theme-preview-heading" d="M39 29h42M39 39h64" />
+                        <path class="theme-preview-text" d="M39 49h53M39 57h42" />
+                      </svg>
+                    </span>
+                    <span data-i18n="theme.claudeLight">Claude Light</span>
+                  </label>
+                </div>
+              </fieldset>
+              <fieldset class="theme-setting">
+                <legend data-i18n="settings.darkAppTheme">Dark app theme</legend>
+                <div class="theme-picker theme-picker-dark">
                   <label class="theme-option theme-option-dark">
-                    <input class="theme-option-input" name="theme" type="radio" value="dark" />
+                    <input class="theme-option-input" name="darkTheme" type="radio" value="dark" />
                     <span class="theme-preview">
                       <svg viewBox="0 0 120 72" aria-hidden="true">
                         <rect
@@ -534,10 +573,39 @@
                     </span>
                     <span data-i18n="theme.dark">Dark</span>
                   </label>
+                  <label class="theme-option theme-option-claude-dark">
+                    <input
+                      class="theme-option-input"
+                      name="darkTheme"
+                      type="radio"
+                      value="claude-dark"
+                    />
+                    <span class="theme-preview">
+                      <svg viewBox="0 0 120 72" aria-hidden="true">
+                        <rect
+                          class="theme-preview-window"
+                          x="1"
+                          y="1"
+                          width="118"
+                          height="70"
+                          rx="6"
+                        />
+                        <path
+                          class="theme-preview-chrome"
+                          d="M1 7a6 6 0 0 1 6-6h106a6 6 0 0 1 6 6v12H1z"
+                        />
+                        <rect class="theme-preview-sidebar" x="1" y="19" width="29" height="52" />
+                        <path class="theme-preview-muted" d="M8 28h14M8 36h10M8 44h14" />
+                        <path class="theme-preview-heading" d="M39 29h42M39 39h64" />
+                        <path class="theme-preview-text" d="M39 49h53M39 57h42" />
+                      </svg>
+                    </span>
+                    <span data-i18n="theme.claudeDark">Claude Dark</span>
+                  </label>
                   <label class="theme-option theme-option-monokai">
                     <input
                       class="theme-option-input"
-                      name="theme"
+                      name="darkTheme"
                       type="radio"
                       value="monokai-pro-dark"
                     />

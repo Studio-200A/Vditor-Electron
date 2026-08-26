@@ -1,8 +1,8 @@
 # Vditor-Electron Code Structure World Map
 
 - **生成时间：** 2026-08-26
-- **基于的工作区：** `dev-0.2.0`，`7abe1e7` 加上当前工作区中的批次 5/5.1 实现（提交状态以 `git status --short` 为准）
-- **文档版本：** v1.7
+- **基于的工作区：** `dev-0.2.0`，`548921f` 加上当前工作区中的批次 6、6.5 实现（提交状态以 `git status --short` 为准）
+- **文档版本：** v1.8
 - **对应 package.json 版本号：** 0.1.5
 
 ---
@@ -15,7 +15,7 @@
 
 **核心功能：** 多标签页 Markdown 编辑、三种编辑模式（IR/SV/WYSIWYG）、分栏预览、文件树侧栏、文档大纲、查找替换、图片插入与压缩、HTML/PDF 导出、TOML 配置持久化、三语国际化（英/简/繁）。
 
-**开发阶段：** 0.2.0 阶段开发中。保存、恢复、工作区内外 watcher、外部修改冲突、外部删除/重新出现/不可读状态及工作区读取/监听深度边界已有实现和测试；目录级路径一致性、安全边界和跨平台实体机验证仍在后续批次。
+**开发阶段：** 0.2.0 阶段开发中。保存、恢复、工作区内外 watcher、外部修改冲突、外部删除/重新出现/不可读状态、工作区读取/监听深度边界和目录级路径一致性已有实现和测试；批次 7 尚未启动，安全边界和跨平台实体机验证仍在后续批次。主题架构和五套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
 
 ---
 
@@ -509,10 +509,12 @@ function mountEditorToolbar(tab) {
 
 ### 7.6 主题适配
 
-三套壳层主题（`app.css`）：
+五套壳层主题（`app.css`）：
 
 - `classic`（浅色）
 - `dark`（深色）
+- `claude-light`（浅色 Anthropic 配色）
+- `claude-dark`（深色 Anthropic 配色）
 - `monokai-pro-dark`（深色调 + Monokai 配色方案）
 
 主题切换时：
@@ -520,6 +522,8 @@ function mountEditorToolbar(tab) {
 1. 设置 `document.documentElement.dataset.theme`
 2. 调用 `tab.vditor.setTheme(editorTheme, contentTheme, codeTheme, cssPath)` 更新 Vditor 实例
 3. 内容主题联动：若 `contentTheme` 为 `light/dark` 则根据壳层主题自动切换
+
+应用主题只负责应用壳层颜色。字体设置、Vditor 内容主题和 Vditor 原生代码主题保持独立；SV 源码区的编辑表现不由应用主题重新实现。
 
 ### 7.7 事件监听清单
 
@@ -942,7 +946,8 @@ function rememberRecent(filePath) {
 
 - `locale`（语言：`system` / `en_US` / `zh_Hans` / `zh_Hant`）
 - `systemTheme`（跟随系统主题，checkbox）
-- `theme`（壳层主题：`classic` / `dark` / `monokai-pro-dark`，三选一 radio 带预览图）
+- `lightTheme`（浅色壳层主题：`classic` / `claude-light`，带预览图的独立 radio 组）
+- `darkTheme`（深色壳层主题：`dark` / `claude-dark` / `monokai-pro-dark`，带预览图的独立 radio 组）
 - `contentTheme`（内容主题：`light` / `ant-design` / `wechat` / `dark`）
 - `codeTheme`（代码主题：亮/暗色调分别过滤，根据当前壳层主题仅显示对应色调的选项）
 - `scrollbarMode`（滚动条可见性：`always` / `auto` / `hidden`）
@@ -1069,6 +1074,8 @@ function rememberRecent(filePath) {
   /* 颜色 */
   --bg: #f7f7f8;
   --panel: #fff;
+  --sidebar-surface: #fff;
+  --editor-surface: #f7f7f8;
   --panel-2: #f0f1f3;
   --hover: #e7e9ec;
   --text: #25272b;
@@ -1084,7 +1091,9 @@ function rememberRecent(filePath) {
 **CSS 变量覆盖方案：** 通过 `:root[data-theme='...']` 选择器切换整组 CSS 变量：
 
 ```css
-:root[data-theme='dark']       { --bg: #17181a; ... color-scheme: dark; }
+:root[data-theme='dark']       { --bg: #17181a; --sidebar-surface: #202124; --editor-surface: #18191c; ... color-scheme: dark; }
+:root[data-theme='claude-light'] { --sidebar-surface: #f5f4ed; --editor-surface: #faf9f5; --accent: #d97757; ... }
+:root[data-theme='claude-dark'] { --sidebar-surface: #30302e; --editor-surface: #30302e; --accent: #d97757; ... color-scheme: dark; }
 :root[data-theme='monokai-pro-dark'] { --bg: #2d2a2e; ... color-scheme: dark; }
 ```
 
@@ -1093,8 +1102,9 @@ function rememberRecent(filePath) {
 切换路径：
 
 ```
-用户选择主题
-  → saveSettings({ theme })
+用户分别选择 lightTheme / darkTheme
+  → saveSettings({ lightTheme, darkTheme })
+  → 状态栏开关或系统主题解析其中一项为当前 theme
   → applyTheme(theme)
     → document.documentElement.dataset.theme = theme
     → tab.vditor.setTheme(editorTheme, contentTheme, codeTheme, cssPath)
@@ -1104,9 +1114,11 @@ function rememberRecent(filePath) {
 ### 11.4 暗色模式实现
 
 - `systemTheme: true` 时跟随系统主题（`nativeTheme.on('updated')`）
-- 深色偏好存储在 `settings.lastDarkTheme`（`'dark'` 或 `'monokai-pro-dark'`）
+- 亮色与深色偏好分别存储在 `settings.lightTheme` 和 `settings.darkTheme`；状态栏开关在两项用户选择之间切换
+- 亮色组为 `classic` / `claude-light`，深色组为 `dark` / `claude-dark` / `monokai-pro-dark`；未发布配置迁移不兼容 `lastLightTheme` / `lastDarkTheme`
 - 内容主题与壳层主题联动：当 `contentTheme` 为 `light/dark` 时，随壳层深浅自动切换
 - 代码主题独立管理：`lightCodeTheme` / `darkCodeTheme`，工具栏下拉过滤当前色调
+- `--sidebar-surface` 与 `--editor-surface` 分别表达侧栏和编辑区表面；Dark 主题两者 RGB 各通道相差 8，其他主题按视觉层级独立定义
 
 ### 11.5 响应式 / 平台差异
 
@@ -1573,7 +1585,7 @@ flowchart TB
 - 亮/暗内容主题与壳层主题联动（`contentTheme: 'light'` → 深色壳层自动切换为 `'dark'`）
 - 深色壳层 + `ant-design` / `wechat` 内容主题下内联代码 / 表格 / 标题颜色可读
 - Monokai Pro Dark H1–H6 调色板（粉/黄/绿/青/紫/橙）在三模式下均正确
-- `lastDarkTheme` 偏好持久化（`dark` 与 `monokai-pro-dark` 切换）
+- `lightTheme` / `darkTheme` 偏好持久化，状态栏开关恢复用户分别选择的亮色与深色主题
 - 编辑 / 焦点 / 失焦状态下背景颜色稳定
 - 文档级持久 banner 固定为图文区在上、动作区在下的两层布局；恢复和外部冲突共用 warning SVG，文案与按钮使用 15px
 - 外部冲突危险动作使用主题可读的红色强调样式；覆盖确认在亮色、暗色和 Monokai 下保持红底白字

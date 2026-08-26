@@ -194,10 +194,12 @@ function revealMainWindow(): void {
 function initialWindowBackground(settings: AppSettings): string {
   const theme = settings.systemTheme
     ? nativeTheme.shouldUseDarkColors
-      ? settings.lastDarkTheme
-      : 'classic'
+      ? settings.darkTheme
+      : settings.lightTheme
     : settings.theme;
   if (theme === 'monokai-pro-dark') return '#2d2a2e';
+  if (theme === 'claude-dark') return '#141413';
+  if (theme === 'claude-light') return '#faf9f5';
   return theme === 'dark' ? '#17181a' : '#f7f7f8';
 }
 

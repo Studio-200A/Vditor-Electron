@@ -621,15 +621,25 @@
   }
 
   function isDarkTheme(theme) {
-    return theme === 'dark' || theme === 'monokai-pro-dark';
+    return theme === 'dark' || theme === 'claude-dark' || theme === 'monokai-pro-dark';
   }
 
   function darkThemePreference() {
-    return state.settings.lastDarkTheme === 'monokai-pro-dark' ? 'monokai-pro-dark' : 'dark';
+    return ['dark', 'claude-dark', 'monokai-pro-dark'].includes(state.settings.darkTheme)
+      ? state.settings.darkTheme
+      : 'dark';
+  }
+
+  function lightThemePreference() {
+    return state.settings.lightTheme === 'claude-light' ? 'claude-light' : 'classic';
   }
 
   function mapSystemTheme(theme) {
-    return theme === 'dark' ? darkThemePreference() : 'classic';
+    return theme === 'dark' ? darkThemePreference() : lightThemePreference();
+  }
+
+  function themeForStatusToggle(dark) {
+    return dark ? darkThemePreference() : lightThemePreference();
   }
 
   function preferredCodeTheme(dark) {
@@ -3340,6 +3350,7 @@
     clearTimeout(settingsSaveTimer);
     const form = $('#settingsForm');
     const patch = {};
+    const previousSettings = state.settings;
     const openModes = new Map(
       state.tabs.map((tab) => [
         tab.id,
@@ -3360,7 +3371,8 @@
             ? Number(input.value)
             : input.value;
     });
-    patch.lastDarkTheme = isDarkTheme(patch.theme) ? patch.theme : darkThemePreference();
+    const appliedTheme = document.documentElement.dataset.theme || state.settings.theme;
+    patch.theme = isDarkTheme(appliedTheme) ? patch.darkTheme : patch.lightTheme;
     const dark = patch.systemTheme
       ? isDarkTheme(document.documentElement.dataset.theme)
       : isDarkTheme(patch.theme);
@@ -3372,6 +3384,32 @@
     const previousWorkspaceReadDepth = state.settings.workspaceReadDepth;
     const previousLocale = state.locale;
     state.settings = await window.appAPI.saveSettings(patch);
+    const presentationOnlySettings = new Set([
+      'theme',
+      'systemTheme',
+      'lightTheme',
+      'darkTheme',
+      'contentTheme',
+      'codeTheme',
+      'lightCodeTheme',
+      'darkCodeTheme',
+      'uiZoom',
+      'editorZoom',
+      'previewZoom',
+      'scrollbarMode',
+    ]);
+    const themeChanged =
+      patch.theme !== previousSettings.theme ||
+      patch.systemTheme !== previousSettings.systemTheme ||
+      patch.lightTheme !== previousSettings.lightTheme ||
+      patch.darkTheme !== previousSettings.darkTheme;
+    const shouldRebuildEditors =
+      !themeChanged &&
+      Object.keys(patch).some(
+        (key) =>
+          !presentationOnlySettings.has(key) &&
+          JSON.stringify(previousSettings[key]) !== JSON.stringify(state.settings[key]),
+      );
     if (closeAfterSave) await closeSettings({ applyPresentation: false });
     applyLocale(state.settings.locale);
     if (state.workspace && previousWorkspaceReadDepth !== state.settings.workspaceReadDepth)
@@ -3384,10 +3422,12 @@
       await refreshTree();
     applyPresentationSettings();
     await applyTheme(await resolveTheme());
-    state.tabs.forEach((tab) => {
-      tab.mode = openModes.get(tab.id) || tab.mode;
-      rebuildEditor(tab);
-    });
+    if (shouldRebuildEditors) {
+      state.tabs.forEach((tab) => {
+        tab.mode = openModes.get(tab.id) || tab.mode;
+        rebuildEditor(tab);
+      });
+    }
     if (!state.tabs.length) {
       destroyToolbarPreview();
       createToolbarPreview();
@@ -3399,7 +3439,8 @@
     const panel = $('[data-settings-panel].active');
     if (!panel || !state.defaultSettings) return;
     if (panel.dataset.settingsPanel === 'appearance') {
-      state.settings.lastDarkTheme = state.defaultSettings.lastDarkTheme;
+      state.settings.lightTheme = state.defaultSettings.lightTheme;
+      state.settings.darkTheme = state.defaultSettings.darkTheme;
       state.settings.lightCodeTheme = state.defaultSettings.lightCodeTheme;
       state.settings.darkCodeTheme = state.defaultSettings.darkCodeTheme;
     }
@@ -3413,8 +3454,8 @@
       $('#editorTextWidthValue').textContent = `${$('#editorTextWidth').value}%`;
     if (panel.dataset.settingsPanel === 'files') syncWorkspaceReadDepthValue();
     if (panel.dataset.settingsPanel === 'appearance') {
-      const theme = panel.querySelector('[name="theme"]:checked')?.value;
-      syncCodeThemeSelect(isDarkTheme(theme), preferredCodeTheme(isDarkTheme(theme)));
+      const appliedTheme = document.documentElement.dataset.theme || state.settings.theme;
+      syncCodeThemeSelect(isDarkTheme(appliedTheme), preferredCodeTheme(isDarkTheme(appliedTheme)));
     }
     await saveSettings(false);
   }
@@ -3426,10 +3467,6 @@
       (!input.value || !input.validity.valid)
     )
       return;
-    if (input.name === 'theme' && !$('#settingsForm [name="systemTheme"]').checked) {
-      const dark = isDarkTheme(input.value);
-      syncCodeThemeSelect(dark, preferredCodeTheme(dark));
-    }
     clearTimeout(settingsSaveTimer);
     settingsSaveTimer = setTimeout(
       () => saveSettings(false),
@@ -3754,11 +3791,13 @@
       theme: async () => {
         state.settings.theme = value;
         state.settings.systemTheme = false;
-        if (isDarkTheme(value)) state.settings.lastDarkTheme = value;
+        if (isDarkTheme(value)) state.settings.darkTheme = value;
+        else state.settings.lightTheme = value;
         await window.appAPI.saveSettings({
           theme: value,
           systemTheme: false,
-          ...(isDarkTheme(value) ? { lastDarkTheme: value } : {}),
+          ...(isDarkTheme(value) ? { darkTheme: value } : {}),
+          ...(!isDarkTheme(value) ? { lightTheme: value } : {}),
         });
         await applyTheme(value);
       },
@@ -4137,14 +4176,10 @@
     };
     $('#statusSettings').onclick = openSettings;
     $('#statusThemeToggle').onchange = async (event) => {
-      const theme = event.target.checked ? darkThemePreference() : 'classic';
+      const theme = themeForStatusToggle(event.target.checked);
       state.settings.theme = theme;
       state.settings.systemTheme = false;
-      await window.appAPI.saveSettings({
-        theme,
-        systemTheme: false,
-        ...(isDarkTheme(theme) ? { lastDarkTheme: theme } : {}),
-      });
+      await window.appAPI.saveSettings({ theme, systemTheme: false });
       await applyTheme(theme);
     };
     $('#refreshTree').onclick = refreshTree;

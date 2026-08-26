@@ -743,6 +743,8 @@ test('switches to split view and renders source line numbers', async () => {
   const running = await launchApp({ editMode: 'ir' }, { 'line-numbers.md': markdown });
   try {
     const { page } = running;
+    await expect(page.locator('.document-tab.active > span')).toHaveText('line-numbers.md');
+    await expect(page.locator('.vditor-toolbar')).toHaveCount(1);
     const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
     await modeTrigger.click();
     await page.locator('#vditorToolbarMount button[data-mode="sv"]').click();
@@ -3278,7 +3280,7 @@ for (const appTheme of ['dark', 'monokai-pro-dark'] as const) {
     test(`keeps ${contentTheme} content readable in ${appTheme}`, async () => {
       const running = await launchApp({
         theme: appTheme,
-        lastDarkTheme: appTheme,
+        darkTheme: appTheme,
         contentTheme,
         editMode: 'ir',
       });
@@ -3331,7 +3333,7 @@ for (const appTheme of ['dark', 'monokai-pro-dark'] as const) {
 test('remembers which dark theme the status toggle should restore', async () => {
   const running = await launchApp({
     theme: 'monokai-pro-dark',
-    lastDarkTheme: 'monokai-pro-dark',
+    darkTheme: 'monokai-pro-dark',
     contentTheme: 'dark',
   });
   try {
@@ -3342,7 +3344,7 @@ test('remembers which dark theme the status toggle should restore', async () => 
     await page.locator('#statusThemeToggle + span').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'classic');
     await expect
-      .poll(() => readSetting(testRoot, 'appearance', 'lastDarkTheme'))
+      .poll(() => readSetting(testRoot, 'appearance', 'darkTheme'))
       .toBe('monokai-pro-dark');
 
     await page.locator('#statusThemeToggle + span').click();
@@ -3351,7 +3353,7 @@ test('remembers which dark theme the status toggle should restore', async () => 
 
     await page.locator('#statusSettings').click();
     await page.locator('.theme-option-dark').click();
-    await expect.poll(() => readSetting(testRoot, 'appearance', 'lastDarkTheme')).toBe('dark');
+    await expect.poll(() => readSetting(testRoot, 'appearance', 'darkTheme')).toBe('dark');
     await page.locator('#saveSettings').click();
     await page.locator('#statusThemeToggle + span').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'classic');
@@ -3362,10 +3364,58 @@ test('remembers which dark theme the status toggle should restore', async () => 
   }
 });
 
+test('switches between separately selected application themes without changing editor font settings', async () => {
+  const running = await launchApp({
+    theme: 'claude-light',
+    lightTheme: 'claude-light',
+    darkTheme: 'dark',
+    contentTheme: 'light',
+  });
+  try {
+    const { page, testRoot } = running;
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'claude-light');
+    await expect(page.locator('#app')).toHaveCSS('background-color', 'rgb(250, 249, 245)');
+
+    await createNewTab(page);
+    const editor = page.locator('.editor-host.active .vditor-content');
+    await editor.evaluate((node) => node.setAttribute('data-theme-test-editor', 'true'));
+    await page.locator('#statusSettings').click();
+    await expect(page.locator('[name="lightTheme"][value="claude-light"]')).toBeChecked();
+    await expect(page.locator('[name="darkTheme"][value="dark"]')).toBeChecked();
+    await expect(page.locator('.sidebar')).toHaveCSS('background-color', 'rgb(245, 244, 237)');
+    await expect(page.locator('.settings-content')).toHaveCSS(
+      'background-color',
+      'rgb(250, 249, 245)',
+    );
+    await expect(page.locator('#saveSettings')).toHaveCSS('background-color', 'rgb(217, 119, 87)');
+    await page.locator('.theme-option-monokai').click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'claude-light');
+    await expect(page.locator('[name="darkTheme"][value="monokai-pro-dark"]')).toBeChecked();
+    await expect(
+      page.locator('.editor-host.active .vditor-content[data-theme-test-editor="true"]'),
+    ).toBeVisible();
+    await page.locator('#saveSettings').click();
+
+    await page.locator('#statusThemeToggle + span').click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'monokai-pro-dark');
+    await expect(page.locator('#app')).toHaveCSS('background-color', 'rgb(45, 42, 46)');
+    await expect
+      .poll(() => readSetting(testRoot, 'appearance', 'darkTheme'))
+      .toBe('monokai-pro-dark');
+
+    await page.locator('#statusThemeToggle + span').click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'claude-light');
+    await expect(page.locator('#app')).toHaveCSS('background-color', 'rgb(250, 249, 245)');
+    await expect.poll(() => readSetting(testRoot, 'appearance', 'lightTheme')).toBe('claude-light');
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('colors all six rendered heading levels in Monokai Pro Dark', async () => {
   const running = await launchApp({
     theme: 'monokai-pro-dark',
-    lastDarkTheme: 'monokai-pro-dark',
+    darkTheme: 'monokai-pro-dark',
     editMode: 'ir',
   });
   try {
@@ -3415,7 +3465,7 @@ for (const theme of ['classic', 'dark', 'monokai-pro-dark'] as const) {
   test(`keeps editor backgrounds stable across focus changes in ${theme}`, async () => {
     const running = await launchApp({
       theme,
-      lastDarkTheme: theme === 'monokai-pro-dark' ? 'monokai-pro-dark' : 'dark',
+      darkTheme: theme === 'monokai-pro-dark' ? 'monokai-pro-dark' : 'dark',
       contentTheme: theme === 'classic' ? 'light' : 'dark',
       editMode: 'sv',
     });
@@ -3431,10 +3481,18 @@ for (const theme of ['classic', 'dark', 'monokai-pro-dark'] as const) {
         const blurred = await surface.evaluate((node) => getComputedStyle(node).backgroundColor);
         await surface.click();
         const focused = await surface.evaluate((node) => getComputedStyle(node).backgroundColor);
-        const application = await page
-          .locator('#app')
-          .evaluate((node) => getComputedStyle(node).backgroundColor);
-        expect({ blurred, focused }).toEqual({ blurred: application, focused: application });
+        const editorSurface = await page.evaluate(() => {
+          const probe = document.createElement('div');
+          probe.style.backgroundColor = 'var(--editor-surface)';
+          document.body.appendChild(probe);
+          const color = getComputedStyle(probe).backgroundColor;
+          probe.remove();
+          return color;
+        });
+        expect({ blurred, focused }).toEqual({
+          blurred: editorSurface,
+          focused: editorSurface,
+        });
       };
 
       await assertStableBackground('.editor-host.active .vditor-sv');
@@ -3457,8 +3515,15 @@ test('saves settings live and keeps the enlarged settings dialog draggable', asy
     const { page } = running;
     await page.locator('#statusSettings').click();
     const card = page.locator('.settings-card');
-    await expect(page.locator('.theme-preview')).toHaveCount(3);
-    await expect(page.locator('[name="theme"][value="classic"]')).toBeChecked();
+    await expect(page.locator('.theme-preview')).toHaveCount(5);
+    await expect(page.locator('[name="lightTheme"][value="classic"]')).toBeChecked();
+    await expect(page.locator('[name="darkTheme"][value="dark"]')).toBeChecked();
+    const themePreviewWidths = await page
+      .locator('.theme-preview')
+      .evaluateAll((previews) =>
+        previews.map((preview) => Math.round(preview.getBoundingClientRect().width)),
+      );
+    expect(new Set(themePreviewWidths).size).toBe(1);
     await expect
       .poll(() => card.evaluate((node) => getComputedStyle(node).transform))
       .toBe('matrix(1, 0, 0, 1, 0, 0)');
@@ -3487,15 +3552,18 @@ test('saves settings live and keeps the enlarged settings dialog draggable', asy
     expect(moved?.x).not.toBe(initial.x);
 
     await page.locator('.theme-option-dark').click();
-    await expect.poll(() => readSetting(running.testRoot, 'appearance', 'theme')).toBe('dark');
-    await expect(page.locator('[name="theme"][value="dark"]')).toBeChecked();
+    await expect.poll(() => readSetting(running.testRoot, 'appearance', 'darkTheme')).toBe('dark');
+    await expect.poll(() => readSetting(running.testRoot, 'appearance', 'theme')).toBe('classic');
+    await expect(page.locator('[name="darkTheme"][value="dark"]')).toBeChecked();
     await expect(page.locator('.theme-option-dark .theme-preview')).toHaveCSS(
       'border-color',
-      'rgb(105, 162, 255)',
+      'rgb(53, 120, 229)',
     );
     await expect(page.locator('#settingsModal')).toBeVisible();
     await page.locator('#saveSettings').click();
     await expect(page.locator('#settingsModal')).toBeHidden();
+    await page.locator('#statusThemeToggle + span').click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   } finally {
     await closeApp(running);
   }

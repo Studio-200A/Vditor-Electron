@@ -372,15 +372,52 @@ describe('renderer shell', () => {
     );
   });
 
-  it('offers the built-in Monokai Pro Dark theme and remembers it for the status toggle', () => {
+  it('offers separately selectable light and dark application theme preferences', () => {
     expect(
-      document.querySelectorAll('.theme-picker input[type="radio"][name="theme"]'),
+      document.querySelectorAll('.theme-picker input[type="radio"][name="lightTheme"]'),
+    ).toHaveLength(2);
+    expect(
+      document.querySelectorAll('.theme-picker input[type="radio"][name="darkTheme"]'),
     ).toHaveLength(3);
-    expect(document.querySelector('[name="theme"][value="monokai-pro-dark"]')).not.toBeNull();
-    expect(document.querySelectorAll('.theme-preview svg')).toHaveLength(3);
+    expect(document.querySelector('[name="lightTheme"][value="claude-light"]')).not.toBeNull();
+    expect(document.querySelector('[name="darkTheme"][value="claude-dark"]')).not.toBeNull();
+    expect(document.querySelector('[name="darkTheme"][value="monokai-pro-dark"]')).not.toBeNull();
+    expect(document.querySelector('.theme-picker-light')).not.toBeNull();
+    expect(document.querySelector('.theme-picker-dark')).not.toBeNull();
+    expect(document.querySelectorAll('.theme-preview svg')).toHaveLength(5);
     expect(document.querySelector('.settings-right-edge')).not.toBeNull();
-    expect(rendererScript).toContain("theme === 'dark' || theme === 'monokai-pro-dark'");
+    expect(rendererScript).toContain(
+      "theme === 'dark' || theme === 'claude-dark' || theme === 'monokai-pro-dark'",
+    );
     expect(rendererScript).toContain('darkThemePreference()');
+    expect(rendererScript).toContain('lightThemePreference()');
+    expect(rendererScript).toContain('themeForStatusToggle(event.target.checked)');
+    expect(css).toMatch(
+      /:root\s*\{[^}]*--sidebar-surface:\s*#fff[^}]*--editor-surface:\s*#f7f7f8/s,
+    );
+    expect(css).toMatch(
+      /:root\[data-theme='dark'\]\s*\{[^}]*--sidebar-surface:\s*#202124[^}]*--editor-surface:\s*#18191c/s,
+    );
+    expect(css).toMatch(
+      /:root\[data-theme='claude-light'\]\s*\{[^}]*--sidebar-surface:\s*#f5f4ed[^}]*--editor-surface:\s*#faf9f5[^}]*--accent:\s*#d97757[^}]*--brand-accent:\s*#d97757/s,
+    );
+    expect(css).toMatch(
+      /:root\[data-theme='claude-light'\] \.settings-content\s*\{[^}]*background:\s*var\(--editor-surface\)/s,
+    );
+    expect(css).toMatch(
+      /:root\[data-theme='claude-light'\] \.modal-close:hover\s*\{[^}]*background:\s*#e8e6dc[^}]*color:\s*var\(--text\)/s,
+    );
+    expect(css).toMatch(
+      /:root\[data-theme='claude-dark'\]\s*\{[^}]*--bg:\s*#141413[^}]*--sidebar-surface:\s*#30302e[^}]*--editor-surface:\s*#30302e[^}]*--accent:\s*#d97757[^}]*--brand-accent:\s*#d97757/s,
+    );
+    expect(css).toMatch(/\.sidebar\s*\{[^}]*background:\s*var\(--sidebar-surface\)/s);
+    expect(css).toMatch(
+      /\.editor-host\.vditor\.active\s*\{[^}]*--panel-background-color:\s*var\(--editor-surface\)[^}]*--textarea-background-color:\s*var\(--editor-surface\)/s,
+    );
+    expect(css).toMatch(
+      /\.editor-host,[\s\S]*\.vditor-reset\s*\{[^}]*background-color:\s*var\(--editor-surface\)/,
+    );
+    expect(css).not.toMatch(/data-theme='claude-(?:light|dark)'[^}]*--ui-font/s);
     expect(css).toMatch(
       /:root\[data-theme='monokai-pro-dark'\]\s*\{[^}]*--bg:\s*#2d2a2e[^}]*--accent:\s*#ffd866/s,
     );
@@ -458,7 +495,7 @@ describe('renderer shell', () => {
     );
     expect(css).toMatch(/\[data-type='code-block'\][^{]*\{[^}]*font-family:\s*var\(--code-font\)/s);
     expect(css).toMatch(
-      /\.editor-host\.vditor\.active\s*\{[^}]*--panel-background-color:\s*var\(--bg\)[^}]*--textarea-background-color:\s*var\(--bg\)/s,
+      /\.editor-host\.vditor\.active\s*\{[^}]*--panel-background-color:\s*var\(--editor-surface\)[^}]*--textarea-background-color:\s*var\(--editor-surface\)/s,
     );
   });
 

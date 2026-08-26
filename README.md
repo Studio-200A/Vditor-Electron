@@ -93,9 +93,11 @@ Built-in application themes:
 
 - Light
 - Dark
+- Claude Light
+- Claude Dark
 - Monokai Pro Dark, including a dedicated H1–H6 heading palette
 
-The theme switch remembers the last dark theme. Content and code-block preview themes follow the light/dark application context while preserving the user's last selection in each context. Optional multi-platform typography previews can be enabled when needed.
+Choose light and dark application themes independently in Settings. The status-bar switch then changes between those two saved choices. Application themes only change application colors. Content and code-block preview themes remain controlled by Vditor and preserve the user's last selection in each light/dark context. Optional multi-platform typography previews can be enabled when needed.
 
 The interface is localized in English (`en_US`), Simplified Chinese (`zh_Hans`), Traditional Chinese (`zh_Hant`), and system language mode.
 
@@ -161,6 +163,8 @@ Application configuration and Chromium user data are kept separate:
 | macOS    | `~/Library/Application Support/com.github.studio-200a.vditor-electron/Config/config.toml` | `~/Library/Application Support/com.github.studio-200a.vditor-electron/Chromium/` | `~/Library/Application Support/com.github.studio-200a.vditor-electron/recovery/` |
 
 The TOML file is human-readable and grouped by application, appearance, fonts, editor, preview, files, workspace, window, and session settings.
+
+The appearance section stores the independently selected `lightTheme` and `darkTheme` values. `systemTheme` resolves the active theme from those choices; the status-bar switch also moves between them. Claude application themes only define application colors and do not replace Vditor's content or code-block theme settings.
 
 Crash-recovery snapshots are stored separately in the private application data directory shown above. They are removed after saving or discarding the recovered document and are never served as local document resources.
 

@@ -92,9 +92,11 @@ Vditor Desktop 把你的写作当作需要保护的内容，而不是可以随�
 
 - 浅色
 - 深色
+- Claude Light
+- Claude Dark
 - Monokai Pro Dark，包含独立的 H1–H6 标题配色
 
-主题切换会记住用户上一次使用的深色主题。内容主题和代码块预览主题会跟随应用的浅色/深色模式，同时分别保留用户在这两种模式下最后选择的主题。需要时可以启用多平台排版预览。
+可在设置中分别选择浅色与深色应用主题，状态栏开关会在这两项已保存的选择之间切换。应用主题只改变应用自身的颜色；内容主题和代码块预览主题仍由 Vditor 控制，并分别保留用户在浅色/深色环境中的最后选择。需要时可以启用多平台排版预览。
 
 界面目前支持 English（`en_US`）、简体中文（`zh_Hans`）、繁體中文（`zh_Hant`）以及跟随系统语言。
 
@@ -159,7 +161,7 @@ Portable 压缩包中的 desktop 文件使用 `/path/to/vditor-desktop` 作为�
 | Windows | `%APPDATA%\\vditor-desktop\\config.toml`                                                  | `%LOCALAPPDATA%\\vditor-desktop\\chromium\\`                                     | `%LOCALAPPDATA%\\vditor-desktop\\recovery\\`                                     |
 | macOS   | `~/Library/Application Support/com.github.studio-200a.vditor-electron/Config/config.toml` | `~/Library/Application Support/com.github.studio-200a.vditor-electron/Chromium/` | `~/Library/Application Support/com.github.studio-200a.vditor-electron/recovery/` |
 
-TOML 配置文件可直接阅读，按应用、外观、字体、编辑器、预览、文件、工作区、窗口和会话设置分类。
+TOML 配置文件可直接阅读，按应用、外观、字体、编辑器、预览、文件、工作区、窗口和会话设置分类。外观部分分别保存 `lightTheme` 和 `darkTheme`；`systemTheme` 会根据系统明暗状态解析其中一项，状态栏开关也会在两项选择之间切换。Claude 应用主题只定义应用颜色，不替代 Vditor 的内容主题或代码块主题设置。
 
 异常恢复快照单独存放在上表所列的私有应用数据目录中；保存或放弃恢复后会删除，且不会被作为本地文档资源提供。
 

@@ -4,6 +4,7 @@
 
 ### New Features
 
+- **feat(themes):** Added Claude Light and Claude Dark application themes based on Anthropic's public UI colors. Light and dark application themes are selected independently and the status-bar switch moves between those saved choices. They change application chrome only; Vditor continues to own editor typography, content themes, and code-block highlighting.
 - **feat(workspace links):** The explorer now distinguishes real-path-resolvable directory links with an italic, underlined name and a themed link SVG badge. Links into the workspace follow the workspace depth limit; external and cyclic targets remain visible but cannot be expanded.
 - **feat(workspace):** Added a persisted 7–12 workspace directory read-depth control (default 7). The explorer, restored folder expansion, and workspace monitoring share the same boundary, and the explorer explains when a deeper directory is intentionally not read.
 - **feat(recovery):** After an unexpected exit, unsaved documents now open directly with a persistent warning banner. The banner clearly distinguishes an unchanged original file from a changed or unavailable one, and only allows direct saving when it is safe; other recovery states can be saved elsewhere or discarded.
@@ -25,7 +26,7 @@
 
 ### Project Maintenance
 
-- **docs(0.2.0):** Updated the README, architecture map, development plan, execution tracker, and known behavior notes to reflect the completed recovery, external-file state, workspace-depth, and directory-link work and the remaining directory/path and cross-platform validation scope.
+- **docs(0.2.0):** Updated the README, architecture map, development plan, execution tracker, and known behavior notes to reflect the completed recovery, external-file state, workspace-depth, directory-link, path-consistency, and plan-external Claude theme work and the remaining security and cross-platform validation scope.
 
 ## 0.1.5 - Editing Experience Improvement
 

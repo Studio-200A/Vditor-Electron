@@ -12,8 +12,9 @@ export interface AppSettings {
   restoreWorkspace: boolean;
   devToolsEnabled: boolean;
   systemTheme: boolean;
-  theme: 'classic' | 'dark' | 'monokai-pro-dark';
-  lastDarkTheme: 'dark' | 'monokai-pro-dark';
+  theme: 'classic' | 'dark' | 'claude-light' | 'claude-dark' | 'monokai-pro-dark';
+  lightTheme: 'classic' | 'claude-light';
+  darkTheme: 'dark' | 'claude-dark' | 'monokai-pro-dark';
   contentTheme: string;
   codeTheme: string;
   lightCodeTheme: string;
@@ -111,7 +112,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   devToolsEnabled: false,
   systemTheme: true,
   theme: 'classic',
-  lastDarkTheme: 'dark',
+  lightTheme: 'classic',
+  darkTheme: 'dark',
   contentTheme: 'light',
   codeTheme: 'github',
   lightCodeTheme: 'github',

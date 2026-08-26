@@ -14,6 +14,8 @@
   --window-radius: 8px;
   --bg: #f7f7f8;
   --panel: #fff;
+  --sidebar-surface: #fff;
+  --editor-surface: #f7f7f8;
   --panel-2: #f0f1f3;
   --hover: #e7e9ec;
   --text: #25272b;
@@ -21,6 +23,8 @@
   --disabled-control-color: color-mix(in srgb, var(--muted) 42%, transparent);
   --border: #d9dce1;
   --accent: #3578e5;
+  --on-accent: #fff;
+  --brand-accent: #3578e5;
   --danger: #c73b3b;
   --top-surface-shadow: 0 5px 12px -8px rgb(0 0 0 / 0.52), 0 2px 5px -4px rgb(0 0 0 / 0.28);
   color-scheme: light;
@@ -28,12 +32,16 @@
 :root[data-theme='dark'] {
   --bg: #17181a;
   --panel: #202124;
+  --sidebar-surface: #202124;
+  --editor-surface: #18191c;
   --panel-2: #292b2f;
   --hover: #34373c;
   --text: #e3e5e8;
   --muted: #9ba0a8;
   --border: #3b3e44;
   --accent: #69a2ff;
+  --on-accent: #fff;
+  --brand-accent: #69a2ff;
   --danger: #ff7777;
   --top-surface-shadow: 0 5px 13px -7px rgb(0 0 0 / 0.82), 0 2px 6px -4px rgb(0 0 0 / 0.5);
   color-scheme: dark;
@@ -41,12 +49,16 @@
 :root[data-theme='monokai-pro-dark'] {
   --bg: #2d2a2e;
   --panel: #2d2a2e;
+  --sidebar-surface: #2d2a2e;
+  --editor-surface: #2d2a2e;
   --panel-2: #272428;
   --hover: #403e41;
   --text: #fcfcfa;
   --muted: rgb(252 252 250 / 0.6);
   --border: #403e41;
   --accent: #ffd866;
+  --on-accent: #2d2a2e;
+  --brand-accent: #ffd866;
   --danger: #ff6188;
   --monokai-code-bg: #403e41;
   --monokai-input-bg: #221f22;
@@ -57,6 +69,53 @@
   --monokai-h5: #ab9df2;
   --monokai-h6: #fc9867;
   --top-surface-shadow: 0 5px 13px -7px rgb(0 0 0 / 0.9), 0 2px 6px -4px rgb(0 0 0 / 0.58);
+  color-scheme: dark;
+}
+:root[data-theme='claude-light'] {
+  --bg: #faf9f5;
+  --panel: #fff;
+  --sidebar-surface: #f5f4ed;
+  --editor-surface: #faf9f5;
+  --panel-2: #f5f4ed;
+  --hover: #f5f4ed;
+  --text: #141413;
+  --muted: #73726c;
+  --border: rgb(31 30 29 / 30%);
+  --accent: #d97757;
+  --on-accent: #141413;
+  --brand-accent: #d97757;
+  --danger: #7f2c28;
+  --top-surface-shadow: 0 5px 12px -8px rgb(20 20 19 / 0.28), 0 2px 5px -4px rgb(20 20 19 / 0.14);
+  color-scheme: light;
+}
+:root[data-theme='claude-light'] .settings-content {
+  background: var(--editor-surface);
+}
+:root[data-theme='claude-light'] .sidebar :is(button:hover, .tree-row:hover, .tree-file.active) {
+  background: #e8e6dc;
+}
+:root[data-theme='claude-light'] .modal-close:hover {
+  background: #e8e6dc;
+  color: var(--text);
+}
+:root:is([data-theme='claude-light'], [data-theme='claude-dark']) button.primary {
+  color: #fff;
+}
+:root[data-theme='claude-dark'] {
+  --bg: #141413;
+  --panel: #30302e;
+  --sidebar-surface: #30302e;
+  --editor-surface: #30302e;
+  --panel-2: #262624;
+  --hover: #3d3d3a;
+  --text: #faf9f5;
+  --muted: #c2c0b6;
+  --border: rgb(222 220 209 / 12%);
+  --accent: #d97757;
+  --on-accent: #141413;
+  --brand-accent: #d97757;
+  --danger: #ee8884;
+  --top-surface-shadow: 0 5px 13px -7px rgb(0 0 0 / 0.82), 0 2px 6px -4px rgb(0 0 0 / 0.5);
   color-scheme: dark;
 }
 * {
@@ -129,7 +188,7 @@ button:hover {
   background: var(--hover);
 }
 button.primary {
-  color: white;
+  color: var(--on-accent);
   background: var(--accent);
   border-color: var(--accent);
 }
@@ -348,7 +407,7 @@ button.primary.danger {
   max-width: 500px;
   display: flex;
   flex-direction: column;
-  background: var(--panel);
+  background: var(--sidebar-surface);
   border-right: 1px solid var(--border);
   transition:
     width 0.16s ease,
@@ -713,9 +772,12 @@ button.primary.danger {
 :root:not([data-theme='dark']):not([data-theme='monokai-pro-dark']) .document-tab:hover {
   background: #d9dde3;
 }
+:root[data-theme='claude-light'] .document-tab:hover {
+  background: var(--hover);
+}
 .document-tab.active {
   background: var(--panel);
-  box-shadow: inset 0 2px var(--accent);
+  box-shadow: inset 0 2px var(--brand-accent);
 }
 .document-tab.active:hover {
   background: color-mix(in srgb, var(--panel) 76%, var(--hover));
@@ -1057,8 +1119,8 @@ button.primary.danger {
   display: none !important;
 }
 .editor-host.vditor.active {
-  --panel-background-color: var(--bg);
-  --textarea-background-color: var(--bg);
+  --panel-background-color: var(--editor-surface);
+  --textarea-background-color: var(--editor-surface);
   display: flex !important;
   flex-direction: column !important;
   width: 100% !important;
@@ -1247,6 +1309,15 @@ html[data-scrollbar-mode='hidden'] .app-scrollbar::-webkit-scrollbar {
   background-color: transparent !important;
   box-shadow: none !important;
 }
+.editor-host,
+.editor-host .vditor-content,
+.editor-host .vditor-sv,
+.editor-host .vditor-ir,
+.editor-host .vditor-wysiwyg,
+.editor-host .vditor-preview,
+.editor-host .vditor-reset {
+  background-color: var(--editor-surface);
+}
 :root[data-theme='monokai-pro-dark'] .editor-host,
 :root[data-theme='monokai-pro-dark'] .editor-host .vditor-content,
 :root[data-theme='monokai-pro-dark'] .editor-host .vditor-sv,
@@ -1255,7 +1326,6 @@ html[data-scrollbar-mode='hidden'] .app-scrollbar::-webkit-scrollbar {
 :root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview,
 :root[data-theme='monokai-pro-dark'] .editor-host .vditor-reset {
   color: #fcfcfa;
-  background-color: #2d2a2e;
 }
 :root[data-theme='monokai-pro-dark'] input:not([type='checkbox']):not([type='radio']),
 :root[data-theme='monokai-pro-dark'] select,
@@ -2213,7 +2283,9 @@ body.confirm-card-dragging {
 }
 .theme-preview {
   width: 100%;
+  max-width: 360px;
   display: block;
+  margin-inline: auto;
   padding: 3px;
   border: 2px solid transparent;
   border-radius: 9px;
@@ -2290,6 +2362,42 @@ body.confirm-card-dragging {
 }
 .theme-option-dark .theme-preview-text {
   stroke: #d1d4d8;
+}
+.theme-option-claude-light .theme-preview-window {
+  fill: #faf9f5;
+  stroke: rgb(31 30 29 / 30%);
+}
+.theme-option-claude-light .theme-preview-chrome,
+.theme-option-claude-light .theme-preview-sidebar {
+  fill: #f5f4ed;
+  stroke: rgb(31 30 29 / 30%);
+}
+.theme-option-claude-light .theme-preview-muted {
+  stroke: #73726c;
+}
+.theme-option-claude-light .theme-preview-heading {
+  stroke: #d97757;
+}
+.theme-option-claude-light .theme-preview-text {
+  stroke: #141413;
+}
+.theme-option-claude-dark .theme-preview-window {
+  fill: #141413;
+  stroke: rgb(222 220 209 / 40%);
+}
+.theme-option-claude-dark .theme-preview-chrome,
+.theme-option-claude-dark .theme-preview-sidebar {
+  fill: #262624;
+  stroke: rgb(222 220 209 / 40%);
+}
+.theme-option-claude-dark .theme-preview-muted {
+  stroke: #c2c0b6;
+}
+.theme-option-claude-dark .theme-preview-heading {
+  stroke: #d97757;
+}
+.theme-option-claude-dark .theme-preview-text {
+  stroke: #faf9f5;
 }
 .theme-option-monokai .theme-preview-window {
   fill: #2d2a2e;
