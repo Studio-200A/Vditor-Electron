@@ -284,6 +284,8 @@ webPreferences: {
 | `onChanged(callback)`                             | `file:changed`          | on（订阅） | `{ event, path, scope, content?, encoding? }` | 取消订阅函数                    |
 | `getDroppedPath(file)`                            | _(webUtils)_            | 直接调用   | `File`                                | `string`                                |
 
+`window.fileAPI.rebasePath(oldRoot, newRoot, candidatePath)` 对目录重命名后的路径执行主进程路径 rebase；候选路径不在旧根目录下时返回 `null`。
+
 #### `window.appAPI`
 
 | 方法名                           | 对应 IPC 通道                | 方向         | 入参                   | 返回值                                      |
@@ -798,6 +800,8 @@ onEditorInput(tab, value)
 - 选择“忽略外部更改”后隐藏横幅但保留冲突快照，暂停自动保存；后续普通保存仍需明确确认覆盖。
 - 文件删除或不可读：发送独立的文档事件，渲染器进入持久保护状态并暂停自动保存；不会静默重建文件或关闭标签。
 - 文件重新出现：发送稳定正文事件和一次工作区结构 `add`，使标签保留内存正文、由用户决定是否重载，同时让 sidebar 重新显示文件。
+
+批次 6 的路径一致性：renderer 在文件树重命名/删除和 Save As 期间暂停受影响文档 watcher；目录重命名通过主进程 `rebasePath` 更新所有后代标签的 `filePath`、`baseDir`、最近文件和目录展开状态，再绑定新路径。应用内删除保留打开标签和内存正文，进入 `deleted` 保护状态；工作区根目录收到 `unlinkDir` 或启动恢复发现路径不存在时，清空 workspace、默认打开目录和 session。
 
 ### 9.5 多标签页文件状态
 

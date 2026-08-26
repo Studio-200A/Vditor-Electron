@@ -2261,6 +2261,280 @@ test('shows the move-to-trash confirmation as a draggable in-window dialog', asy
   }
 });
 
+test('keeps open descendant paths, resources, recents, and watchers aligned after directory rename', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-rename-directory-'));
+  const oldDirectory = path.join(workspace, 'notes');
+  const imageDirectory = path.join(workspace, 'assets');
+  const filePath = path.join(oldDirectory, 'entry.md');
+  const imagePath = path.join(imageDirectory, 'pixel.png');
+  fs.mkdirSync(oldDirectory);
+  fs.mkdirSync(imageDirectory);
+  fs.writeFileSync(
+    imagePath,
+    Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64',
+    ),
+  );
+  fs.writeFileSync(filePath, '![pixel](../assets/pixel.png)\n\nOriginal');
+  const running = await launchApp({
+    editMode: 'sv',
+    restoreTabs: true,
+    restoreWorkspace: true,
+    sidebarVisible: true,
+    session: { workspacePath: workspace, activeFilePath: filePath, openFiles: [filePath] },
+  });
+  try {
+    const { page, testRoot } = running;
+    const oldDirectoryRow = page.locator(`#fileTree .tree-dir[data-path="${oldDirectory}"]`);
+    await expect(oldDirectoryRow).toBeVisible();
+    await oldDirectoryRow.click();
+    await expect(page.locator(`#fileTree .tree-file[data-path="${filePath}"]`)).toBeVisible();
+    await expect(page.locator('#statusPath')).toHaveText(filePath);
+    await expect(page.locator('.editor-host.active img')).toBeVisible();
+
+    await oldDirectoryRow.click({ button: 'right' });
+    await page.locator('#contextMenu button', { hasText: 'Rename' }).click();
+    const renameInput = oldDirectoryRow.locator('.tree-rename-input');
+    await renameInput.fill('renamed');
+    await renameInput.press('Enter');
+
+    const newDirectory = path.join(workspace, 'renamed');
+    const newFilePath = path.join(newDirectory, 'entry.md');
+    await expect(page.locator(`#fileTree .tree-dir[data-path="${newDirectory}"]`)).toBeVisible();
+    await expect(page.locator('#statusPath')).toHaveText(newFilePath);
+    await expect(page.locator('.editor-host.active img')).toBeVisible();
+    await page.locator('.editor-host.active .vditor-sv').fill('Saved after directory rename');
+    await page.keyboard.press('Control+s');
+    await expect
+      .poll(() => fs.readFileSync(newFilePath, 'utf8').trimEnd())
+      .toBe('Saved after directory rename');
+    expect(fs.existsSync(filePath)).toBe(false);
+    await expect
+      .poll(() => (readSetting(testRoot, 'files', 'recentFiles') as unknown[] | undefined) || [])
+      .toContainEqual(expect.objectContaining({ path: newFilePath, title: 'entry.md' }));
+  } finally {
+    await closeApp(running);
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('preserves open descendant documents when an application directory is deleted', async () => {
+  fs.mkdirSync(path.join(projectRoot, 'tmp'), { recursive: true });
+  const workspace = fs.mkdtempSync(path.join(projectRoot, 'tmp', 'vditor-delete-directory-'));
+  const directory = path.join(workspace, 'notes');
+  const filePath = path.join(directory, 'entry.md');
+  fs.mkdirSync(directory);
+  fs.writeFileSync(filePath, 'Original content');
+  const running = await launchApp({
+    editMode: 'sv',
+    restoreTabs: true,
+    restoreWorkspace: true,
+    sidebarVisible: true,
+    session: { workspacePath: workspace, activeFilePath: filePath, openFiles: [filePath] },
+  });
+  try {
+    const { page } = running;
+    await page.locator('.editor-host.active .vditor-sv').fill('Unsaved content');
+    await expect(
+      page.evaluate(
+        ({ directoryPath, documentPath }) =>
+          window.fileAPI.rebasePath(directoryPath, directoryPath, documentPath),
+        { directoryPath: directory, documentPath: filePath },
+      ),
+    ).resolves.toBe(filePath);
+    const directoryRow = page.locator(`#fileTree .tree-dir[data-path="${directory}"]`);
+    await directoryRow.click({ button: 'right' });
+    await page.locator('#contextMenu button', { hasText: 'Move to Trash' }).click();
+    await page.locator('#confirmActions [data-action="confirm"]').click();
+
+    await expect(page.locator('.document-tab.active > span')).toHaveText('entry.md');
+    await expect(page.locator('#externalFileStateBanner')).toBeVisible();
+    await expect(page.locator('.editor-host.active .vditor-sv')).toContainText('Unsaved content');
+    await expect.poll(() => fs.existsSync(filePath)).toBe(false);
+    await expect.poll(() => fs.readdirSync(path.join(running.testRoot, 'recovery')).length).toBe(1);
+  } finally {
+    if (
+      await running.page
+        .locator('#externalFileClose')
+        .isVisible()
+        .catch(() => false)
+    )
+      await running.page.locator('#externalFileClose').click();
+    if (
+      await running.page
+        .locator('#confirmModal')
+        .isVisible()
+        .catch(() => false)
+    )
+      await running.page.locator('#confirmActions [data-action="confirm"]').click();
+    await closeApp(running);
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('clears a workspace after its root is deleted externally', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-workspace-root-delete-'));
+  fs.writeFileSync(path.join(workspace, 'note.md'), 'Note');
+  const running = await launchApp({
+    restoreWorkspace: true,
+    sidebarVisible: true,
+    session: { workspacePath: workspace, activeFilePath: null, openFiles: [] },
+  });
+  try {
+    const { page } = running;
+    await expect(page.locator('#workspaceHeading')).toHaveAttribute('title', workspace);
+    fs.rmSync(workspace, { recursive: true, force: true });
+    await expect(page.locator('#workspaceName')).toHaveText('No workspace opened', {
+      timeout: 5000,
+    });
+    await expect.poll(() => readSetting(running.testRoot, 'session', 'workspacePath')).toBe('');
+    await expect.poll(() => readSetting(running.testRoot, 'files', 'defaultOpenPath')).toBe('');
+  } finally {
+    await closeApp(running);
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('preserves opened clean documents when a workspace subdirectory is deleted externally', async () => {
+  for (const autoSave of [false, true]) {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-workspace-subdirectory-'));
+    const deletedDirectory = path.join(workspace, 'workspace-root-delete');
+    const filePath = path.join(deletedDirectory, 'root-note.md');
+    fs.mkdirSync(deletedDirectory);
+    fs.writeFileSync(filePath, 'Opened content');
+    const running = await launchApp({
+      autoSave,
+      editMode: 'sv',
+      restoreTabs: true,
+      restoreWorkspace: true,
+      sidebarVisible: true,
+      session: { workspacePath: workspace, activeFilePath: filePath, openFiles: [filePath] },
+    });
+    let restored: ElectronApplication | null = null;
+    try {
+      const { app, page, testRoot } = running;
+      await expect(page.locator('#workspaceHeading')).toHaveAttribute('title', workspace);
+      await expect(page.locator('.document-tab.active > span')).toHaveText('root-note.md');
+      fs.rmSync(deletedDirectory, { recursive: true, force: true });
+
+      await expect(page.locator('#externalFileStateBanner')).toBeVisible({ timeout: 5000 });
+      await expect(page.locator('#externalFileStateMessage')).toContainText('root-note.md');
+      await expect(page.locator('#workspaceHeading')).toHaveAttribute('title', workspace);
+      await expect(page.locator('.editor-host.active .vditor-sv')).toContainText('Opened content');
+      await expect.poll(() => fs.readdirSync(path.join(testRoot, 'recovery')).length).toBe(1);
+      await expect
+        .poll(() => {
+          const [snapshot] = fs.readdirSync(path.join(testRoot, 'recovery'));
+          return JSON.parse(
+            fs.readFileSync(path.join(testRoot, 'recovery', snapshot), 'utf8'),
+          ).content.trimEnd();
+        })
+        .toBe('Opened content');
+
+      const closed = app.waitForEvent('close');
+      app.process().kill('SIGKILL');
+      await closed;
+      restored = await electron.launch({
+        args: ['.'],
+        cwd: projectRoot,
+        env: {
+          ...process.env,
+          ELECTRON_DISABLE_SECURITY_WARNINGS: 'true',
+          VDITOR_DESKTOP_CONFIG_DIR: path.join(testRoot, 'config'),
+          VDITOR_DESKTOP_DATA_DIR: path.join(testRoot, 'chromium'),
+        },
+      });
+      const restoredPage = await restored.firstWindow();
+      await restoredPage.waitForSelector('#appMenuBar[data-ready="true"]');
+      await expect(restoredPage.locator('#workspaceHeading')).toHaveAttribute('title', workspace);
+      await expect(restoredPage.locator('.document-tab.active > span')).toHaveText(
+        'Recovered root-note.md',
+      );
+      await expect(restoredPage.locator('.editor-host.active .vditor-sv')).toContainText(
+        'Opened content',
+      );
+      await expect(restoredPage.locator('#recoveryBanner')).toBeVisible();
+      await expect(restoredPage.locator('#recoverySave')).toBeHidden();
+      await expect(restoredPage.locator('#recoverySaveAs')).toBeVisible();
+    } finally {
+      if (restored) restored.process().kill('SIGKILL');
+      else if (!running.page.isClosed()) running.app.process().kill('SIGKILL');
+      fs.rmSync(running.testRoot, { recursive: true, force: true });
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  }
+});
+
+test('preserves opened clean documents after their workspace roots are deleted externally', async () => {
+  for (const autoSave of [false, true]) {
+    const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-workspace-recovery-'));
+    const filePath = path.join(workspace, 'root-note.md');
+    fs.writeFileSync(filePath, 'Opened content');
+    const running = await launchApp({
+      autoSave,
+      editMode: 'sv',
+      restoreTabs: true,
+      restoreWorkspace: true,
+      sidebarVisible: true,
+      session: { workspacePath: workspace, activeFilePath: filePath, openFiles: [filePath] },
+    });
+    let restored: ElectronApplication | null = null;
+    try {
+      const { app, page, testRoot } = running;
+      await expect(page.locator('.document-tab.active > span')).toHaveText('root-note.md');
+      fs.rmSync(workspace, { recursive: true, force: true });
+
+      await expect(page.locator('#externalFileStateBanner')).toBeVisible({ timeout: 5000 });
+      await expect(page.locator('#externalFileStateMessage')).toContainText('root-note.md');
+      await expect(page.locator('.editor-host.active .vditor-sv')).toContainText('Opened content');
+      await expect.poll(() => fs.readdirSync(path.join(testRoot, 'recovery')).length).toBe(1);
+      await expect
+        .poll(() => {
+          const [snapshot] = fs.readdirSync(path.join(testRoot, 'recovery'));
+          return JSON.parse(
+            fs.readFileSync(path.join(testRoot, 'recovery', snapshot), 'utf8'),
+          ).content.trimEnd();
+        })
+        .toBe('Opened content');
+      await expect.poll(() => readSetting(testRoot, 'session', 'workspacePath')).toBe('');
+
+      const closed = app.waitForEvent('close');
+      app.process().kill('SIGKILL');
+      await closed;
+      restored = await electron.launch({
+        args: ['.'],
+        cwd: projectRoot,
+        env: {
+          ...process.env,
+          ELECTRON_DISABLE_SECURITY_WARNINGS: 'true',
+          VDITOR_DESKTOP_CONFIG_DIR: path.join(testRoot, 'config'),
+          VDITOR_DESKTOP_DATA_DIR: path.join(testRoot, 'chromium'),
+        },
+      });
+      const restoredPage = await restored.firstWindow();
+      await restoredPage.waitForSelector('#appMenuBar[data-ready="true"]');
+      await expect(restoredPage.locator('.document-tab.active > span')).toHaveText(
+        'Recovered root-note.md',
+      );
+      await expect(restoredPage.locator('.editor-host.active .vditor-sv')).toContainText(
+        'Opened content',
+      );
+      await expect(restoredPage.locator('#recoveryBanner')).toBeVisible();
+      await expect(restoredPage.locator('#recoveryMessage')).toHaveText(
+        'Recovered unsaved changes, but the original file no longer exists or cannot be read.',
+      );
+      await expect(restoredPage.locator('#recoverySave')).toBeHidden();
+      await expect(restoredPage.locator('#recoverySaveAs')).toBeVisible();
+    } finally {
+      if (restored) restored.process().kill('SIGKILL');
+      else if (!running.page.isClosed()) running.app.process().kill('SIGKILL');
+      fs.rmSync(running.testRoot, { recursive: true, force: true });
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
+  }
+});
+
 test('limits workspace tree reads to the selected directory depth and persists the setting', async () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-workspace-depth-'));
   const outsideWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-workspace-outside-'));

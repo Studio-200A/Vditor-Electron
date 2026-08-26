@@ -31,6 +31,8 @@ contextBridge.exposeInMainWorld('fileAPI', {
   basename: (filePath: string) => ipcRenderer.invoke('file:basename', filePath),
   dirname: (filePath: string) => ipcRenderer.invoke('file:dirname', filePath),
   relative: (from: string, to: string) => ipcRenderer.invoke('file:relative', from, to),
+  rebasePath: (oldRoot: string, newRoot: string, candidatePath: string) =>
+    ipcRenderer.invoke('file:rebasePath', oldRoot, newRoot, candidatePath),
   resolveMarkdownLink: (sourceFile: string, href: string) =>
     ipcRenderer.invoke('file:resolveMarkdownLink', sourceFile, href),
   setWorkspaceWatch: (rootPath?: string, depth?: number) =>
@@ -39,7 +41,7 @@ contextBridge.exposeInMainWorld('fileAPI', {
   unwatchDocument: (filePath: string) => ipcRenderer.invoke('file:unwatchDocument', filePath),
   onChanged: (
     callback: (event: {
-      event: 'add' | 'change' | 'unlink' | 'unreadable' | 'watch-error';
+      event: 'add' | 'change' | 'unlink' | 'addDir' | 'unlinkDir' | 'unreadable' | 'watch-error';
       path: string;
       scope: 'workspace' | 'document';
       content?: string;

@@ -363,6 +363,9 @@ function registerIpcHandlers(): void {
   ipcMain.handle('file:relative', (_event, from: string, to: string) =>
     path.relative(from, to).split(path.sep).join('/'),
   );
+  ipcMain.handle('file:rebasePath', (_event, oldRoot: string, newRoot: string, candidate: string) =>
+    fileManager.rebasePath(oldRoot, newRoot, candidate),
+  );
   ipcMain.handle('file:resolveMarkdownLink', (_event, sourceFile: unknown, href: unknown) =>
     resolveRelativeMarkdownLink(sourceFile, href),
   );

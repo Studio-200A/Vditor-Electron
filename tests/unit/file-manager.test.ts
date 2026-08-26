@@ -217,6 +217,20 @@ describe('FileManagerService', () => {
     await expect(service.renameItem(original, 'new.md')).resolves.toBe(path.join(root, 'new.md'));
   });
 
+  it('rebases paths inside a renamed directory without touching siblings', () => {
+    const oldDirectory = path.join(root, 'old');
+    const newDirectory = path.join(root, 'new');
+    const nested = path.join(oldDirectory, 'notes', 'entry.md');
+
+    expect(service.rebasePath(oldDirectory, newDirectory, nested)).toBe(
+      path.join(newDirectory, 'notes', 'entry.md'),
+    );
+    expect(service.rebasePath(oldDirectory, newDirectory, oldDirectory)).toBe(newDirectory);
+    expect(
+      service.rebasePath(oldDirectory, newDirectory, path.join(root, 'sibling.md')),
+    ).toBeNull();
+  });
+
   it('writes image bytes without text conversion', async () => {
     const filePath = path.join(root, 'assets', 'pixel.png');
     const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);

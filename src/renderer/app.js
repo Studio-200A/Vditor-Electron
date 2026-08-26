@@ -349,6 +349,68 @@
     );
     if (!stillOpen) await window.fileAPI.unwatchDocument(filePath);
   }
+  async function suspendDocumentWatches(tabs) {
+    const affectedPaths = new Set(
+      tabs
+        .map((tab) => tab.filePath)
+        .filter(Boolean)
+        .map((filePath) => normalizedFilePath(filePath)),
+    );
+    const paths = new Map();
+    for (const tab of tabs) {
+      if (tab.filePath) paths.set(normalizedFilePath(tab.filePath), tab.filePath);
+    }
+    for (const [identity, filePath] of paths) {
+      const openOutsideAffected = state.tabs.some(
+        (tab) => !tabs.includes(tab) && normalizedFilePath(tab.filePath) === identity,
+      );
+      if (!openOutsideAffected && affectedPaths.has(identity))
+        await window.fileAPI.unwatchDocument(filePath);
+    }
+  }
+  async function rebindDocumentWatches(tabs) {
+    const paths = new Map();
+    for (const tab of tabs) {
+      if (tab.filePath) paths.set(normalizedFilePath(tab.filePath), tab.filePath);
+    }
+    for (const filePath of paths.values()) await window.fileAPI.watchDocument(filePath);
+  }
+  async function rebaseOpenTabs(oldRoot, newRoot) {
+    const updates = [];
+    for (const tab of state.tabs) {
+      if (!tab.filePath) continue;
+      const nextPath = await window.fileAPI.rebasePath(oldRoot, newRoot, tab.filePath);
+      if (nextPath) updates.push({ tab, nextPath });
+    }
+    return updates;
+  }
+  async function rebaseRecentFiles(oldRoot, newRoot) {
+    const recentFiles = [];
+    for (const item of state.settings.recentFiles || []) {
+      const nextPath = await window.fileAPI.rebasePath(oldRoot, newRoot, item.path);
+      recentFiles.push(nextPath ? { ...item, path: nextPath, title: fileName(nextPath) } : item);
+    }
+    state.settings.recentFiles = recentFiles;
+    await window.appAPI.saveSettings({ recentFiles });
+  }
+  async function rebaseExpandedPaths(oldRoot, newRoot) {
+    const workspaceTreeStates = [];
+    for (const item of state.settings.workspaceTreeStates || []) {
+      const workspacePath = await window.fileAPI.rebasePath(oldRoot, newRoot, item.workspacePath);
+      const expandedPaths = [];
+      for (const expandedPath of item.expandedPaths || []) {
+        const nextPath = await window.fileAPI.rebasePath(oldRoot, newRoot, expandedPath);
+        expandedPaths.push(nextPath || expandedPath);
+      }
+      workspaceTreeStates.push({
+        ...item,
+        workspacePath: workspacePath || item.workspacePath,
+        expandedPaths,
+      });
+    }
+    state.settings.workspaceTreeStates = workspaceTreeStates;
+    await window.appAPI.saveSettings({ workspaceTreeStates });
+  }
   function stripExtension(name) {
     return name.replace(/\.(md|markdown)$/i, '');
   }
@@ -1833,14 +1895,7 @@
     ) {
       const exists = await window.fileAPI.exists(destination);
       if (!exists) {
-        clearTimeout(tab.saveTimer);
-        tab.externalFileState = {
-          kind: 'deleted',
-          path: destination,
-          clipboardContent: recreateClipboardSnapshot(tab),
-          detectedAt: Date.now(),
-          version: 1,
-        };
+        await preserveUnavailableTab(tab, 'deleted', destination);
         renderTabs();
         if (tab.id === state.activeId) updateActiveUI();
         return false;
@@ -1863,18 +1918,18 @@
           return false;
         }
       } catch (_) {
-        clearTimeout(tab.saveTimer);
-        tab.externalFileState = {
-          kind: 'unreadable',
-          path: destination,
-          clipboardContent: recreateClipboardSnapshot(tab),
-          detectedAt: Date.now(),
-          version: 1,
-        };
+        await preserveUnavailableTab(tab, 'unreadable', destination);
         renderTabs();
         if (tab.id === state.activeId) updateActiveUI();
         return false;
       }
+    }
+    const destinationChanged =
+      Boolean(previousPath) && normalizedFilePath(destination) !== normalizedFilePath(previousPath);
+    let previousWatchSuspended = false;
+    if (destinationChanged) {
+      await suspendDocumentWatches([tab]);
+      previousWatchSuspended = true;
     }
     try {
       const content = tab.pendingEditorContent ? tab.content : currentContent(tab);
@@ -1892,6 +1947,7 @@
           ),
           true,
         );
+        if (previousWatchSuspended) await rebindDocumentWatches([tab]);
         return false;
       }
       const previousBaseDir = tab.baseDir;
@@ -1921,6 +1977,7 @@
       showMessage(t('message.saved', { title: tab.title }));
       return true;
     } catch (error) {
+      if (previousWatchSuspended) await rebindDocumentWatches([tab]);
       showMessage(t('message.saveFailed', { error: error.message }), true);
       return false;
     }
@@ -1949,10 +2006,11 @@
 
   function scheduleRecoverySnapshot(tab) {
     clearTimeout(tab.recoveryTimer);
-    if (!tab.modified) {
+    if (!tab.modified && !tab.externalFileState) {
       void discardRecoverySnapshot(tab);
       return;
     }
+    if (!tab.modified) return;
     const id = tab.recoverySnapshotId || recoveryId();
     tab.recoverySnapshotId = id;
     const revision = ++tab.recoveryRevision;
@@ -1982,6 +2040,43 @@
         await window.appAPI.discardRecovery(id);
       } catch (_) {
         console.error('Unable to remove a recovery snapshot.');
+      }
+    });
+  }
+
+  async function preserveUnavailableTab(tab, kind, filePath, error) {
+    if (
+      tab.externalFileState?.kind === kind &&
+      normalizedFilePath(tab.externalFileState.path) === normalizedFilePath(filePath) &&
+      tab.recoverySnapshotId
+    )
+      return;
+    clearTimeout(tab.saveTimer);
+    clearTimeout(tab.recoveryTimer);
+    tab.recoveryTimer = null;
+    const editorContent = currentContent(tab);
+    if (editorContent.trim() || tab.modified || (!tab.content && !tab.savedContent))
+      tab.content = editorContent;
+    else if (!tab.content.trim()) tab.content = tab.savedContent;
+    tab.externalConflict = null;
+    tab.externalChangeIgnored = false;
+    tab.externalFileState = {
+      kind,
+      path: filePath,
+      ...(error ? { error } : {}),
+      clipboardContent: tab.externalFileState?.clipboardContent ?? recreateClipboardSnapshot(tab),
+      detectedAt: Date.now(),
+      version: (tab.externalFileState?.version || 0) + 1,
+    };
+    const id = tab.recoverySnapshotId || recoveryId();
+    tab.recoverySnapshotId = id;
+    const revision = ++tab.recoveryRevision;
+    await queueRecoveryOperation(tab, async () => {
+      if (tab.recoverySnapshotId !== id || tab.recoveryRevision !== revision) return;
+      try {
+        await window.appAPI.saveRecovery(recoverySnapshotFor(tab));
+      } catch (_) {
+        console.error('Unable to preserve an unavailable document for recovery.');
       }
     });
   }
@@ -2257,6 +2352,7 @@
       item.externalChangeIgnored = false;
       item.externalFileState = null;
       if (item.vditor) item.vditor.setValue(fileState.content, true);
+      await discardRecoverySnapshot(item);
     }
     renderTabs();
     updateActiveUI();
@@ -2376,6 +2472,9 @@
       state.settings.recentPaths = recent;
       state.settings.defaultOpenPath = folder;
       await window.appAPI.saveSettings({ recentPaths: recent, defaultOpenPath: folder });
+    } else {
+      state.settings.defaultOpenPath = '';
+      await window.appAPI.saveSettings({ defaultOpenPath: '' });
     }
     persistSession();
   }
@@ -2734,6 +2833,8 @@
     label.replaceWith(input);
     let settled = false;
     let submitting = false;
+    let affectedTabs = [];
+    let reboundTabs = [];
     const finish = async (commit) => {
       if (settled || submitting) return;
       let name = input.value.trim();
@@ -2758,17 +2859,30 @@
       submitting = true;
       settled = true;
       try {
+        const updates = await rebaseOpenTabs(entry.path, entry.path);
+        affectedTabs = updates.map(({ tab }) => tab);
+        await suspendDocumentWatches(affectedTabs);
         const destination = await window.fileAPI.renameItem(entry.path, name);
-        state.tabs
-          .filter((tab) => tab.filePath === entry.path)
-          .forEach((tab) => {
-            tab.filePath = destination;
-            tab.title = name;
-          });
+        const applied = [];
+        for (const { tab } of updates) {
+          const nextPath = await window.fileAPI.rebasePath(entry.path, destination, tab.filePath);
+          if (!nextPath) continue;
+          const previousBaseDir = tab.baseDir;
+          tab.filePath = nextPath;
+          tab.title = fileName(nextPath);
+          tab.baseDir = await window.fileAPI.dirname(nextPath);
+          if (previousBaseDir !== tab.baseDir) rebuildEditor(tab);
+          applied.push(tab);
+        }
+        reboundTabs = applied;
+        await rebaseRecentFiles(entry.path, destination);
+        await rebaseExpandedPaths(entry.path, destination);
+        await rebindDocumentWatches(applied);
         renderTabs();
         await refreshTree();
         persistSession();
       } catch (error) {
+        await rebindDocumentWatches(reboundTabs.length ? reboundTabs : affectedTabs);
         if (input.isConnected) input.replaceWith(label);
         showMessage(error.message, true);
       }
@@ -2795,15 +2909,22 @@
       draggable: true,
     });
     if (!proceed) return;
+    let affectedTabs = [];
     try {
-      await window.fileAPI.deleteItem(entry.path);
-      if (entry.type === 'file') {
-        for (const tab of state.tabs.filter((item) => item.filePath === entry.path)) {
-          await closeTab(tab.id, { discard: true });
-        }
+      for (const tab of state.tabs) {
+        if (tab.filePath && (await window.fileAPI.rebasePath(entry.path, entry.path, tab.filePath)))
+          affectedTabs.push(tab);
       }
+      await suspendDocumentWatches(affectedTabs);
+      await window.fileAPI.deleteItem(entry.path);
+      for (const tab of affectedTabs) await preserveUnavailableTab(tab, 'deleted', tab.filePath);
+      await rebindDocumentWatches(affectedTabs);
+      renderTabs();
+      updateActiveUI();
+      persistSession();
       await refreshTree();
     } catch (error) {
+      await rebindDocumentWatches(affectedTabs);
       showMessage(error.message, true);
     }
   }
@@ -3154,9 +3275,12 @@
     if (!state.settings) return;
     const session = {
       workspacePath: state.settings.restoreWorkspace ? state.workspace : '',
-      activeFilePath: state.settings.restoreTabs && activeTab() ? activeTab().filePath : null,
+      activeFilePath:
+        state.settings.restoreTabs && !activeTab()?.externalFileState
+          ? activeTab()?.filePath
+          : null,
       openFiles: state.settings.restoreTabs
-        ? state.tabs.map((tab) => tab.filePath).filter(Boolean)
+        ? state.tabs.map((tab) => (!tab.externalFileState ? tab.filePath : null)).filter(Boolean)
         : [],
     };
     state.settings.session = session;
@@ -3503,10 +3627,34 @@
   }
 
   async function handleExternalChange(change) {
-    if (!['add', 'change', 'unlink', 'unreadable', 'watch-error'].includes(change.event)) return;
+    if (
+      !['add', 'change', 'unlink', 'addDir', 'unlinkDir', 'unreadable', 'watch-error'].includes(
+        change.event,
+      )
+    )
+      return;
     if (change.scope === 'workspace') {
       if (change.event === 'watch-error') {
         showMessage(t('workspace.watchResourceLimit'), true);
+        return;
+      }
+      if (change.event === 'unlink' || change.event === 'unlinkDir') {
+        const affectedTabs = await rebaseOpenTabs(change.path, change.path);
+        for (const { tab } of affectedTabs)
+          await preserveUnavailableTab(tab, 'deleted', tab.filePath);
+        if (affectedTabs.length) {
+          renderTabs();
+          updateActiveUI();
+          persistSession();
+        }
+      }
+      if (
+        (change.event === 'unlink' || change.event === 'unlinkDir') &&
+        state.workspace &&
+        normalizedFilePath(change.path) === normalizedFilePath(state.workspace) &&
+        !(await window.fileAPI.exists(state.workspace))
+      ) {
+        await setWorkspace('');
         return;
       }
       if (!state.treeTimer)
@@ -3522,32 +3670,11 @@
     );
     for (const tab of tabs) {
       if (change.event === 'unlink') {
-        clearTimeout(tab.saveTimer);
-        tab.externalConflict = null;
-        tab.externalChangeIgnored = false;
-        tab.externalFileState = {
-          kind: 'deleted',
-          path: change.path,
-          clipboardContent:
-            tab.externalFileState?.clipboardContent ?? recreateClipboardSnapshot(tab),
-          detectedAt: Date.now(),
-          version: (tab.externalFileState?.version || 0) + 1,
-        };
+        await preserveUnavailableTab(tab, 'deleted', change.path);
         continue;
       }
       if (change.event === 'unreadable') {
-        clearTimeout(tab.saveTimer);
-        tab.externalConflict = null;
-        tab.externalChangeIgnored = false;
-        tab.externalFileState = {
-          kind: 'unreadable',
-          path: change.path,
-          error: change.error,
-          clipboardContent:
-            tab.externalFileState?.clipboardContent ?? recreateClipboardSnapshot(tab),
-          detectedAt: Date.now(),
-          version: (tab.externalFileState?.version || 0) + 1,
-        };
+        await preserveUnavailableTab(tab, 'unreadable', change.path, change.error);
         continue;
       }
       if (typeof change.content !== 'string') continue;
@@ -3597,6 +3724,7 @@
     renderTabs();
     updateExternalChangeBanner(activeTab());
     updateExternalFileStateBanner(activeTab());
+    persistSession();
   }
 
   function handleMenu(action, value) {
@@ -4342,8 +4470,11 @@
     $('#statusVersion').textContent = `v${info.app}`;
     $('#versionInfo').textContent = `Version ${info.app} · Electron ${info.electron}`;
     const session = state.settings.session;
-    if (state.settings.restoreWorkspace && session?.workspacePath)
-      await setWorkspace(session.workspacePath);
+    if (state.settings.restoreWorkspace && session?.workspacePath) {
+      if (await window.fileAPI.exists(session.workspacePath))
+        await setWorkspace(session.workspacePath);
+      else await setWorkspace('');
+    }
     if (state.settings.restoreTabs && session?.openFiles?.length) {
       await openPaths(session.openFiles);
       const active = state.tabs.find((tab) => tab.filePath === session.activeFilePath);

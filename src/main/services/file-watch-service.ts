@@ -10,7 +10,7 @@ import {
 export { normalizeWorkspaceReadDepth, WORKSPACE_READ_DEPTH_MAX, WORKSPACE_READ_DEPTH_MIN };
 
 export type FileChangeEvent = {
-  event: 'add' | 'change' | 'unlink' | 'unreadable' | 'watch-error';
+  event: 'add' | 'change' | 'unlink' | 'addDir' | 'unlinkDir' | 'unreadable' | 'watch-error';
   path: string;
   scope: 'workspace' | 'document';
   content?: string;
@@ -317,7 +317,11 @@ export class FileWatchService {
   }
 
   private toChangeEvent(eventName: string): FileChangeEvent['event'] | null {
-    return eventName === 'add' || eventName === 'change' || eventName === 'unlink'
+    return eventName === 'add' ||
+      eventName === 'change' ||
+      eventName === 'unlink' ||
+      eventName === 'addDir' ||
+      eventName === 'unlinkDir'
       ? eventName
       : null;
   }

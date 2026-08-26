@@ -175,6 +175,15 @@ export class FileManagerService {
     return destination;
   }
 
+  rebasePath(oldRoot: string, newRoot: string, candidatePath: string): string | null {
+    const resolvedOldRoot = path.resolve(oldRoot);
+    const resolvedCandidate = path.resolve(candidatePath);
+    const relative = path.relative(resolvedOldRoot, resolvedCandidate);
+    if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative))
+      return null;
+    return path.resolve(newRoot, relative);
+  }
+
   async writeBinaryFile(filePath: string, bytes: Uint8Array): Promise<void> {
     const resolved = path.resolve(filePath);
     await fs.promises.mkdir(path.dirname(resolved), { recursive: true });

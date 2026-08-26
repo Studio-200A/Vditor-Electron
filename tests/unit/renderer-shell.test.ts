@@ -235,9 +235,9 @@ describe('renderer shell', () => {
     ).not.toBeNull();
     expect(css).toContain('.temporary-document-notice');
     expect(rendererScript).toContain('showTemporaryDocumentNotice');
-    expect(rendererScript).toContain("kind: 'deleted'");
+    expect(rendererScript).toContain("preserveUnavailableTab(tab, 'deleted'");
     expect(rendererScript).toContain("kind: 'reappeared'");
-    expect(rendererScript).toContain("kind: 'unreadable'");
+    expect(rendererScript).toContain("preserveUnavailableTab(tab, 'unreadable'");
     expect(css).toContain('.persistent-banner');
   });
 
