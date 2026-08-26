@@ -71,6 +71,39 @@
   --top-surface-shadow: 0 5px 13px -7px rgb(0 0 0 / 0.9), 0 2px 6px -4px rgb(0 0 0 / 0.58);
   color-scheme: dark;
 }
+:root[data-theme='monokai-pro-light'] {
+  /* Palette from the official Monokai Pro Light VS Code theme (not Filter Sun). */
+  --bg: #faf4f2;
+  --panel: #fefaf9;
+  --sidebar-surface: #ede7e5;
+  --editor-surface: #faf4f2;
+  --panel-2: #e0dad9;
+  --hover: #d3cdcc;
+  --text: #29242a;
+  /* Muted is ~111 RGB units below sidebar/surface to keep toolbar icons readable,
+     matching classic/claude light contrast. */
+  --muted: #706b6e;
+  --border: #bfb9ba;
+  --accent: #e14775;
+  --on-accent: #faf4f2;
+  --brand-accent: #e14775;
+  --danger: #e14775;
+  --monokai-code-bg: #ede7e5;
+  --monokai-input-bg: #fefaf9;
+  /* Heading colors come from the user's monokai-light-heading.css scheme. */
+  --monokai-h1: #d40045;
+  --monokai-h2: #ff7f00;
+  --monokai-h3: #66b82b;
+  --monokai-h4: #093f86;
+  --monokai-h5: #340c81;
+  --monokai-h6: #373530;
+  --top-surface-shadow: 0 5px 12px -8px rgb(41 36 42 / 0.46), 0 2px 5px -4px rgb(41 36 42 / 0.24);
+  color-scheme: light;
+}
+:root[data-theme='monokai-pro-light'] .modal-close:hover {
+  background: var(--hover);
+  color: var(--text);
+}
 :root[data-theme='claude-light'] {
   --bg: #faf9f5;
   --panel: #fff;
@@ -1395,6 +1428,83 @@ html[data-scrollbar-mode='hidden'] .app-scrollbar::-webkit-scrollbar {
   color: inherit !important;
 }
 
+:root[data-theme='monokai-pro-light'] .editor-host,
+:root[data-theme='monokai-pro-light'] .editor-host .vditor-content,
+:root[data-theme='monokai-pro-light'] .editor-host .vditor-sv,
+:root[data-theme='monokai-pro-light'] .editor-host .vditor-ir,
+:root[data-theme='monokai-pro-light'] .editor-host .vditor-wysiwyg,
+:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview,
+:root[data-theme='monokai-pro-light'] .editor-host .vditor-reset {
+  color: #29242a;
+}
+:root[data-theme='monokai-pro-light'] input:not([type='checkbox']):not([type='radio']),
+:root[data-theme='monokai-pro-light'] select,
+:root[data-theme='monokai-pro-light'] textarea {
+  background-color: var(--monokai-input-bg) !important;
+}
+:root[data-theme='monokai-pro-light']
+  .editor-host
+  :is(.vditor-ir, .vditor-wysiwyg)
+  [data-type='code-block']
+  pre,
+:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview pre,
+:root[data-theme='monokai-pro-light'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) code,
+:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview code {
+  background-color: var(--monokai-code-bg);
+}
+:root[data-theme='monokai-pro-light']
+  .editor-host
+  :is(.vditor-ir, .vditor-wysiwyg)
+  :is(a, .vditor-ir__link),
+:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview a {
+  color: #1c8ca8;
+}
+:root[data-theme='monokai-pro-light'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) blockquote,
+:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview blockquote {
+  color: #918c8e;
+  border-color: #bfb9ba;
+}
+:root[data-theme='monokai-pro-light'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) mark,
+:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview mark {
+  background-color: rgb(204 122 10 / 0.35);
+}
+:root[data-theme='monokai-pro-light'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) hr,
+:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview hr {
+  border-color: #d3cdcc;
+}
+:root[data-theme='monokai-pro-light'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h1, .h1),
+:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview h1 {
+  color: var(--monokai-h1) !important;
+}
+:root[data-theme='monokai-pro-light'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h2, .h2),
+:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview h2 {
+  color: var(--monokai-h2) !important;
+}
+:root[data-theme='monokai-pro-light'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h3, .h3),
+:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview h3 {
+  color: var(--monokai-h3) !important;
+}
+:root[data-theme='monokai-pro-light'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h4, .h4),
+:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview h4 {
+  color: var(--monokai-h4) !important;
+}
+:root[data-theme='monokai-pro-light'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h5, .h5),
+:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview h5 {
+  color: var(--monokai-h5) !important;
+}
+:root[data-theme='monokai-pro-light'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h6, .h6),
+:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview h6 {
+  color: var(--monokai-h6) !important;
+}
+:root[data-theme='monokai-pro-light']
+  .editor-host
+  :is(.vditor-ir, .vditor-wysiwyg)
+  :is(h1, .h1, h2, .h2, h3, .h3, h4, .h4, h5, .h5, h6, .h6)
+  *,
+:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview :is(h1, h2, h3, h4, h5, h6) * {
+  color: inherit !important;
+}
+
 /* Ant Design and WeChat content themes are authored for light documents.
    Re-map their explicit light colors when the application uses a dark surface. */
 :root:is([data-theme='dark'], [data-theme='monokai-pro-dark'])
@@ -2422,6 +2532,30 @@ body.confirm-card-dragging {
 }
 .theme-option-monokai .theme-preview-h4 {
   stroke: #78dce8;
+}
+.theme-option-monokai-light .theme-preview-window {
+  fill: #faf4f2;
+  stroke: #bfb9ba;
+}
+.theme-option-monokai-light .theme-preview-chrome,
+.theme-option-monokai-light .theme-preview-sidebar {
+  fill: #e0dad9;
+  stroke: #bfb9ba;
+}
+.theme-option-monokai-light .theme-preview-muted {
+  stroke: #706b6e;
+}
+.theme-option-monokai-light .theme-preview-h1 {
+  stroke: #d40045;
+}
+.theme-option-monokai-light .theme-preview-h2 {
+  stroke: #ff7f00;
+}
+.theme-option-monokai-light .theme-preview-h3 {
+  stroke: #66b82b;
+}
+.theme-option-monokai-light .theme-preview-h4 {
+  stroke: #093f86;
 }
 .settings-content section > label:not(.check):not(.about-devtools-setting):not(.theme-option) {
   display: grid;

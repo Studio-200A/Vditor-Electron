@@ -631,7 +631,9 @@
   }
 
   function lightThemePreference() {
-    return state.settings.lightTheme === 'claude-light' ? 'claude-light' : 'classic';
+    return ['classic', 'claude-light', 'monokai-pro-light'].includes(state.settings.lightTheme)
+      ? state.settings.lightTheme
+      : 'classic';
   }
 
   function mapSystemTheme(theme) {

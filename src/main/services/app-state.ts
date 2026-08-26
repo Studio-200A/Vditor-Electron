@@ -12,8 +12,9 @@ export interface AppSettings {
   restoreWorkspace: boolean;
   devToolsEnabled: boolean;
   systemTheme: boolean;
-  theme: 'classic' | 'dark' | 'claude-light' | 'claude-dark' | 'monokai-pro-dark';
-  lightTheme: 'classic' | 'claude-light';
+  theme:
+    'classic' | 'dark' | 'claude-light' | 'claude-dark' | 'monokai-pro-dark' | 'monokai-pro-light';
+  lightTheme: 'classic' | 'claude-light' | 'monokai-pro-light';
   darkTheme: 'dark' | 'claude-dark' | 'monokai-pro-dark';
   contentTheme: string;
   codeTheme: string;

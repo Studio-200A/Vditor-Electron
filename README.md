@@ -95,6 +95,7 @@ Built-in application themes:
 - Dark
 - Claude Light
 - Claude Dark
+- Monokai Pro Light, including a dedicated H1–H6 heading palette
 - Monokai Pro Dark, including a dedicated H1–H6 heading palette
 
 Choose light and dark application themes independently in Settings. The status-bar switch then changes between those two saved choices. Application themes only change application colors. Content and code-block preview themes remain controlled by Vditor and preserve the user's last selection in each light/dark context. Optional multi-platform typography previews can be enabled when needed.

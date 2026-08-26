@@ -12,7 +12,7 @@
 | `11-0.1.5-UX-IMPROVEMENT-PLAN.md`    | 0.1.5 用户体验改进计划和实施记录。                                         |
 | `12-0.2.0-DEVELOPMENT-PLAN.md`       | 0.2.0 面向用户的功能、安全、可靠性和发布门槛计划。                         |
 | `13-0.2.0-EXECUTION-TRACKER.md`     | 0.2.0 执行批次、依赖、验证证据和遗留风险账本。                             |
-| `04-THEMES.md`                       | 应用主题架构、颜色变量、Vditor 边界和当前五套内置主题实现。               |
+| `04-THEMES.md`                       | 应用主题架构、颜色变量、Vditor 边界和当前六套内置主题实现。               |
 | `14-0.2.5-RENDERER-REFACTOR-PLAN.md` | 0.2.5 渲染层渐进式架构重构计划。                                           |
 | `20-VDITOR-UPGRADE.md`               | Vditor 版本升级的兼容边界、检查步骤和验收要求。                            |
 | `30-WISHLIST.md`                     | 尚未排入版本计划的长期想法，不作为当前版本的承诺。                         |

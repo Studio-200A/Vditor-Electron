@@ -17,7 +17,7 @@ Vditor Desktop 的主题系统分为应用壳层主题和 Vditor 内容主题两
 
 Vditor 原生工具栏中的代码预览主题设置控制 WYSIWYG、IR 和 SV 预览区代码块的高亮风格。应用主题不重复定义这部分颜色，从而尊重 Vditor 的上游能力和升级边界。
 
-Monokai Pro Dark 是历史实现中的例外：应用 CSS 额外提供了少量内容可读性修正和 H1–H6 标题色，以保持既有视觉特征；代码块高亮仍由 Vditor code theme 控制。Claude 主题不复制这组内容层覆盖。
+Monokai Pro Dark 和 Monokai Pro Light 是历史实现中的例外：应用 CSS 额外提供了少量内容可读性修正和 H1–H6 标题色，以保持既有视觉特征；代码块高亮仍由 Vditor code theme 控制。Claude 主题不复制这组内容层覆盖。
 
 ## 2. 当前实现分层
 
@@ -27,7 +27,7 @@ Monokai Pro Dark 是历史实现中的例外：应用 CSS 额外提供了少量�
 | 配置存储 | `src/main/services/settings-store.ts` | 校验并持久化主题枚举和主题偏好 |
 | 设置界面 | `src/renderer/index.html` | 渲染亮色/暗色独立 radio 组、主题预览 SVG 和系统主题选项 |
 | 主题控制器 | `src/renderer/app.js` | 解析当前主题、应用 `data-theme`、切换 Vditor 内容/代码主题、同步状态栏开关 |
-| 应用视觉变量 | `src/renderer/styles/app.css` | 为五套壳层主题提供 CSS 变量和必要的组件覆盖 |
+| 应用视觉变量 | `src/renderer/styles/app.css` | 为六套壳层主题提供 CSS 变量和必要的组件覆盖 |
 | Vditor 边界 | `src/renderer/vditor-adapter.js` | 集中处理 Vditor toolbar、主题菜单和私有 DOM 结构访问 |
 | 行为测试 | `tests/unit/*`、`tests/e2e/app.spec.ts` | 覆盖配置、主题控件、颜色契约、主题切换和真实 Electron 行为 |
 
@@ -35,12 +35,13 @@ Monokai Pro Dark 是历史实现中的例外：应用 CSS 额外提供了少量�
 
 ## 3. 当前状态模型
 
-### 3.1 五套应用主题
+### 3.1 六套应用主题
 
 | 色调 | 配置值 | 显示名称 | 默认状态 |
 | ---- | ------ | -------- | -------- |
 | 亮色 | `classic` | Light | `lightTheme` 默认值 |
 | 亮色 | `claude-light` | Claude Light | 可选 |
+| 亮色 | `monokai-pro-light` | Monokai Pro Light | 可选 |
 | 暗色 | `dark` | Dark | `darkTheme` 默认值 |
 | 暗色 | `claude-dark` | Claude Dark | 可选 |
 | 暗色 | `monokai-pro-dark` | Monokai Pro Dark | 可选 |
@@ -49,7 +50,7 @@ Monokai Pro Dark 是历史实现中的例外：应用 CSS 额外提供了少量�
 
 设置页分别保存：
 
-- `appearance.lightTheme`：`classic` 或 `claude-light`；
+- `appearance.lightTheme`：`classic`、`claude-light` 或 `monokai-pro-light`；
 - `appearance.darkTheme`：`dark`、`claude-dark` 或 `monokai-pro-dark`。
 
 `appearance.theme` 表示当前实际应用主题，`systemTheme` 表示是否跟随系统明暗。解析关系为：
@@ -104,10 +105,11 @@ Vditor 内容和代码主题仍各自保存亮暗偏好：`lightCodeTheme` / `da
 | Claude Light | `#faf9f5` | `#f5f4ed` | `#faf9f5` | 暖灰 sidebar，纸张感编辑区 |
 | Claude Dark | `#141413` | `#30302e` | `#30302e` | 统一暖暗表面，依靠层级和分割线区分 |
 | Monokai Pro Dark | `#2d2a2e` | `#2d2a2e` | `#2d2a2e` | 保留 Monokai 的统一深色表面 |
+| Monokai Pro Light | `#faf4f2` | `#ede7e5` | `#faf4f2` | sidebar 略深一档、编辑区暖白，Monokai Pro Dark 的同族浅色 |
 
 `.sidebar` 使用 `--sidebar-surface`；编辑器宿主、`.vditor-content`、`.vditor-sv`、`.vditor-ir`、`.vditor-wysiwyg`、`.vditor-preview` 和 `.vditor-reset` 使用 `--editor-surface`。设置页具体内容区域也使用编辑区表面，避免 Claude Light 出现孤立的纯白大块。
 
-## 5. 五套主题的实际实现
+## 5. 六套主题的实际实现
 
 ### 5.1 Classic
 
@@ -129,6 +131,10 @@ Vditor 内容和代码主题仍各自保存亮暗偏好：`lightCodeTheme` / `da
 
 既有深色主题。应用、sidebar 和编辑区基准表面为 `#2d2a2e`，accent 为 Monokai 黄色 `#ffd866`，并使用 Monokai 风格的输入背景、代码块背景、链接、引用和分割线颜色。应用 CSS 为 H1–H6 提供粉、黄、绿、青、紫、橙六级标题色；这些内容可读性覆盖是 Monokai 的历史特例，代码块高亮仍由 Vditor code theme 提供。
 
+### 5.6 Monokai Pro Light
+
+Monokai Pro Dark 的同族浅色主题，调色取自官方 Monokai Pro Light VS Code 主题（非 Filter Sun）。应用和编辑区基准表面为暖白 `#faf4f2`，sidebar 为略深的 `#ede7e5`，次级面板为 `#e0dad9`，文字为 `#29242a`，弱化文字为 `#706b6e`，accent 和品牌强调色为 Monokai 红 `#e14775`。与 Monokai Pro Dark 一样，应用 CSS 复用输入背景、代码块背景、链接、引用和分割线的内容可读性覆盖，并为 H1–H6 提供红、橙、绿、蓝、紫、黑六级标题色；代码块高亮仍由 Vditor code theme 提供。
+
 ## 6. 主题选择器与预览
 
 设置页使用两个 fieldset：亮色应用主题和暗色应用主题。每个选项包含 radio input、主题预览 SVG 和本地化名称。
@@ -139,7 +145,7 @@ Vditor 内容和代码主题仍各自保存亮暗偏好：`lightCodeTheme` / `da
 
 ## 7. 测试契约
 
-当前测试覆盖配置字段、旧字段忽略、亮暗独立主题组、五张预览卡片、预览宽度、Claude surface/accent/按钮文字/hover/分割线、状态栏开关、系统主题解析，以及编辑器在失焦、聚焦和 IR/WYSIWYG/SV 切换时的编辑区表面。
+当前测试覆盖配置字段、旧字段忽略、亮暗独立主题组、六张预览卡片、预览宽度、Claude surface/accent/按钮文字/hover/分割线、状态栏开关、系统主题解析，以及编辑器在失焦、聚焦和 IR/WYSIWYG/SV 切换时的编辑区表面。
 
 Vditor toolbar 的主题菜单继续由 adapter 管理，应用主题不会绕过 Vditor 的 code theme。涉及主题代码、renderer shell 或设置持久化的改动，应至少运行格式检查、相关单测、构建和相关 Electron E2E；合并前遵循项目要求运行 `npm run check:all`。
 

@@ -375,16 +375,17 @@ describe('renderer shell', () => {
   it('offers separately selectable light and dark application theme preferences', () => {
     expect(
       document.querySelectorAll('.theme-picker input[type="radio"][name="lightTheme"]'),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
     expect(
       document.querySelectorAll('.theme-picker input[type="radio"][name="darkTheme"]'),
     ).toHaveLength(3);
     expect(document.querySelector('[name="lightTheme"][value="claude-light"]')).not.toBeNull();
+    expect(document.querySelector('[name="lightTheme"][value="monokai-pro-light"]')).not.toBeNull();
     expect(document.querySelector('[name="darkTheme"][value="claude-dark"]')).not.toBeNull();
     expect(document.querySelector('[name="darkTheme"][value="monokai-pro-dark"]')).not.toBeNull();
     expect(document.querySelector('.theme-picker-light')).not.toBeNull();
     expect(document.querySelector('.theme-picker-dark')).not.toBeNull();
-    expect(document.querySelectorAll('.theme-preview svg')).toHaveLength(5);
+    expect(document.querySelectorAll('.theme-preview svg')).toHaveLength(6);
     expect(document.querySelector('.settings-right-edge')).not.toBeNull();
     expect(rendererScript).toContain(
       "theme === 'dark' || theme === 'claude-dark' || theme === 'monokai-pro-dark'",
@@ -421,8 +422,13 @@ describe('renderer shell', () => {
     expect(css).toMatch(
       /:root\[data-theme='monokai-pro-dark'\]\s*\{[^}]*--bg:\s*#2d2a2e[^}]*--accent:\s*#ffd866/s,
     );
+    expect(css).toMatch(
+      /:root\[data-theme='monokai-pro-light'\]\s*\{[^}]*--bg:\s*#faf4f2[^}]*--accent:\s*#e14775/s,
+    );
     expect(css).toContain('--monokai-h1: #ff6188');
     expect(css).toContain('--monokai-h6: #fc9867');
+    expect(css).toContain('--monokai-h1: #d40045');
+    expect(css).toContain('--monokai-h6: #373530');
     expect(css).toMatch(
       /\.theme-option-input:checked \+ \.theme-preview\s*\{[^}]*border-color:\s*var\(--accent\)/s,
     );

@@ -2839,6 +2839,7 @@ test('resolves external file conflicts without silently overwriting disk changes
       ['', 'rgb(255, 255, 255)'],
       ['dark', 'rgb(255, 255, 255)'],
       ['monokai-pro-dark', 'rgb(255, 255, 255)'],
+      ['monokai-pro-light', 'rgb(255, 255, 255)'],
     ]) {
       await page.evaluate((nextTheme) => {
         if (nextTheme) document.documentElement.dataset.theme = nextTheme;
@@ -2851,7 +2852,9 @@ test('resolves external file conflicts without silently overwriting disk changes
           ? 'rgb(255, 119, 119)'
           : theme === 'monokai-pro-dark'
             ? 'rgb(255, 97, 136)'
-            : 'rgb(199, 59, 59)',
+            : theme === 'monokai-pro-light'
+              ? 'rgb(225, 71, 117)'
+              : 'rgb(199, 59, 59)',
       );
     }
     await expect(overwriteDialog.locator('.confirm-card')).toHaveClass(/confirm-card-draggable/);
@@ -3461,6 +3464,55 @@ test('colors all six rendered heading levels in Monokai Pro Dark', async () => {
   }
 });
 
+test('colors all six rendered heading levels in Monokai Pro Light', async () => {
+  const running = await launchApp({
+    theme: 'monokai-pro-light',
+    lightTheme: 'monokai-pro-light',
+    editMode: 'ir',
+  });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    const markdown = '# H1\n## H2\n### H3\n#### H4\n##### H5\n###### H6';
+    const expected = [
+      'rgb(212, 0, 69)',
+      'rgb(255, 127, 0)',
+      'rgb(102, 184, 43)',
+      'rgb(9, 63, 134)',
+      'rgb(52, 12, 129)',
+      'rgb(55, 53, 48)',
+    ];
+    const headingColors = (root: string, prefix = '.') =>
+      page.evaluate(
+        ({ rootSelector, classPrefix }) =>
+          Array.from({ length: 6 }, (_, index) => {
+            const level = index + 1;
+            const heading = document.querySelector(`${rootSelector} ${classPrefix}h${level}`);
+            return heading ? getComputedStyle(heading).color : null;
+          }),
+        { rootSelector: root, classPrefix: prefix },
+      );
+
+    await page.locator('.editor-host.active .vditor-ir .vditor-reset').fill(markdown);
+    await expect.poll(() => headingColors('.editor-host.active .vditor-ir', '')).toEqual(expected);
+
+    const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+    await modeTrigger.click();
+    await page.locator('#vditorToolbarMount button[data-mode="wysiwyg"]').click();
+    await expect
+      .poll(() => headingColors('.editor-host.active .vditor-wysiwyg', ''))
+      .toEqual(expected);
+
+    await modeTrigger.click();
+    await page.locator('#vditorToolbarMount button[data-mode="sv"]').click();
+    await expect
+      .poll(() => headingColors('.editor-host.active .vditor-preview', ''))
+      .toEqual(expected);
+  } finally {
+    await closeApp(running);
+  }
+});
+
 for (const theme of ['classic', 'dark', 'monokai-pro-dark'] as const) {
   test(`keeps editor backgrounds stable across focus changes in ${theme}`, async () => {
     const running = await launchApp({
@@ -3515,7 +3567,7 @@ test('saves settings live and keeps the enlarged settings dialog draggable', asy
     const { page } = running;
     await page.locator('#statusSettings').click();
     const card = page.locator('.settings-card');
-    await expect(page.locator('.theme-preview')).toHaveCount(5);
+    await expect(page.locator('.theme-preview')).toHaveCount(6);
     await expect(page.locator('[name="lightTheme"][value="classic"]')).toBeChecked();
     await expect(page.locator('[name="darkTheme"][value="dark"]')).toBeChecked();
     const themePreviewWidths = await page
