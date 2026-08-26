@@ -1,7 +1,7 @@
 # Vditor-Electron Code Structure World Map
 
 - **生成时间：** 2026-08-26
-- **基于的工作区：** `dev-0.2.0`，`548921f` 加上当前工作区中的批次 6、6.5 实现（提交状态以 `git status --short` 为准）
+- **基于的工作区：** `dev-0.2.0`，当前 HEAD `362b464`（已包含批次 6、计划外批次 6.5；提交状态以 `git status --short` 为准）
 - **文档版本：** v1.8
 - **对应 package.json 版本号：** 0.1.5
 

@@ -150,7 +150,7 @@ Status bar
 ## 实现模块
 
 - 结构：`src/renderer/index.html`
-- 布局、三主题、收放动画、拖拽视觉状态：`src/renderer/styles/app.css`
+- 布局、应用主题、收放动画、拖拽视觉状态：`src/renderer/styles/app.css`
 - 侧边栏联动、标签排序、菜单和快捷键：`src/renderer/app.js`
 - macOS 原生菜单：`src/main/menu.ts`
 - 文案：`src/renderer/locales.js`

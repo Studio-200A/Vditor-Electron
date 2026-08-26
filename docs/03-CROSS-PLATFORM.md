@@ -75,6 +75,7 @@ Node's `path` implementation varies with the host platform, and some `fs` operat
 - `.lnk` and Finder alias are intentionally treated as ordinary files. Supporting them requires a separate product and security decision.
 - Safe document writes use a same-directory temporary file and replacement flow; failure paths preserve the original file.
 - The 0.2.0 file-state flows cover external modification, deletion, reappearance, and unreadable/permission states.
+- Directory rename, directory deletion, Save As watcher rebinding, descendant path updates, and invalid workspace-root reset are implemented and Linux-tested; Windows/macOS filesystem semantics remain unvalidated.
 
 ### Not yet platform-validated
 
