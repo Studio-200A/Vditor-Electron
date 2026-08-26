@@ -7,6 +7,7 @@
 | `00-ISSUES.md`                       | 当前开发轮次的临时问题清单。问题解决后应归档到版本更新日志，并清空该文件。 |
 | `01-CODE-STRUCTURE.md`               | 项目代码架构全景一览。                                                     |
 | `02-DEVELOPMENT-WORKFLOW.md`         | 开发分支、Pull Request、版本标记、构建和 GitHub Release 的标准流程。       |
+| `03-CROSS-PLATFORM.md`               | Windows、macOS、Linux 的实现边界、验证矩阵和跨平台测试证据。                |
 | `10-0.1.3-NEW-UI.md`                 | 0.1.3 工作区 UI 改版的实施记录和回归范围。                                 |
 | `11-0.1.5-UX-IMPROVEMENT-PLAN.md`    | 0.1.5 用户体验改进计划和实施记录。                                         |
 | `12-0.2.0-DEVELOPMENT-PLAN.md`       | 0.2.0 面向用户的功能、安全、可靠性和发布门槛计划。                         |
