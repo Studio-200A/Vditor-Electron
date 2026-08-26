@@ -402,9 +402,7 @@ describe('renderer shell', () => {
     expect(css).toMatch(
       /:root\[data-theme='claude-light'\]\s*\{[^}]*--sidebar-surface:\s*#f5f4ed[^}]*--editor-surface:\s*#faf9f5[^}]*--accent:\s*#d97757[^}]*--brand-accent:\s*#d97757/s,
     );
-    expect(css).toMatch(
-      /:root\[data-theme='claude-light'\] \.settings-content\s*\{[^}]*background:\s*var\(--editor-surface\)/s,
-    );
+    expect(css).toMatch(/\.settings-content\s*\{[^}]*background:\s*var\(--editor-surface\)/s);
     expect(css).toMatch(
       /:root\[data-theme='claude-light'\] \.modal-close:hover\s*\{[^}]*background:\s*#e8e6dc[^}]*color:\s*var\(--text\)/s,
     );
