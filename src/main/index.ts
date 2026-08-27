@@ -339,14 +339,30 @@ function registerIpcHandlers(): void {
   ipcMain.handle('file:write', (_event, filePath: string, content: string) =>
     fileManager.writeFile(filePath, content),
   );
-  ipcMain.handle('file:writeDocument', (_event, filePath: string, content: string) => {
-    fileWatchService.markOwnDocumentWrite(filePath);
-    return fileManager.writeDocument(filePath, content);
-  });
+  ipcMain.handle(
+    'file:writeDocument',
+    async (
+      _event,
+      filePath: string,
+      content: string,
+      expectedContent?: string,
+      expectedAbsent = false,
+    ) => {
+      const result = await fileManager.writeDocument(
+        filePath,
+        content,
+        expectedContent,
+        expectedAbsent,
+      );
+      if (!('error' in result)) fileWatchService.markOwnDocumentWrite(filePath);
+      return result;
+    },
+  );
   ipcMain.handle('file:writeBinary', (_event, filePath: string, bytes: Uint8Array) =>
     fileManager.writeBinaryFile(filePath, bytes),
   );
   ipcMain.handle('file:exists', (_event, filePath: string) => fileManager.exists(filePath));
+  ipcMain.handle('file:identity', (_event, filePath: string) => fileManager.fileIdentity(filePath));
   ipcMain.handle('file:listDir', (_event, dirPath: string, workspacePath?: string) =>
     fileManager.listDir(dirPath, workspacePath),
   );
@@ -355,8 +371,18 @@ function registerIpcHandlers(): void {
     (_event, parent: string, name: string, type: 'file' | 'directory') =>
       fileManager.createItem(parent, name, type),
   );
-  ipcMain.handle('file:rename', (_event, oldPath: string, newName: string) =>
-    fileManager.renameItem(oldPath, newName),
+  ipcMain.handle('file:rename', async (_event, oldPath: string, newName: string) => {
+    const destination = await fileManager.prepareRename(oldPath, newName);
+    fileWatchService.markOwnWorkspaceRename(oldPath, destination);
+    try {
+      return await fileManager.renameItem(oldPath, newName);
+    } catch (error) {
+      fileWatchService.clearOwnWorkspaceRename(oldPath, destination);
+      throw error;
+    }
+  });
+  ipcMain.handle('file:prepareRename', (_event, oldPath: string, newName: string) =>
+    fileManager.prepareRename(oldPath, newName),
   );
   ipcMain.handle('file:delete', async (_event, filePath: string) =>
     shell.trashItem(path.resolve(filePath)),
@@ -375,11 +401,11 @@ function registerIpcHandlers(): void {
   ipcMain.handle('file:setWorkspaceWatch', (_event, rootPath?: string, depth?: number) =>
     fileWatchService.setWorkspace(rootPath, depth),
   );
-  ipcMain.handle('file:watchDocument', (_event, filePath: string) =>
-    fileWatchService.watchDocument(filePath),
+  ipcMain.handle('file:watchDocument', (_event, filePath: string, reconcile = false) =>
+    fileWatchService.watchDocument(filePath, reconcile),
   );
-  ipcMain.handle('file:unwatchDocument', (_event, filePath: string) =>
-    fileWatchService.unwatchDocument(filePath),
+  ipcMain.handle('file:unwatchDocument', (_event, filePath: string, identity?: string) =>
+    fileWatchService.unwatchDocument(filePath, identity),
   );
 
   ipcMain.handle('app:getSettings', () => settingsStore.getAll());
@@ -394,7 +420,7 @@ function registerIpcHandlers(): void {
   });
   ipcMain.handle('app:getDefaultSettings', () => structuredClone(DEFAULT_SETTINGS));
   ipcMain.handle('app:saveSettings', (_event, settings: Partial<AppSettings>) => {
-    const savedSettings = settingsStore.update(settings);
+    const savedSettings = settingsStore.updateOrThrow(settings);
     if (
       Object.hasOwn(settings, 'locale') ||
       Object.hasOwn(settings, 'editMode') ||

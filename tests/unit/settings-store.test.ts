@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as TOML from '@iarna/toml';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../../src/main/services/app-state';
 import { SettingsStore } from '../../src/main/services/settings-store';
 
@@ -73,6 +73,21 @@ describe('SettingsStore', () => {
     expect(contents).toContain('[window.bounds]');
     expect(contents).toContain('[window.settingsDialog]');
     expect(fs.existsSync(path.join(configDir, 'settings.json'))).toBe(false);
+  });
+
+  it('reports strict persistence failures without changing in-memory settings', () => {
+    const fileSystem = {
+      ...fs,
+      renameSync: vi.fn<typeof fs.renameSync>(() => {
+        throw new Error('settings replacement failed');
+      }),
+    };
+    const store = new SettingsStore(configDir, fileSystem);
+
+    expect(() => store.updateOrThrow({ locale: 'zh_Hans' })).toThrow('Unable to persist settings.');
+    expect(store.get('locale')).toBe(DEFAULT_SETTINGS.locale);
+    expect(fs.existsSync(path.join(configDir, 'config.toml'))).toBe(false);
+    expect(fs.readdirSync(configDir)).toEqual([]);
   });
 
   it('persists workspace directory read depth within its supported bounds', () => {

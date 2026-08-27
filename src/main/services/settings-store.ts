@@ -1,4 +1,4 @@
-import * as fs from 'fs';
+import * as fs from 'node:fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as TOML from '@iarna/toml';
@@ -98,6 +98,11 @@ type SettingsDocument = {
   session: AppSettings['session'];
 };
 
+type SettingsFileSystem = Pick<
+  typeof fs,
+  'existsSync' | 'mkdirSync' | 'readFileSync' | 'writeFileSync' | 'renameSync' | 'unlinkSync'
+>;
+
 const pick = <K extends keyof AppSettings>(
   settings: AppSettings,
   keys: readonly K[],
@@ -109,12 +114,15 @@ export class SettingsStore {
   private configPath: string;
   private data: AppSettings;
 
-  constructor(configDir?: string) {
+  constructor(
+    configDir?: string,
+    private readonly fileSystem: SettingsFileSystem = fs,
+  ) {
     this.configDir = configDir || path.join(os.homedir(), '.vditor-desktop');
     this.configPath = path.join(this.configDir, 'config.toml');
 
-    if (!fs.existsSync(this.configDir)) {
-      fs.mkdirSync(this.configDir, { recursive: true });
+    if (!this.fileSystem.existsSync(this.configDir)) {
+      this.fileSystem.mkdirSync(this.configDir, { recursive: true });
     }
 
     this.data = this.load();
@@ -122,8 +130,8 @@ export class SettingsStore {
 
   private load(): AppSettings {
     try {
-      if (fs.existsSync(this.configPath)) {
-        const raw = fs.readFileSync(this.configPath, 'utf-8');
+      if (this.fileSystem.existsSync(this.configPath)) {
+        const raw = this.fileSystem.readFileSync(this.configPath, 'utf-8');
         const parsed = TOML.parse(raw) as unknown as Partial<SettingsDocument>;
         const settings = this.deepMerge(DEFAULT_SETTINGS, this.fromDocument(parsed));
         return {
@@ -137,23 +145,31 @@ export class SettingsStore {
     return { ...DEFAULT_SETTINGS };
   }
 
-  private save(): void {
+  private save(data: AppSettings): boolean {
     const temporaryPath = `${this.configPath}.tmp`;
     try {
-      fs.writeFileSync(
+      this.fileSystem.writeFileSync(
         temporaryPath,
-        TOML.stringify(this.withoutUndefined(this.toDocument(this.data)) as TOML.JsonMap),
+        TOML.stringify(this.withoutUndefined(this.toDocument(data)) as TOML.JsonMap),
         'utf-8',
       );
-      fs.renameSync(temporaryPath, this.configPath);
+      this.fileSystem.renameSync(temporaryPath, this.configPath);
+      return true;
     } catch (err) {
       console.error('Failed to save settings:', err);
       try {
-        if (fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath);
+        if (this.fileSystem.existsSync(temporaryPath)) this.fileSystem.unlinkSync(temporaryPath);
       } catch {
         // Preserve the original error and leave the previous settings file intact.
       }
+      return false;
     }
+  }
+
+  private commit(nextData: AppSettings, throwOnFailure: boolean): AppSettings {
+    if (this.save(nextData)) this.data = nextData;
+    else if (throwOnFailure) throw new Error('Unable to persist settings.');
+    return this.getAll();
   }
 
   get<K extends keyof AppSettings>(key: K): AppSettings[K] {
@@ -169,24 +185,27 @@ export class SettingsStore {
   }
 
   reset(): AppSettings {
-    this.data = structuredClone(DEFAULT_SETTINGS);
-    this.save();
-    return this.getAll();
+    return this.commit(structuredClone(DEFAULT_SETTINGS), false);
   }
 
   set<K extends keyof AppSettings>(key: K, value: AppSettings[K]): void {
-    this.data[key] = value;
-    this.save();
+    this.commit({ ...this.data, [key]: value }, false);
   }
 
   update(settings: Partial<AppSettings>): AppSettings {
+    return this.commit(this.nextData(settings), false);
+  }
+
+  updateOrThrow(settings: Partial<AppSettings>): AppSettings {
+    return this.commit(this.nextData(settings), true);
+  }
+
+  private nextData(settings: Partial<AppSettings>): AppSettings {
     const updated = this.deepMerge(this.data, settings);
-    this.data = {
+    return {
       ...updated,
       workspaceReadDepth: normalizeWorkspaceReadDepth(updated.workspaceReadDepth),
     };
-    this.save();
-    return this.getAll();
   }
 
   private toDocument(settings: AppSettings): SettingsDocument {

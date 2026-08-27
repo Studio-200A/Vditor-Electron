@@ -41,23 +41,75 @@ describe('renderer shell', () => {
     expect(rendererScript).toContain("app.classList.add('sidebar-transitioning')");
     expect(css).toContain('.titlebar-file-actions');
     expect(css).toContain('.toolbar-sidebar-tabs');
-    expect(css).toMatch(/\.titlebar-file-actions svg\s*\{[^}]*stroke-width:\s*1\.7/s);
-    expect(document.querySelector('.app-menu-logo path:first-child')).not.toBeNull();
-    expect(css).toContain('.app-menu-logo path:first-child');
-    expect(css).toContain("mask-image: url('../assets/titlebar-sidebar.svg')");
-    expect(css).toContain("mask-image: url('../assets/titlebar-new.svg')");
-    expect(css).toContain("mask-image: url('../assets/titlebar-open.svg')");
-    expect(css).toContain("mask-image: url('../assets/titlebar-save.svg')");
+    expect(document.querySelectorAll('.titlebar-file-actions svg')).toHaveLength(0);
+    expect(css).toContain('.titlebar-file-actions .icon-btn::before');
+    expect(document.querySelector('.app-menu-logo use')).not.toBeNull();
+    expect(document.querySelector('.app-menu-logo use')?.getAttribute('href')).toBe(
+      'assets/app-icon/app-menu-logo.svg#app-menu-logo',
+    );
+    expect(css).toContain("mask-image: url('../assets/symbolic/titlebar-sidebar.svg')");
+    expect(css).toContain("mask-image: url('../assets/symbolic/titlebar-new.svg')");
+    expect(css).toContain("mask-image: url('../assets/symbolic/titlebar-open.svg')");
+    expect(css).toContain("mask-image: url('../assets/symbolic/titlebar-save.svg')");
+    expect(document.querySelector('.workspace-heading-icon')).not.toBeNull();
+    expect(css).toContain("mask: url('../assets/symbolic/titlebar-open.svg') center / contain");
+    expect(document.querySelector('#statusSettings .status-settings-icon')).not.toBeNull();
+    expect(css).toContain("mask: url('../assets/symbolic/settings.svg') center / contain");
+    expect(document.querySelector('#openSettingsFolder .settings-path-icon')).not.toBeNull();
+    expect(css).toContain("mask: url('../assets/symbolic/settings-files.svg') center / contain");
+    for (const asset of [
+      'app-icon/app-menu-logo.svg',
+      'app-icon/vditor-desktop.svg',
+      'notification/notification.svg',
+      'notification/warning.svg',
+      'symbolic/dark-symbolic.svg',
+      'symbolic/light-symbolic.svg',
+      'symbolic/system-symbolic.svg',
+      'symbolic/settings.svg',
+      'symbolic/settings-about.svg',
+      'symbolic/settings-appearance.svg',
+      'symbolic/settings-editor.svg',
+      'symbolic/settings-files.svg',
+      'symbolic/settings-fonts.svg',
+      'symbolic/settings-preview.svg',
+      'symbolic/replace.svg',
+      'symbolic/replace-all.svg',
+      'symbolic/symlink.svg',
+      'symbolic/titlebar-new.svg',
+      'symbolic/titlebar-open.svg',
+      'symbolic/titlebar-save.svg',
+      'symbolic/titlebar-sidebar.svg',
+    ]) {
+      expect(fs.existsSync(path.resolve('src/renderer/assets', asset))).toBe(true);
+    }
+    for (const asset of [
+      'vditor-desktop.svg',
+      'warning.svg',
+      'notification.svg',
+      'dark-symbolic.svg',
+      'light-symbolic.svg',
+      'system-symbolic.svg',
+      'settings.svg',
+      'titlebar-new.svg',
+      'titlebar-open.svg',
+      'titlebar-save.svg',
+      'titlebar-sidebar.svg',
+      'replace.svg',
+      'replace-all.svg',
+      'symlink.svg',
+    ]) {
+      expect(fs.existsSync(path.resolve('src/renderer/assets', asset))).toBe(false);
+    }
     expect(css).toMatch(/background:\s*linear-gradient\(\s*120deg/s);
     expect(css).toContain('.tabbar.app-scrollbar::-webkit-scrollbar');
     expect(css).toMatch(/\.window-controls button:hover\s*\{[^}]*background:/s);
     expect(css).toMatch(
       /\.window-controls button\s*\{[^}]*transition:[^}]*color 0\.16s ease[^}]*background-color 0\.16s ease/s,
     );
-    expect(css).toMatch(/\.window-titlebar\s*\{[^}]*background:\s*var\(--panel-2\)/s);
-    expect(css).toMatch(
-      /#app:is\(\.toolbar-hidden, \.toolbar-unavailable\) \.window-titlebar\s*\{[^}]*box-shadow:\s*none/s,
-    );
+    expect(css).toMatch(/\.window-titlebar\s*\{[^}]*background:\s*var\(--sidebar-surface\)/s);
+    expect(css).toMatch(/#app\.toolbar-hidden \.window-titlebar\s*\{[^}]*box-shadow:\s*none/s);
+    expect(document.querySelector('#toolbarSkeleton[aria-hidden="true"]')).not.toBeNull();
+    expect(css).toContain(".vditor-toolbar-mount[data-toolbar-pending='true'] .toolbar-skeleton");
     expect(css).toMatch(
       /\.titlebar-sidebar-toggle\s*\{[^}]*display:\s*grid[^}]*place-items:\s*center/s,
     );
@@ -215,9 +267,15 @@ describe('renderer shell', () => {
     expect(recoveryBanner?.querySelector('.persistent-banner-content')).not.toBeNull();
     expect(externalBanner?.querySelector('.persistent-banner-content')).not.toBeNull();
     expect(externalFileStateBanner?.querySelector('.persistent-banner-content')).not.toBeNull();
-    expect(recoveryBanner?.querySelector('img[src="assets/warning.svg"]')).not.toBeNull();
-    expect(externalBanner?.querySelector('img[src="assets/warning.svg"]')).not.toBeNull();
-    expect(externalFileStateBanner?.querySelector('img[src="assets/warning.svg"]')).not.toBeNull();
+    expect(
+      recoveryBanner?.querySelector('img[src="assets/notification/warning.svg"]'),
+    ).not.toBeNull();
+    expect(
+      externalBanner?.querySelector('img[src="assets/notification/warning.svg"]'),
+    ).not.toBeNull();
+    expect(
+      externalFileStateBanner?.querySelector('img[src="assets/notification/warning.svg"]'),
+    ).not.toBeNull();
     expect(recoveryBanner?.querySelector('#recoverySave')).not.toBeNull();
     expect(recoveryBanner?.querySelector('#recoverySaveAs')).not.toBeNull();
     expect(recoveryBanner?.querySelector('#recoveryDiscard')).not.toBeNull();
@@ -231,7 +289,9 @@ describe('renderer shell', () => {
     expect(document.querySelector('#temporaryDocumentNotice.hidden')).not.toBeNull();
     expect(document.querySelector('#temporaryDocumentNoticeMessage')).not.toBeNull();
     expect(
-      document.querySelector('#temporaryDocumentNotice img[src="assets/notification.svg"]'),
+      document.querySelector(
+        '#temporaryDocumentNotice img[src="assets/notification/notification.svg"]',
+      ),
     ).not.toBeNull();
     expect(css).toContain('.temporary-document-notice');
     expect(rendererScript).toContain('showTemporaryDocumentNotice');
@@ -260,8 +320,8 @@ describe('renderer shell', () => {
     expect(document.querySelectorAll('#findWidget button svg')).toHaveLength(4);
     expect(document.querySelector('#replaceOne .find-replace-one-icon')).not.toBeNull();
     expect(document.querySelector('#replaceAll .find-replace-all-icon')).not.toBeNull();
-    expect(css).toContain("mask-image: url('../assets/replace.svg')");
-    expect(css).toContain("mask-image: url('../assets/replace-all.svg')");
+    expect(css).toContain("mask-image: url('../assets/symbolic/replace.svg')");
+    expect(css).toContain("mask-image: url('../assets/symbolic/replace-all.svg')");
     expect(css).toContain('background: currentColor');
     expect(rendererScript).toContain('VDITOR.revealTextMatch(tab.host, mode, query, findIndex)');
     expect(rendererScript).toContain("$('#findWidget').addEventListener('focusout'");
@@ -298,8 +358,14 @@ describe('renderer shell', () => {
     expect(document.querySelector('.settings-card > header h2')?.textContent).toBe(
       'Vditor Desktop Settings',
     );
-    expect(document.querySelectorAll('.settings-nav button > svg')).toHaveLength(6);
+    expect(document.querySelectorAll('.settings-nav button > .settings-nav-icon')).toHaveLength(6);
     expect(document.querySelectorAll('.settings-nav button > span[data-i18n]')).toHaveLength(6);
+    expect(css).toContain("mask-image: url('../assets/symbolic/settings-appearance.svg')");
+    expect(css).toContain("mask-image: url('../assets/symbolic/settings-fonts.svg')");
+    expect(css).toContain("mask-image: url('../assets/symbolic/settings-editor.svg')");
+    expect(css).toContain("mask-image: url('../assets/symbolic/settings-preview.svg')");
+    expect(css).toContain("mask-image: url('../assets/symbolic/settings-files.svg')");
+    expect(css).toContain("mask-image: url('../assets/symbolic/settings-about.svg')");
     expect(css).toMatch(/\.settings-nav button\s*\{[^}]*gap:\s*8px/s);
     expect(css).toMatch(/\.settings-nav button:hover\s*\{[^}]*background:\s*var\(--hover\)/s);
   });
@@ -327,7 +393,15 @@ describe('renderer shell', () => {
     expect(document.querySelector('#statusPath')).not.toBeNull();
     expect(document.querySelector('#statusLineEnding')).not.toBeNull();
     expect(document.querySelector('#statusSettings')).not.toBeNull();
-    expect(document.querySelector('#statusThemeToggle')).not.toBeNull();
+    expect(document.querySelector('#statusThemeMode')).not.toBeNull();
+    expect(document.querySelector('#statusThemeIcon')).not.toBeNull();
+    expect(document.querySelector('#statusThemeMenu')).not.toBeNull();
+    expect(document.querySelectorAll('#statusThemeMenu [data-theme-mode]')).toHaveLength(3);
+    expect(document.querySelector('#statusThemeToggle')).toBeNull();
+    expect(document.querySelector('[name="systemTheme"]')).toBeNull();
+    expect(rendererScript).not.toContain('statusThemeToggle');
+    expect(localesScript).not.toContain('settings.followSystemTheme');
+    expect(localesScript).not.toContain('status.toggleTheme');
     expect(document.querySelector('#statusVersion')).not.toBeNull();
     expect(document.querySelector('#app > .statusbar')).not.toBeNull();
     expect(css).toMatch(/\.statusbar\s*\{[^}]*font-family:\s*var\(--ui-font\)/s);
@@ -386,15 +460,29 @@ describe('renderer shell', () => {
     expect(document.querySelector('.theme-picker-light')).not.toBeNull();
     expect(document.querySelector('.theme-picker-dark')).not.toBeNull();
     expect(document.querySelectorAll('.theme-preview svg')).toHaveLength(6);
+    expect(document.querySelector('[name="systemTheme"]')).toBeNull();
+    expect(fs.existsSync(path.resolve('src/renderer/assets/symbolic/light-symbolic.svg'))).toBe(
+      true,
+    );
+    expect(fs.existsSync(path.resolve('src/renderer/assets/symbolic/dark-symbolic.svg'))).toBe(
+      true,
+    );
+    expect(fs.existsSync(path.resolve('src/renderer/assets/symbolic/system-symbolic.svg'))).toBe(
+      true,
+    );
     expect(document.querySelector('.settings-right-edge')).not.toBeNull();
     expect(rendererScript).toContain(
       "theme === 'dark' || theme === 'claude-dark' || theme === 'monokai-pro-dark'",
     );
     expect(rendererScript).toContain('darkThemePreference()');
     expect(rendererScript).toContain('lightThemePreference()');
-    expect(rendererScript).toContain('themeForStatusToggle(event.target.checked)');
+    expect(rendererScript).toContain('function themeModeFromSettings()');
+    expect(rendererScript).toContain('function selectStatusThemeMode(mode)');
+    expect(css).toContain("mask-image: url('../assets/symbolic/light-symbolic.svg')");
+    expect(css).toContain("mask-image: url('../assets/symbolic/dark-symbolic.svg')");
+    expect(css).toContain("mask-image: url('../assets/symbolic/system-symbolic.svg')");
     expect(css).toMatch(
-      /:root\s*\{[^}]*--sidebar-surface:\s*#fff[^}]*--editor-surface:\s*#f7f7f8/s,
+      /:root\s*\{[^}]*--sidebar-surface:\s*#f0f1f3[^}]*--editor-surface:\s*#fff/s,
     );
     expect(css).toMatch(
       /:root\[data-theme='dark'\]\s*\{[^}]*--sidebar-surface:\s*#202124[^}]*--editor-surface:\s*#18191c/s,
@@ -407,9 +495,28 @@ describe('renderer shell', () => {
       /:root\[data-theme='claude-light'\] \.modal-close:hover\s*\{[^}]*background:\s*#e8e6dc[^}]*color:\s*var\(--text\)/s,
     );
     expect(css).toMatch(
-      /:root\[data-theme='claude-dark'\]\s*\{[^}]*--bg:\s*#141413[^}]*--sidebar-surface:\s*#30302e[^}]*--editor-surface:\s*#30302e[^}]*--accent:\s*#d97757[^}]*--brand-accent:\s*#d97757/s,
+      /:root\[data-theme='claude-dark'\]\s*\{[^}]*--bg:\s*#141413[^}]*--sidebar-surface:\s*#30302e[^}]*--editor-surface:\s*#262624[^}]*--accent:\s*#d97757[^}]*--brand-accent:\s*#d97757/s,
     );
     expect(css).toMatch(/\.sidebar\s*\{[^}]*background:\s*var\(--sidebar-surface\)/s);
+    expect(css).toMatch(/\.editor-area\s*\{[^}]*background:\s*var\(--sidebar-surface\)/s);
+    expect(css).toMatch(
+      /\.no-tabs-actions button\s*\{[^}]*background:\s*var\(--sidebar-surface\)/s,
+    );
+    expect(css).toMatch(/\.window-titlebar\s*\{[^}]*background:\s*var\(--sidebar-surface\)/s);
+    expect(css).toMatch(/\.titlebar\s*\{[^}]*background:\s*var\(--sidebar-surface\)/s);
+    expect(css).toMatch(
+      /\.vditor-toolbar-mount > \.vditor-toolbar\s*\{[^}]*background:\s*var\(--sidebar-surface\)/s,
+    );
+    expect(css).toMatch(
+      /\.toolbar-sidebar-tabs\.sidebar-tabs\s*\{[^}]*background:\s*var\(--sidebar-surface\)/s,
+    );
+    expect(css).toMatch(/\.document-tab:hover\s*\{[^}]*background:\s*var\(--hover\)/s);
+    expect(css).toMatch(/\.document-tab\.active:hover\s*\{[^}]*background:\s*var\(--hover\)/s);
+    expect(css).not.toContain('.document-tab:hover {\n  background: #d9dde3;');
+    expect(css).toMatch(
+      /\.app-menu-bar > button\[data-menu='main'\]\s*\{[^}]*background:\s*var\(--sidebar-surface\)/s,
+    );
+    expect(css).toMatch(/\.app-menu-popup\s*\{[^}]*background:\s*var\(--sidebar-surface\)/s);
     expect(css).toMatch(
       /\.editor-host\.vditor\.active\s*\{[^}]*--panel-background-color:\s*var\(--editor-surface\)[^}]*--textarea-background-color:\s*var\(--editor-surface\)/s,
     );
@@ -418,7 +525,7 @@ describe('renderer shell', () => {
     );
     expect(css).not.toMatch(/data-theme='claude-(?:light|dark)'[^}]*--ui-font/s);
     expect(css).toMatch(
-      /:root\[data-theme='monokai-pro-dark'\]\s*\{[^}]*--bg:\s*#2d2a2e[^}]*--accent:\s*#ffd866/s,
+      /:root\[data-theme='monokai-pro-dark'\]\s*\{[^}]*--bg:\s*#2d2a2e[^}]*--editor-surface:\s*#272428[^}]*--accent:\s*#ffd866/s,
     );
     expect(css).toMatch(
       /:root\[data-theme='monokai-pro-light'\]\s*\{[^}]*--bg:\s*#faf4f2[^}]*--accent:\s*#e14775/s,
@@ -460,6 +567,7 @@ describe('renderer shell', () => {
   it('uses a compact workspace-name explorer header', () => {
     expect(document.querySelector('#workspaceName')).not.toBeNull();
     expect(document.querySelector('#refreshTree')).not.toBeNull();
+    expect(document.querySelector('#refreshTree .refresh-tree-icon')).not.toBeNull();
     expect(document.querySelector('#fileSearch')).toBeNull();
     expect(document.querySelector('#newExplorerFile')).toBeNull();
     expect(document.querySelector('#workspaceLabel')).toBeNull();
@@ -483,6 +591,9 @@ describe('renderer shell', () => {
     expect(document.querySelector('.settings-nav [data-panel="advanced"]')).toBeNull();
     expect(document.querySelector('.settings-nav [data-panel="about"]')).not.toBeNull();
     expect(document.querySelector('.about-panel .about-logo')).not.toBeNull();
+    expect(document.querySelector('.about-panel .about-logo')?.getAttribute('src')).toBe(
+      'app://app/assets/app-icon/vditor-desktop.svg',
+    );
     expect(document.querySelector('.about-panel #resetSettings')).not.toBeNull();
     expect(document.querySelector<HTMLInputElement>('[name="devToolsEnabled"]')?.type).toBe(
       'checkbox',
@@ -535,10 +646,20 @@ describe('renderer shell', () => {
     expect(css).toContain('background-color 320ms');
   });
 
-  it('adds theme-aware top shadows to the sidebar and editor toolbar boundaries', () => {
+  it('assigns stable theme-aware boundaries to each top toolbar surface', () => {
     expect(css).toContain('--top-surface-shadow:');
     expect(css).toMatch(/\.sidebar-tabs\s*\{[^}]*box-shadow:\s*var\(--top-surface-shadow\)/s);
-    expect(css).toMatch(/\.titlebar\s*\{[^}]*border-bottom:\s*1px solid var\(--border\)/s);
+    expect(css).toMatch(/\.titlebar\s*\{[^}]*border-bottom:\s*0;[^}]*box-shadow:\s*none/s);
+    expect(css).toMatch(
+      /\.toolbar-sidebar-tabs\s*\{[^}]*border-bottom:\s*1px solid var\(--border\)[^}]*box-shadow:\s*var\(--top-surface-shadow\)/s,
+    );
+    expect(css).toMatch(
+      /\.vditor-toolbar-mount > \.vditor-toolbar\s*\{[^}]*border-bottom:\s*1px solid var\(--border\)[^}]*box-shadow:\s*var\(--top-surface-shadow\)/s,
+    );
+    expect(css).toMatch(
+      /\.toolbar-skeleton\s*\{[^}]*border-bottom:\s*1px solid var\(--border\)[^}]*box-shadow:\s*var\(--top-surface-shadow\)/s,
+    );
+    expect(css).not.toContain('#app.toolbar-wrapped .toolbar-sidebar-tabs');
   });
 
   it('prevents accidental text selection in settings while keeping fields selectable', () => {
@@ -621,7 +742,7 @@ describe('renderer shell', () => {
 
   it('shows the configuration path and current-page reset in the settings footer', () => {
     expect(document.querySelector('.settings-card > footer #settingsPath')).not.toBeNull();
-    expect(document.querySelector('#openSettingsFolder svg')).not.toBeNull();
+    expect(document.querySelector('#openSettingsFolder .settings-path-icon')).not.toBeNull();
     expect(document.querySelector('#resetSettingsPage')).not.toBeNull();
   });
 });

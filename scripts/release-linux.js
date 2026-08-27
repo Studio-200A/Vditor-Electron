@@ -12,7 +12,14 @@ const releaseDir = path.join(projectRoot, 'release');
 const unpackedDir = path.join(releaseDir, 'linux-unpacked');
 const stagingDir = path.join(releaseDir, '.linux-release-staging');
 const resourcesDir = path.join(projectRoot, 'resources', 'linux');
-const iconSource = path.join(projectRoot, 'src', 'renderer', 'assets', 'vditor-desktop.svg');
+const iconSource = path.join(
+  projectRoot,
+  'src',
+  'renderer',
+  'assets',
+  'app-icon',
+  'vditor-desktop.svg',
+);
 const appImageToolVersion = '1.9.1';
 const appImageToolChecksum = 'ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0';
 const appImageToolUrl = `https://github.com/AppImage/appimagetool/releases/download/${appImageToolVersion}/appimagetool-x86_64.AppImage`;

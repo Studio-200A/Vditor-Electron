@@ -123,6 +123,149 @@ describe('FileManagerService', () => {
     });
   });
 
+  it('rejects a document write when its expected disk version is stale', async () => {
+    const filePath = path.join(root, 'stale.md');
+    fs.writeFileSync(filePath, 'external version');
+
+    await expect(
+      service.writeDocument(filePath, 'local version', 'saved version'),
+    ).resolves.toEqual({
+      error: 'external-change',
+      content: 'external version',
+      encoding: 'utf-8',
+    });
+    expect(fs.readFileSync(filePath, 'utf8')).toBe('external version');
+  });
+
+  it('does not launder a disk change between content decoding and safe replacement', async () => {
+    const filePath = path.join(root, 'baseline-race.md');
+    fs.writeFileSync(filePath, 'saved version');
+    const originalReadFile = fs.promises.readFile.bind(fs.promises);
+    let targetReads = 0;
+    vi.spyOn(fs.promises, 'readFile').mockImplementation(async (requestedPath) => {
+      const bytes = await originalReadFile(requestedPath);
+      if (path.resolve(String(requestedPath)) === filePath && targetReads++ === 0)
+        fs.writeFileSync(filePath, 'external version');
+      return bytes;
+    });
+
+    await expect(
+      service.writeDocument(filePath, 'local version', 'saved version'),
+    ).resolves.toEqual({
+      error: 'external-change',
+      content: 'external version',
+      encoding: 'utf-8',
+    });
+    expect(fs.readFileSync(filePath, 'utf8')).toBe('external version');
+  });
+
+  it('rejects a document write when a path expected to be absent already exists', async () => {
+    const filePath = path.join(root, 'claimed.md');
+    fs.writeFileSync(filePath, 'external version');
+
+    await expect(
+      service.writeDocument(filePath, 'local version', undefined, true),
+    ).resolves.toEqual({
+      error: 'external-change',
+      content: 'external version',
+      encoding: 'utf-8',
+    });
+    expect(fs.readFileSync(filePath, 'utf8')).toBe('external version');
+  });
+
+  it('creates an expected-absent document without replacing an existing file', async () => {
+    const filePath = path.join(root, 'new.md');
+
+    await expect(
+      service.writeDocument(filePath, 'local version', undefined, true),
+    ).resolves.toEqual({
+      expectedContent: 'local version',
+      wrote: true,
+    });
+    expect(fs.readFileSync(filePath, 'utf8')).toBe('local version');
+  });
+
+  it('never overwrites an existing rename destination', async () => {
+    const source = path.join(root, 'source.md');
+    const destination = path.join(root, 'destination.md');
+    fs.writeFileSync(source, 'source');
+    fs.writeFileSync(destination, 'destination');
+
+    await expect(service.renameItem(source, 'destination.md')).rejects.toThrow(
+      'An item with that name already exists.',
+    );
+    expect(fs.readFileSync(source, 'utf8')).toBe('source');
+    expect(fs.readFileSync(destination, 'utf8')).toBe('destination');
+  });
+
+  it('keeps a file rename source when the destination appears after preflight', async () => {
+    const source = path.join(root, 'source.md');
+    const destination = path.join(root, 'destination.md');
+    fs.writeFileSync(source, 'source');
+    const originalLstat = fs.promises.lstat;
+    vi.spyOn(fs.promises, 'lstat').mockImplementation(async (filePath, options) => {
+      if (path.resolve(String(filePath)) === source && !fs.existsSync(destination))
+        fs.writeFileSync(destination, 'external');
+      return originalLstat(filePath, options);
+    });
+
+    await expect(service.renameItem(source, 'destination.md')).rejects.toThrow(
+      'An item with that name already exists.',
+    );
+    expect(fs.readFileSync(source, 'utf8')).toBe('source');
+    expect(fs.readFileSync(destination, 'utf8')).toBe('external');
+  });
+
+  it('keeps a directory rename source when the destination appears after preflight', async () => {
+    const source = path.join(root, 'source');
+    const destination = path.join(root, 'destination');
+    fs.mkdirSync(source);
+    fs.writeFileSync(path.join(source, 'entry.md'), 'source');
+
+    class RacingFileManager extends FileManagerService {
+      override async prepareRename(oldPath: string, newName: string): Promise<string> {
+        const planned = await super.prepareRename(oldPath, newName);
+        fs.mkdirSync(planned);
+        return planned;
+      }
+    }
+    service = new RacingFileManager();
+
+    await expect(service.renameItem(source, 'destination')).rejects.toThrow(
+      'An item with that name already exists.',
+    );
+    expect(fs.readFileSync(path.join(source, 'entry.md'), 'utf8')).toBe('source');
+    expect(fs.statSync(destination).isDirectory()).toBe(true);
+  });
+
+  it('renames a directory when only its case changes on Linux', async () => {
+    if (process.platform !== 'linux') return;
+    const source = path.join(root, 'Source');
+    const destination = path.join(root, 'source');
+    fs.mkdirSync(source);
+    fs.writeFileSync(path.join(source, 'entry.md'), 'source');
+
+    await expect(service.renameItem(source, 'source')).resolves.toBe(destination);
+    expect(fs.existsSync(source)).toBe(false);
+    expect(fs.readFileSync(path.join(destination, 'entry.md'), 'utf8')).toBe('source');
+  });
+
+  it('rolls back a file rename destination when removing the source fails', async () => {
+    const source = path.join(root, 'source.md');
+    const destination = path.join(root, 'destination.md');
+    fs.writeFileSync(source, 'source');
+    const originalUnlink = fs.promises.unlink;
+    vi.spyOn(fs.promises, 'unlink').mockImplementation(async (filePath) => {
+      if (path.resolve(String(filePath)) === source)
+        throw Object.assign(new Error('source is busy'), { code: 'EBUSY' });
+      return originalUnlink(filePath);
+    });
+
+    await expect(service.renameItem(source, 'destination.md')).rejects.toThrow('source is busy');
+    expect(fs.readFileSync(source, 'utf8')).toBe('source');
+    expect(fs.existsSync(destination)).toBe(false);
+  });
+
   it('creates files and directories inside the selected parent', async () => {
     await expect(service.createItem(root, 'note.md', 'file')).resolves.toBe(
       path.join(root, 'note.md'),
@@ -215,6 +358,17 @@ describe('FileManagerService', () => {
     fs.writeFileSync(original, 'content');
 
     await expect(service.renameItem(original, 'new.md')).resolves.toBe(path.join(root, 'new.md'));
+  });
+
+  it('preflights a rename without changing the filesystem', async () => {
+    const original = path.join(root, 'old.md');
+    fs.writeFileSync(original, 'content');
+
+    await expect(service.prepareRename(original, 'new.md')).resolves.toBe(
+      path.join(root, 'new.md'),
+    );
+    expect(fs.existsSync(original)).toBe(true);
+    expect(fs.existsSync(path.join(root, 'new.md'))).toBe(false);
   });
 
   it('rebases paths inside a renamed directory without touching siblings', () => {

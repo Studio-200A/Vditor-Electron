@@ -48,8 +48,32 @@ async function launchApp(
     },
   });
   const page = await app.firstWindow();
-  await page.waitForSelector('#appMenuBar[data-ready="true"]');
+  await page.waitForSelector('body[data-app-ready="true"]');
   return { app, page, testRoot };
+}
+
+async function delayVditorAfter(page: Page, delayMs = 1_000): Promise<void> {
+  await page.evaluate((delay) => {
+    type VditorConstructor = {
+      prototype: {
+        init: (element: HTMLElement, options: Record<string, unknown>) => void;
+      };
+    };
+    const constructor = (window as unknown as { Vditor?: VditorConstructor }).Vditor;
+    if (!constructor) throw new Error('Vditor constructor is unavailable.');
+    const originalInit = constructor.prototype.init;
+    constructor.prototype.init = function (this: VditorConstructor['prototype'], element, options) {
+      const originalAfter = options.after;
+      return originalInit.call(this, element, {
+        ...options,
+        after: (...args: unknown[]) => {
+          window.setTimeout(() => {
+            if (typeof originalAfter === 'function') originalAfter(...args);
+          }, delay);
+        },
+      });
+    };
+  }, delayMs);
 }
 
 function readSettings(testRoot: string): Record<string, unknown> {
@@ -81,6 +105,11 @@ async function closeApp(running: RunningApp): Promise<void> {
 async function createNewTab(page: Page): Promise<void> {
   await page.locator('#addTab').click();
   await page.waitForSelector('.editor-host.active .vditor-content');
+}
+
+async function selectThemeMode(page: Page, mode: 'light' | 'dark' | 'system'): Promise<void> {
+  await page.locator('#statusThemeMode').click();
+  await page.locator(`#statusThemeMenu [data-theme-mode="${mode}"]`).click();
 }
 
 function replaceFileAtomically(filePath: string, content: string): void {
@@ -135,6 +164,39 @@ test('saves a changed Markdown document from the desktop editor', async () => {
     await expect(page.locator('#statusMessage')).toContainText('Saved save target.md');
     await expect(page.locator('.document-tab.active .dirty')).toBeHidden();
     await expect.poll(() => fs.readFileSync(filePath, 'utf8').trimEnd()).toBe('Saved content');
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps later input dirty while an earlier document save is still committing', async () => {
+  const running = await launchApp({ editMode: 'sv' }, { 'save-race.md': 'Original content' });
+  try {
+    const { app, page, testRoot } = running;
+    const filePath = path.join(testRoot, 'save-race.md');
+    await app.evaluate((_, destination) => {
+      const nodeFs = process.getBuiltinModule('node:fs');
+      const nodePath = process.getBuiltinModule('node:path');
+      const originalRename = nodeFs.promises.rename.bind(nodeFs.promises);
+      nodeFs.promises.rename = async (oldPath, newPath) => {
+        if (nodePath.resolve(String(newPath)) === nodePath.resolve(destination))
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        return originalRename(oldPath, newPath);
+      };
+    }, filePath);
+    const editor = page.locator('.editor-host.active .vditor-sv');
+    await editor.fill('Captured save content');
+    await page.keyboard.press('Control+s');
+    await expect
+      .poll(() => fs.readdirSync(testRoot).some((name) => name.endsWith('.tmp')))
+      .toBe(true);
+    await editor.fill('Content entered while saving');
+
+    await expect
+      .poll(() => fs.readFileSync(filePath, 'utf8').trimEnd())
+      .toBe('Captured save content');
+    await expect(editor).toContainText('Content entered while saving');
+    await expect(page.locator('.document-tab.active .dirty')).toHaveText('●');
   } finally {
     await closeApp(running);
   }
@@ -206,7 +268,7 @@ test('directly restores a persisted recovery snapshot and clears it on save', as
     await expect(restoredPage.locator('#recoveryBanner')).toBeVisible();
     await expect(restoredPage.locator('.recovery-banner-icon')).toHaveAttribute(
       'src',
-      'assets/warning.svg',
+      'assets/notification/warning.svg',
     );
     await expect(restoredPage.locator('#recoveryMessage')).toHaveText(
       'Recovered unsaved changes from the last unexpected exit.',
@@ -225,6 +287,60 @@ test('directly restores a persisted recovery snapshot and clears it on save', as
     if (restored) {
       restored.process().kill('SIGKILL');
     }
+    fs.rmSync(testRoot, { recursive: true, force: true });
+  }
+});
+
+test('merges a recovery snapshot into the restored session tab for the same file identity', async () => {
+  const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-recovery-session-e2e-'));
+  const configDir = path.join(testRoot, 'config');
+  const filePath = path.join(testRoot, 'session recovery.md');
+  fs.mkdirSync(configDir);
+  fs.writeFileSync(filePath, 'Original content');
+  new SettingsStore(configDir).update({
+    locale: 'en_US',
+    systemTheme: false,
+    editMode: 'sv',
+    autoSave: false,
+    restoreTabs: true,
+    restoreWorkspace: false,
+    session: { workspacePath: '', activeFilePath: filePath, openFiles: [filePath] },
+  });
+  await new RecoveryStore(path.join(testRoot, 'recovery')).save({
+    schemaVersion: RECOVERY_SCHEMA_VERSION,
+    id: '2bd01a3d-a1b7-42f4-bd48-06cb431338dd',
+    filePath,
+    title: 'session recovery.md',
+    content: 'Recovered unsaved content',
+    savedContent: 'Original content',
+    expectedSavedContent: 'Original content',
+    encoding: 'utf-8',
+    lineEnding: 'LF',
+    mode: 'sv',
+    updatedAt: Date.now(),
+  });
+  let restored: ElectronApplication | null = null;
+  try {
+    restored = await electron.launch({
+      args: ['.'],
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        ELECTRON_DISABLE_SECURITY_WARNINGS: 'true',
+        VDITOR_DESKTOP_CONFIG_DIR: configDir,
+        VDITOR_DESKTOP_DATA_DIR: path.join(testRoot, 'chromium'),
+      },
+    });
+    const page = await restored.firstWindow();
+    await page.waitForSelector('#appMenuBar[data-ready="true"]');
+
+    await expect(page.locator('.document-tab')).toHaveCount(1);
+    await expect(page.locator('.editor-host.active .vditor-sv')).toContainText(
+      'Recovered unsaved content',
+    );
+    await expect(page.locator('#recoveryBanner')).toBeVisible();
+  } finally {
+    if (restored) restored.process().kill('SIGKILL');
     fs.rmSync(testRoot, { recursive: true, force: true });
   }
 });
@@ -296,6 +412,7 @@ test('finds, navigates, and replaces text in the active document', async () => {
   const running = await launchApp({}, { 'find.md': 'alpha beta alpha\nalpha' });
   try {
     const { page, testRoot } = running;
+    await page.locator('.editor-host.active .vditor-content').click();
     await page.keyboard.press('Control+f');
     await expect(page.locator('#findWidget')).toBeVisible();
     await expect(page.locator('#findInput')).toBeFocused();
@@ -696,6 +813,82 @@ test('keeps wrapped toolbar menus out of editor geometry and retains the hidden-
     await expect(page.locator('#app')).toHaveClass(/sidebar-collapsed/);
     await expect.poll(async () => (await titlebarShadow()).left).toBe(0);
     expect((await titlebarShadow()).height).toBeGreaterThan(30);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps the sidebar tab boundary stable while toggling a wrapped toolbar across themes', async () => {
+  const running = await launchApp({ sidebarVisible: true });
+  try {
+    const { app, page } = running;
+    await createNewTab(page);
+
+    const themes = [
+      'classic',
+      'dark',
+      'monokai-pro-light',
+      'monokai-pro-dark',
+      'claude-light',
+      'claude-dark',
+    ];
+    const readBoundary = () =>
+      page.evaluate(() => {
+        const tabs = document.querySelector('.toolbar-sidebar-tabs');
+        const titlebar = document.querySelector('header.titlebar');
+        if (!(tabs instanceof HTMLElement) || !(titlebar instanceof HTMLElement))
+          throw new Error('Shared toolbar boundary is unavailable');
+        const read = (node: HTMLElement) => {
+          const style = getComputedStyle(node);
+          return {
+            borderBottom: style.borderBottom,
+            boxShadow: style.boxShadow,
+            overflow: style.overflow,
+          };
+        };
+        return { tabs: read(tabs), titlebar: read(titlebar) };
+      });
+    const toggleToolbar = async () => {
+      let toolbarItem = page.locator('.app-menu-popup.submenu button', { hasText: 'Show Toolbar' });
+      if (!(await toolbarItem.count())) {
+        await page.locator('[data-menu="main"]').click();
+        await page
+          .locator('.app-menu-popup:not(.submenu) button.has-submenu', { hasText: 'Layout' })
+          .click();
+        toolbarItem = page.locator('.app-menu-popup.submenu button', { hasText: 'Show Toolbar' });
+      }
+      await toolbarItem.click();
+    };
+
+    const assertStableBoundaryAcrossThemes = async () => {
+      for (const theme of themes) {
+        await page.evaluate((value) => {
+          document.documentElement.dataset.theme = value;
+        }, theme);
+        const visible = await readBoundary();
+
+        await toggleToolbar();
+        await expect(page.locator('#app')).toHaveClass(/toolbar-hidden/);
+        await expect
+          .poll(() =>
+            page.locator('#app').evaluate((node) => node.classList.contains('toolbar-wrapped')),
+          )
+          .toBe(false);
+        expect(await readBoundary()).toEqual(visible);
+
+        await toggleToolbar();
+        expect(await readBoundary()).toEqual(visible);
+      }
+    };
+
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1200, 700));
+    await expect(page.locator('#app')).not.toHaveClass(/toolbar-wrapped/);
+    await assertStableBoundaryAcrossThemes();
+
+    await page.locator('[data-menu="main"]').click();
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(760, 700));
+    await expect(page.locator('#app')).toHaveClass(/toolbar-wrapped/);
+    await assertStableBoundaryAcrossThemes();
   } finally {
     await closeApp(running);
   }
@@ -1464,10 +1657,8 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
     const irLink = ir.locator('[data-type="a"] .vditor-ir__link');
     await irLink.hover();
     await expect(irLink.locator('..')).not.toHaveAttribute('title');
-    await expect(page.locator('#documentLinkTooltip')).toBeVisible();
-    await expect(page.locator('#documentLinkTooltip')).toHaveText(
-      `${modifierLabel}+Click to follow link`,
-    );
+    await expect(page.locator('#appTooltip')).toBeVisible();
+    await expect(page.locator('#appTooltip')).toHaveText(`${modifierLabel}+Click to follow link`);
     await expect(irLink).toHaveCSS('cursor', 'text');
     await page.keyboard.down(linkModifier);
     await expect(irLink).toHaveCSS('cursor', 'pointer');
@@ -1563,9 +1754,7 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
     const tocTarget = preview.locator('.vditor-toc [data-target-id]');
     await expect(tocTarget).toBeVisible();
     await tocTarget.hover();
-    await expect(page.locator('#documentLinkTooltip')).toHaveText(
-      `${modifierLabel}+Click to follow link`,
-    );
+    await expect(page.locator('#appTooltip')).toHaveText(`${modifierLabel}+Click to follow link`);
     await tocTarget.click();
     await expect.poll(() => preview.evaluate((node) => node.scrollTop)).toBeLessThan(4);
     await tocTarget.click({ modifiers: [linkModifier] });
@@ -2162,8 +2351,17 @@ test('shows only the workspace name and refresh action in the explorer header', 
   });
   try {
     await expect(running.page.locator('#workspaceName')).toHaveText(path.basename(workspace));
-    await expect(running.page.locator('#workspaceHeading svg')).toBeVisible();
-    await expect(running.page.locator('#refreshTree')).toBeVisible();
+    await expect(running.page.locator('#workspaceHeading .workspace-heading-icon')).toBeVisible();
+    const workspaceHeading = running.page.locator('#workspaceHeading');
+    const refreshTree = running.page.locator('#refreshTree');
+    await expect(workspaceHeading).toHaveAttribute('data-tooltip', workspace);
+    await workspaceHeading.hover();
+    await expect(running.page.locator('#appTooltip')).toHaveText(workspace);
+    await expect(refreshTree).toBeVisible();
+    await expect(refreshTree.locator('.refresh-tree-icon')).toBeVisible();
+    await expect(refreshTree).toHaveAttribute('data-tooltip', 'Refresh');
+    await refreshTree.hover();
+    await expect(running.page.locator('#appTooltip')).toHaveText('Refresh');
     await expect(running.page.locator('#fileSearch')).toHaveCount(0);
     await expect(running.page.locator('#newExplorerFile')).toHaveCount(0);
     await expect(running.page.locator('#workspaceLabel')).toHaveCount(0);
@@ -2205,7 +2403,11 @@ test('shows only the workspace name and refresh action in the explorer header', 
     const iconAfter = await topFile.locator('.file-icon').boundingBox();
     expect(chevronAfter?.x).toBeCloseTo(chevronBefore?.x || 0, 0);
     expect(iconAfter?.x).toBeCloseTo(iconBefore?.x || 0, 0);
-    await expect(topFile.locator('.tree-name')).toHaveAttribute('title', longFileName);
+    await expect(topFile.locator('.tree-name')).toHaveAttribute('data-tooltip', longFileName);
+    await expect(topFile.locator('.tree-name')).not.toHaveAttribute('title');
+    await topFile.locator('.tree-name').hover();
+    await expect(running.page.locator('#appTooltip')).toBeVisible();
+    await expect(running.page.locator('#appTooltip')).toHaveText(longFileName);
     await expect
       .poll(() => topFile.locator('.tree-name').textContent())
       .toMatch(/^abc.+\.\.\..+\.md$/);
@@ -2321,6 +2523,431 @@ test('keeps open descendant paths, resources, recents, and watchers aligned afte
   }
 });
 
+test('saves trusted tab content while the rebuilt editor is not ready', async () => {
+  const running = await launchApp(
+    { editMode: 'sv' },
+    { 'editor-not-ready.md': 'Original content' },
+  );
+  try {
+    const { page, testRoot } = running;
+    const filePath = path.join(testRoot, 'editor-not-ready.md');
+    const editor = page.locator('.editor-host.active .vditor-sv');
+    await editor.fill('Trusted content before rebuild');
+    await expect(page.locator('.document-tab.active .dirty')).toHaveText('●');
+
+    await delayVditorAfter(page);
+
+    await page.locator('#appMenuBar [data-menu="main"]').click();
+    await page.locator('.app-menu-popup button.has-submenu', { hasText: 'Editing Mode' }).hover();
+    await page.locator('.app-menu-popup.submenu button', { hasText: 'WYSIWYG' }).click();
+    await expect(page.locator('.editor-host.active')).toHaveAttribute(
+      'data-editor-ready',
+      'false',
+      {
+        timeout: 100,
+      },
+    );
+    await page.keyboard.press('Control+s');
+
+    await expect
+      .poll(() => fs.readFileSync(filePath, 'utf8').trimEnd())
+      .toBe('Trusted content before rebuild');
+    await expect(page.locator('.document-tab.active .dirty')).toBeHidden();
+    await expect(page.locator('.editor-host.active')).toHaveAttribute('data-editor-ready', 'true', {
+      timeout: 3000,
+    });
+    await expect(page.locator('.editor-host.active .vditor-wysiwyg')).toBeVisible();
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps the shared toolbar out of the editor while a rebuilt editor is not ready', async () => {
+  const running = await launchApp(
+    { editMode: 'sv' },
+    { 'toolbar-not-ready.md': 'Original content' },
+  );
+  try {
+    const { page } = running;
+    await delayVditorAfter(page);
+    const geometry = () =>
+      page.evaluate(() => {
+        const mount = document.querySelector('#vditorToolbarMount');
+        const editor = document.querySelector('#editorArea');
+        if (!(mount instanceof HTMLElement) || !(editor instanceof HTMLElement))
+          throw new Error('Toolbar layout is unavailable.');
+        const mountBox = mount.getBoundingClientRect();
+        const editorBox = editor.getBoundingClientRect();
+        return {
+          mountHeight: mountBox.height,
+          mountTop: mountBox.top,
+          editorHeight: editorBox.height,
+          editorTop: editorBox.top,
+        };
+      });
+    const before = await geometry();
+
+    await page.locator('#appMenuBar [data-menu="main"]').click();
+    await page.locator('.app-menu-popup button.has-submenu', { hasText: 'Editing Mode' }).hover();
+    await page.locator('.app-menu-popup.submenu button', { hasText: 'WYSIWYG' }).click();
+
+    const activeHost = page.locator('.editor-host.active');
+    await expect(activeHost).toHaveAttribute('data-editor-ready', 'false', { timeout: 100 });
+    const pendingToolbar = activeHost.locator(':scope > .vditor-toolbar');
+    await expect(pendingToolbar).toHaveCount(1, { timeout: 500 });
+    await expect(pendingToolbar).toBeHidden();
+    await expect(pendingToolbar).toHaveCSS('pointer-events', 'none');
+    await expect(page.locator('#vditorToolbarMount > .vditor-toolbar')).toHaveCount(0);
+    await expect(page.locator('#app')).toHaveClass(/toolbar-unavailable/);
+    await expect(page.locator('#vditorToolbarMount')).toBeVisible();
+    await expect(page.locator('#vditorToolbarMount')).toHaveAttribute('aria-busy', 'true');
+    await expect(page.locator('#toolbarSkeleton')).toBeVisible();
+    await expect(page.locator('#toolbarSkeleton button, #toolbarSkeleton [tabindex]')).toHaveCount(
+      0,
+    );
+    await expect(page.locator('header.titlebar')).toHaveCSS('position', 'relative');
+    const pending = await geometry();
+    expect(pending.mountTop).toBeCloseTo(before.mountTop, 0);
+    expect(pending.mountHeight).toBeCloseTo(before.mountHeight, 0);
+    expect(pending.editorTop).toBeCloseTo(before.editorTop, 0);
+    expect(pending.editorHeight).toBeCloseTo(before.editorHeight, 0);
+
+    const sharedToolbar = page.locator('#vditorToolbarMount > .vditor-toolbar');
+    await expect(sharedToolbar).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('#app')).not.toHaveClass(/toolbar-unavailable/);
+    await expect(page.locator('#vditorToolbarMount')).toHaveAttribute('aria-busy', 'false');
+    await expect(page.locator('#vditorToolbarMount')).toBeVisible();
+    await expect(page.locator('#toolbarSkeleton')).toBeHidden();
+    await expect(activeHost.locator(':scope > .vditor-toolbar')).toHaveCount(0);
+    await expect(activeHost.locator('.vditor-wysiwyg')).toBeVisible();
+    const after = await geometry();
+    expect(after.mountTop).toBeCloseTo(before.mountTop, 0);
+    expect(after.mountHeight).toBeCloseTo(before.mountHeight, 0);
+    expect(after.editorTop).toBeCloseTo(before.editorTop, 0);
+    expect(after.editorHeight).toBeCloseTo(before.editorHeight, 0);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('reconciles a renamed document after repeated watcher rebind failures', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-rename-watcher-failure-'));
+  const oldDirectory = path.join(workspace, 'notes');
+  const filePath = path.join(oldDirectory, 'entry.md');
+  fs.mkdirSync(oldDirectory);
+  fs.writeFileSync(filePath, 'Original content');
+  const running = await launchApp({
+    editMode: 'sv',
+    restoreTabs: true,
+    restoreWorkspace: true,
+    sidebarVisible: true,
+    session: { workspacePath: workspace, activeFilePath: filePath, openFiles: [filePath] },
+  });
+  try {
+    const { app, page, testRoot } = running;
+    await app.evaluate(() => {
+      process.env.VDITOR_DESKTOP_TEST_FAIL_DOCUMENT_WATCHES = '3';
+    });
+    const oldDirectoryRow = page.locator(`#fileTree .tree-dir[data-path="${oldDirectory}"]`);
+    await oldDirectoryRow.click({ button: 'right' });
+    await page.locator('#contextMenu button', { hasText: 'Rename' }).click();
+    await oldDirectoryRow.locator('.tree-rename-input').fill('renamed');
+    await oldDirectoryRow.locator('.tree-rename-input').press('Enter');
+
+    const newDirectory = path.join(workspace, 'renamed');
+    const newFilePath = path.join(newDirectory, 'entry.md');
+    await expect(page.locator(`#fileTree .tree-dir[data-path="${newDirectory}"]`)).toBeVisible();
+    await expect(page.locator('#statusPath')).toHaveText(newFilePath);
+    await expect(page.locator('#statusMessage')).toContainText(
+      'Unable to restore 1 document watcher(s).',
+    );
+    const resourceBase = `local-file://root${newDirectory
+      .split(path.sep)
+      .map((segment) => encodeURIComponent(segment))
+      .join('/')}/`;
+    await expect(page.locator('.editor-host.active')).toHaveAttribute(
+      'data-local-resource-base',
+      resourceBase,
+    );
+    await expect.poll(() => readSetting(testRoot, 'session', 'openFiles')).toEqual([newFilePath]);
+
+    fs.writeFileSync(newFilePath, 'Watcher recovered after rename');
+    await expect(page.locator('.editor-host.active .vditor-sv')).toContainText(
+      'Watcher recovered after rename',
+      { timeout: 5000 },
+    );
+  } finally {
+    await closeApp(running);
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('keeps renamed document state coherent when settings persistence fails once', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-rename-settings-failure-'));
+  const oldDirectory = path.join(workspace, 'notes');
+  const filePath = path.join(oldDirectory, 'entry.md');
+  fs.mkdirSync(oldDirectory);
+  fs.writeFileSync(filePath, 'Original content');
+  const running = await launchApp({
+    editMode: 'sv',
+    restoreTabs: true,
+    restoreWorkspace: true,
+    sidebarVisible: true,
+    session: { workspacePath: workspace, activeFilePath: filePath, openFiles: [filePath] },
+  });
+  try {
+    const { app, page, testRoot } = running;
+    const configPath = path.join(testRoot, 'config', 'config.toml');
+    await app.evaluate((_, targetPath) => {
+      const nodeFs = process.getBuiltinModule('node:fs');
+      const nodePath = process.getBuiltinModule('node:path');
+      const originalRename = nodeFs.renameSync.bind(nodeFs);
+      let remaining = 1;
+      nodeFs.renameSync = (oldPath, newPath) => {
+        const matches = nodePath.resolve(String(newPath)) === nodePath.resolve(targetPath);
+        if (remaining > 0 && matches) {
+          remaining--;
+          throw new Error('Injected settings persistence failure.');
+        }
+        return originalRename(oldPath, newPath);
+      };
+    }, configPath);
+
+    const oldDirectoryRow = page.locator(`#fileTree .tree-dir[data-path="${oldDirectory}"]`);
+    await oldDirectoryRow.click({ button: 'right' });
+    await page.locator('#contextMenu button', { hasText: 'Rename' }).click();
+    await oldDirectoryRow.locator('.tree-rename-input').fill('renamed');
+    await oldDirectoryRow.locator('.tree-rename-input').press('Enter');
+
+    const newDirectory = path.join(workspace, 'renamed');
+    const newFilePath = path.join(newDirectory, 'entry.md');
+    await expect(page.locator('#statusPath')).toHaveText(newFilePath);
+    await expect(page.locator('#statusMessage')).toContainText('Unable to persist settings.');
+    await expect.poll(() => readSetting(testRoot, 'session', 'openFiles')).toEqual([newFilePath]);
+    expect(fs.existsSync(filePath)).toBe(false);
+    expect(fs.readFileSync(newFilePath, 'utf8')).toBe('Original content');
+
+    fs.writeFileSync(newFilePath, 'Watcher remains aligned');
+    await expect(page.locator('.editor-host.active .vditor-sv')).toContainText(
+      'Watcher remains aligned',
+      { timeout: 5000 },
+    );
+  } finally {
+    await closeApp(running);
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('keeps renamed document state coherent when editor rebuild fails repeatedly', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-rename-editor-failure-'));
+  const oldDirectory = path.join(workspace, 'notes');
+  const filePath = path.join(oldDirectory, 'entry.md');
+  fs.mkdirSync(oldDirectory);
+  fs.writeFileSync(filePath, 'Original content');
+  const running = await launchApp({
+    editMode: 'sv',
+    restoreTabs: true,
+    restoreWorkspace: true,
+    sidebarVisible: true,
+    session: { workspacePath: workspace, activeFilePath: filePath, openFiles: [filePath] },
+  });
+  try {
+    const { page, testRoot } = running;
+    await page.evaluate(() => {
+      type VditorConstructor = {
+        prototype: {
+          destroy: (this: object, ...args: unknown[]) => unknown;
+        };
+      };
+      const constructor = (window as unknown as { Vditor?: VditorConstructor }).Vditor;
+      if (!constructor) throw new Error('Vditor constructor is unavailable.');
+      const originalDestroy = constructor.prototype.destroy;
+      let remaining = 2;
+      constructor.prototype.destroy = function (this: object, ...args: unknown[]) {
+        if (remaining > 0) {
+          remaining--;
+          throw new Error('Injected editor rebuild failure.');
+        }
+        return originalDestroy.apply(this, args);
+      };
+    });
+
+    const oldDirectoryRow = page.locator(`#fileTree .tree-dir[data-path="${oldDirectory}"]`);
+    await oldDirectoryRow.click({ button: 'right' });
+    await page.locator('#contextMenu button', { hasText: 'Rename' }).click();
+    await oldDirectoryRow.locator('.tree-rename-input').fill('renamed');
+    await oldDirectoryRow.locator('.tree-rename-input').press('Enter');
+
+    const newDirectory = path.join(workspace, 'renamed');
+    const newFilePath = path.join(newDirectory, 'entry.md');
+    await expect(page.locator('#statusPath')).toHaveText(newFilePath);
+    await expect(page.locator('#statusMessage')).toContainText(
+      'Unable to rebuild every renamed document.',
+    );
+    const resourceBase = `local-file://root${newDirectory
+      .split(path.sep)
+      .map((segment) => encodeURIComponent(segment))
+      .join('/')}/`;
+    await expect(page.locator('.editor-host.active')).toHaveAttribute(
+      'data-local-resource-base',
+      resourceBase,
+    );
+    await expect.poll(() => readSetting(testRoot, 'session', 'openFiles')).toEqual([newFilePath]);
+
+    fs.writeFileSync(newFilePath, 'Watcher remains aligned');
+    await expect(page.locator('.editor-host.active .vditor-sv')).toContainText(
+      'Watcher remains aligned',
+      { timeout: 5000 },
+    );
+  } finally {
+    await closeApp(running);
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('refuses to rename a workspace item onto an existing destination', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-rename-conflict-'));
+  const source = path.join(workspace, 'source.md');
+  const destination = path.join(workspace, 'destination.md');
+  fs.writeFileSync(source, 'Source content');
+  fs.writeFileSync(destination, 'Destination content');
+  const running = await launchApp({
+    restoreWorkspace: true,
+    sidebarVisible: true,
+    session: { workspacePath: workspace, activeFilePath: source, openFiles: [source] },
+  });
+  try {
+    const { page } = running;
+    const sourceRow = page.locator(`#fileTree .tree-file[data-path="${source}"]`);
+    await sourceRow.click({ button: 'right' });
+    await page.locator('#contextMenu button', { hasText: 'Rename' }).click();
+    const renameInput = sourceRow.locator('.tree-rename-input');
+    await renameInput.fill('destination.md');
+    await renameInput.press('Enter');
+
+    await expect(sourceRow).toBeVisible();
+    expect(fs.readFileSync(source, 'utf8')).toBe('Source content');
+    expect(fs.readFileSync(destination, 'utf8')).toBe('Destination content');
+  } finally {
+    await closeApp(running);
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('refuses Save As when the chosen destination is already open in another tab', async () => {
+  const running = await launchApp(
+    { editMode: 'sv' },
+    { 'source.md': 'Source content', 'destination.md': 'Destination content' },
+  );
+  try {
+    const { app, page, testRoot } = running;
+    const source = path.join(testRoot, 'source.md');
+    const destination = path.join(testRoot, 'destination.md');
+    await page.locator('.document-tab').filter({ hasText: 'source.md' }).click();
+    await page.locator('.editor-host.active .vditor-sv').fill('Unsaved source content');
+    await app.evaluate(({ dialog }, selectedPath) => {
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: selectedPath });
+    }, destination);
+
+    await page.keyboard.press('Control+Shift+S');
+
+    await expect(page.locator('#statusPath')).toHaveText(source);
+    expect(fs.readFileSync(destination, 'utf8')).toBe('Destination content');
+    await expect(page.locator('.editor-host.active .vditor-sv')).toContainText(
+      'Unsaved source content',
+    );
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('serializes concurrent Save As requests through alias paths for the same missing file', async () => {
+  test.skip(process.platform === 'win32', 'This regression uses a POSIX directory symlink.');
+  const running = await launchApp(
+    { editMode: 'sv' },
+    { 'source-a.md': 'Source A', 'source-b.md': 'Source B' },
+  );
+  try {
+    const { app, page, testRoot } = running;
+    const targetDirectory = path.join(testRoot, 'target');
+    const aliasDirectory = path.join(testRoot, 'target-alias');
+    const target = path.join(targetDirectory, 'shared.md');
+    fs.mkdirSync(targetDirectory);
+    fs.symlinkSync(targetDirectory, aliasDirectory, 'dir');
+    await app.evaluate(
+      ({ dialog }, paths) => {
+        let invocation = 0;
+        dialog.showSaveDialog = async () => {
+          const index = invocation++;
+          await new Promise((resolve) => setTimeout(resolve, 80 + index * 40));
+          return { canceled: false, filePath: paths[index] };
+        };
+      },
+      [path.join(aliasDirectory, 'shared.md'), target],
+    );
+
+    const sourceA = page.locator('.document-tab').filter({ hasText: 'source-a.md' });
+    const sourceB = page.locator('.document-tab').filter({ hasText: 'source-b.md' });
+    await sourceA.click();
+    await page.locator('.editor-host.active .vditor-sv').fill('Local A');
+    await sourceB.click();
+    await page.locator('.editor-host.active .vditor-sv').fill('Local B');
+    await sourceA.click();
+    await page.keyboard.press('Control+Shift+S');
+    await sourceB.click();
+    await page.keyboard.press('Control+Shift+S');
+
+    await expect.poll(() => fs.existsSync(target)).toBe(true);
+    await expect.poll(() => fs.readFileSync(target, 'utf8').trimEnd()).toBe('Local A');
+    await expect(page.locator('#statusPath')).toHaveText(path.join(testRoot, 'source-b.md'));
+    await expect(page.locator('.document-tab.active .dirty')).toHaveText('●');
+    await expect(page.locator('#statusMessage')).toHaveText(
+      'shared.md is already open in another tab.',
+    );
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps external conflict protection when Save As selects a symlink alias', async () => {
+  test.skip(process.platform === 'win32', 'This regression uses a POSIX file symlink.');
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-external-alias-'));
+  const target = path.join(workspace, 'document.md');
+  const alias = path.join(workspace, 'document-alias.md');
+  fs.writeFileSync(target, 'Original content');
+  fs.symlinkSync(target, alias);
+  const running = await launchApp({
+    editMode: 'sv',
+    restoreTabs: true,
+    restoreWorkspace: true,
+    session: {
+      workspacePath: workspace,
+      activeFilePath: target,
+      openFiles: [target],
+    },
+  });
+  try {
+    const { app, page } = running;
+    const editor = page.locator('.editor-host.active .vditor-sv');
+    await expect(editor).toContainText('Original content');
+    await editor.fill('Local content');
+    fs.writeFileSync(target, 'External content');
+    await expect(page.locator('#externalChangeBanner')).toBeVisible();
+
+    await app.evaluate(({ dialog }, selectedPath) => {
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: selectedPath });
+    }, alias);
+    await page.keyboard.press('Control+Shift+S');
+
+    await expect(page.locator('#externalChangeBanner')).toBeVisible();
+    await expect(page.locator('#statusPath')).toHaveText(target);
+    expect(fs.readFileSync(target, 'utf8')).toBe('External content');
+  } finally {
+    await closeApp(running);
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 test('preserves open descendant documents when an application directory is deleted', async () => {
   fs.mkdirSync(path.join(projectRoot, 'tmp'), { recursive: true });
   const workspace = fs.mkdtempSync(path.join(projectRoot, 'tmp', 'vditor-delete-directory-'));
@@ -2385,7 +3012,7 @@ test('clears a workspace after its root is deleted externally', async () => {
   });
   try {
     const { page } = running;
-    await expect(page.locator('#workspaceHeading')).toHaveAttribute('title', workspace);
+    await expect(page.locator('#workspaceHeading')).toHaveAttribute('data-tooltip', workspace);
     fs.rmSync(workspace, { recursive: true, force: true });
     await expect(page.locator('#workspaceName')).toHaveText('No workspace opened', {
       timeout: 5000,
@@ -2416,13 +3043,13 @@ test('preserves opened clean documents when a workspace subdirectory is deleted 
     let restored: ElectronApplication | null = null;
     try {
       const { app, page, testRoot } = running;
-      await expect(page.locator('#workspaceHeading')).toHaveAttribute('title', workspace);
+      await expect(page.locator('#workspaceHeading')).toHaveAttribute('data-tooltip', workspace);
       await expect(page.locator('.document-tab.active > span')).toHaveText('root-note.md');
       fs.rmSync(deletedDirectory, { recursive: true, force: true });
 
       await expect(page.locator('#externalFileStateBanner')).toBeVisible({ timeout: 5000 });
       await expect(page.locator('#externalFileStateMessage')).toContainText('root-note.md');
-      await expect(page.locator('#workspaceHeading')).toHaveAttribute('title', workspace);
+      await expect(page.locator('#workspaceHeading')).toHaveAttribute('data-tooltip', workspace);
       await expect(page.locator('.editor-host.active .vditor-sv')).toContainText('Opened content');
       await expect.poll(() => fs.readdirSync(path.join(testRoot, 'recovery')).length).toBe(1);
       await expect
@@ -2449,7 +3076,10 @@ test('preserves opened clean documents when a workspace subdirectory is deleted 
       });
       const restoredPage = await restored.firstWindow();
       await restoredPage.waitForSelector('#appMenuBar[data-ready="true"]');
-      await expect(restoredPage.locator('#workspaceHeading')).toHaveAttribute('title', workspace);
+      await expect(restoredPage.locator('#workspaceHeading')).toHaveAttribute(
+        'data-tooltip',
+        workspace,
+      );
       await expect(restoredPage.locator('.document-tab.active > span')).toHaveText(
         'Recovered root-note.md',
       );
@@ -2751,7 +3381,7 @@ test('resolves external file conflicts without silently overwriting disk changes
     });
     await expect(page.locator('#externalChangeBanner .persistent-banner-icon')).toHaveAttribute(
       'src',
-      'assets/warning.svg',
+      'assets/notification/warning.svg',
     );
     const persistentBannerLayout = await page
       .locator('#externalChangeBanner')
@@ -2955,9 +3585,8 @@ test('protects open documents when files are deleted and reappear outside the ap
     await page.locator('#externalFileRecreate').click();
     await expect(confirm).toBeVisible();
     await confirm.locator('#confirmActions [data-action="confirm"]').click();
-    await expect
-      .poll(() => fs.readFileSync(modifiedPath, 'utf8'))
-      .toContain('Content entered after deletion');
+    await expect.poll(() => fs.existsSync(modifiedPath)).toBe(true);
+    expect(fs.readFileSync(modifiedPath, 'utf8')).toContain('Content entered after deletion');
     await expect
       .poll(() =>
         page.evaluate(() => window.appAPI.readClipboard().then(({ text }) => text.trim())),
@@ -2982,9 +3611,8 @@ test('protects open documents when files are deleted and reappear outside the ap
     await page.locator('#externalFileRecreate').click();
     await expect(confirm).toBeVisible();
     await confirm.locator('#confirmActions [data-action="confirm"]').click();
-    await expect
-      .poll(() => fs.readFileSync(modifiedPath, 'utf8'))
-      .toContain('Content when clipboard fails');
+    await expect.poll(() => fs.existsSync(modifiedPath)).toBe(true);
+    expect(fs.readFileSync(modifiedPath, 'utf8')).toContain('Content when clipboard fails');
     await expect(page.locator('#statusMessage')).toHaveText(
       'File recreated, but the previous content could not be copied to the clipboard.',
     );
@@ -3027,9 +3655,8 @@ test('copies the last saved content when recreating a deleted file with auto-sav
     const confirm = page.locator('#confirmModal');
     await expect(confirm).toBeVisible();
     await confirm.locator('#confirmActions [data-action="confirm"]').click();
-    await expect
-      .poll(() => fs.readFileSync(filePath, 'utf8'))
-      .toContain('Content entered after deletion');
+    await expect.poll(() => fs.existsSync(filePath)).toBe(true);
+    expect(fs.readFileSync(filePath, 'utf8')).toContain('Content entered after deletion');
     await expect
       .poll(() =>
         page.evaluate(() => window.appAPI.readClipboard().then(({ text }) => text.trim())),
@@ -3255,24 +3882,78 @@ test('links Light and Dark content themes to the application theme', async () =>
     const { page, testRoot } = running;
     await createNewTab(page);
 
-    await page.locator('#statusThemeToggle + span').click();
+    await selectThemeMode(page, 'dark');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await expect.poll(() => readSetting(testRoot, 'appearance', 'contentTheme')).toBe('dark');
 
-    await page.locator('#statusThemeToggle + span').click();
+    await selectThemeMode(page, 'light');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'classic');
     await expect.poll(() => readSetting(testRoot, 'appearance', 'contentTheme')).toBe('light');
 
     await page.locator('#statusSettings').click();
     await expect(page.locator('.settings-card > header h2')).toHaveText('Vditor Desktop Settings');
-    await expect(page.locator('.settings-nav button > svg')).toHaveCount(6);
+    await expect(page.locator('.settings-nav button > .settings-nav-icon')).toHaveCount(6);
     await page.locator('[name="contentTheme"]').selectOption('ant-design');
     await expect.poll(() => readSetting(testRoot, 'appearance', 'contentTheme')).toBe('ant-design');
     await page.locator('#saveSettings').click();
 
-    await page.locator('#statusThemeToggle + span').click();
+    await selectThemeMode(page, 'dark');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await expect.poll(() => readSetting(testRoot, 'appearance', 'contentTheme')).toBe('ant-design');
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('offers three theme modes from the status bar and removes the settings checkbox', async () => {
+  const running = await launchApp({
+    theme: 'claude-light',
+    lightTheme: 'claude-light',
+    darkTheme: 'monokai-pro-dark',
+  });
+  try {
+    const { page, testRoot } = running;
+    const trigger = page.locator('#statusThemeMode');
+    const menu = page.locator('#statusThemeMenu');
+    await expect(trigger).toHaveAttribute('data-theme-mode', 'light');
+
+    await trigger.click();
+    await expect(menu).toBeVisible();
+    await expect(menu.locator('[data-theme-mode]')).toHaveCount(3);
+    await expect(menu.locator('[data-theme-mode]')).toHaveText(['', '', '']);
+    await expect(menu.locator('[data-theme-mode="light"]')).toHaveAttribute('aria-checked', 'true');
+    await expect(menu.locator('[data-theme-mode="system"]')).toHaveAttribute(
+      'aria-label',
+      'Follow system theme',
+    );
+
+    await menu.locator('[data-theme-mode="dark"]').click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'monokai-pro-dark');
+    await expect(trigger).toHaveAttribute('data-theme-mode', 'dark');
+    await expect.poll(() => readSetting(testRoot, 'appearance', 'systemTheme')).toBe(false);
+    await expect.poll(() => readSetting(testRoot, 'appearance', 'theme')).toBe('monokai-pro-dark');
+
+    await selectThemeMode(page, 'system');
+    const systemTheme = await page.evaluate(() => window.appAPI.getSystemTheme());
+    const expectedTheme = systemTheme === 'dark' ? 'monokai-pro-dark' : 'claude-light';
+    await expect(page.locator('html')).toHaveAttribute('data-theme', expectedTheme);
+    await expect(trigger).toHaveAttribute('data-theme-mode', 'system');
+    await expect.poll(() => readSetting(testRoot, 'appearance', 'systemTheme')).toBe(true);
+
+    await page.locator('#statusSettings').click();
+    await expect(
+      page.locator('[data-settings-panel="appearance"] [name="systemTheme"]'),
+    ).toHaveCount(0);
+    await page.locator('.theme-option-monokai-light').click();
+    await expect
+      .poll(() => readSetting(testRoot, 'appearance', 'lightTheme'))
+      .toBe('monokai-pro-light');
+    await expect.poll(() => readSetting(testRoot, 'appearance', 'theme')).toBe('monokai-pro-dark');
+    await page.locator('#saveSettings').click();
+    await selectThemeMode(page, 'light');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'monokai-pro-light');
+    await selectThemeMode(page, 'system');
+    await expect.poll(() => readSetting(testRoot, 'appearance', 'systemTheme')).toBe(true);
   } finally {
     await closeApp(running);
   }
@@ -3333,7 +4014,7 @@ for (const appTheme of ['dark', 'monokai-pro-dark'] as const) {
   }
 }
 
-test('remembers which dark theme the status toggle should restore', async () => {
+test('selects manual light and dark modes using each configured theme', async () => {
   const running = await launchApp({
     theme: 'monokai-pro-dark',
     darkTheme: 'monokai-pro-dark',
@@ -3342,15 +4023,15 @@ test('remembers which dark theme the status toggle should restore', async () => 
   try {
     const { page, testRoot } = running;
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'monokai-pro-dark');
-    await expect(page.locator('#statusThemeToggle')).toBeChecked();
+    await expect(page.locator('#statusThemeMode')).toHaveAttribute('data-theme-mode', 'dark');
 
-    await page.locator('#statusThemeToggle + span').click();
+    await selectThemeMode(page, 'light');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'classic');
     await expect
       .poll(() => readSetting(testRoot, 'appearance', 'darkTheme'))
       .toBe('monokai-pro-dark');
 
-    await page.locator('#statusThemeToggle + span').click();
+    await selectThemeMode(page, 'dark');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'monokai-pro-dark');
     await expect.poll(() => readSetting(testRoot, 'appearance', 'theme')).toBe('monokai-pro-dark');
 
@@ -3358,9 +4039,9 @@ test('remembers which dark theme the status toggle should restore', async () => 
     await page.locator('.theme-option-dark').click();
     await expect.poll(() => readSetting(testRoot, 'appearance', 'darkTheme')).toBe('dark');
     await page.locator('#saveSettings').click();
-    await page.locator('#statusThemeToggle + span').click();
+    await selectThemeMode(page, 'light');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'classic');
-    await page.locator('#statusThemeToggle + span').click();
+    await selectThemeMode(page, 'dark');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   } finally {
     await closeApp(running);
@@ -3399,14 +4080,14 @@ test('switches between separately selected application themes without changing e
     ).toBeVisible();
     await page.locator('#saveSettings').click();
 
-    await page.locator('#statusThemeToggle + span').click();
+    await selectThemeMode(page, 'dark');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'monokai-pro-dark');
     await expect(page.locator('#app')).toHaveCSS('background-color', 'rgb(45, 42, 46)');
     await expect
       .poll(() => readSetting(testRoot, 'appearance', 'darkTheme'))
       .toBe('monokai-pro-dark');
 
-    await page.locator('#statusThemeToggle + span').click();
+    await selectThemeMode(page, 'light');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'claude-light');
     await expect(page.locator('#app')).toHaveCSS('background-color', 'rgb(250, 249, 245)');
     await expect.poll(() => readSetting(testRoot, 'appearance', 'lightTheme')).toBe('claude-light');
@@ -3461,6 +4142,77 @@ test('colors all six rendered heading levels in Monokai Pro Dark', async () => {
       .toEqual(expected);
   } finally {
     await closeApp(running);
+  }
+});
+
+test('uses the sidebar surface for the custom main menu in light themes', async () => {
+  const running = await launchApp({
+    theme: 'claude-light',
+    lightTheme: 'claude-light',
+    darkTheme: 'dark',
+  });
+  try {
+    const { page } = running;
+    const mainMenu = page.locator('.app-menu-bar > button[data-menu="main"]');
+    await expect(mainMenu).toHaveCSS('background-color', 'rgb(245, 244, 237)');
+    await mainMenu.click();
+    await expect(page.locator('.app-menu-popup').first()).toHaveCSS(
+      'background-color',
+      'rgb(245, 244, 237)',
+    );
+
+    await page.locator('#statusSettings').click();
+    await page.locator('.theme-option-monokai-light').click();
+    await page.locator('#saveSettings').click();
+    await selectThemeMode(page, 'light');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'monokai-pro-light');
+    await expect(mainMenu).toHaveCSS('background-color', 'rgb(237, 231, 229)');
+    await mainMenu.click();
+    await expect(page.locator('.app-menu-popup').first()).toHaveCSS(
+      'background-color',
+      'rgb(237, 231, 229)',
+    );
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('uses consistent navigation and document surfaces across all application themes', async () => {
+  const themes = [
+    { theme: 'classic', sidebar: 'rgb(240, 241, 243)', editor: 'rgb(255, 255, 255)' },
+    { theme: 'dark', sidebar: 'rgb(32, 33, 36)', editor: 'rgb(24, 25, 28)' },
+    { theme: 'claude-light', sidebar: 'rgb(245, 244, 237)', editor: 'rgb(250, 249, 245)' },
+    { theme: 'claude-dark', sidebar: 'rgb(48, 48, 46)', editor: 'rgb(38, 38, 36)' },
+    { theme: 'monokai-pro-light', sidebar: 'rgb(237, 231, 229)', editor: 'rgb(250, 244, 242)' },
+    { theme: 'monokai-pro-dark', sidebar: 'rgb(45, 42, 46)', editor: 'rgb(39, 36, 40)' },
+  ] as const;
+
+  for (const { theme, sidebar, editor } of themes) {
+    const running = await launchApp({ theme, systemTheme: false });
+    try {
+      const { page } = running;
+      await expect(page.locator('.sidebar')).toHaveCSS('background-color', sidebar);
+      await expect(page.locator('.editor-area')).toHaveCSS('background-color', sidebar);
+      await expect(page.locator('#emptyNewFile')).toHaveCSS('background-color', sidebar);
+      await expect(page.locator('#emptyOpenFile')).toHaveCSS('background-color', sidebar);
+      await expect(page.locator('.window-titlebar')).toHaveCSS('background-color', sidebar);
+      await createNewTab(page);
+      await expect(page.locator('#vditorToolbarMount > .vditor-toolbar')).toHaveCSS(
+        'background-color',
+        sidebar,
+      );
+      await expect(page.locator('.editor-host.active .vditor-content')).toHaveCSS(
+        'background-color',
+        editor,
+      );
+      if (theme === 'claude-dark') {
+        const tab = page.locator('.document-tab').first();
+        await tab.hover();
+        await expect(tab).toHaveCSS('background-color', 'rgb(61, 61, 58)');
+      }
+    } finally {
+      await closeApp(running);
+    }
   }
 });
 
@@ -3614,7 +4366,7 @@ test('saves settings live and keeps the enlarged settings dialog draggable', asy
     await expect(page.locator('#settingsModal')).toBeVisible();
     await page.locator('#saveSettings').click();
     await expect(page.locator('#settingsModal')).toBeHidden();
-    await page.locator('#statusThemeToggle + span').click();
+    await selectThemeMode(page, 'dark');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   } finally {
     await closeApp(running);
@@ -3881,7 +4633,7 @@ test('filters and remembers code-block themes separately for light and dark mode
       .poll(() => readSetting(testRoot, 'appearance', 'lightCodeTheme'))
       .toBe('atom-one-light');
 
-    await page.locator('#statusThemeToggle + span').click();
+    await selectThemeMode(page, 'dark');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await expect.poll(() => readSetting(testRoot, 'appearance', 'codeTheme')).toBe('monokai');
     await page.locator('#vditorToolbarMount button[data-type="code-theme"]').click();
@@ -3892,11 +4644,11 @@ test('filters and remembers code-block themes separately for light and dark mode
       .poll(() => readSetting(testRoot, 'appearance', 'darkCodeTheme'))
       .toBe('monokai-sublime');
 
-    await page.locator('#statusThemeToggle + span').click();
+    await selectThemeMode(page, 'light');
     await expect
       .poll(() => readSetting(testRoot, 'appearance', 'codeTheme'))
       .toBe('atom-one-light');
-    await page.locator('#statusThemeToggle + span').click();
+    await selectThemeMode(page, 'dark');
     await expect
       .poll(() => readSetting(testRoot, 'appearance', 'codeTheme'))
       .toBe('monokai-sublime');
@@ -4024,7 +4776,7 @@ test('renders the redesigned status bar and scales titlebar menu text', async ()
       )
       .toBe(18);
 
-    await page.locator('#statusThemeToggle + span').click();
+    await selectThemeMode(page, 'dark');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await page.locator('#statusSettings').click();
     await expect(page.locator('#settingsModal')).toBeVisible();
@@ -4141,13 +4893,19 @@ test('shows the Traditional Chinese locale throughout settings', async () => {
     await page.locator('#statusSettings').click();
     await expect(page.locator('.settings-card > header h2')).toHaveText('Vditor Desktop 設定');
     await expect(page.locator('[name="locale"]')).toHaveValue('zh_Hant');
-    await expect(page.locator('[data-settings-panel="appearance"]')).toContainText('跟隨系統主題');
+    await expect(page.locator('[data-settings-panel="appearance"]')).not.toContainText(
+      '跟隨系統主題',
+    );
+    await expect(page.locator('#statusThemeMenu [data-theme-mode="system"]')).toHaveAttribute(
+      'aria-label',
+      '跟隨系統主題',
+    );
   } finally {
     await closeApp(running);
   }
 });
 
-test('uses the file name in the title and matches all chrome background colors', async () => {
+test('uses the file name in the title and matches the layered chrome surfaces', async () => {
   const running = await launchApp();
   try {
     const { page } = running;
@@ -4156,20 +4914,32 @@ test('uses the file name in the title and matches all chrome background colors',
     await expect(page).toHaveTitle('Untitled 1 - Vditor Desktop');
 
     const chromeColors = () =>
-      page.evaluate(() =>
-        ['#windowTitlebar', 'header.titlebar', '.statusbar'].map(
-          (selector) => getComputedStyle(document.querySelector(selector)).backgroundColor,
-        ),
-      );
+      page.evaluate(() => {
+        const background = (selector: string) =>
+          getComputedStyle(document.querySelector(selector) as Element).backgroundColor;
+        return {
+          windowTitlebar: background('#windowTitlebar'),
+          titlebar: background('header.titlebar'),
+          toolbar: background('#vditorToolbarMount > .vditor-toolbar'),
+          sidebar: background('.sidebar'),
+          statusbar: background('.statusbar'),
+        };
+      });
     const lightColors = await chromeColors();
-    expect(new Set(lightColors).size).toBe(1);
+    expect(lightColors.windowTitlebar).toBe(lightColors.sidebar);
+    expect(lightColors.titlebar).toBe(lightColors.sidebar);
+    expect(lightColors.toolbar).toBe(lightColors.sidebar);
+    expect(lightColors.statusbar).toBe(lightColors.sidebar);
     await expect(page.locator('#tabBar')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 
-    await page.locator('#statusThemeToggle + span').click();
+    await selectThemeMode(page, 'dark');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     const darkColors = await chromeColors();
-    expect(new Set(darkColors).size).toBe(1);
-    expect(darkColors[0]).not.toBe(lightColors[0]);
+    expect(darkColors.windowTitlebar).toBe(darkColors.sidebar);
+    expect(darkColors.titlebar).toBe(darkColors.sidebar);
+    expect(darkColors.toolbar).toBe(darkColors.sidebar);
+    expect(darkColors.statusbar).not.toBe(darkColors.sidebar);
+    expect(darkColors.windowTitlebar).not.toBe(lightColors.windowTitlebar);
   } finally {
     await closeApp(running);
   }

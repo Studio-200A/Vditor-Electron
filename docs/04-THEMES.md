@@ -1,6 +1,6 @@
 # Vditor Desktop 主题架构
 
-> 本文是 Vditor Desktop 主题系统的长期设计与实现说明。当前主题扩展最初作为 0.2.0 计划外的“批次 6.5”完成；施工记录保留在 [`docs/13-0.2.0-EXECUTION-TRACKER.md`](13-0.2.0-EXECUTION-TRACKER.md) 中。
+> 本文是 Vditor Desktop 主题系统的长期设计与实现说明。当前主题扩展最初作为 0.2.0 计划外的“批次 6.5”启动，并由批次 6.6 补齐为六套主题；施工记录保留在 [`docs/13-0.2.0-EXECUTION-TRACKER.md`](13-0.2.0-EXECUTION-TRACKER.md) 中。
 
 ## 1. 主题系统的职责边界
 
@@ -25,8 +25,8 @@ Monokai Pro Dark 和 Monokai Pro Light 是历史实现中的例外：应用 CSS 
 | -- | ---- | ---- |
 | 配置模型 | `src/main/services/app-state.ts` | 定义当前主题、亮色偏好、暗色偏好和内容/代码主题字段 |
 | 配置存储 | `src/main/services/settings-store.ts` | 校验并持久化主题枚举和主题偏好 |
-| 设置界面 | `src/renderer/index.html` | 渲染亮色/暗色独立 radio 组、主题预览 SVG 和系统主题选项 |
-| 主题控制器 | `src/renderer/app.js` | 解析当前主题、应用 `data-theme`、切换 Vditor 内容/代码主题、同步状态栏开关 |
+| 设置界面 | `src/renderer/index.html` | 渲染亮色/暗色独立 radio 组和主题预览 SVG；系统匹配模式由状态栏菜单控制，不在设置页重复提供 |
+| 主题控制器 | `src/renderer/app.js` | 解析当前主题、应用 `data-theme`、切换 Vditor 内容/代码主题、同步状态栏三态主题菜单 |
 | 应用视觉变量 | `src/renderer/styles/app.css` | 为六套壳层主题提供 CSS 变量和必要的组件覆盖 |
 | Vditor 边界 | `src/renderer/vditor-adapter.js` | 集中处理 Vditor toolbar、主题菜单和私有 DOM 结构访问 |
 | 行为测试 | `tests/unit/*`、`tests/e2e/app.spec.ts` | 覆盖配置、主题控件、颜色契约、主题切换和真实 Electron 行为 |
@@ -50,22 +50,24 @@ Monokai Pro Dark 和 Monokai Pro Light 是历史实现中的例外：应用 CSS 
 
 设置页分别保存：
 
-- `appearance.lightTheme`：`classic`、`claude-light` 或 `monokai-pro-light`；
-- `appearance.darkTheme`：`dark`、`claude-dark` 或 `monokai-pro-dark`。
+- `lightTheme`：`classic`、`claude-light` 或 `monokai-pro-light`；
+- `darkTheme`：`dark`、`claude-dark` 或 `monokai-pro-dark`。
 
-`appearance.theme` 表示当前实际应用主题，`systemTheme` 表示是否跟随系统明暗。解析关系为：
+`theme` 表示固定亮/暗模式下的当前应用主题，`systemTheme` 表示状态栏主题模式是否选择系统自动匹配。TOML 文件使用 `[appearance]` 段落承载这些字段，但 `AppSettings` 中它们是顶层字段。设置页只编辑 `lightTheme` 与 `darkTheme`，三态模式从状态栏主题菜单选择。解析关系为：
 
 ```text
-systemTheme = true
+状态栏显示器模式
+  → systemTheme = true
   → nativeTheme / appAPI.getSystemTheme()
   → 亮色时使用 lightTheme，暗色时使用 darkTheme
 
-systemTheme = false
-  → 使用当前 theme
+状态栏太阳模式
+  → systemTheme = false
+  → theme = lightTheme
 
-状态栏亮暗开关
-  → 开启时使用 darkTheme
-  → 关闭时使用 lightTheme
+状态栏月亮模式
+  → systemTheme = false
+  → theme = darkTheme
 ```
 
 旧字段 `lastLightTheme` 和 `lastDarkTheme` 不做兼容迁移；配置读取时作为未知字段忽略。
@@ -100,14 +102,14 @@ Vditor 内容和代码主题仍各自保存亮暗偏好：`lightCodeTheme` / `da
 
 | 主题 | `--bg` | `--sidebar-surface` | `--editor-surface` | 视觉策略 |
 | ---- | ------ | ------------------- | ----------------- | -------- |
-| Classic | `#f7f7f8` | `#ffffff` | `#f7f7f8` | sidebar 更亮，编辑区略深 |
+| Classic | `#f7f7f8` | `#f0f1f3` | `#ffffff` | 导航壳层略灰，文档画布为白色 |
 | Dark | `#17181a` | `#202124` | `#18191c` | 编辑区相对 sidebar 各 RGB 通道差 8 |
 | Claude Light | `#faf9f5` | `#f5f4ed` | `#faf9f5` | 暖灰 sidebar，纸张感编辑区 |
-| Claude Dark | `#141413` | `#30302e` | `#30302e` | 统一暖暗表面，依靠层级和分割线区分 |
-| Monokai Pro Dark | `#2d2a2e` | `#2d2a2e` | `#2d2a2e` | 保留 Monokai 的统一深色表面 |
+| Claude Dark | `#141413` | `#30302e` | `#262624` | 暖暗导航壳层略亮，文档画布略深 |
+| Monokai Pro Dark | `#2d2a2e` | `#2d2a2e` | `#272428` | 保留 Monokai 色调，文档画布略深 |
 | Monokai Pro Light | `#faf4f2` | `#ede7e5` | `#faf4f2` | sidebar 略深一档、编辑区暖白，Monokai Pro Dark 的同族浅色 |
 
-`.sidebar` 使用 `--sidebar-surface`；编辑器宿主、`.vditor-content`、`.vditor-sv`、`.vditor-ir`、`.vditor-wysiwyg`、`.vditor-preview` 和 `.vditor-reset` 使用 `--editor-surface`。设置页具体内容区域也使用编辑区表面，避免 Claude Light 出现孤立的纯白大块。
+`.sidebar`、Windows/Linux 自定义主菜单的触发按钮与下拉菜单、titlebar、共享 Vditor toolbar、Files/Outline tabs、无标签的 `.editor-area` 及其新建/打开操作都使用 `--sidebar-surface`；这样顶部 chrome、菜单与空工作区随六套主题呈现同一中性导航壳层色，不与输入控件共用 `--panel` 的白色或近白色表面。`--panel-2` 保留给状态栏、设置导航和 SV 行号栏等次级表面。编辑器宿主、`.vditor-content`、`.vditor-sv`、`.vditor-ir`、`.vditor-wysiwyg`、`.vditor-preview` 和 `.vditor-reset` 使用 `--editor-surface`。浅色主题的文档画布较导航壳层明亮，深色主题则较暗；设置页具体内容区域也使用编辑区表面。标签 hover 一律使用主题的 `--hover`，不使用跨主题固定颜色。
 
 ## 5. 六套主题的实际实现
 
@@ -145,7 +147,9 @@ Monokai Pro Dark 的同族浅色主题，调色取自官方 Monokai Pro Light VS
 
 ## 7. 测试契约
 
-当前测试覆盖配置字段、旧字段忽略、亮暗独立主题组、六张预览卡片、预览宽度、Claude surface/accent/按钮文字/hover/分割线、状态栏开关、系统主题解析，以及编辑器在失焦、聚焦和 IR/WYSIWYG/SV 切换时的编辑区表面。
+当前测试覆盖配置字段、旧字段忽略、亮暗独立主题组、六张预览卡片、预览宽度、Claude surface/accent/按钮文字/hover/分割线、状态栏三态主题菜单、系统主题解析，以及编辑器在失焦、聚焦和 IR/WYSIWYG/SV 切换时的编辑区表面。
+
+截至 2026-08-27，用户手动运行的 Linux `npm run check:all` 已包含主题、状态栏菜单、工具栏边界和六套主题相关回归；Windows/macOS 的窗口系统主题和原生集成仍按 [`docs/03-CROSS-PLATFORM.md` §9](03-CROSS-PLATFORM.md#9-020-batch-7-deferred-platform-validation) 单独验证。
 
 Vditor toolbar 的主题菜单继续由 adapter 管理，应用主题不会绕过 Vditor 的 code theme。涉及主题代码、renderer shell 或设置持久化的改动，应至少运行格式检查、相关单测、构建和相关 Electron E2E；合并前遵循项目要求运行 `npm run check:all`。
 

@@ -1,6 +1,0 @@
-<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-  <path
-    d="M50 56H14a6 6 0 0 1-6-6V14a6 6 0 0 1 6-6h36a6 6 0 0 1 6 6v36a6 6 0 0 1-6 6ZM24 12H15a3 3 0 0 0-3 3v34a3 3 0 0 0 3 3h9zm25 0H28v40h21a3 3 0 0 0 3-3V15a3 3 0 0 0-3-3ZM15 16h7v2h-7zm0 4h7v2h-7zm0 4h7v2h-7z"
-    fill="currentColor"
-  />
-</svg>

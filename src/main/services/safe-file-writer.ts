@@ -7,8 +7,16 @@ export interface SafeWriteResult {
   wrote: boolean;
 }
 
+export class ExternalDocumentChangeError extends Error {
+  constructor() {
+    super('The document changed on disk before it could be saved.');
+    this.name = 'ExternalDocumentChangeError';
+  }
+}
+
 export interface SafeFileSystem {
   chmod(path: fs.PathLike, mode: fs.Mode): Promise<void>;
+  link(existingPath: fs.PathLike, newPath: fs.PathLike): Promise<void>;
   mkdir(
     path: fs.PathLike,
     options: fs.MakeDirectoryOptions & { recursive: true },
@@ -30,15 +38,25 @@ export class SafeFileWriter {
     private readonly defaultFileMode?: fs.Mode,
   ) {}
 
-  async write(filePath: string, content: string): Promise<SafeWriteResult> {
+  async write(
+    filePath: string,
+    content: string,
+    options: { expectedBytes?: Buffer; expectedAbsent?: boolean } = {},
+  ): Promise<SafeWriteResult> {
     const destination = path.resolve(filePath);
     const directory = path.dirname(destination);
     const bytes = Buffer.from(content, 'utf8');
 
     try {
       const existing = await this.fileSystem.readFile(destination);
+      if (
+        options.expectedAbsent ||
+        (options.expectedBytes && !existing.equals(options.expectedBytes))
+      )
+        throw new ExternalDocumentChangeError();
       if (existing.equals(bytes)) return { expectedContent: content, wrote: false };
-    } catch {
+    } catch (error) {
+      if (error instanceof ExternalDocumentChangeError) throw error;
       // An unreadable or absent destination must not be treated as unchanged.
     }
 
@@ -71,6 +89,30 @@ export class SafeFileWriter {
       }
       if (existingMode !== undefined) await this.fileSystem.chmod(temporaryPath, existingMode);
 
+      if (options.expectedBytes) {
+        try {
+          const current = await this.fileSystem.readFile(destination);
+          if (!current.equals(options.expectedBytes)) throw new ExternalDocumentChangeError();
+        } catch (error) {
+          if (error instanceof ExternalDocumentChangeError) throw error;
+          throw new ExternalDocumentChangeError();
+        }
+      }
+
+      if (options.expectedAbsent) {
+        try {
+          // A hard link creates the final name only when it is still absent. This is the
+          // no-replace counterpart to rename() for a newly saved document in the same directory.
+          await this.fileSystem.link(temporaryPath, destination);
+        } catch (error) {
+          if (this.isAlreadyExistsError(error)) throw new ExternalDocumentChangeError();
+          throw error;
+        }
+        await this.fileSystem.unlink(temporaryPath);
+        temporaryCreated = false;
+        return { expectedContent: content, wrote: true };
+      }
+
       // Node delegates replacement semantics to the current platform. If replacement fails
       // (for example, a locked target on Windows), the target is intentionally not removed.
       await this.fileSystem.rename(temporaryPath, destination);
@@ -86,5 +128,11 @@ export class SafeFileWriter {
       }
       throw error;
     }
+  }
+
+  private isAlreadyExistsError(error: unknown): boolean {
+    return (
+      typeof error === 'object' && error !== null && 'code' in error && error.code === 'EEXIST'
+    );
   }
 }

@@ -1,8 +1,9 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { readDocumentFile } from './file-manager';
 import { SafeFileWriter } from './safe-file-writer';
 
-export const RECOVERY_SCHEMA_VERSION = 1;
+export const RECOVERY_SCHEMA_VERSION = 2;
 export const MAX_RECOVERY_SNAPSHOT_BYTES = 2 * 1024 * 1024;
 
 export interface RecoverySnapshot {
@@ -12,6 +13,7 @@ export interface RecoverySnapshot {
   title: string;
   content: string;
   savedContent: string;
+  expectedSavedContent: string;
   encoding: string;
   lineEnding: 'LF' | 'CRLF';
   mode: 'wysiwyg' | 'ir' | 'sv';
@@ -40,9 +42,12 @@ export class RecoveryStore {
   }
 
   async save(snapshot: unknown): Promise<void> {
-    this.assertSnapshot(snapshot);
+    const normalized = this.normalizeSnapshot(snapshot);
+    if (!normalized) throw new Error('Invalid recovery snapshot');
+    if (Buffer.byteLength(JSON.stringify(normalized), 'utf8') > MAX_RECOVERY_SNAPSHOT_BYTES)
+      throw new Error('Recovery snapshot exceeds the size limit');
     await this.ensureDirectory();
-    await this.writer.write(this.snapshotPath(snapshot.id), JSON.stringify(snapshot));
+    await this.writer.write(this.snapshotPath(normalized.id), JSON.stringify(normalized));
   }
 
   async listCandidates(): Promise<RecoveryCandidate[]> {
@@ -102,8 +107,7 @@ export class RecoveryStore {
       const raw = await fs.promises.readFile(snapshotPath, 'utf8');
       if (Buffer.byteLength(raw, 'utf8') > MAX_RECOVERY_SNAPSHOT_BYTES) return null;
       const parsed: unknown = JSON.parse(raw);
-      if (!this.isSnapshot(parsed)) return null;
-      return parsed;
+      return this.normalizeSnapshot(parsed);
     } catch (error) {
       if (this.errorCode(error) !== 'ENOENT')
         console.error('Recovery store skipped an unreadable snapshot:', this.errorCode(error));
@@ -111,11 +115,13 @@ export class RecoveryStore {
     }
   }
 
-  private isSnapshot(value: unknown): value is RecoverySnapshot {
-    if (!value || typeof value !== 'object') return false;
-    const snapshot = value as Partial<RecoverySnapshot>;
-    return (
-      snapshot.schemaVersion === RECOVERY_SCHEMA_VERSION &&
+  private normalizeSnapshot(value: unknown): RecoverySnapshot | null {
+    if (!value || typeof value !== 'object') return null;
+    const snapshot = value as Omit<Partial<RecoverySnapshot>, 'schemaVersion'> & {
+      schemaVersion?: number;
+    };
+    const valid =
+      (snapshot.schemaVersion === 1 || snapshot.schemaVersion === RECOVERY_SCHEMA_VERSION) &&
       typeof snapshot.id === 'string' &&
       RECOVERY_ID.test(snapshot.id) &&
       (snapshot.filePath === null || typeof snapshot.filePath === 'string') &&
@@ -126,14 +132,13 @@ export class RecoveryStore {
       (snapshot.lineEnding === 'LF' || snapshot.lineEnding === 'CRLF') &&
       (snapshot.mode === 'wysiwyg' || snapshot.mode === 'ir' || snapshot.mode === 'sv') &&
       typeof snapshot.updatedAt === 'number' &&
-      Number.isFinite(snapshot.updatedAt)
-    );
-  }
-
-  private assertSnapshot(snapshot: unknown): asserts snapshot is RecoverySnapshot {
-    if (!this.isSnapshot(snapshot)) throw new Error('Invalid recovery snapshot');
-    if (Buffer.byteLength(JSON.stringify(snapshot), 'utf8') > MAX_RECOVERY_SNAPSHOT_BYTES)
-      throw new Error('Recovery snapshot exceeds the size limit');
+      Number.isFinite(snapshot.updatedAt);
+    if (!valid) return null;
+    return {
+      ...snapshot,
+      schemaVersion: RECOVERY_SCHEMA_VERSION,
+      expectedSavedContent: snapshot.expectedSavedContent ?? snapshot.savedContent,
+    } as RecoverySnapshot;
   }
 
   private async diskState(
@@ -141,7 +146,7 @@ export class RecoveryStore {
   ): Promise<'unchanged' | 'changed' | 'unavailable'> {
     if (!snapshot.filePath) return 'unchanged';
     try {
-      return (await fs.promises.readFile(snapshot.filePath, 'utf8')) === snapshot.savedContent
+      return (await readDocumentFile(snapshot.filePath)).content === snapshot.expectedSavedContent
         ? 'unchanged'
         : 'changed';
     } catch {

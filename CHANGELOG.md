@@ -4,29 +4,56 @@
 
 ### New Features
 
-- **feat(themes):** Added Monokai Pro Light, Claude Light and Claude Dark application themes based on official public UI colors. Light and dark application themes are selected independently and the status-bar switch moves between those saved choices. They change application chrome only; Vditor continues to own editor typography, content themes, and code-block highlighting.
+#### Themes and symbolic icons
+
+- **feat(themes):** Added Monokai Pro Light, Claude Light and Claude Dark application themes based on official public UI colors. Light and dark application themes are selected independently. They change application chrome only; Vditor continues to own editor typography, content themes, and code-block highlighting.
+- **feat(theme mode):** Replaced the status-bar light/dark switch and Appearance-page system-theme checkbox with an icon-only three-way picker for fixed light, fixed dark, and follow-system modes. The resident icon shows the selected mode while the light/dark theme choices remain independently configurable.
+- **feat(symbolic icons):** Replaced the supplied desktop chrome, explorer refresh, theme-mode, settings, and settings-navigation icons with the corresponding Lucide symbolic assets, while keeping existing UI identifiers and accessible labels stable.
+
+#### Workspace and file operations
+
 - **feat(workspace links):** The explorer now distinguishes real-path-resolvable directory links with an italic, underlined name and a themed link SVG badge. Links into the workspace follow the workspace depth limit; external and cyclic targets remain visible but cannot be expanded.
 - **feat(workspace):** Added a persisted 7–12 workspace directory read-depth control (default 7). The explorer, restored folder expansion, and workspace monitoring share the same boundary, and the explorer explains when a deeper directory is intentionally not read.
+
+#### Recovery and unavailable files
+
 - **feat(recovery):** After an unexpected exit, unsaved documents now open directly with a persistent warning banner. The banner clearly distinguishes an unchanged original file from a changed or unavailable one, and only allows direct saving when it is safe; other recovery states can be saved elsewhere or discarded.
 - **feat(external file state):** Open documents now distinguish external deletion, reappearance, and unreadable/permission states. Autosave pauses while a target is unavailable, and the editor keeps its in-memory content until the user chooses an explicit resolution.
 - **feat(recreate backup):** Recreating an unavailable file copies the content captured before the unavailable state to the system clipboard and shows a five-second localized confirmation notice. The clipboard backup is not contaminated by edits made while the persistent notice is visible.
 
 ### Bug Fixes
 
-- **fix(workspace monitoring):** Workspace watcher resource failures now degrade to one clear in-app notice instead of producing an error storm; manual file browsing and refresh remain available.
-- **fix(external conflicts):** Completed the external-change conflict workflow: stable disk snapshots now drive reloads, autosave pauses while a conflict is unresolved, and users can reload, save the current content elsewhere, ignore the change, or explicitly confirm an overwrite. Repeated disk changes invalidate stale overwrite confirmations, and saving after “ignore” still requires an explicit confirmation.
+#### Workbench, toolbar, and menus
+
+- **fix(main menu theming):** Windows/Linux custom main-menu triggers and popups now use each theme's sidebar surface, so Claude Light and Monokai Pro Light retain their warm application-chrome tone instead of appearing white.
+- **fix(sidebar tooltips):** Replaced browser-native sidebar tooltips with the shared application tooltip used by document links, so workspace, file-tree, link-directory, refresh, and outline controls now follow the active theme consistently.
 - **fix(persistent notices):** Unified recovery and external-conflict banners around the persistent warning style, including the warning SVG, two-row narrow-layout behavior, larger 15px copy and action text, draggable overwrite confirmation, and readable red-and-white danger actions across light, dark, and Monokai themes.
+- **fix(toolbar layout):** Stabilized the Files/Outline tab boundary when the shared toolbar is hidden or wraps; the sidebar tabs, toolbar, and loading skeleton now own their bottom border and shadow consistently across all six application themes.
 - **fix(context menu):** Disabled Paste and Paste as Plain Text when the system clipboard has no content to insert.
+- **fix(accessibility):** Use the active theme accent for keyboard-visible focus rings across application controls.
+- **fix(asset layout):** Organized application icons, symbolic UI icons, and notification icons under dedicated renderer asset directories; the offline asset build and Linux release script now follow the same paths.
+
+#### Workspace, files, and saving
+
+- **fix(save reliability):** Serialized saves by canonical file identity, kept newer edits dirty and recoverable when an earlier save finishes late, and rechecked the expected disk baseline before replacement so stale saves surface an explicit external-change result.
+- **fix(file identity):** Unified file identity across the renderer, preload, and main process so case-sensitive Linux paths, symlink aliases, missing-path ancestors, and watcher cleanup resolve consistently without merging distinct files.
+- **fix(file operations):** Prevented Rename and Save As from replacing existing or already-open targets, including targets that appear during the operation; directory renames now converge tab paths, session state, editor rebuilds, the file tree, and watchers after partial failures.
 - **fix(save):** Save documents through a synced same-directory temporary file before replacement, preserving existing permissions and keeping the original file intact on write or replacement failure.
 - **fix(autosave):** Prevented an application's own atomic-save events from refreshing the workspace explorer or clearing the active file selection.
 - **fix(file explorer):** Refresh the active workspace tree immediately after a first save or Save As, without reintroducing save-event flicker for ordinary saves.
-- **fix(external file state):** A file that reappears in the active workspace now refreshes the sidebar without rebuilding it for ordinary document content events; reappearance does not silently replace the editor content.
 - **fix(save baseline):** Recovery-save validation now compares the disk against the recovery snapshot's last saved baseline, allowing a safe recovered version to be written when the original file is unchanged.
-- **fix(accessibility):** Use the active theme accent for keyboard-visible focus rings across application controls.
+
+#### External changes, watchers, and recovery
+
+- **fix(workspace monitoring):** Workspace watcher resource failures now degrade to one clear in-app notice instead of producing an error storm; manual file browsing and refresh remain available.
+- **fix(external conflicts):** Completed the external-change conflict workflow: stable disk snapshots now drive reloads, autosave pauses while a conflict is unresolved, and users can reload, save the current content elsewhere, ignore the change, or explicitly confirm an overwrite. Repeated disk changes invalidate stale overwrite confirmations, and saving after “ignore” still requires an explicit confirmation.
+- **fix(watcher consistency):** Discarded out-of-order document reads and reconciled the current disk state after watcher rebinds and workspace transitions, reducing missed external changes during file operations.
+- **fix(recovery consistency):** Merged session and recovery tabs for the same file identity, compared recovery baselines through the shared decoding rules for line endings and supported encodings, and preserved trusted tab content while Vditor is still initializing.
+- **fix(external file state):** A file that reappears in the active workspace now refreshes the sidebar without rebuilding it for ordinary document content events; reappearance does not silently replace the editor content.
 
 ### Project Maintenance
 
-- **docs(0.2.0):** Updated the README, architecture map, development plan, execution tracker, and known behavior notes to reflect the completed recovery, external-file state, workspace-depth, directory-link, path-consistency, and plan-external Claude theme work and the remaining security and cross-platform validation scope.
+- **docs(0.2.0):** Synchronized README/README_CN, the architecture map, file-safety contract, development plan, execution tracker, theme notes, and cross-platform handoff with the final 0.2.0 worktree. The 0.2.0 development tracker batch 7 local closure is backed by the 2026-08-27 Linux evidence (149 unit tests and 111 Electron E2E tests); Windows/macOS validation and the documented existing-target TOCTOU boundary remain explicitly deferred.
 
 ## 0.1.5 - Editing Experience Improvement
 

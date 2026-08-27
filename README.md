@@ -3,7 +3,7 @@
 [简体中文](README_CN.md) · English
 
 <p align="center">
-  <img src="src/renderer/assets/vditor-desktop.svg" alt="Vditor Desktop" width="128" />
+  <img src="src/renderer/assets/app-icon/vditor-desktop.svg" alt="Vditor Desktop" width="128" />
 </p>
 
 <p align="center">
@@ -98,7 +98,7 @@ Built-in application themes:
 - Monokai Pro Light, including a dedicated H1–H6 heading palette
 - Monokai Pro Dark, including a dedicated H1–H6 heading palette
 
-Choose light and dark application themes independently in Settings. The status-bar switch then changes between those two saved choices. Application themes only change application colors. Content and code-block preview themes remain controlled by Vditor and preserve the user's last selection in each light/dark context. Optional multi-platform typography previews can be enabled when needed.
+Choose light and dark application themes independently in Settings. The status-bar theme-mode menu then offers fixed light, fixed dark, and follow-system modes, with its resident icon showing the current mode. Application themes only change application colors. Content and code-block preview themes remain controlled by Vditor and preserve the user's last selection in each light/dark context. Optional multi-platform typography previews can be enabled when needed.
 
 The interface is localized in English (`en_US`), Simplified Chinese (`zh_Hans`), Traditional Chinese (`zh_Hant`), and system language mode.
 
@@ -165,7 +165,7 @@ Application configuration and Chromium user data are kept separate:
 
 The TOML file is human-readable and grouped by application, appearance, fonts, editor, preview, files, workspace, window, and session settings.
 
-The appearance section stores the independently selected `lightTheme` and `darkTheme` values. `systemTheme` resolves the active theme from those choices; the status-bar switch also moves between them. Claude application themes only define application colors and do not replace Vditor's content or code-block theme settings.
+The appearance section stores the independently selected `lightTheme` and `darkTheme` values. The status-bar theme-mode menu offers fixed light, fixed dark, and follow-system modes; `systemTheme` records the third choice and resolves the active theme from those two preferences. Claude application themes only define application colors and do not replace Vditor's content or code-block theme settings.
 
 Crash-recovery snapshots are stored separately in the private application data directory shown above. They are removed after saving or discarding the recovered document and are never served as local document resources.
 

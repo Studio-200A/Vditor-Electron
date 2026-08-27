@@ -16,17 +16,24 @@ contextBridge.exposeInMainWorld('fileAPI', {
   readFile: (filePath: string) => ipcRenderer.invoke('file:read', filePath),
   writeFile: (filePath: string, content: string) =>
     ipcRenderer.invoke('file:write', filePath, content),
-  writeDocument: (filePath: string, content: string) =>
-    ipcRenderer.invoke('file:writeDocument', filePath, content),
+  writeDocument: (
+    filePath: string,
+    content: string,
+    expectedContent?: string,
+    expectedAbsent = false,
+  ) => ipcRenderer.invoke('file:writeDocument', filePath, content, expectedContent, expectedAbsent),
   writeBinaryFile: (filePath: string, bytes: Uint8Array) =>
     ipcRenderer.invoke('file:writeBinary', filePath, bytes),
   exists: (filePath: string) => ipcRenderer.invoke('file:exists', filePath),
+  fileIdentity: (filePath: string) => ipcRenderer.invoke('file:identity', filePath),
   listDir: (dirPath: string, workspacePath?: string) =>
     ipcRenderer.invoke('file:listDir', dirPath, workspacePath),
   createItem: (parent: string, name: string, type: 'file' | 'directory') =>
     ipcRenderer.invoke('file:create', parent, name, type),
   renameItem: (oldPath: string, newName: string) =>
     ipcRenderer.invoke('file:rename', oldPath, newName),
+  prepareRename: (oldPath: string, newName: string) =>
+    ipcRenderer.invoke('file:prepareRename', oldPath, newName),
   deleteItem: (filePath: string) => ipcRenderer.invoke('file:delete', filePath),
   basename: (filePath: string) => ipcRenderer.invoke('file:basename', filePath),
   dirname: (filePath: string) => ipcRenderer.invoke('file:dirname', filePath),
@@ -37,12 +44,15 @@ contextBridge.exposeInMainWorld('fileAPI', {
     ipcRenderer.invoke('file:resolveMarkdownLink', sourceFile, href),
   setWorkspaceWatch: (rootPath?: string, depth?: number) =>
     ipcRenderer.invoke('file:setWorkspaceWatch', rootPath, depth),
-  watchDocument: (filePath: string) => ipcRenderer.invoke('file:watchDocument', filePath),
-  unwatchDocument: (filePath: string) => ipcRenderer.invoke('file:unwatchDocument', filePath),
+  watchDocument: (filePath: string, reconcile = false) =>
+    ipcRenderer.invoke('file:watchDocument', filePath, reconcile),
+  unwatchDocument: (filePath: string, identity?: string) =>
+    ipcRenderer.invoke('file:unwatchDocument', filePath, identity),
   onChanged: (
     callback: (event: {
       event: 'add' | 'change' | 'unlink' | 'addDir' | 'unlinkDir' | 'unreadable' | 'watch-error';
       path: string;
+      identity?: string;
       scope: 'workspace' | 'document';
       content?: string;
       encoding?: string;

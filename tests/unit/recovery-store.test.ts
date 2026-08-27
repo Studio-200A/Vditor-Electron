@@ -21,6 +21,7 @@ describe('RecoveryStore', () => {
     title: 'Untitled 1',
     content: 'Recovered text',
     savedContent: '',
+    expectedSavedContent: '',
     encoding: 'utf-8',
     lineEnding: 'LF',
     mode: 'ir',
@@ -71,6 +72,7 @@ describe('RecoveryStore', () => {
         title: 'note.md',
         content: 'Unsaved local version',
         savedContent: 'Original disk version',
+        expectedSavedContent: 'Original disk version',
       }),
     );
     fs.writeFileSync(filePath, 'Changed outside the app');
@@ -83,6 +85,36 @@ describe('RecoveryStore', () => {
     await store.save(snapshot({ filePath, title: 'missing.md' }));
 
     await expect(store.restore(snapshot().id)).resolves.toMatchObject({ diskState: 'unavailable' });
+  });
+
+  it('compares recovery baselines through the document decoder for BOM, CRLF, and GB18030', async () => {
+    const bomPath = path.join(configDir, 'bom.md');
+    fs.writeFileSync(
+      bomPath,
+      Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('one\r\ntwo')]),
+    );
+    await store.save(
+      snapshot({
+        filePath: bomPath,
+        savedContent: 'one\ntwo',
+        expectedSavedContent: 'one\r\ntwo',
+      }),
+    );
+    await expect(store.restore(snapshot().id)).resolves.toMatchObject({ diskState: 'unchanged' });
+
+    const gbPath = path.join(configDir, 'gb18030.md');
+    fs.writeFileSync(gbPath, Buffer.from([0xd6, 0xd0, 0xce, 0xc4]));
+    await store.save(
+      snapshot({
+        id: 'b6c66b3f-2a90-49fd-baf3-6ab1cda45aaa',
+        filePath: gbPath,
+        savedContent: '中文',
+        expectedSavedContent: '中文',
+      }),
+    );
+    await expect(store.restore('b6c66b3f-2a90-49fd-baf3-6ab1cda45aaa')).resolves.toMatchObject({
+      diskState: 'unchanged',
+    });
   });
 
   it('removes damaged, unsupported, and oversized snapshots without exposing their content', async () => {

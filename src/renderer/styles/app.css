@@ -14,8 +14,8 @@
   --window-radius: 8px;
   --bg: #f7f7f8;
   --panel: #fff;
-  --sidebar-surface: #fff;
-  --editor-surface: #f7f7f8;
+  --sidebar-surface: #f0f1f3;
+  --editor-surface: #fff;
   --panel-2: #f0f1f3;
   --hover: #e7e9ec;
   --text: #25272b;
@@ -50,7 +50,7 @@
   --bg: #2d2a2e;
   --panel: #2d2a2e;
   --sidebar-surface: #2d2a2e;
-  --editor-surface: #2d2a2e;
+  --editor-surface: #272428;
   --panel-2: #272428;
   --hover: #403e41;
   --text: #fcfcfa;
@@ -110,7 +110,7 @@
   --sidebar-surface: #f5f4ed;
   --editor-surface: #faf9f5;
   --panel-2: #f5f4ed;
-  --hover: #f5f4ed;
+  --hover: #e8e6dc;
   --text: #141413;
   --muted: #73726c;
   --border: rgb(31 30 29 / 30%);
@@ -135,7 +135,7 @@
   --bg: #141413;
   --panel: #30302e;
   --sidebar-surface: #30302e;
-  --editor-surface: #30302e;
+  --editor-surface: #262624;
   --panel-2: #262624;
   --hover: #3d3d3a;
   --text: #faf9f5;
@@ -252,9 +252,9 @@ button.primary.danger {
   align-items: stretch;
   overflow: visible;
   padding: 0;
-  background: var(--panel-2);
-  border-bottom: 1px solid var(--border);
-  box-shadow: var(--top-surface-shadow);
+  background: var(--sidebar-surface);
+  border-bottom: 0;
+  box-shadow: none;
   user-select: none;
   flex: 0 0 38px;
 }
@@ -295,7 +295,7 @@ button.primary.danger {
   --second-color: color-mix(in srgb, var(--muted) 45%, transparent);
   --panel-background-color: var(--panel);
   --panel-shadow: 0 3px 12px rgb(0 0 0 / 0.24);
-  --toolbar-background-color: var(--panel-2);
+  --toolbar-background-color: var(--sidebar-surface);
   --toolbar-icon-color: var(--muted);
   --toolbar-icon-hover-color: var(--accent);
   --toolbar-height: 35px;
@@ -307,6 +307,71 @@ button.primary.danger {
   display: flex;
   align-items: flex-start;
   overflow: visible;
+}
+.toolbar-skeleton {
+  width: 100%;
+  min-height: 37px;
+  height: calc(37px + var(--toolbar-wrap-height, 0px));
+  display: none;
+  align-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 8px 10px;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--sidebar-surface);
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--top-surface-shadow);
+}
+.vditor-toolbar-mount[data-toolbar-pending='true'] .toolbar-skeleton {
+  display: flex;
+}
+.toolbar-skeleton__item {
+  position: relative;
+  height: 15px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--muted) 20%, var(--sidebar-surface));
+}
+.toolbar-skeleton__item[data-size='xs'] {
+  width: 18px;
+}
+.toolbar-skeleton__item[data-size='sm'] {
+  width: 26px;
+}
+.toolbar-skeleton__item[data-size='md'] {
+  width: 42px;
+}
+.toolbar-skeleton__item[data-size='lg'] {
+  width: 58px;
+}
+.toolbar-skeleton__divider {
+  width: 1px;
+  height: 18px;
+  flex: 0 0 1px;
+  background: color-mix(in srgb, var(--muted) 24%, transparent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .toolbar-skeleton__item {
+    background: linear-gradient(
+      100deg,
+      color-mix(in srgb, var(--muted) 16%, var(--sidebar-surface)) 30%,
+      color-mix(in srgb, var(--muted) 28%, var(--sidebar-surface)) 50%,
+      color-mix(in srgb, var(--muted) 16%, var(--sidebar-surface)) 70%
+    );
+    background-size: 220% 100%;
+    animation: toolbar-skeleton-shimmer 1.3s ease-in-out 180ms infinite;
+  }
+}
+@keyframes toolbar-skeleton-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -120% 0;
+  }
 }
 .vditor-toolbar-mount:empty::after {
   content: '';
@@ -323,17 +388,13 @@ button.primary.danger {
   padding-left: 5px !important;
   padding-right: 5px !important;
   border: 0;
-  background: var(--panel-2);
+  border-bottom: 1px solid var(--border);
+  background: var(--sidebar-surface);
+  box-shadow: var(--top-surface-shadow);
   overflow: visible;
 }
-#app.toolbar-wrapped .titlebar {
-  box-shadow: none;
-}
-#app.toolbar-wrapped .toolbar-sidebar-tabs {
-  box-shadow: var(--top-surface-shadow);
-}
-#app.toolbar-wrapped .vditor-toolbar-mount > .vditor-toolbar {
-  box-shadow: var(--top-surface-shadow);
+#vditorToolbarMount[data-toolbar-pending='true'] > .vditor-toolbar {
+  display: none;
 }
 .vditor-toolbar-mount .vditor-panel,
 .vditor-toolbar-mount .vditor-hint {
@@ -371,25 +432,24 @@ button.primary.danger {
   flex: 1;
   height: auto;
 }
-#app:is(.toolbar-hidden, .toolbar-unavailable) #vditorToolbarMount {
+#app.toolbar-hidden #vditorToolbarMount {
   display: none;
 }
-#app:is(.toolbar-hidden, .toolbar-unavailable) .titlebar {
+#app.toolbar-hidden .titlebar {
   position: absolute;
   top: 38px;
   left: 0;
   z-index: 30;
   width: var(--sidebar-current, 260px);
-  overflow: hidden;
-  box-shadow: var(--top-surface-shadow);
-}
-#app.sidebar-transitioning:is(.toolbar-hidden, .toolbar-unavailable) .titlebar {
-  transition: width 0.16s ease;
-}
-#app:is(.toolbar-hidden, .toolbar-unavailable) .window-titlebar {
   box-shadow: none;
 }
-#app:is(.toolbar-hidden, .toolbar-unavailable) .window-titlebar::after {
+#app.sidebar-transitioning.toolbar-hidden .titlebar {
+  transition: width 0.16s ease;
+}
+#app.toolbar-hidden .window-titlebar {
+  box-shadow: none;
+}
+#app.toolbar-hidden .window-titlebar::after {
   content: '';
   position: absolute;
   top: 0;
@@ -400,25 +460,25 @@ button.primary.danger {
   box-shadow: var(--top-surface-shadow);
   pointer-events: none;
 }
-#app.sidebar-collapsed:is(.toolbar-hidden, .toolbar-unavailable) .window-titlebar::after {
+#app.sidebar-collapsed.toolbar-hidden .window-titlebar::after {
   left: 0;
 }
-#app:is(.toolbar-hidden, .toolbar-unavailable) .sidebar {
+#app.toolbar-hidden .sidebar {
   padding-top: 38px;
 }
-#app.fullscreen:not(.fullscreen-menu-visible):is(.toolbar-hidden, .toolbar-unavailable) .titlebar {
+#app.fullscreen:not(.fullscreen-menu-visible).toolbar-hidden .titlebar {
   top: 0;
 }
-#app.fullscreen:not(.fullscreen-menu-visible):is(.toolbar-hidden, .toolbar-unavailable) .sidebar {
+#app.fullscreen:not(.fullscreen-menu-visible).toolbar-hidden .sidebar {
   /* The editor titlebar remains over the sidebar when the native titlebar is
      hidden, so keep the sidebar content below its 38px control row. */
   padding-top: 38px;
 }
-#app.sidebar-collapsed:is(.toolbar-hidden, .toolbar-unavailable) .titlebar {
+#app.sidebar-collapsed.toolbar-hidden .titlebar {
   width: 0;
   pointer-events: none;
 }
-#app.sidebar-collapsed:is(.toolbar-hidden, .toolbar-unavailable) .sidebar {
+#app.sidebar-collapsed.toolbar-hidden .sidebar {
   padding-top: 0;
 }
 #app.fullscreen .window-titlebar {
@@ -501,21 +561,37 @@ button.primary.danger {
   font-weight: 600;
   text-align: left;
 }
-.workspace-heading svg {
+.workspace-heading-icon {
   width: 17px;
   height: 17px;
   flex: 0 0 17px;
-  fill: color-mix(in srgb, var(--accent) 14%, transparent);
-  stroke: var(--accent);
-  stroke-width: 1.5;
+  display: block;
+  background: var(--accent);
+  -webkit-mask: url('../assets/symbolic/titlebar-open.svg') center / contain no-repeat;
+  mask: url('../assets/symbolic/titlebar-open.svg') center / contain no-repeat;
 }
-.workspace-heading span {
+.workspace-heading > #workspaceName {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .side-toolbar button {
   padding: 3px 7px;
+}
+#refreshTree {
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  padding: 4px;
+}
+.refresh-tree-icon {
+  width: 15px;
+  height: 15px;
+  display: block;
+  background: currentColor;
+  -webkit-mask: url('../assets/symbolic/refresh.svg') center / contain no-repeat;
+  mask: url('../assets/symbolic/refresh.svg') center / contain no-repeat;
 }
 .tree {
   flex: 1;
@@ -623,8 +699,8 @@ button.primary.danger {
   width: 100%;
   height: 100%;
   background-color: var(--accent);
-  -webkit-mask: url('../assets/symlink.svg') center / 100% 100% no-repeat;
-  mask: url('../assets/symlink.svg') center / 100% 100% no-repeat;
+  -webkit-mask: url('../assets/symbolic/symlink.svg') center / 100% 100% no-repeat;
+  mask: url('../assets/symbolic/symlink.svg') center / 100% 100% no-repeat;
   content: '';
 }
 .tree-row.tree-link-outside,
@@ -799,18 +875,12 @@ button.primary.danger {
 .document-tab:hover {
   background: var(--hover);
 }
-:root:not([data-theme='dark']):not([data-theme='monokai-pro-dark']) .document-tab:hover {
-  background: #d9dde3;
-}
-:root[data-theme='claude-light'] .document-tab:hover {
-  background: var(--hover);
-}
 .document-tab.active {
   background: var(--panel);
   box-shadow: inset 0 2px var(--brand-accent);
 }
 .document-tab.active:hover {
-  background: color-mix(in srgb, var(--panel) 76%, var(--hover));
+  background: var(--hover);
 }
 .document-tab.dragging {
   opacity: 0.72;
@@ -892,7 +962,7 @@ button.primary.danger {
   min-height: 0;
   flex: 1;
   overflow: hidden;
-  background: var(--panel);
+  background: var(--sidebar-surface);
 }
 .external-change-banner {
   position: absolute;
@@ -1059,12 +1129,12 @@ button.primary.danger {
   mask-size: contain;
 }
 .find-replace-one-icon {
-  -webkit-mask-image: url('../assets/replace.svg');
-  mask-image: url('../assets/replace.svg');
+  -webkit-mask-image: url('../assets/symbolic/replace.svg');
+  mask-image: url('../assets/symbolic/replace.svg');
 }
 .find-replace-all-icon {
-  -webkit-mask-image: url('../assets/replace-all.svg');
-  mask-image: url('../assets/replace-all.svg');
+  -webkit-mask-image: url('../assets/symbolic/replace-all.svg');
+  mask-image: url('../assets/symbolic/replace-all.svg');
 }
 .find-widget button:hover .find-replace-icon {
   opacity: 1;
@@ -1131,6 +1201,7 @@ button.primary.danger {
 .no-tabs-actions button {
   min-width: 100px;
   padding: 8px 14px;
+  background: var(--sidebar-surface);
   color: var(--text);
   font-size: 13px;
 }
@@ -1164,6 +1235,13 @@ button.primary.danger {
 .editor-host.vditor > .vditor-toolbar {
   width: 100%;
   flex: 0 0 auto;
+}
+.editor-host.vditor:not([data-editor-ready='true']) > .vditor-toolbar {
+  /* Vditor creates this node before Desktop can move it to the titlebar.
+     Preserve its measured height for editor layout, but do not expose an
+     unmanaged toolbar inside the editor during that hand-off. */
+  visibility: hidden;
+  pointer-events: none;
 }
 .editor-host.vditor > .vditor-content {
   width: 100%;
@@ -1785,6 +1863,73 @@ html[data-scrollbar-mode='hidden'] .app-scrollbar::-webkit-scrollbar {
   display: inline-block;
   font-style: normal;
 }
+.status-theme-picker {
+  position: relative;
+}
+#statusThemeMode {
+  cursor: pointer;
+  border-radius: 3px;
+  color: var(--muted);
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+#statusThemeMode:hover,
+#statusThemeMode:focus-visible,
+#statusThemeMode[aria-expanded='true'] {
+  color: var(--text);
+  background: var(--hover);
+}
+#statusThemeMode:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.theme-mode-icon {
+  width: 16px;
+  height: 16px;
+  display: block;
+  background-color: currentColor;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+}
+.theme-mode-icon-light {
+  mask-image: url('../assets/symbolic/light-symbolic.svg');
+  -webkit-mask-image: url('../assets/symbolic/light-symbolic.svg');
+}
+.theme-mode-icon-dark {
+  mask-image: url('../assets/symbolic/dark-symbolic.svg');
+  -webkit-mask-image: url('../assets/symbolic/dark-symbolic.svg');
+}
+.theme-mode-icon-system {
+  mask-image: url('../assets/symbolic/system-symbolic.svg');
+  -webkit-mask-image: url('../assets/symbolic/system-symbolic.svg');
+}
+.status-theme-menu {
+  min-width: 0;
+  display: flex;
+  gap: 2px;
+}
+.status-theme-menu button {
+  width: 30px;
+  height: 30px;
+  justify-content: center;
+  padding: 6px;
+  border-radius: 4px;
+  text-align: center;
+}
+.status-theme-menu button[aria-checked='true'] {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  color: var(--text);
+}
+.status-theme-menu .theme-mode-icon {
+  width: 17px;
+  height: 17px;
+}
 #statusPath {
   min-width: 0;
   overflow: hidden;
@@ -1800,7 +1945,7 @@ html[data-scrollbar-mode='hidden'] .app-scrollbar::-webkit-scrollbar {
 #statusMessage.error {
   color: var(--danger);
 }
-.document-link-tooltip {
+.app-tooltip {
   position: fixed;
   z-index: 50;
   pointer-events: none;
@@ -1823,12 +1968,13 @@ html[data-scrollbar-mode='hidden'] .app-scrollbar::-webkit-scrollbar {
   border: 0;
   background: transparent;
 }
-.status-icon svg {
+.status-settings-icon {
   width: 15px;
   height: 15px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.5;
+  display: block;
+  background: currentColor;
+  -webkit-mask: url('../assets/symbolic/settings.svg') center / contain no-repeat;
+  mask: url('../assets/symbolic/settings.svg') center / contain no-repeat;
 }
 .theme-switch {
   display: inline-flex;
@@ -2106,7 +2252,7 @@ body.settings-card-resizing {
   justify-content: flex-end;
   border-top: 1px solid var(--border);
 }
-.modal-card > footer span {
+.modal-card > footer > .settings-path-button > #settingsPath {
   flex: 1;
   color: var(--muted);
 }
@@ -2127,19 +2273,20 @@ body.settings-card-resizing {
   background: var(--hover);
   color: var(--text);
 }
-.modal-card > footer .settings-path-button span {
+.modal-card > footer .settings-path-button > #settingsPath {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.settings-path-button svg {
+.settings-path-icon {
   width: 17px;
   height: 17px;
   flex: 0 0 17px;
-  fill: none;
-  stroke: currentcolor;
-  stroke-width: 1.5;
+  display: block;
+  background: currentColor;
+  -webkit-mask: url('../assets/symbolic/settings-files.svg') center / contain no-repeat;
+  mask: url('../assets/symbolic/settings-files.svg') center / contain no-repeat;
 }
 .modal-card h2 {
   margin: 0;
@@ -2223,15 +2370,42 @@ body.confirm-card-dragging {
   background: transparent;
   text-align: left;
 }
-.settings-nav button svg {
+.settings-nav-icon {
   width: 16px;
   height: 16px;
   flex: 0 0 16px;
-  fill: none;
-  stroke: currentcolor;
-  stroke-width: 1.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  display: block;
+  background: currentColor;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+}
+.settings-nav-icon-appearance {
+  mask-image: url('../assets/symbolic/settings-appearance.svg');
+  -webkit-mask-image: url('../assets/symbolic/settings-appearance.svg');
+}
+.settings-nav-icon-fonts {
+  mask-image: url('../assets/symbolic/settings-fonts.svg');
+  -webkit-mask-image: url('../assets/symbolic/settings-fonts.svg');
+}
+.settings-nav-icon-editor {
+  mask-image: url('../assets/symbolic/settings-editor.svg');
+  -webkit-mask-image: url('../assets/symbolic/settings-editor.svg');
+}
+.settings-nav-icon-preview {
+  mask-image: url('../assets/symbolic/settings-preview.svg');
+  -webkit-mask-image: url('../assets/symbolic/settings-preview.svg');
+}
+.settings-nav-icon-files {
+  mask-image: url('../assets/symbolic/settings-files.svg');
+  -webkit-mask-image: url('../assets/symbolic/settings-files.svg');
+}
+.settings-nav-icon-about {
+  mask-image: url('../assets/symbolic/settings-about.svg');
+  -webkit-mask-image: url('../assets/symbolic/settings-about.svg');
 }
 .settings-nav button.active {
   background: var(--hover);
@@ -2668,7 +2842,7 @@ body.confirm-card-dragging {
   align-items: stretch;
   position: relative;
   z-index: 100;
-  background: var(--panel-2);
+  background: var(--sidebar-surface);
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
   user-select: none;
@@ -2738,15 +2912,6 @@ body.confirm-card-dragging {
   color: var(--disabled-control-color);
   background: transparent;
   cursor: default;
-}
-.titlebar-file-actions svg {
-  width: 17px;
-  height: 17px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.7;
-  stroke-linecap: round;
-  stroke-linejoin: round;
 }
 #app.sidebar-collapsed .titlebar-file-actions {
   width: auto;
@@ -2838,7 +3003,7 @@ body[data-platform='darwin'] .modal {
   border-radius: 7px;
   color: var(--text);
   font-weight: 650;
-  background: color-mix(in srgb, var(--panel) 82%, transparent);
+  background: var(--sidebar-surface);
   transition:
     border-color 0.2s ease,
     box-shadow 0.2s ease,
@@ -2849,14 +3014,13 @@ body[data-platform='darwin'] .modal {
   border-color: var(--accent);
   background: linear-gradient(
     120deg,
-    color-mix(in srgb, var(--accent) 26%, var(--panel)),
-    color-mix(in srgb, var(--accent) 8%, var(--panel))
+    color-mix(in srgb, var(--accent) 26%, var(--sidebar-surface)),
+    color-mix(in srgb, var(--accent) 8%, var(--sidebar-surface))
   );
   box-shadow:
     0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent),
     inset 0 1px color-mix(in srgb, white 25%, transparent);
 }
-.app-menu-logo,
 .titlebar-file-actions .icon-btn::before,
 .titlebar-sidebar-toggle::before {
   content: '';
@@ -2873,43 +3037,35 @@ body[data-platform='darwin'] .modal {
   mask-size: contain;
 }
 .app-menu-logo {
+  display: inline-block;
+  flex: 0 0 auto;
   width: 16px;
   height: 16px;
-  background: none;
+  color: var(--text);
+}
+#openFile::before {
+  transform: scale(1);
 }
 .titlebar-file-actions .icon-btn::before,
 .titlebar-sidebar-toggle::before {
   transform: scale(0.9);
   transform-origin: center;
 }
-#openFile::before {
-  transform: scale(1);
-}
-.app-menu-logo path:first-child {
-  fill: #e33c28;
-}
-.app-menu-logo path:last-child {
-  fill: currentColor;
-}
-.titlebar-file-actions .icon-btn svg,
-.titlebar-sidebar-toggle svg {
-  display: none;
-}
 #toggleSidebar::before {
-  -webkit-mask-image: url('../assets/titlebar-sidebar.svg');
-  mask-image: url('../assets/titlebar-sidebar.svg');
+  -webkit-mask-image: url('../assets/symbolic/titlebar-sidebar.svg');
+  mask-image: url('../assets/symbolic/titlebar-sidebar.svg');
 }
 #newFile::before {
-  -webkit-mask-image: url('../assets/titlebar-new.svg');
-  mask-image: url('../assets/titlebar-new.svg');
+  -webkit-mask-image: url('../assets/symbolic/titlebar-new.svg');
+  mask-image: url('../assets/symbolic/titlebar-new.svg');
 }
 #openFile::before {
-  -webkit-mask-image: url('../assets/titlebar-open.svg');
-  mask-image: url('../assets/titlebar-open.svg');
+  -webkit-mask-image: url('../assets/symbolic/titlebar-open.svg');
+  mask-image: url('../assets/symbolic/titlebar-open.svg');
 }
 #saveFile::before {
-  -webkit-mask-image: url('../assets/titlebar-save.svg');
-  mask-image: url('../assets/titlebar-save.svg');
+  -webkit-mask-image: url('../assets/symbolic/titlebar-save.svg');
+  mask-image: url('../assets/symbolic/titlebar-save.svg');
 }
 .app-menu-bar > .titlebar-sidebar-toggle {
   padding: 3px 5px;
@@ -2941,8 +3097,8 @@ body[data-platform='darwin'] .modal {
   height: 38px;
   padding: 4px;
   border-right: 1px solid var(--border);
-  border-bottom: 0;
-  box-shadow: none;
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--top-surface-shadow);
   transition:
     padding 0.16s ease,
     gap 0.16s ease,
@@ -2959,7 +3115,7 @@ body[data-platform='darwin'] .modal {
   grid-template-columns: 1fr 1fr;
   padding: 4px;
   gap: 4px;
-  background: var(--panel-2);
+  background: var(--sidebar-surface);
 }
 .toolbar-sidebar-tabs.sidebar-tabs button {
   min-width: 0;
@@ -3070,7 +3226,7 @@ body.window-maximized .window-controls .window-restore-icon {
   padding: 5px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  background: var(--panel);
+  background: var(--sidebar-surface);
   box-shadow: 0 8px 28px rgb(0 0 0 / 0.28);
 }
 .app-menu-popup button {

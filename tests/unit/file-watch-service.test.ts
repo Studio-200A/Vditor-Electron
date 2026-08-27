@@ -8,11 +8,13 @@ import {
   FileWatchService,
   normalizeWorkspaceReadDepth,
 } from '../../src/main/services/file-watch-service';
+import { resolveFileIdentitySync } from '../../src/main/services/file-identity';
 
 class FakeWatcher {
   private callback: ((event: string, changedPath: string) => void) | null = null;
   private rawCallback: ((event: string, changedPath: string) => void) | null = null;
   private errorCallback: (() => void) | null = null;
+  private readyCallback: (() => void) | null = null;
   closed = false;
   added: string[] = [];
   unwatched: string[] = [];
@@ -21,6 +23,11 @@ class FakeWatcher {
     if (event === 'all') this.callback = callback;
     if (event === 'raw') this.rawCallback = callback;
     if (event === 'error') this.errorCallback = () => callback('error', '');
+    return this;
+  }
+
+  once(event: string, callback: () => void): this {
+    if (event === 'ready') this.readyCallback = callback;
     return this;
   }
 
@@ -34,6 +41,12 @@ class FakeWatcher {
 
   emitRaw(event: string, changedPath: string): void {
     this.rawCallback?.(event, changedPath);
+  }
+
+  emitReady(): void {
+    const callback = this.readyCallback;
+    this.readyCallback = null;
+    callback?.();
   }
 
   emitError(): void {
@@ -105,6 +118,31 @@ describe('FileWatchService', () => {
     ]);
   });
 
+  it('stops suppressing workspace events when an own rename fails', async () => {
+    const root = path.resolve('/workspace');
+    const oldDirectory = path.join(root, 'old');
+    const newDirectory = path.join(root, 'new');
+    const events: FileChangeEvent[] = [];
+    let watcher: FakeWatcher | undefined;
+    const service = new FileWatchService(
+      async () => ({ content: '', encoding: 'utf-8' }),
+      (event) => events.push(event),
+      () => {
+        watcher = new FakeWatcher();
+        return watcher as unknown as FSWatcher;
+      },
+    );
+
+    await service.setWorkspace(root);
+    service.markOwnWorkspaceRename(oldDirectory, newDirectory);
+    watcher?.emit('addDir', newDirectory);
+    expect(events).toEqual([]);
+
+    service.clearOwnWorkspaceRename(oldDirectory, newDirectory);
+    watcher?.emit('addDir', newDirectory);
+    expect(events).toEqual([{ event: 'addDir', path: newDirectory, scope: 'workspace' }]);
+  });
+
   it('degrades cleanly when creating a workspace watcher fails', async () => {
     const root = path.resolve('/workspace');
     const events: FileChangeEvent[] = [];
@@ -151,6 +189,7 @@ describe('FileWatchService', () => {
     });
     expect(watchers[1]).toMatchObject({ paths: documentPath });
 
+    watchers[1].watcher.emitReady();
     watchers[0].watcher.emit('change', documentPath);
     watchers[1].watcher.emit('change', documentPath);
     expect(events).toEqual([]);
@@ -158,6 +197,7 @@ describe('FileWatchService', () => {
     expect(events).toContainEqual({
       event: 'change',
       path: documentPath,
+      identity: documentPath,
       scope: 'document',
       content: 'disk content',
       encoding: 'utf-8',
@@ -190,6 +230,87 @@ describe('FileWatchService', () => {
       },
     });
     expect(watchers[1].paths).toBe(secondDocumentPath);
+  });
+
+  it('waits for watcher readiness before reconciling current disk content', async () => {
+    vi.useFakeTimers();
+    const documentPath = path.resolve('/outside/reconcile.md');
+    const events: FileChangeEvent[] = [];
+    const readDocument = vi.fn(async () => ({ content: 'gap change', encoding: 'utf-8' }));
+    let watcher: FakeWatcher | undefined;
+    const service = new FileWatchService(
+      readDocument,
+      (event) => events.push(event),
+      () => {
+        watcher = new FakeWatcher();
+        return watcher as unknown as FSWatcher;
+      },
+    );
+
+    await service.watchDocument(documentPath, true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(readDocument).not.toHaveBeenCalled();
+    expect(events).toEqual([]);
+
+    watcher?.emitReady();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(readDocument).toHaveBeenCalledWith(documentPath);
+    expect(events).toEqual([
+      {
+        event: 'change',
+        path: documentPath,
+        identity: documentPath,
+        scope: 'document',
+        content: 'gap change',
+        encoding: 'utf-8',
+      },
+    ]);
+  });
+
+  it('drops an older document read when a newer event finishes first', async () => {
+    vi.useFakeTimers();
+    const documentPath = path.resolve('/outside/out-of-order.md');
+    const events: FileChangeEvent[] = [];
+    let resolveFirst: ((value: { content: string; encoding: string }) => void) | undefined;
+    const readDocument = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<{ content: string; encoding: string }>((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({ content: 'newer', encoding: 'utf-8' });
+    let watcher: FakeWatcher | undefined;
+    const service = new FileWatchService(
+      readDocument,
+      (event) => events.push(event),
+      () => {
+        watcher = new FakeWatcher();
+        return watcher as unknown as FSWatcher;
+      },
+    );
+
+    await service.watchDocument(documentPath);
+    watcher?.emitReady();
+    watcher?.emit('change', documentPath);
+    await vi.advanceTimersByTimeAsync(0);
+    watcher?.emit('change', documentPath);
+    await vi.advanceTimersByTimeAsync(0);
+    resolveFirst?.({ content: 'older', encoding: 'utf-8' });
+    await Promise.resolve();
+
+    expect(events).toEqual([
+      {
+        event: 'change',
+        path: documentPath,
+        identity: documentPath,
+        scope: 'document',
+        content: 'newer',
+        encoding: 'utf-8',
+      },
+    ]);
   });
 
   it('only refreshes the workspace tree for visible structural changes', async () => {
@@ -231,6 +352,7 @@ describe('FileWatchService', () => {
 
     await service.setWorkspace(root);
     await service.watchDocument(documentPath);
+    documentWatcher?.emitReady();
     documentWatcher?.emit('add', documentPath);
     await vi.advanceTimersByTimeAsync(0);
 
@@ -238,6 +360,7 @@ describe('FileWatchService', () => {
       {
         event: 'add',
         path: documentPath,
+        identity: documentPath,
         scope: 'document',
         content: 'reappeared content',
         encoding: 'utf-8',
@@ -266,6 +389,7 @@ describe('FileWatchService', () => {
     );
 
     await service.watchDocument(documentPath);
+    watcher?.emitReady();
     watcher?.emit('unlink', documentPath);
     await vi.advanceTimersByTimeAsync(1150);
 
@@ -274,6 +398,7 @@ describe('FileWatchService', () => {
       {
         event: 'change',
         path: documentPath,
+        identity: documentPath,
         scope: 'document',
         content: 'replacement',
         encoding: 'utf-8',
@@ -297,6 +422,7 @@ describe('FileWatchService', () => {
     );
 
     await service.watchDocument(documentPath);
+    watcher?.emitReady();
     watcher?.emit('change', documentPath);
     await vi.advanceTimersByTimeAsync(0);
 
@@ -304,6 +430,7 @@ describe('FileWatchService', () => {
       {
         event: 'unreadable',
         path: documentPath,
+        identity: documentPath,
         scope: 'document',
         error: 'permission-denied',
       },
@@ -338,6 +465,37 @@ describe('FileWatchService', () => {
     }
   });
 
+  it.runIf(process.platform !== 'win32')(
+    'releases a symlink binding by its saved identity after the symlink disappears',
+    async () => {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-watch-service-'));
+      const target = path.join(root, 'target.md');
+      const alias = path.join(root, 'alias.md');
+      fs.writeFileSync(target, 'content');
+      fs.symlinkSync(target, alias);
+      const identity = resolveFileIdentitySync(alias);
+      let watcher: FakeWatcher | undefined;
+      const service = new FileWatchService(
+        async () => ({ content: 'content', encoding: 'utf-8' }),
+        () => undefined,
+        () => {
+          watcher = new FakeWatcher();
+          return watcher as unknown as FSWatcher;
+        },
+      );
+
+      try {
+        await service.watchDocument(alias);
+        fs.unlinkSync(alias);
+        await service.unwatchDocument(alias, identity);
+        expect(watcher?.closed).toBe(true);
+      } finally {
+        await service.dispose();
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
   it('drops a delayed read after the document binding is released', async () => {
     vi.useFakeTimers();
     const documentPath = path.resolve('/outside/note.md');
@@ -358,6 +516,7 @@ describe('FileWatchService', () => {
     );
 
     await service.watchDocument(documentPath);
+    watcher?.emitReady();
     watcher?.emit('change', documentPath);
     await vi.advanceTimersByTimeAsync(0);
     await service.unwatchDocument(documentPath);
@@ -384,6 +543,7 @@ describe('FileWatchService', () => {
       );
 
       await service.watchDocument(documentPath);
+      watcher?.emitReady();
       watcher?.emitRaw('rename', path.basename(documentPath));
       await vi.advanceTimersByTimeAsync(150);
 

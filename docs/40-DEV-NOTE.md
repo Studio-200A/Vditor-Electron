@@ -81,8 +81,8 @@ Vditor 的 `setValue()` 异步重渲染，`getValue()` 可能暂时返回旧 DOM
 - 样式：`src/renderer/styles/app.css` 的 `.find-widget` 和 `::highlight` 区段。
 - 本地化：`src/renderer/locales.js` 的 `find.*`、`menu.find`，包含 `en_US`、`zh_Hans`、`zh_Hant`。
 - 替换图标来自 VS Code 源码，已复制到：
-   - `src/renderer/assets/replace.svg`
-   - `src/renderer/assets/replace-all.svg`
+   - `src/renderer/assets/symbolic/replace.svg`
+   - `src/renderer/assets/symbolic/replace-all.svg`
 
 ## 测试入口
 

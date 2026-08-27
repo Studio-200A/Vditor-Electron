@@ -6,6 +6,8 @@ This document is the central record for Vditor-Electron cross-platform implement
 
 It is intentionally separate from the 0.2.0 execution tracker. The tracker records which batch owns a risk; this document records the platform rule, the test method, and the evidence.
 
+The version-independent file-safety contract, including the remaining non-atomic compare-and-replace boundary for an existing target, is maintained in [`docs/05-FILE-SAFETY.md`](05-FILE-SAFETY.md). This document records only the platform-specific behavior and evidence needed to validate that contract.
+
 The current development and validation platform is Linux. Cross-platform work is scheduled to begin after the 0.2.5 renderer refactor and after Windows/macOS test environments are available. Until then, Linux tests may prevent platform-agnostic regressions, but must not be reported as Windows or macOS validation.
 
 ## 2. Product and architecture boundaries
@@ -77,6 +79,8 @@ Node's `path` implementation varies with the host platform, and some `fs` operat
 - The 0.2.0 file-state flows cover external modification, deletion, reappearance, and unreadable/permission states.
 - Directory rename, directory deletion, Save As watcher rebinding, descendant path updates, and invalid workspace-root reset are implemented and Linux-tested; Windows/macOS filesystem semantics remain unvalidated.
 
+As of 2026-08-27, 0.2.0 development tracker batch 7 is closed for the Linux-local implementation and regression scope. The user-run Linux `npm run check:all` result covered 149/149 unit tests and 109/109 Electron Playwright tests, in addition to formatting, lint, typecheck, Vditor-version, and build checks. This is local regression evidence only; it does not close any Windows or macOS row below.
+
 ### Not yet platform-validated
 
 - Windows/macOS watcher event ordering, path casing, permissions, and atomic replacement
@@ -141,3 +145,27 @@ Linux synthetic paths such as `/Users/user` belong in unit fixtures only. They m
 - `.lnk` and Finder alias support is deferred. If enabled later, define target resolution, authorization, missing-target behavior, cycle handling, icon/tooltip/accessibility text, and real-platform tests before implementation.
 - Case-insensitive behavior must not be assumed globally because macOS can use a case-sensitive APFS volume and Linux can also use different filesystem types.
 - Cross-platform changes should begin only when real Windows and macOS environments are available. Until then, keep platform-neutral abstractions testable without adding speculative workarounds.
+
+## 9. 0.2.0 batch 7 deferred platform validation
+
+### 9.1 Ownership and start condition
+
+Batch 7 keeps ownership of platform-neutral correctness fixes in [`docs/13-0.2.0-EXECUTION-TRACKER.md`](13-0.2.0-EXECUTION-TRACKER.md): save/recovery state closure, canonical file identity contracts, directory-rename transaction convergence, and their Linux regression coverage. That local scope is complete as of 2026-08-27. This section owns only the native-platform evidence that cannot be produced from the current Linux development environment; no Windows/macOS row is closed yet.
+
+The related long-term invariants and the exact remaining TOCTOU limitation are defined in [`docs/05-FILE-SAFETY.md` §7](05-FILE-SAFETY.md#7-已知原子性边界已有目标的-toctou). A platform result here updates that contract's evidence; it does not replace the contract with a version-specific checkbox.
+
+Start this section after the 0.2.5 renderer refactor has a stable branch and real Windows and macOS test environments are available. A Linux path-shaped fixture, injected platform value, or successful Linux E2E is not evidence for a Windows or macOS row.
+
+### 9.2 Deferred verification matrix
+
+| Area | Windows evidence required | macOS evidence required | Expected safe result |
+| --- | --- | --- | --- |
+| File identity and casing | Same file through case variants, symlink/junction alias, deleted path, and Save As destination | Same matrix on both the tested APFS volume type and recorded case behavior | One open-tab identity per physical file; no unintended tab merge or watcher release |
+| Safe write and conflict | Manual/autosave against open, read-only, locked, and externally replaced files | Manual/autosave against read-only, locked, and externally replaced files | Baseline mismatch never replaces disk; lock/permission errors preserve both versions |
+| Watcher reconciliation | Modify during watch suspend/rebind; directory rename; delete/reappear; rapid consecutive writes | The same scenarios under FSEvents coalescing and directory moves | Latest disk fact wins; no stale reload, missed conflict, or orphaned watcher |
+| Directory rename | Existing destination, case-only rename, busy descendant, and failure after filesystem rename | Existing destination, case-only rename where applicable, busy descendant, and recovery after move | No destination overwrite; all open descendants converge on one path/watch state |
+| Native dialogs and session recovery | Open/Save As native paths, restart with recovery and restored tabs | Open/Save As native paths, restart with recovery and restored tabs | Dialog paths resolve to the same canonical identity; recovery does not duplicate a session tab |
+
+### 9.3 Evidence and closure rule
+
+For every matrix row, record the evidence format from section 7, including filesystem case behavior and the exact Electron/Node versions. A platform failure reopens the linked Tracker risk with a concise reproduction; a passing native run closes only that platform row. Completing Linux batch work must not imply Windows/macOS validation, and later platform validation must not rewrite the 0.2.0 batch's Linux verification result. The current status is therefore: Linux-local batch 7 closure recorded, all native Windows/macOS rows deferred.
