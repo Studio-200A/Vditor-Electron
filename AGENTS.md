@@ -78,11 +78,32 @@ Only read multiple sections when the task crosses architectural boundaries, such
 
 ### Code consistency and agent conventions
 
-- 代码格式以仓库根目录的 `.prettierrc.json` 为准，静态检查以 `eslint.config.mjs` 为准，使用仓库脚本执行验证；不要用个人或 agent 偏好覆盖这些规则。
-- 同一职责域优先沿用现有稳定代码的命名、导入导出、错误处理和生命周期写法；不要在同一职责域并行引入多套等价范式。若迁移计划明确了新范式，以迁移计划为准，并逐步完成旧写法迁移。
-- 不要为了统一风格无关地重写遗留文件或转换文件语言；保持当前语言边界，版本化迁移按照对应开发计划执行。
-- 注释只说明不明显的约束、兼容性假设、安全边界或清理原因，不复述代码本身；新增抽象必须能对应明确的职责、边界或可测试行为。
-- 需要了解模块位置和数据流时，先查看 `docs/01-CODE-STRUCTURE.md` 的相关章节并回到源码核对；需要执行版本迁移时，遵循对应的开发计划。配置细节和检查命令以实际配置文件、`package.json` 脚本为准。
+- Code formatting follows the root `.prettierrc.json`; static analysis follows `eslint.config.mjs`; use repository scripts for verification. Do not override these rules with personal or agent preferences.
+- Rules take precedence in this order: security and product boundaries, automated configuration, this document, then verified stable code in the same responsibility domain. Resolve conflicts in favor of the higher-priority rule; when uncertain, inspect the source and relevant tests rather than introducing another equivalent pattern.
+- Within the same responsibility domain, follow verified stable conventions for naming, imports/exports, error handling, and lifecycle management. Do not introduce parallel equivalent patterns in that domain. When a migration plan defines a new pattern, follow it and migrate the old pattern progressively.
+- Do not rewrite legacy code or change a file's language solely for style consistency. Preserve the current language boundary and follow the relevant versioned migration plan.
+- When module location or data flow context is needed, read the relevant sections of `docs/01-CODE-STRUCTURE.md` and then verify against source. Follow the relevant development plan for versioned migrations. Configuration details and verification commands are defined by the active configuration files and `package.json` scripts.
+
+### Naming, imports, and code organization
+
+- Use lowercase kebab-case for files and directories, except project-standard root configuration files. Name a file for its primary responsibility, not its current caller.
+- Use `PascalCase` for classes, interfaces, and type aliases that model a domain concept; use `camelCase` for functions, methods, variables, object properties, and parameters. Use `UPPER_SNAKE_CASE` only for true module-level constants such as limits, schema versions, and immutable defaults.
+- Start boolean names with an affirmative predicate such as `is`, `has`, `can`, `should`, or `expected`. Name event callbacks and operations by their effect, such as `onChanged`, `persistWindowMaximized`, or `resolveRelativeMarkdownLink`; avoid vague names such as `handle`, `data`, `result`, or `utils` when a domain name is available.
+- Model finite cross-boundary states with string-literal unions or discriminated result types. Do not use free-form strings when the receiver must branch on a known set of values.
+- In TypeScript, use interfaces for object-shaped contracts and classes only when they own behavior or lifecycle. Prefer `unknown` at untrusted boundaries and narrow it at runtime; do not add `any`, type assertions, or lint suppressions merely to avoid defining a contract. Existing JavaScript and tests may use `any` only where their runtime boundary makes a precise type impractical.
+- Order imports in contiguous groups: Electron/external packages, Node built-ins, then relative project modules. Keep the ordering already established in a touched file unless the whole import block is being meaningfully changed. New Node built-in imports use the `node:` prefix.
+- Prefer named exports for reusable main-process services, types, and pure helpers. Keep renderer browser scripts in their existing IIFE/global attachment form unless an approved migration changes that boundary.
+- Keep a one-off operation local to its caller. Extract a small named helper when behavior is repeated, security-sensitive, independently testable, or owns cleanup. Do not use line-count limits as a splitting rule: a cohesive transaction with error handling and cleanup may remain one function.
+- Place state next to its owning domain and make transitions explicit. Do not use a persisted setting as incidental UI/session state, and do not serialize DOM nodes, Vditor instances, ranges, observers, timers, or cleanup callbacks.
+
+### Comments and error handling
+
+- Comments explain a non-obvious constraint, compatibility assumption, security boundary, platform behavior, or cleanup reason. They do not paraphrase the next statement, narrate edits, or preserve obsolete implementation history.
+- Put a concise comment immediately beside the constrained code. For a dependency on a Vditor private contract, name the supported Vditor version or behavior and state why the workaround preserves user-visible behavior.
+- Treat expected, user-recoverable domain outcomes as stable, typed results. Use a small string-literal error code with the data needed to recover or present the outcome; do not force renderer code to parse exception messages.
+- Throw errors for violated programmer invariants and unexpected infrastructure failures. Create a custom error class only when a caller must distinguish that condition from other failures, as with an external document change. Preserve the original error or use `cause` when wrapping it.
+- Never swallow an error silently. An intentionally non-fatal cleanup failure must be explicitly documented and logged when it is useful for diagnosis; cleanup must not replace the original failure.
+- At IPC and persistence boundaries, validate and normalize untrusted input before work begins, and expose only safe result/error semantics to the renderer. Do not leak a raw filesystem path, stack trace, or Node error as a user-facing message.
 
 ### Renderer, DOM, and Vditor integration
 
@@ -97,6 +118,9 @@ Only read multiple sections when the task crosses architectural boundaries, such
 - Add focused unit tests for pure path, state, parsing, validation, and adapter behavior. Use DOM tests for renderer interaction/lifecycle behavior and E2E tests for Electron, preload, protocol, Vditor, and native-window integration.
 - Test behavior and contracts rather than source-string presence or private function ordering. Test both the normal path and the relevant failure, cleanup, permission, or boundary path.
 - Do not replace an Electron E2E case with a unit test when the behavior depends on the real Electron/Vditor/protocol composition.
+- Name test files `<subject>.test.ts` and group related observable behavior under `describe('<subject>', ...)`. Write `it(...)` descriptions as present-tense behavior, including the condition and outcome when that makes the contract clearer.
+- Make filesystem and platform behavior testable through narrow injected dependencies or explicit platform/path inputs where practical. Restore spies and temporary resources in test cleanup; do not let a test depend on execution order or host-specific paths.
+- When changing a Vditor private-DOM assumption, add or update a focused adapter test that detects structural drift. When changing a cross-process contract, cover the validation or authorization boundary at the appropriate unit or E2E layer.
 
 ## Localization
 
