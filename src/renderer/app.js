@@ -3739,6 +3739,7 @@
     clearTimeout(settingsSaveTimer);
     const form = $('#settingsForm');
     const patch = {};
+    const numericSettingNames = new Set(['tabSize']);
     const previousSettings = state.settings;
     const openModes = new Map(
       state.tabs.map((tab) => [
@@ -3756,7 +3757,10 @@
       patch[input.name] =
         input.type === 'checkbox'
           ? input.checked
-          : input.type === 'number' || input.type === 'range' || input.name.endsWith('Zoom')
+          : input.type === 'number' ||
+              input.type === 'range' ||
+              input.name.endsWith('Zoom') ||
+              numericSettingNames.has(input.name)
             ? Number(input.value)
             : input.value;
     });
@@ -3778,7 +3782,7 @@
     const previousWorkspaceReadDepth = state.settings.workspaceReadDepth;
     const previousLocale = state.locale;
     state.settings = await queueSettingsSave(patch);
-    const presentationOnlySettings = new Set([
+    const nonRebuildingSettings = new Set([
       'theme',
       'systemTheme',
       'lightTheme',
@@ -3791,19 +3795,19 @@
       'editorZoom',
       'previewZoom',
       'scrollbarMode',
+      // This is a creation default. Existing tabs own their current mode.
+      'editMode',
     ]);
     const themeChanged =
       patch.theme !== previousSettings.theme ||
       patch.systemTheme !== previousSettings.systemTheme ||
       patch.lightTheme !== previousSettings.lightTheme ||
       patch.darkTheme !== previousSettings.darkTheme;
+    const changedSettings = Object.keys(patch).filter(
+      (key) => JSON.stringify(previousSettings[key]) !== JSON.stringify(state.settings[key]),
+    );
     const shouldRebuildEditors =
-      !themeChanged &&
-      Object.keys(patch).some(
-        (key) =>
-          !presentationOnlySettings.has(key) &&
-          JSON.stringify(previousSettings[key]) !== JSON.stringify(state.settings[key]),
-      );
+      !themeChanged && changedSettings.some((key) => !nonRebuildingSettings.has(key));
     if (closeAfterSave) await closeSettings({ applyPresentation: false });
     applyLocale(state.settings.locale);
     if (state.workspace && previousWorkspaceReadDepth !== state.settings.workspaceReadDepth)

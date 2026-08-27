@@ -408,7 +408,7 @@ const saveOperationsByIdentity = new Map(); // 同一 canonical identity 的保�
 ```javascript
 {
   value: tab.content,
-  mode: tab.mode,                    // 'wysiwyg' | 'ir' | 'sv'（从 settings.editMode 继承）
+  mode: tab.mode,                    // 'wysiwyg' | 'ir' | 'sv'（仅新建标签时从 settings.editMode 继承）
   theme: isDarkTheme ? 'dark' : 'classic',
   lang: 'en_US' | 'zh_CN' | 'zh_TW',
   icon: settings.iconSet,            // 'ant' | 'material'
@@ -455,7 +455,7 @@ const saveOperationsByIdentity = new Map(); // 同一 canonical identity 的保�
 | 切换标签 | `switchTab(id)`            | 恢复旧工具栏到原标签 host，将新标签工具栏挂载到共享 mount |
 | 模式切换 | `rebuildEditor(tab, mode)` | 捕获滚动位置、断开观察者、销毁旧实例、重建                |
 | 销毁标签 | `closeTab(id)`             | 调用 `tab.vditor.destroy()` 并移除 host 节点              |
-| 设置变更 | `saveSettings()`           | 先区分展示设置与初始化契约；展示设置热应用，只有非展示设置才重建相关编辑器 |
+| 设置变更 | `saveSettings()`           | 展示设置和默认编辑模式热应用；只有影响初始化契约的设置才重建相关编辑器，重建时保留每个标签自身的模式 |
 
 无文档标签时，`createToolbarPreview()` 创建一个不参与标签和文件状态的 Vditor 实例，仅将其 toolbar 挂载到共享 mount；该预览使用设置中的默认编辑模式。打开文档或设置变更时销毁并重建预览。预览 toolbar 调用 Vditor disabled 接口并由应用 CSS 灰化，不能交互；`View > Layout > Show Toolbar` 仍可控制其显隐。
 
@@ -983,7 +983,7 @@ function rememberRecent(filePath) {
 
 ##### Editor 面板
 
-- `editMode`（默认模式：`wysiwyg` / `ir` / `sv`）
+- `editMode`（默认模式：`wysiwyg` / `ir` / `sv`；仅用于后续新建或打开的标签，已打开标签保持自身模式）
 - `tabInsertSpaces`（Tab 插入空格，checkbox）
 - `tabSize`（空格数：2 / 4 / 6 / 8）
 - `showWhitespace`（SV 模式以点显示空格，checkbox）
@@ -1123,7 +1123,7 @@ function rememberRecent(filePath) {
 
 应用自有可交互控件的 `:focus-visible` 统一使用 `--accent` 的 2px outline；因此 Light、Dark 与 Monokai Pro Dark 均保持键盘焦点可见且与当前主题一致。
 
-`--sidebar-surface` 是导航壳层：sidebar、Windows/Linux 自定义主菜单、titlebar、共享 Vditor toolbar、Files/Outline tabs、无标签的 `.editor-area` 及其新建/打开操作共享它。`--panel-2` 仍只服务状态栏、设置导航、SV 行号栏等次级表面。`--editor-surface` 仅用于已打开文档的 Vditor host；浅色主题的文档画布较导航壳层明亮，深色主题则较暗。`.document-tab:hover` 始终使用当前主题的 `--hover`，不使用跨主题的固定浅色。
+`--sidebar-surface` 是导航壳层：sidebar、Windows/Linux 自定义主菜单、titlebar、共享 Vditor toolbar、Files/Outline tabs、无标签的 `.editor-area` 及其新建/打开操作共享它。`--panel-2` 仍只服务状态栏、设置导航等次级表面。`--editor-surface` 用于已打开文档的 Vditor host 及其 SV 行号栏；行号栏仅由右侧边框与源编辑区分隔。浅色主题的文档画布较导航壳层明亮，深色主题则较暗。`.document-tab:hover` 始终使用当前主题的 `--hover`，不使用跨主题的固定浅色。
 
 切换路径：
 

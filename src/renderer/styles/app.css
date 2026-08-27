@@ -1724,7 +1724,7 @@ html[data-scrollbar-mode='hidden'] .app-scrollbar::-webkit-scrollbar {
   overflow: hidden;
   padding: 0;
   border-right: 1px solid var(--border);
-  background: var(--panel-2);
+  background: var(--editor-surface);
   color: var(--muted);
   font-family: var(--source-font);
   font-size: var(--source-size);

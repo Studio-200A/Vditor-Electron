@@ -931,6 +931,32 @@ test('switches among all three modes from the View > Editing Mode submenu', asyn
   }
 });
 
+test('applies a changed default editor mode only to later tabs', async () => {
+  const running = await launchApp({ editMode: 'sv' });
+  try {
+    const { page, testRoot } = running;
+    await createNewTab(page);
+    const originalEditor = page.locator('.editor-host.active .vditor-content');
+    await expect(page.locator('.editor-host.active .vditor-sv')).toBeVisible();
+    await originalEditor.evaluate((node) => node.setAttribute('data-test-editor', 'existing'));
+
+    await page.locator('#statusSettings').click();
+    await page.locator('.settings-nav [data-panel="editor"]').click();
+    await page.locator('[name="editMode"]').selectOption('wysiwyg');
+    await page.locator('#saveSettings').click();
+
+    await expect(page.locator('#settingsModal')).toBeHidden();
+    await expect(originalEditor).toHaveAttribute('data-test-editor', 'existing');
+    await expect(page.locator('.editor-host.active .vditor-sv')).toBeVisible();
+    await expect.poll(() => readSetting(testRoot, 'editor', 'editMode')).toBe('wysiwyg');
+
+    await createNewTab(page);
+    await expect(page.locator('.editor-host.active .vditor-wysiwyg')).toBeVisible();
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('switches to split view and renders source line numbers', async () => {
   const markdown = `## Heading\n\n${'long-line '.repeat(80)}\n\nlast`;
   const running = await launchApp({ editMode: 'ir' }, { 'line-numbers.md': markdown });
@@ -4202,6 +4228,13 @@ test('uses consistent navigation and document surfaces across all application th
         sidebar,
       );
       await expect(page.locator('.editor-host.active .vditor-content')).toHaveCSS(
+        'background-color',
+        editor,
+      );
+      const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+      await modeTrigger.click();
+      await page.locator('#vditorToolbarMount button[data-mode="sv"]').click();
+      await expect(page.locator('.editor-host.active .sv-line-numbers')).toHaveCSS(
         'background-color',
         editor,
       );
