@@ -38,6 +38,34 @@ describe('SettingsStore', () => {
     expect(settings.uiZoom).toBe(DEFAULT_SETTINGS.uiZoom);
   });
 
+  it('falls back per field when persisted settings are invalid', () => {
+    fs.writeFileSync(
+      path.join(configDir, 'config.toml'),
+      TOML.stringify({
+        application: { locale: 'zh_Hans' },
+        appearance: { uiZoom: 201, contentTheme: 'untrusted/theme' },
+        editor: { splitRatio: 81 },
+        files: { defaultOpenPath: 'relative.md', pasteImagesDir: '../outside', imageQuality: 2 },
+        session: { workspacePath: 'relative', activeFilePath: null, openFiles: [] },
+      }),
+    );
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    try {
+      const settings = new SettingsStore(configDir).getAll();
+      expect(settings.locale).toBe('zh_Hans');
+      expect(settings.uiZoom).toBe(DEFAULT_SETTINGS.uiZoom);
+      expect(settings.contentTheme).toBe(DEFAULT_SETTINGS.contentTheme);
+      expect(settings.splitRatio).toBe(DEFAULT_SETTINGS.splitRatio);
+      expect(settings.defaultOpenPath).toBe(DEFAULT_SETTINGS.defaultOpenPath);
+      expect(settings.pasteImagesDir).toBe(DEFAULT_SETTINGS.pasteImagesDir);
+      expect(settings.imageQuality).toBe(DEFAULT_SETTINGS.imageQuality);
+      expect(settings.session).toEqual(DEFAULT_SETTINGS.session);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it('drops fields that are not part of the current settings schema', () => {
     fs.writeFileSync(
       path.join(configDir, 'config.toml'),
@@ -84,7 +112,15 @@ describe('SettingsStore', () => {
     };
     const store = new SettingsStore(configDir, fileSystem);
 
-    expect(() => store.updateOrThrow({ locale: 'zh_Hans' })).toThrow('Unable to persist settings.');
+    try {
+      store.updateOrThrow({ locale: 'zh_Hans' });
+      throw new Error('Expected settings persistence to fail.');
+    } catch (error) {
+      expect(error).toMatchObject({
+        code: 'SETTINGS_PERSIST_FAILED',
+        message: 'Unable to persist settings.',
+      });
+    }
     expect(store.get('locale')).toBe(DEFAULT_SETTINGS.locale);
     expect(fs.existsSync(path.join(configDir, 'config.toml'))).toBe(false);
     expect(fs.readdirSync(configDir)).toEqual([]);

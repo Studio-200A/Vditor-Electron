@@ -16,7 +16,7 @@ import { registerAppProtocol } from './protocol';
 import { createAppMenu } from './menu';
 import { extractOpenFilePaths } from './open-files';
 import { allowedExternalUrl } from './external-url';
-import { invalidIpcArgument, requireTrustedMainFrame } from './ipc-guard';
+import { invalidIpcArgument, normalizeIpcError, requireTrustedMainFrame } from './ipc-guard';
 import { IPC_CHANNELS } from './ipc-contract';
 import {
   parseAbsolutePath,
@@ -325,17 +325,36 @@ type TrustedInvokeHandler = (event: Electron.IpcMainInvokeEvent, ...args: unknow
 type TrustedMessageHandler = (event: Electron.IpcMainEvent, ...args: unknown[]) => void;
 
 function handleTrusted(channel: string, handler: TrustedInvokeHandler): void {
-  ipcMain.handle(channel, (event, ...args) => {
+  ipcMain.handle(channel, async (event, ...args) => {
     requireTrustedMainFrame(event, mainWindow?.webContents);
-    return handler(event, ...args);
+    try {
+      return await handler(event, ...args);
+    } catch (error) {
+      throw reportIpcFailure(channel, error);
+    }
   });
 }
 
 function onTrusted(channel: string, handler: TrustedMessageHandler): void {
   ipcMain.on(channel, (event, ...args) => {
-    requireTrustedMainFrame(event, mainWindow?.webContents);
-    handler(event, ...args);
+    try {
+      requireTrustedMainFrame(event, mainWindow?.webContents);
+      handler(event, ...args);
+    } catch (error) {
+      reportIpcFailure(channel, error);
+    }
   });
+}
+
+function reportIpcFailure(channel: string, error: unknown): Error {
+  const normalized = normalizeIpcError(error);
+  if (!(
+    normalized instanceof Error &&
+    'code' in normalized &&
+    (normalized.code === 'IPC_UNTRUSTED_RENDERER' || normalized.code === 'IPC_INVALID_ARGUMENT')
+  ))
+    console.error(`IPC ${channel} failed:`, error);
+  return normalized;
 }
 
 function registerIpcHandlers(): void {

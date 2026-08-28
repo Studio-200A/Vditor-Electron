@@ -86,7 +86,7 @@ Vditor-Electron/
 │   │       ├── file-watch-service.ts # 工作区结构与打开文档内容 watcher 的所有权、稳定读取和清理
 │   │       ├── safe-file-writer.ts # 同目录临时文件、同步、替换与失败清理
 │   │       ├── recovery-store.ts  # 私有恢复快照的校验、原子写入、读取与清理
-│   │       ├── settings-store.ts  # TOML 配置读写、深合并、原子保存
+│   │       ├── settings-store.ts  # TOML 配置读写、加载校验、深合并、原子保存
 │   │       └── app-state.ts       # AppSettings 接口与默认值定义
 ├── src/renderer/                  # 渲染进程（纯 JavaScript + HTML + CSS）
 │   ├── index.html                 # 应用壳 HTML（标题栏、侧栏、编辑区、对话框）

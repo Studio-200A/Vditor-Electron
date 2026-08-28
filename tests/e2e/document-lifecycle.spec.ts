@@ -794,7 +794,7 @@ test('keeps renamed document state coherent when settings persistence fails once
     const newDirectory = path.join(workspace, 'renamed');
     const newFilePath = path.join(newDirectory, 'entry.md');
     await expect(page.locator('#statusPath')).toHaveText(newFilePath);
-    await expect(page.locator('#statusMessage')).toContainText('Unable to persist settings.');
+    await expect(page.locator('#statusMessage')).toHaveText('Settings could not be saved.');
     await expect.poll(() => readSetting(testRoot, 'session', 'openFiles')).toEqual([newFilePath]);
     expect(fs.existsSync(filePath)).toBe(false);
     expect(fs.readFileSync(newFilePath, 'utf8')).toBe('Original content');
@@ -898,6 +898,9 @@ test('refuses to rename a workspace item onto an existing destination', async ()
     await renameInput.press('Enter');
 
     await expect(sourceRow).toBeVisible();
+    await expect(page.locator('#statusMessage')).toHaveText(
+      'An item with that name already exists.',
+    );
     expect(fs.readFileSync(source, 'utf8')).toBe('Source content');
     expect(fs.readFileSync(destination, 'utf8')).toBe('Destination content');
   } finally {

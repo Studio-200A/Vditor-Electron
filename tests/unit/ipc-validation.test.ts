@@ -56,8 +56,64 @@ describe('IPC request validation', () => {
       { workspaceReadDepth: 99 },
       { toolbarConfig: { hide: true, unsafe: true } },
       { recentFiles: [{ path: 'relative.md', title: 'relative', openedAt: 1 }] },
+      { recentPaths: ['relative/path'] },
+      { defaultOpenPath: 'relative/path' },
+      { session: { workspacePath: 'relative', activeFilePath: null, openFiles: [] } },
+      {
+        workspaceTreeStates: [{ workspacePath: '/notes', expandedPaths: ['relative/path'] }],
+      },
+      { uiZoom: 201 },
+      { editorFontSize: 9 },
+      { autoSaveDelay: 249 },
+      { editorTextWidth: 101 },
+      { splitRatio: 81 },
+      { previewMaxWidth: 319 },
+      { imageQuality: 0.09 },
+      { sidebarWidth: 501 },
+      { contentTheme: 'unknown-theme' },
+      { codeTheme: '../untrusted-theme' },
+      { pasteImagesDir: '../outside' },
+      { pasteImagesDir: 'assets/../../outside' },
+      { pasteImagesDir: '/outside' },
+      { pasteImagesDir: 'C:\\outside' },
+      { pasteImagesDir: '\\\\server\\share' },
+      { windowBounds: { width: 16_385, height: 800 } },
+      { settingsDialogSize: { width: 16_385, height: 780, customized: true } },
     ]) {
       expect(() => parseSettingsPatch(patch)).toThrow('IPC_INVALID_ARGUMENT');
     }
+  });
+
+  it('accepts supported settings ranges and absolute path collections', () => {
+    expect(
+      parseSettingsPatch({
+        defaultOpenPath: '/notes',
+        pasteImagesDir: './assets/images',
+        recentPaths: ['/notes', '/archive'],
+        session: {
+          workspacePath: '',
+          activeFilePath: null,
+          openFiles: ['/notes/readme.md'],
+        },
+        workspaceTreeStates: [
+          { workspacePath: '/notes', expandedPaths: ['/notes/docs', '/notes/assets'] },
+        ],
+        uiZoom: 200,
+        editorFontSize: 10,
+        autoSaveDelay: 250,
+        editorTextWidth: 40,
+        splitRatio: 20,
+        previewMaxWidth: 2_400,
+        imageQuality: 0.1,
+        sidebarWidth: 500,
+      }),
+    ).toMatchObject({
+      defaultOpenPath: '/notes',
+      pasteImagesDir: './assets/images',
+      recentPaths: ['/notes', '/archive'],
+      session: { workspacePath: '', openFiles: ['/notes/readme.md'] },
+      uiZoom: 200,
+      splitRatio: 20,
+    });
   });
 });

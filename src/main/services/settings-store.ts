@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as TOML from '@iarna/toml';
+import { parseSettingsPatch } from '../ipc-validation';
 import { AppSettings, DEFAULT_SETTINGS, normalizeWorkspaceReadDepth } from './app-state';
 
 type SettingsDocument = {
@@ -103,6 +104,15 @@ type SettingsFileSystem = Pick<
   'existsSync' | 'mkdirSync' | 'readFileSync' | 'writeFileSync' | 'renameSync' | 'unlinkSync'
 >;
 
+export class SettingsPersistenceError extends Error {
+  readonly code = 'SETTINGS_PERSIST_FAILED' as const;
+
+  constructor() {
+    super('Unable to persist settings.');
+    this.name = 'SettingsPersistenceError';
+  }
+}
+
 const pick = <K extends keyof AppSettings>(
   settings: AppSettings,
   keys: readonly K[],
@@ -133,7 +143,8 @@ export class SettingsStore {
       if (this.fileSystem.existsSync(this.configPath)) {
         const raw = this.fileSystem.readFileSync(this.configPath, 'utf-8');
         const parsed = TOML.parse(raw) as unknown as Partial<SettingsDocument>;
-        const settings = this.deepMerge(DEFAULT_SETTINGS, this.fromDocument(parsed));
+        const merged = this.deepMerge(DEFAULT_SETTINGS, this.fromDocument(parsed));
+        const settings = this.validateLoadedSettings(merged);
         return {
           ...settings,
           workspaceReadDepth: normalizeWorkspaceReadDepth(settings.workspaceReadDepth),
@@ -143,6 +154,18 @@ export class SettingsStore {
       console.error('Failed to load settings, using defaults');
     }
     return { ...DEFAULT_SETTINGS };
+  }
+
+  private validateLoadedSettings(settings: AppSettings): AppSettings {
+    const validSettings: Partial<AppSettings> = {};
+    for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof AppSettings)[]) {
+      try {
+        Object.assign(validSettings, parseSettingsPatch({ [key]: settings[key] }));
+      } catch {
+        console.error(`Invalid persisted setting "${String(key)}", using its default`);
+      }
+    }
+    return this.deepMerge(DEFAULT_SETTINGS, validSettings);
   }
 
   private save(data: AppSettings): boolean {
@@ -168,7 +191,7 @@ export class SettingsStore {
 
   private commit(nextData: AppSettings, throwOnFailure: boolean): AppSettings {
     if (this.save(nextData)) this.data = nextData;
-    else if (throwOnFailure) throw new Error('Unable to persist settings.');
+    else if (throwOnFailure) throw new SettingsPersistenceError();
     return this.getAll();
   }
 

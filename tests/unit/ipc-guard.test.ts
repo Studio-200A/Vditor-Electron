@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   IpcRequestError,
   isTrustedMainFrame,
+  normalizeIpcError,
   requireTrustedMainFrame,
 } from '../../src/main/ipc-guard';
 
@@ -60,5 +61,38 @@ describe('IPC main-frame guard', () => {
         mainWebContents,
       ),
     ).toThrow('IPC_UNTRUSTED_RENDERER');
+  });
+
+  it('normalizes filesystem failures without exposing native messages', () => {
+    const permissionError = Object.assign(new Error("EACCES: '/private/notes.md'"), {
+      code: 'EACCES',
+    });
+    const normalized = normalizeIpcError(permissionError);
+
+    expect(normalized).toBeInstanceOf(IpcRequestError);
+    expect(normalized).toMatchObject({
+      code: 'IPC_PERMISSION_DENIED',
+      message: 'IPC_PERMISSION_DENIED',
+    });
+    expect(normalized.message).not.toContain('/private/notes.md');
+  });
+
+  it('maps known operation failures to stable renderer-safe codes', () => {
+    expect(normalizeIpcError(Object.assign(new Error('exists'), { code: 'EEXIST' }))).toMatchObject(
+      {
+        code: 'IPC_ALREADY_EXISTS',
+      },
+    );
+    expect(
+      normalizeIpcError(Object.assign(new Error('settings'), { code: 'SETTINGS_PERSIST_FAILED' })),
+    ).toMatchObject({ code: 'IPC_SETTINGS_PERSIST_FAILED' });
+    expect(normalizeIpcError(new Error('unexpected native failure'))).toMatchObject({
+      code: 'IPC_OPERATION_FAILED',
+    });
+  });
+
+  it('preserves the established unsupported external URL error', () => {
+    const error = new Error('Unsupported URL protocol');
+    expect(normalizeIpcError(error)).toBe(error);
   });
 });

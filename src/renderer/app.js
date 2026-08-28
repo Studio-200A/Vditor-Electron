@@ -81,6 +81,15 @@
   let pendingTableCellSelection = null;
   let contextMenuState = null;
   const THEME_MODES = ['light', 'dark', 'system'];
+  const IPC_ERROR_MESSAGE_KEYS = {
+    IPC_INVALID_ARGUMENT: 'message.ipcInvalidRequest',
+    IPC_PERMISSION_DENIED: 'message.ipcPermissionDenied',
+    IPC_ALREADY_EXISTS: 'message.ipcAlreadyExists',
+    IPC_NOT_FOUND: 'message.ipcNotFound',
+    IPC_INVALID_NAME: 'message.ipcInvalidName',
+    IPC_SETTINGS_PERSIST_FAILED: 'message.ipcSettingsSaveFailed',
+    IPC_OPERATION_FAILED: 'message.ipcOperationFailed',
+  };
 
   function resolveLocale(locale) {
     if (locale && locale !== 'system' && LOCALES[locale]) return locale;
@@ -95,6 +104,14 @@
     const fallback = Object.prototype.hasOwnProperty.call(english, key) ? english[key] : key;
     const value = Object.prototype.hasOwnProperty.call(table, key) ? table[key] : fallback;
     return String(value).replace(/\{(\w+)\}/g, (_match, name) => params[name] ?? `{${name}}`);
+  }
+
+  function ipcErrorMessage(error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const code = Object.keys(IPC_ERROR_MESSAGE_KEYS).find((candidate) =>
+      message.includes(candidate),
+    );
+    return code ? t(IPC_ERROR_MESSAGE_KEYS[code]) : message;
   }
 
   function updateMainMenuGlow(event) {
@@ -1324,7 +1341,10 @@
           (event) => preserveSplitToolbarSelection(tab, event),
           true,
         );
-        syncCodeThemeControls(isDarkTheme(appTheme), state.settings.codeTheme);
+        // Vditor initialization may finish after the user changes the application theme.
+        // Read the current theme here so the late callback cannot restore stale menu filters.
+        const currentAppTheme = document.documentElement.dataset.theme || state.settings.theme;
+        syncCodeThemeControls(isDarkTheme(currentAppTheme), state.settings.codeTheme);
         if (tab.id === state.activeId || tab.toolbarPreview) mountEditorToolbar(tab);
         // Keep the host toolbar hidden until it has been handed to the shared
         // application toolbar. This closes the transient state where Vditor
@@ -1695,34 +1715,34 @@
   }
 
   async function openPath(filePath, activate = true, pendingAnchor = '') {
-    const fileIdentity = await window.fileAPI.fileIdentity(filePath);
-    const normalizedPath = normalizedFilePath(filePath);
-    const existing = state.tabs.find(
-      (tab) =>
-        tab.fileIdentity === fileIdentity ||
-        normalizedFilePath(tabTargetPath(tab)) === normalizedPath,
-    );
-    if (existing) {
-      if (!existing.filePath) {
-        clearTimeout(existing.saveTimer);
-        existing.externalConflict = {
-          kind: 'modified',
-          path: filePath,
-          identity: fileIdentity,
-          detectedAt: Date.now(),
-          version: (existing.externalConflict?.version || 0) + 1,
-        };
-        existing.externalChangeIgnored = false;
-        renderTabs();
-      }
-      if (activate) switchTab(existing.id);
-      if (pendingAnchor) {
-        existing.pendingAnchor = pendingAnchor;
-        requestAnimationFrame(() => scrollToPendingAnchor(existing));
-      }
-      return existing;
-    }
     try {
+      const fileIdentity = await window.fileAPI.fileIdentity(filePath);
+      const normalizedPath = normalizedFilePath(filePath);
+      const existing = state.tabs.find(
+        (tab) =>
+          tab.fileIdentity === fileIdentity ||
+          normalizedFilePath(tabTargetPath(tab)) === normalizedPath,
+      );
+      if (existing) {
+        if (!existing.filePath) {
+          clearTimeout(existing.saveTimer);
+          existing.externalConflict = {
+            kind: 'modified',
+            path: filePath,
+            identity: fileIdentity,
+            detectedAt: Date.now(),
+            version: (existing.externalConflict?.version || 0) + 1,
+          };
+          existing.externalChangeIgnored = false;
+          renderTabs();
+        }
+        if (activate) switchTab(existing.id);
+        if (pendingAnchor) {
+          existing.pendingAnchor = pendingAnchor;
+          requestAnimationFrame(() => scrollToPendingAnchor(existing));
+        }
+        return existing;
+      }
       const result = await window.fileAPI.readFile(filePath);
       const baseDir = await window.fileAPI.dirname(filePath);
       const tab = createTab({
@@ -1738,7 +1758,7 @@
       rememberRecent(filePath);
       return tab;
     } catch (error) {
-      showMessage(t('message.openFailed', { error: error.message }), true);
+      showMessage(t('message.openFailed', { error: ipcErrorMessage(error) }), true);
       return null;
     }
   }
@@ -2195,7 +2215,7 @@
       return true;
     } catch (error) {
       if (previousWatchSuspended) await rebindDocumentWatches([tab]);
-      showMessage(t('message.saveFailed', { error: error.message }), true);
+      showMessage(t('message.saveFailed', { error: ipcErrorMessage(error) }), true);
       return false;
     }
   }
@@ -2849,7 +2869,7 @@
     try {
       entries = await window.fileAPI.listDir(dirPath, state.workspace);
     } catch (error) {
-      showMessage(error.message, true);
+      showMessage(ipcErrorMessage(error), true);
       return;
     }
     const extensions = (state.settings.fileExplorer.visibleExtensions || ['md']).map((ext) =>
@@ -3126,7 +3146,7 @@
       await refreshTree();
       if (type === 'file') await openPath(created);
     } catch (error) {
-      showMessage(error.message, true);
+      showMessage(ipcErrorMessage(error), true);
     }
   }
   function renameExplorerItem(entry, row) {
@@ -3249,7 +3269,7 @@
         if (input.isConnected) input.replaceWith(label);
         showMessage(
           failures
-            .map((failure) => failure?.message)
+            .map((failure) => ipcErrorMessage(failure))
             .filter(Boolean)
             .join(' '),
           true,
@@ -3294,7 +3314,7 @@
       await refreshTree();
     } catch (error) {
       await rebindDocumentWatches(affectedTabs);
-      showMessage(error.message, true);
+      showMessage(ipcErrorMessage(error), true);
     }
   }
 
@@ -3635,8 +3655,9 @@
       tab.vditor.insertMD(markdown.join('\n'));
       return null;
     } catch (error) {
-      showMessage(`图片保存失败：${error.message}`, true);
-      return error.message;
+      const message = ipcErrorMessage(error);
+      showMessage(`图片保存失败：${message}`, true);
+      return message;
     }
   }
 
@@ -3910,7 +3931,12 @@
     patch.toolbarConfig = state.settings.toolbarConfig;
     const previousWorkspaceReadDepth = state.settings.workspaceReadDepth;
     const previousLocale = state.locale;
-    state.settings = await queueSettingsSave(patch);
+    try {
+      state.settings = await queueSettingsSave(patch, { throwOnFailure: true });
+    } catch (error) {
+      showMessage(ipcErrorMessage(error), true);
+      return;
+    }
     const nonRebuildingSettings = new Set([
       'theme',
       'systemTheme',

@@ -11,6 +11,7 @@ const MAX_PATH_LENGTH = 32_767;
 const MAX_TEXT_LENGTH = 16 * 1024 * 1024;
 const MAX_BINARY_LENGTH = 32 * 1024 * 1024;
 const MAX_COLLECTION_LENGTH = 512;
+const MAX_UI_DIMENSION = 16_384;
 const WINDOWS_RESERVED_NAMES = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
 
 const APP_THEMES = [
@@ -24,6 +25,8 @@ const APP_THEMES = [
 const LIGHT_THEMES = ['classic', 'claude-light', 'monokai-pro-light'] as const;
 const DARK_THEMES = ['dark', 'claude-dark', 'monokai-pro-dark'] as const;
 const LOCALES = ['system', 'en_US', 'zh_Hans', 'zh_Hant'] as const;
+const CONTENT_THEMES = ['light', 'dark', 'ant-design', 'wechat'] as const;
+const THEME_NAME_PATTERN = /^[a-z0-9][a-z0-9/_-]{0,127}$/i;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -98,6 +101,26 @@ export function parseEnum<T extends string>(value: unknown, values: readonly T[]
   return value as T;
 }
 
+function parseThemeName(value: unknown): string {
+  const theme = parseText(value, 128);
+  if (!THEME_NAME_PATTERN.test(theme)) invalidIpcArgument();
+  return theme;
+}
+
+function parseRelativeDirectory(value: unknown): string {
+  const directory = parseText(value, MAX_PATH_LENGTH);
+  if (!directory) return directory;
+  if (
+    path.isAbsolute(directory) ||
+    /^[a-zA-Z]:/.test(directory) ||
+    /^[\\/]{2}/.test(directory) ||
+    hasControlCharacter(directory) ||
+    directory.split(/[\\/]+/).some((segment) => segment === '..')
+  )
+    invalidIpcArgument();
+  return directory;
+}
+
 export function parseBoolean(value: unknown): boolean {
   if (typeof value !== 'boolean') invalidIpcArgument();
   return value;
@@ -137,6 +160,15 @@ function parseStringArray(value: unknown, maximumItems = MAX_COLLECTION_LENGTH):
   return value.map((item) => parseText(item, MAX_PATH_LENGTH));
 }
 
+function parseAbsolutePathArray(value: unknown, maximumItems = MAX_COLLECTION_LENGTH): string[] {
+  if (!Array.isArray(value) || value.length > maximumItems) invalidIpcArgument();
+  return value.map((item) => parseAbsolutePath(item));
+}
+
+function parseAbsolutePathOrEmpty(value: unknown): string {
+  return value === '' ? '' : parseAbsolutePath(value);
+}
+
 function parseSettingsObject<T extends Record<string, unknown>>(
   value: unknown,
   keys: readonly string[],
@@ -151,15 +183,15 @@ function parseWindowBounds(value: unknown): AppSettings['windowBounds'] {
   return parseSettingsObject(value, ['x', 'y', 'width', 'height'], (record) => ({
     x: record.x === undefined ? undefined : parseFiniteNumber(record.x, -100_000, 100_000),
     y: record.y === undefined ? undefined : parseFiniteNumber(record.y, -100_000, 100_000),
-    width: parseFiniteNumber(record.width, 760, 100_000),
-    height: parseFiniteNumber(record.height, 520, 100_000),
+    width: parseFiniteNumber(record.width, 760, MAX_UI_DIMENSION),
+    height: parseFiniteNumber(record.height, 520, MAX_UI_DIMENSION),
   }));
 }
 
 function parseSettingsDialogSize(value: unknown): AppSettings['settingsDialogSize'] {
   return parseSettingsObject(value, ['width', 'height', 'customized'], (record) => ({
-    width: parseFiniteNumber(record.width, 320, 100_000),
-    height: parseFiniteNumber(record.height, 240, 100_000),
+    width: parseFiniteNumber(record.width, 320, MAX_UI_DIMENSION),
+    height: parseFiniteNumber(record.height, 240, MAX_UI_DIMENSION),
     customized: parseBoolean(record.customized),
   }));
 }
@@ -180,19 +212,19 @@ function parseWorkspaceTreeStates(value: unknown): AppSettings['workspaceTreeSta
   return value.map((item) =>
     parseSettingsObject(item, ['workspacePath', 'expandedPaths'], (record) => ({
       workspacePath: parseAbsolutePath(record.workspacePath),
-      expandedPaths: parseStringArray(record.expandedPaths),
+      expandedPaths: parseAbsolutePathArray(record.expandedPaths),
     })),
   );
 }
 
 function parseSession(value: unknown): AppSettings['session'] {
   return parseSettingsObject(value, ['workspacePath', 'activeFilePath', 'openFiles'], (record) => ({
-    workspacePath: parseText(record.workspacePath, MAX_PATH_LENGTH),
+    workspacePath: parseAbsolutePathOrEmpty(record.workspacePath),
     activeFilePath:
       record.activeFilePath === null
         ? null
         : parseOptionalAbsolutePath(record.activeFilePath) || null,
-    openFiles: parseStringArray(record.openFiles),
+    openFiles: parseAbsolutePathArray(record.openFiles),
   }));
 }
 
@@ -245,10 +277,6 @@ const BOOLEAN_SETTINGS = new Set<keyof AppSettings>([
 ]);
 
 const STRING_SETTINGS = new Set<keyof AppSettings>([
-  'contentTheme',
-  'codeTheme',
-  'lightCodeTheme',
-  'darkCodeTheme',
   'uiFontFamily',
   'editorFontFamily',
   'previewFontFamily',
@@ -259,32 +287,50 @@ const STRING_SETTINGS = new Set<keyof AppSettings>([
   'defaultOpenPath',
 ]);
 
-const NUMERIC_SETTINGS = new Set<keyof AppSettings>([
-  'editorFontSize',
-  'previewFontSize',
-  'previewCodeFontSize',
-  'uiZoom',
-  'editorZoom',
-  'previewZoom',
-  'autoSaveDelay',
-  'editorTextWidth',
-  'previewTextWidth',
-  'splitRatio',
-  'previewDelay',
-  'previewMaxWidth',
-  'imageMaxWidth',
-  'imageQuality',
-  'sidebarWidth',
+interface NumericSettingRange {
+  minimum: number;
+  maximum: number;
+  integer?: boolean;
+}
+
+const NUMERIC_SETTINGS = new Map<keyof AppSettings, NumericSettingRange>([
+  ['editorFontSize', { minimum: 10, maximum: 36, integer: true }],
+  ['previewFontSize', { minimum: 10, maximum: 36, integer: true }],
+  ['previewCodeFontSize', { minimum: 9, maximum: 36, integer: true }],
+  ['uiZoom', { minimum: 75, maximum: 200, integer: true }],
+  ['editorZoom', { minimum: 75, maximum: 200, integer: true }],
+  ['previewZoom', { minimum: 75, maximum: 200, integer: true }],
+  ['autoSaveDelay', { minimum: 250, maximum: 60_000, integer: true }],
+  ['editorTextWidth', { minimum: 40, maximum: 100, integer: true }],
+  ['previewTextWidth', { minimum: 40, maximum: 100, integer: true }],
+  ['splitRatio', { minimum: 20, maximum: 80 }],
+  ['previewDelay', { minimum: 0, maximum: 5_000, integer: true }],
+  ['previewMaxWidth', { minimum: 320, maximum: 2_400, integer: true }],
+  ['imageMaxWidth', { minimum: 0, maximum: 10_000, integer: true }],
+  ['imageQuality', { minimum: 0.1, maximum: 1 }],
+  ['sidebarWidth', { minimum: 0, maximum: 500, integer: true }],
 ]);
 
 function parseSettingValue(key: keyof AppSettings, value: unknown): AppSettings[keyof AppSettings] {
   if (BOOLEAN_SETTINGS.has(key)) return parseBoolean(value);
-  if (STRING_SETTINGS.has(key)) return parseText(value, 16_384);
-  if (NUMERIC_SETTINGS.has(key)) {
-    const maximum = key === 'imageQuality' ? 1 : 1_000_000;
-    return parseFiniteNumber(value, 0, maximum);
+  if (STRING_SETTINGS.has(key)) {
+    if (key === 'defaultOpenPath') return parseAbsolutePathOrEmpty(value);
+    if (key === 'pasteImagesDir') return parseRelativeDirectory(value);
+    return parseText(value, 16_384);
+  }
+  const numericRange = NUMERIC_SETTINGS.get(key);
+  if (numericRange) {
+    return numericRange.integer
+      ? parseInteger(value, numericRange.minimum, numericRange.maximum)
+      : parseFiniteNumber(value, numericRange.minimum, numericRange.maximum);
   }
   switch (key) {
+    case 'contentTheme':
+      return parseEnum(value, CONTENT_THEMES);
+    case 'codeTheme':
+    case 'lightCodeTheme':
+    case 'darkCodeTheme':
+      return parseThemeName(value);
     case 'theme':
       return parseEnum(value, APP_THEMES);
     case 'lightTheme':
@@ -315,7 +361,7 @@ function parseSettingValue(key: keyof AppSettings, value: unknown): AppSettings[
     case 'toolbarItems':
       return parseStringArray(value, 128);
     case 'recentPaths':
-      return parseStringArray(value, 128);
+      return parseAbsolutePathArray(value, 128);
     case 'recentFiles':
       return parseRecentFiles(value);
     case 'fileExplorer':

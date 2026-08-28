@@ -1279,6 +1279,7 @@ test('filters and remembers code-block themes separately for light and dark mode
   try {
     const { page, testRoot } = running;
     await createNewTab(page);
+    await expect(page.locator('.editor-host.active')).toHaveAttribute('data-editor-ready', 'true');
     const codeThemeButton = (name: RegExp) =>
       page
         .locator('#vditorToolbarMount button[data-type="code-theme"]')

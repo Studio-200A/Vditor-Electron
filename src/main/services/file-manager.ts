@@ -3,6 +3,14 @@ import * as path from 'path';
 import { resolveFileIdentity } from './file-identity';
 import { ExternalDocumentChangeError, SafeFileWriter, SafeWriteResult } from './safe-file-writer';
 
+function fileManagerError(
+  message: string,
+  code: 'EEXIST' | 'EINVAL',
+  cause?: unknown,
+): Error & { code: 'EEXIST' | 'EINVAL' } {
+  return Object.assign(new Error(message, { cause }), { code });
+}
+
 export type DocumentWriteResult =
   | SafeWriteResult
   | { error: 'external-change'; content: string; encoding: string }
@@ -195,9 +203,10 @@ export class FileManagerService {
   async createItem(parentDir: string, name: string, type: 'file' | 'directory'): Promise<string> {
     const destination = path.resolve(parentDir, name);
     if (path.dirname(destination) !== path.resolve(parentDir)) {
-      throw new Error('The item name must not contain a path.');
+      throw fileManagerError('The item name must not contain a path.', 'EINVAL');
     }
-    if (fs.existsSync(destination)) throw new Error('An item with that name already exists.');
+    if (fs.existsSync(destination))
+      throw fileManagerError('An item with that name already exists.', 'EEXIST');
     if (type === 'directory') await fs.promises.mkdir(destination);
     else await fs.promises.writeFile(destination, '', 'utf8');
     return destination;
@@ -207,14 +216,15 @@ export class FileManagerService {
     const resolved = path.resolve(oldPath);
     const destination = path.join(path.dirname(resolved), newName);
     if (path.dirname(destination) !== path.dirname(resolved)) {
-      throw new Error('The new name must not contain a path.');
+      throw fileManagerError('The new name must not contain a path.', 'EINVAL');
     }
     if (destination === resolved) return destination;
     if (fs.existsSync(destination)) {
       const caseOnlyRename =
         process.platform === 'win32' &&
         resolved.toLocaleLowerCase() === destination.toLocaleLowerCase();
-      if (!caseOnlyRename) throw new Error('An item with that name already exists.');
+      if (!caseOnlyRename)
+        throw fileManagerError('An item with that name already exists.', 'EEXIST');
     }
     return destination;
   }
@@ -230,7 +240,7 @@ export class FileManagerService {
         await fs.promises.link(resolved, destination);
       } catch (error) {
         if (this.isAlreadyExistsError(error))
-          throw new Error('An item with that name already exists.', { cause: error });
+          throw fileManagerError('An item with that name already exists.', 'EEXIST', error);
         throw error;
       }
       try {
@@ -269,7 +279,7 @@ export class FileManagerService {
         }
       }
       if (this.isAlreadyExistsError(error))
-        throw new Error('An item with that name already exists.', { cause: error });
+        throw fileManagerError('An item with that name already exists.', 'EEXIST', error);
       throw error;
     }
   }
