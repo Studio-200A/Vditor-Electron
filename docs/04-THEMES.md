@@ -29,7 +29,7 @@ Monokai Pro Dark 和 Monokai Pro Light 是历史实现中的例外：应用 CSS 
 | 主题控制器 | `src/renderer/app.js` | 解析当前主题、应用 `data-theme`、切换 Vditor 内容/代码主题、同步状态栏三态主题菜单 |
 | 应用视觉变量 | `src/renderer/styles/app.css` | 为六套壳层主题提供 CSS 变量和必要的组件覆盖 |
 | Vditor 边界 | `src/renderer/vditor-adapter.js` | 集中处理 Vditor toolbar、主题菜单和私有 DOM 结构访问 |
-| 行为测试 | `tests/unit/*`、`tests/e2e/app.spec.ts` | 覆盖配置、主题控件、颜色契约、主题切换和真实 Electron 行为 |
+| 行为测试 | `tests/unit/*`、`tests/e2e/*.spec.ts` | 覆盖配置、主题控件、颜色契约、主题切换和真实 Electron 行为 |
 
 应用主题通过 `document.documentElement.dataset.theme` 生效。CSS 使用 `:root[data-theme='...']` 切换变量组；Vditor 实例继续通过 `setTheme(editorTheme, contentTheme, codeTheme, cssPath)` 接收编辑器、内容和代码主题参数。
 

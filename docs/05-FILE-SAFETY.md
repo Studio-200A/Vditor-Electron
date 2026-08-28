@@ -106,7 +106,7 @@ rename(临时文件, 目标文件)
 - `src/main/services/file-identity.ts`：已存在、缺失祖先、大小写和符号链接 identity；
 - `src/main/services/file-watch-service.ts`：ready/reconciliation、generation、read revision 和 cleanup；
 - `src/renderer/app.js`：content revision、保存队列、冲突/恢复状态和路径重绑定；
-- `tests/unit/` 中对应的文件管理、identity、watcher、recovery 测试，以及 `tests/e2e/app.spec.ts` 中的文件生命周期回归。
+- `tests/unit/` 中对应的文件管理、identity、watcher、recovery 测试，以及 `tests/e2e/document-lifecycle.spec.ts` 中的文件生命周期回归。
 
 截至 2026-08-27，用户在 Linux 手动运行 `npm run check:all`：149/149 单元测试、109/109 Electron E2E，以及格式、lint、类型、Vditor 版本检查和构建全部通过。该证据证明当前本地回归闭环，不关闭第 7 节的已有目标 TOCTOU 边界，也不替代 [`docs/03-CROSS-PLATFORM.md` §9](03-CROSS-PLATFORM.md#9-020-batch-7-deferred-platform-validation) 的 Windows/macOS 实机证据。
 

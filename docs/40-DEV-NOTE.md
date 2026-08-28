@@ -88,7 +88,7 @@ Vditor 的 `setValue()` 异步重渲染，`getValue()` 可能暂时返回旧 DOM
 
 - `tests/unit/vditor-adapter.test.ts`：Range match、仅高亮/滚动与 Selection 行为。
 - `tests/unit/renderer-shell.test.ts`：浮层、菜单、SVG 资源、快捷键、locale 和 adapter 契约。
-- `tests/e2e/app.spec.ts` 的 `finds, navigates, and replaces text in the active document`：逐字符输入、焦点、计数、Custom Highlight、Enter 导航、关闭后 Selection、单项/全部替换、搜索框内保存到磁盘。
+- `tests/e2e/editor-modes.spec.ts` 的 `finds, navigates, and replaces text in the active document`：逐字符输入、焦点、计数、Custom Highlight、Enter 导航、关闭后 Selection、单项/全部替换、搜索框内保存到磁盘。
 
 本轮验证：
 
@@ -154,7 +154,7 @@ Status bar
 - 侧边栏联动、标签排序、菜单和快捷键：`src/renderer/app.js`
 - macOS 原生菜单：`src/main/menu.ts`
 - 文案：`src/renderer/locales.js`
-- 回归：`tests/unit/renderer-shell.test.ts`、`tests/e2e/app.spec.ts`
+- 回归：`tests/unit/renderer-shell.test.ts`、`tests/e2e/*.spec.ts`
 
 ---
 

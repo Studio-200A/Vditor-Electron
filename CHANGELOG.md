@@ -53,7 +53,8 @@
 
 ### Project Maintenance
 
-- **docs(0.2.0):** Synchronized README/README_CN, the architecture map, file-safety contract, development plan, execution tracker, theme notes, and cross-platform handoff with the final 0.2.0 worktree. The 0.2.0 development tracker batch 7 local closure is backed by the 2026-08-27 Linux evidence (149 unit tests and 111 Electron E2E tests); Windows/macOS validation and the documented existing-target TOCTOU boundary remain explicitly deferred.
+- **docs(0.2.0):** Synchronized README/README_CN, the architecture map, file-safety contract, development plan, execution tracker, theme notes, and cross-platform handoff with the final 0.2.0 worktree. 
+- **test(e2e):** split Electron coverage by behavior domain
 
 ## 0.1.5 - Editing Experience Improvement
 
