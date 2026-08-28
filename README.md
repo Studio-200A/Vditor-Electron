@@ -29,7 +29,7 @@ Vditor Desktop takes the writing experience of [Vditor](https://github.com/Vanes
 - [Why Vditor Desktop](#why-vditor-desktop)
 - [Editing modes](#editing-modes)
 - [A workspace that stays out of the way](#a-workspace-that-stays-out-of-the-way)
-- [Protecting Your Work, Thoughtfully](#protecting-your-work-thoughtfully)
+- [Protecting You and Your Content, Thoughtfully](#protecting-you-and-your-content-thoughtfully)
 - [Themes and languages](#themes-and-languages)
 - [Install and run](#install-and-run)
 - [Everyday shortcuts](#everyday-shortcuts)
@@ -76,10 +76,11 @@ Most days you're not managing an editor — you're just writing. Vditor Desktop 
 
 Directory renames/deletes and workspace-level resource limits remain planned work; keep backups of important documents.
 
-## Protecting Your Work, Thoughtfully
+## Protecting You and Your Content, Thoughtfully
 
 Vditor Desktop treats your writing as something to protect, not something to overwrite. Behind the simple Markdown workflow are several safeguards designed to keep an unexpected exit, a second editor, or a changing file system from silently taking your work away:
 
+- **Safer links, by design.** Links in your Markdown only hand clearly supported `http:`, `https:`, and `mailto:` destinations to the system. Scripts, dangerous schemes, and untrusted in-app pages are stopped at the boundary, so one stray link cannot take your editor somewhere it should not go.
 - **Careful saves.** Documents are written through a temporary file in the same directory. Unchanged files are not rewritten, and a failed save leaves both the original file and your unsaved editor content intact.
 - **Recovery after an unexpected exit.** Unsaved work is captured in a private recovery snapshot. When you return, the app checks whether the original file is still the same before offering to save the recovered version; if it is not safe, you can save the recovered content elsewhere.
 - **Awareness of outside changes.** Every open file is monitored, including files opened outside the active workspace. Clean documents can reload automatically, while documents with local edits pause autosave and keep a persistent notice until you decide what should happen.
