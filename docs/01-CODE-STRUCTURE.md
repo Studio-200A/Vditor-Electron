@@ -1,7 +1,7 @@
 # Vditor-Electron Code Structure World Map
 
-- **生成时间：** 2026-08-27
-- **基于的工作区：** `dev-0.2.0`，P07 提交前基线 `3e7eb15`（已包含批次 6、计划外批次 6.5/6.6；0.2.0 开发 tracker 批次 7 的源码、测试和文档修复在此基线上收口）
+- **生成时间：** 2026-08-28
+- **基于的工作区：** `dev-0.2.0`，P08 实现提交 `4f8d641`（已包含批次 6、计划外批次 6.5/6.6、批次 7 与批次 7.1 的源码、测试和文档修复；P08 修改后的全量回归仍待用户手动执行）
 - **文档版本：** v1.9
 - **对应 package.json 版本号：** 0.1.5
 
@@ -15,7 +15,7 @@
 
 **核心功能：** 多标签页 Markdown 编辑、三种编辑模式（IR/SV/WYSIWYG）、分栏预览、文件树侧栏、文档大纲、查找替换、图片插入与压缩、HTML/PDF 导出、TOML 配置持久化、三语国际化（英/简/繁）。
 
-**开发阶段：** 0.2.0 阶段开发中。保存、恢复、工作区内外 watcher、外部修改冲突、外部删除/重新出现/不可读状态、工作区读取/监听深度边界、目录级路径一致性以及 0.2.0 开发 tracker 批次 7 的本地闭环已有实现和测试；Electron 安全边界、已有目标的长期 TOCTOU、发布门槛和 Windows/macOS 实体机验证仍在后续批次。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
+**开发阶段：** 0.2.0 阶段开发中。保存、恢复、工作区内外 watcher、外部修改冲突、外部删除/重新出现/不可读状态、工作区读取/监听深度边界、目录级路径一致性、批次 7 本地闭环和批次 8 导航/外部链接安全代码已有实现与专项验证；P08 修改后的全量回归、IPC/本地资源安全、已有目标的长期 TOCTOU、发布门槛和 Windows/macOS 实体机验证仍在后续工作。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
 
 ---
 
@@ -1233,7 +1233,7 @@ build:assets:
 | `app://app/index.html`     | `dist/renderer/index.html`         |
 | `local-file://root/<path>` | 绝对本地文件路径（`path.resolve`） |
 
-`app://` 协议对请求路径做了白名单根目录限制（`startsWith(path.resolve(allowedRoot) + sep)`）。
+`app://` 协议先校验受信任的 `app://app` host、端口、凭据和 URI 编码，再将解码后的路径限制在固定的资源根目录内（`startsWith(path.resolve(allowedRoot) + sep)`）；`/` 与 `/index.html` 是唯一允许的顶层 renderer 页面，其他 bundled asset 只能作为子资源加载。
 
 ---
 
@@ -1515,7 +1515,7 @@ flowchart TB
 
 ## 15. 测试覆盖情况
 
-截至 2026-08-27，P07 提交前 Linux `npm run check:all` 结果为 11 个单元测试文件、149/149 单元测试通过，Electron Playwright 111/111 通过；格式、lint、类型、Vditor 版本检查和构建也通过。以下覆盖说明反映当前代码，并不把 Linux 结果外推为 Windows/macOS 实体机验证。
+截至 2026-08-28，P07.1 Linux 基线的 `npm run check:all` 结果为 11 个单元测试文件、149/149 单元测试通过，Electron Playwright 112/112 通过；格式、lint、类型、Vditor 版本检查和构建也通过。P08 修改后的 URL/应用协议/导航策略专项单测为 7/7，`navigation-and-resources` 专项 E2E 为 9/9；P08 修改后的全量回归仍待用户手动执行。以下覆盖说明反映当前代码，并不把 Linux 结果外推为 Windows/macOS 实体机验证。
 
 ### 15.1 单元测试（Vitest）
 
@@ -1525,7 +1525,9 @@ flowchart TB
 | ----------------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tests/unit/app-paths.test.ts`      | `src/main/app-paths.ts`                 | Linux XDG 路径、XDG 相对路径回退、Windows Roaming/Local 分离、macOS 应用标识目录、环境变量隔离                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `tests/unit/open-files.test.ts`     | `src/main/open-files.ts`                | 绝对/相对/file-URL 路径提取、去重、过滤标志位/目录/不存在的文件/非 Markdown 扩展名                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `tests/unit/external-url.test.ts`   | `src/main/external-url.ts`              | 仅允许 `http:` / `https:` / `mailto:`；拒绝非字符串、相对路径、应用/文件/脚本/data 协议 |
+| `tests/unit/external-url.test.ts`   | `src/main/external-url.ts`              | 仅允许 `http:` / `https:` / `mailto:`；拒绝非字符串、空白、原始控制字符、非法编码、相对路径、应用/文件/脚本/data 协议 |
+| `tests/unit/app-url.test.ts`        | `src/main/app-url.ts`                   | 受信任 `app://app` resource/page origin、顶层页面路径、host/端口/凭据、query、控制字符和非法百分号编码边界 |
+| `tests/unit/navigation-policy.test.ts` | `src/main/navigation-policy.ts`      | 受信任应用页面、允许的外部 URL 和阻断目标的统一导航分类 |
 | `tests/unit/resolve-markdown-link.test.ts` | `src/main/resolve-markdown-link.ts` | 相对 Markdown 路径、`../`、百分号编码、片段、Windows 路径、缺失/绝对/协议/非 Markdown/非法编码目标拒绝 |
 | `tests/unit/file-manager.test.ts`   | `src/main/services/file-manager.ts` 与 `safe-file-writer.ts` | UTF-8 读取、UTF-8 BOM 检测与剥离、GB18030 回退、同目录安全替换、权限保持、无变化跳过、expected content/absence 基线、临时创建/替换失败保留原文件及清理、权限错误映射、文件/目录创建、路径逃逸拒绝（`../`）、目录优先自然排序、目录链接工作区内外分类与深度、普通文件/目录重命名冲突与失败回滚、二进制图片写入 |
 | `tests/unit/file-identity.test.ts` | `src/main/services/file-identity.ts` | 已存在路径 realpath、大小写敏感规则、符号链接别名、缺失文件和缺失祖先路径拼接、跨平台 path 模型 |
@@ -1537,7 +1539,7 @@ flowchart TB
 
 ### 15.2 E2E 测试（Playwright Electron，按行为域拆分）
 
-`tests/e2e/support/app-harness.ts` 统一提供 Electron 启动、每测试临时根目录、设置读取、主题选择和关闭清理；它不保留跨测试的应用、页面或文件状态。Playwright 自动发现以下四个 spec，当前为 107 个 `test()` 声明、112 条展开用例：
+`tests/e2e/support/app-harness.ts` 统一提供 Electron 启动、每测试临时根目录、设置读取、主题选择和关闭清理；它不保留跨测试的应用、页面或文件状态。Playwright 自动发现以下四个 spec，当前为 109 个 `test()` 声明、114 条展开用例；P08 新增的 2 个声明位于 `navigation-and-resources.spec.ts`。
 
 | 测试文件 | 主要责任 |
 | --- | --- |
@@ -1588,6 +1590,8 @@ flowchart TB
 - 文内锚点和 Vditor TOC 在 IR / WYSIWYG / SV 双面板中仅经 Ctrl/Cmd+单击平滑跳转
 - 相对 Markdown 链接在三种模式下打开目标标签，并继续定位可选片段
 - `app:openExternal` 在特权 IPC 边界拒绝 `javascript:` 等非白名单协议
+- `will-navigate` 与 `window.open` 对受信任 `app://app` renderer 页面、外部白名单 URL 和其他目标使用同一套导航分类；不允许通过 `app:` 导航到任意 host 或 bundled asset 页面
+- renderer 阻止未被允许的文档 active scheme（包括注入的 `javascript:` 链接）执行，同时保留 Instant Rendering 链接展开编辑行为
 - 窄窗口工具栏折行时，下拉菜单不改变编辑区几何；隐藏工具栏后标题栏仅在编辑区侧保留投影
 
 #### 工作区与文件树
@@ -1664,9 +1668,9 @@ flowchart TB
 
 | 模块                                | 当前状态                                   | 待补充                                                                                                                                                                        |
 | ----------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/main/index.ts`                 | E2E + 外部 URL 白名单单测                   | 缺乏 `resolveSystemLocale` / `isMaximizedLikeBounds` / `initialWindowBackground` 主题映射 / watcher `on('all')` 事件流的单元测试                |
+| `src/main/index.ts`                 | E2E + URL/导航策略单测                     | 缺乏 `resolveSystemLocale` / `isMaximizedLikeBounds` / `initialWindowBackground` 主题映射 / watcher `on('all')` 事件流的单元测试                |
 | `src/main/preload.ts`               | 仅 E2E 覆盖                                | 无 Bridge API surface 类型契约测试                                                                                                                                            |
-| `src/main/protocol.ts`              | 仅 E2E 覆盖                                | 无 `local-file://` 非绝对路径 / 不存在文件 / URL 遍历攻击的单元测试                                                                                                           |
+| `src/main/protocol.ts`              | app URL 单测 + 资源 E2E                    | 无 protocol handler 直接单测，以及 `local-file://` 非绝对路径 / 不存在文件 / URL 遍历攻击的单元测试                                                                              |
 | `src/main/menu.ts`                  | 仅 E2E 覆盖                                | 无三语言菜单标签生成的独立测试                                                                                                                                                |
 | `src/main/services/file-manager.ts` | 单元测试较完善                             | 已覆盖 `exists()`、空目录 `listDir`、创建/重命名目标冲突、路径逃逸、safe writer 基线和失败回滚；Windows/macOS 的权限、占用和目录级 no-replace 原生语义仍见 [`docs/03-CROSS-PLATFORM.md` §9](03-CROSS-PLATFORM.md#9-020-batch-7-deferred-platform-validation) |
 | `src/main/services/file-identity.ts` | 单元测试已覆盖 Linux 与注入路径模型       | Windows/macOS 实际卷大小写、Unicode 规范化、junction/Finder alias 和平台原生 identity 语义仍待实体机验证 |

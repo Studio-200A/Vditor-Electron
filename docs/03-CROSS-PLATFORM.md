@@ -79,7 +79,7 @@ Node's `path` implementation varies with the host platform, and some `fs` operat
 - The 0.2.0 file-state flows cover external modification, deletion, reappearance, and unreadable/permission states.
 - Directory rename, directory deletion, Save As watcher rebinding, descendant path updates, and invalid workspace-root reset are implemented and Linux-tested; Windows/macOS filesystem semantics remain unvalidated.
 
-As of 2026-08-27, 0.2.0 development tracker batch 7 is closed for the Linux-local implementation and regression scope. The user-run Linux `npm run check:all` result covered 149/149 unit tests and 109/109 Electron Playwright tests, in addition to formatting, lint, typecheck, Vditor-version, and build checks. This is local regression evidence only; it does not close any Windows or macOS row below.
+As of 2026-08-28, 0.2.0 development tracker batches 7 and 7.1 are closed for the Linux-local implementation and regression scope. The user-run Linux `npm run check:all` result covered 149/149 unit tests and 112/112 Electron Playwright tests, in addition to formatting, lint, typecheck, Vditor-version, and build checks. Batch 8 has separately passed its focused URL/navigation checks; its post-change full regression is still pending in the execution tracker. This is local regression evidence only; it does not close any Windows or macOS row below.
 
 ### Not yet platform-validated
 

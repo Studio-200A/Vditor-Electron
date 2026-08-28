@@ -21,6 +21,10 @@
 - **feat(external file state):** Open documents now distinguish external deletion, reappearance, and unreadable/permission states. Autosave pauses while a target is unavailable, and the editor keeps its in-memory content until the user chooses an explicit resolution.
 - **feat(recreate backup):** Recreating an unavailable file copies the content captured before the unavailable state to the system clipboard and shows a five-second localized confirmation notice. The clipboard backup is not contaminated by edits made while the persistent notice is visible.
 
+### Security Improvements
+
+- **fix(navigation):** Unified URL validation and navigation decisions for `will-navigate`, `window.open`, and external-link handling; only `http:`, `https:`, and `mailto:` leave through the system handler, untrusted `app:` pages and bundled-asset navigations are blocked, and unsupported active schemes in rendered document links cannot execute in the renderer.
+
 ### Bug Fixes
 
 #### Workbench, toolbar, and menus
