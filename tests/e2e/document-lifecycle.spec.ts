@@ -385,6 +385,115 @@ test('shows only the workspace name and refresh action in the explorer header', 
   }
 });
 
+test('places explorer creation actions on blank tree space', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-tree-create-'));
+  const directory = path.join(workspace, 'notes');
+  const filePath = path.join(workspace, 'README.md');
+  const openFilePath = path.join(directory, 'Untitled 2.md');
+  const existingFilePath = path.join(workspace, 'Untitled 1.md');
+  fs.mkdirSync(directory);
+  fs.writeFileSync(path.join(directory, 'inside.md'), '# Inside');
+  fs.writeFileSync(filePath, '# Read me');
+  fs.writeFileSync(openFilePath, '# Open');
+  fs.writeFileSync(existingFilePath, '# Existing');
+  fs.mkdirSync(path.join(directory, 'Untitled 1'));
+  const running = await launchApp({
+    editMode: 'sv',
+    restoreTabs: true,
+    restoreWorkspace: true,
+    sidebarVisible: true,
+    session: { workspacePath: workspace, activeFilePath: openFilePath, openFiles: [openFilePath] },
+  });
+  try {
+    const { page } = running;
+    const contextMenu = page.locator('#contextMenu');
+    const newFile = contextMenu.locator('button', { hasText: 'New File' });
+    const newFolder = contextMenu.locator('button', { hasText: 'New Folder' });
+    const file = page.locator(`#fileTree > .tree-file[data-path="${filePath}"]`);
+    const directoryRow = page.locator(`#fileTree > .tree-dir[data-path="${directory}"]`);
+
+    await file.click({ button: 'right' });
+    await expect(contextMenu).toBeVisible();
+    await expect(newFile).toHaveCount(0);
+    await expect(newFolder).toHaveCount(0);
+    await page.keyboard.press('Escape');
+
+    await directoryRow.click({ button: 'right' });
+    await expect(contextMenu).toBeVisible();
+    await expect(newFile).toHaveCount(0);
+    await expect(newFolder).toHaveCount(0);
+    await page.keyboard.press('Escape');
+
+    await page.locator('#fileTree').dispatchEvent('contextmenu', {
+      button: 2,
+      clientX: 120,
+      clientY: 500,
+    });
+    await newFile.click();
+    const createdFile = path.join(workspace, 'Untitled 3.md');
+    await expect.poll(() => fs.existsSync(createdFile)).toBe(true);
+    await expect(page.locator(`#fileTree .tree-file[data-path="${createdFile}"]`)).toBeVisible();
+    await expect(page.locator('.document-tab.active > span')).toHaveText('Untitled 3.md');
+    await expect(page.locator('#confirmModal')).toBeHidden();
+    await page.locator('.editor-host.active .vditor-sv').fill('Created content');
+    await page.keyboard.press('Control+S');
+    await expect.poll(() => fs.readFileSync(createdFile, 'utf8').trimEnd()).toBe('Created content');
+
+    await page.locator('#fileTree').dispatchEvent('contextmenu', {
+      button: 2,
+      clientX: 120,
+      clientY: 500,
+    });
+    await expect(newFile).toBeVisible();
+    await expect(newFolder).toBeVisible();
+    await newFolder.click();
+    const createdFolder = path.join(workspace, 'Untitled 1');
+    await expect.poll(() => fs.existsSync(createdFolder)).toBe(true);
+    await expect(page.locator('#confirmModal')).toBeHidden();
+
+    await page.locator('#fileTree').dispatchEvent('contextmenu', {
+      button: 2,
+      clientX: 120,
+      clientY: 500,
+    });
+    await newFile.click();
+    const secondFile = path.join(workspace, 'Untitled 4.md');
+    await expect.poll(() => fs.existsSync(secondFile)).toBe(true);
+    await expect(page.locator('.document-tab.active > span')).toHaveText('Untitled 4.md');
+    await expect(page.locator('#confirmModal')).toBeHidden();
+
+    await page.locator('#fileTree').dispatchEvent('contextmenu', {
+      button: 2,
+      clientX: 120,
+      clientY: 500,
+    });
+    await newFolder.click();
+    const secondFolder = path.join(workspace, 'Untitled 2');
+    await expect.poll(() => fs.existsSync(secondFolder)).toBe(true);
+    await expect(page.locator('#confirmModal')).toBeHidden();
+
+    await directoryRow.click();
+    const directoryChildren = page.locator(
+      `#fileTree > .tree-children[data-parent-path="${directory}"]`,
+    );
+    await expect(
+      directoryChildren.locator('.tree-file').filter({ hasText: /^inside\.md$/ }),
+    ).toBeVisible();
+    await directoryChildren.dispatchEvent('contextmenu', {
+      button: 2,
+      clientX: 120,
+      clientY: 500,
+    });
+    await newFolder.click();
+    const nestedFolderPath = path.join(directory, 'Untitled 3');
+    await expect.poll(() => fs.existsSync(nestedFolderPath)).toBe(true);
+    await expect(page.locator('#confirmModal')).toBeHidden();
+  } finally {
+    await closeApp(running);
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 test('shows the move-to-trash confirmation as a draggable in-window dialog', async () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-trash-dialog-'));
   fs.writeFileSync(path.join(workspace, 'README.md'), '# Read me');
@@ -1295,6 +1404,164 @@ test('reveals the file explorer after opening a folder from the File menu', asyn
     await expect.poll(() => readSetting(testRoot, 'workspace', 'sidebarVisible')).toBe(true);
   } finally {
     await closeApp(running);
+  }
+});
+
+test('uses one remembered directory for file and folder open dialogs', async () => {
+  const initialDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-open-initial-'));
+  const selectedDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-open-selected-'));
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-open-workspace-'));
+  const selectedFile = path.join(selectedDirectory, 'opened.md');
+  fs.writeFileSync(selectedFile, '# Opened');
+  const running = await launchApp({
+    defaultOpenPath: initialDirectory,
+    sidebarVisible: true,
+  });
+  try {
+    const { app, page, testRoot } = running;
+    await app.evaluate(
+      ({ dialog }, paths) => {
+        let fileInvocation = 0;
+        const calls: { defaultPath?: string; properties?: string[] }[] = [];
+        dialog.showOpenDialog = async (_window, options) => {
+          calls.push({ defaultPath: options.defaultPath, properties: options.properties });
+          if (options.properties?.includes('openDirectory'))
+            return { canceled: false, filePaths: [paths.workspace] };
+          if (fileInvocation++ === 0) return { canceled: false, filePaths: [paths.file] };
+          return { canceled: true, filePaths: [] };
+        };
+        (
+          globalThis as typeof globalThis & { __vditorOpenDialogCalls?: unknown[] }
+        ).__vditorOpenDialogCalls = calls;
+      },
+      { file: selectedFile, workspace },
+    );
+
+    await page.locator('#appMenuBar [data-menu="main"]').click();
+    await page
+      .locator('.app-menu-popup button')
+      .filter({ hasText: /^Open File/ })
+      .click();
+    await expect(page.locator('#statusPath')).toHaveText(selectedFile);
+    await expect
+      .poll(() => readSetting(testRoot, 'files', 'defaultOpenPath'))
+      .toBe(selectedDirectory);
+
+    await page.locator('#appMenuBar [data-menu="main"]').click();
+    await page
+      .locator('.app-menu-popup button')
+      .filter({ hasText: /^Open Folder/ })
+      .click();
+    await expect(page.locator('#workspaceName')).toHaveText(path.basename(workspace));
+    await expect.poll(() => readSetting(testRoot, 'files', 'defaultOpenPath')).toBe(workspace);
+
+    await page.locator('#appMenuBar [data-menu="main"]').click();
+    await page
+      .locator('.app-menu-popup button')
+      .filter({ hasText: /^Open File/ })
+      .click();
+    await expect
+      .poll(async () =>
+        app.evaluate(
+          () =>
+            (globalThis as typeof globalThis & { __vditorOpenDialogCalls?: unknown[] })
+              .__vditorOpenDialogCalls?.length || 0,
+        ),
+      )
+      .toBe(3);
+    const calls = await app.evaluate(
+      () =>
+        (
+          globalThis as typeof globalThis & {
+            __vditorOpenDialogCalls?: { defaultPath?: string; properties?: string[] }[];
+          }
+        ).__vditorOpenDialogCalls,
+    );
+    expect(calls).toEqual([
+      { defaultPath: initialDirectory, properties: ['openFile', 'multiSelections'] },
+      { defaultPath: selectedDirectory, properties: ['openDirectory'] },
+      { defaultPath: workspace, properties: ['openFile', 'multiSelections'] },
+    ]);
+  } finally {
+    await closeApp(running);
+    fs.rmSync(initialDirectory, { recursive: true, force: true });
+    fs.rmSync(selectedDirectory, { recursive: true, force: true });
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('exports local images without application-only resource URLs', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-export-resources-'));
+  const assetsDirectory = path.join(workspace, 'assets');
+  const filePath = path.join(workspace, 'export.md');
+  const htmlPath = path.join(workspace, 'exported.html');
+  const pdfPath = path.join(workspace, 'exported.pdf');
+  fs.mkdirSync(assetsDirectory);
+  fs.writeFileSync(
+    path.join(assetsDirectory, 'pixel.png'),
+    Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64',
+    ),
+  );
+  fs.writeFileSync(filePath, '![pixel](assets/pixel.png)\n\n# Export');
+  const running = await launchApp({
+    editMode: 'sv',
+    restoreTabs: true,
+    restoreWorkspace: true,
+    sidebarVisible: true,
+    session: { workspacePath: workspace, activeFilePath: filePath, openFiles: [filePath] },
+  });
+  try {
+    const { app, page } = running;
+    await expect(page.locator('.editor-host.active img')).toBeVisible();
+    await app.evaluate(
+      ({ dialog }, paths) => {
+        let invocation = 0;
+        dialog.showSaveDialog = async () => ({
+          canceled: false,
+          filePath: paths[invocation++],
+        });
+      },
+      [htmlPath, pdfPath],
+    );
+    await app.evaluate(({ BrowserWindow }) => {
+      const originalLoadURL = BrowserWindow.prototype.loadURL;
+      BrowserWindow.prototype.loadURL = function (url, options) {
+        const prefix = 'data:text/html;charset=utf-8,';
+        if (url.startsWith(prefix))
+          (globalThis as typeof globalThis & { __vditorPdfHtml?: string }).__vditorPdfHtml =
+            decodeURIComponent(url.slice(prefix.length));
+        return originalLoadURL.call(this, url, options);
+      };
+    });
+
+    await page.locator('#appMenuBar [data-menu="main"]').click();
+    await page
+      .locator('.app-menu-popup button')
+      .filter({ hasText: /^Export HTML/ })
+      .click();
+    await expect.poll(() => fs.existsSync(htmlPath)).toBe(true);
+    const html = fs.readFileSync(htmlPath, 'utf8');
+    expect(html).not.toContain('local-file://');
+    expect(html).not.toContain('app://');
+    expect(html).toContain('assets/pixel.png');
+
+    await page.locator('#appMenuBar [data-menu="main"]').click();
+    await page
+      .locator('.app-menu-popup button')
+      .filter({ hasText: /^Export PDF/ })
+      .click();
+    await expect.poll(() => fs.existsSync(pdfPath)).toBe(true);
+    expect(fs.statSync(pdfPath).size).toBeGreaterThan(0);
+    const pdfHtml = await app.evaluate(
+      () => (globalThis as typeof globalThis & { __vditorPdfHtml?: string }).__vditorPdfHtml || '',
+    );
+    expect(pdfHtml).toContain('data:image/png;base64,');
+    expect(pdfHtml).not.toContain('local-file://');
+  } finally {
+    await closeApp(running);
+    fs.rmSync(workspace, { recursive: true, force: true });
   }
 });
 

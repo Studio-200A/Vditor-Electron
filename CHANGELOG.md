@@ -24,6 +24,7 @@
 ### Security Improvements
 
 - **fix(navigation):** Unified URL validation and navigation decisions for `will-navigate`, `window.open`, and external-link handling; only `http:`, `https:`, and `mailto:` leave through the system handler, untrusted `app:` pages and bundled-asset navigations are blocked, and unsupported active schemes in rendered document links cannot execute in the renderer.
+- **fix(IPC security):** Restricted privileged renderer IPC to the trusted top-level application page and validated high-risk paths, names, enums, sizes, settings, and binary payloads before side effects; malformed or untrusted requests now fail with stable errors.
 
 ### Bug Fixes
 
@@ -34,6 +35,9 @@
 - **fix(persistent notices):** Unified recovery and external-conflict banners around the persistent warning style, including the warning SVG, two-row narrow-layout behavior, larger 15px copy and action text, draggable overwrite confirmation, and readable red-and-white danger actions across light, dark, and Monokai themes.
 - **fix(toolbar layout):** Stabilized the Files/Outline tab boundary when the shared toolbar is hidden or wraps; the sidebar tabs, toolbar, and loading skeleton now own their bottom border and shadow consistently across all six application themes.
 - **fix(context menu):** Disabled Paste and Paste as Plain Text when the system clipboard has no content to insert.
+- **fix(explorer context menu):** Moved New File and New Folder from file and directory item menus to blank explorer space, and now create collision-free `Untitled x.md` files and `Untitled x` folders automatically with independent number sequences.
+- **fix(export resources):** HTML exports now use portable relative local resources, while PDF exports embed local images instead of retaining `local-file://` URLs.
+- **fix(open dialogs):** File and folder open dialogs now share the last confirmed selection directory.
 - **fix(accessibility):** Use the active theme accent for keyboard-visible focus rings across application controls.
 - **fix(asset layout):** Organized application icons, symbolic UI icons, and notification icons under dedicated renderer asset directories; the offline asset build and Linux release script now follow the same paths.
 

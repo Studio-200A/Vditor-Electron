@@ -12,7 +12,10 @@
     settings: null,
     defaultSettings: null,
     locale: 'en_US',
-    untitledCounter: 0,
+    untitledCounters: {
+      file: 0,
+      directory: 0,
+    },
     treeTimer: null,
     workspaceRevision: 0,
     toolbarWrapHeight: 0,
@@ -1610,7 +1613,7 @@
       providedTitle ||
       (filePath
         ? fileName(filePath)
-        : t('tab.untitled', { number: untitledNumber ?? ++state.untitledCounter }));
+        : t('tab.untitled', { number: untitledNumber ?? ++state.untitledCounters.file }));
     const tab = {
       id: uid(),
       filePath,
@@ -1740,23 +1743,40 @@
     }
   }
 
-  async function newTab() {
+  function untitledCollisionKey(name) {
+    return name.replace(/\.(?:md|markdown|mdown|mkd|mkdn)$/i, '').toLocaleLowerCase();
+  }
+
+  function untitledItemName(number, type) {
+    const title = t('tab.untitled', { number });
+    return type === 'file' ? `${title}.md` : title;
+  }
+
+  async function nextUntitledNumber(parent, type) {
     let entries = [];
-    if (state.workspace) {
+    if (parent) {
       try {
-        entries = await window.fileAPI.listDir(state.workspace);
+        entries = await window.fileAPI.listDir(parent, state.workspace || undefined);
       } catch (_) {}
     }
-    let number = state.untitledCounter + 1;
-    while (
-      entries.some(
-        (entry) =>
-          entry.name.toLocaleLowerCase() ===
-          `${t('tab.untitled', { number })}.md`.toLocaleLowerCase(),
-      )
-    )
-      number++;
-    state.untitledCounter = number;
+    const occupiedNames = new Set();
+    entries.forEach((entry) => {
+      if (entry?.type === type && entry.name) occupiedNames.add(untitledCollisionKey(entry.name));
+    });
+    if (type === 'file') {
+      state.tabs.forEach((tab) => {
+        if (tab.title) occupiedNames.add(untitledCollisionKey(tab.title));
+        if (tab.filePath) occupiedNames.add(untitledCollisionKey(fileName(tab.filePath)));
+      });
+    }
+    let number = state.untitledCounters[type] + 1;
+    while (occupiedNames.has(untitledCollisionKey(untitledItemName(number, type)))) number++;
+    state.untitledCounters[type] = number;
+    return number;
+  }
+
+  async function newTab() {
+    const number = await nextUntitledNumber(state.workspace, 'file');
     createTab({ untitledNumber: number });
   }
 
@@ -2650,7 +2670,7 @@
     tab.filePath = null;
     tab.fileIdentity = null;
     tab.baseDir = '';
-    tab.title = t('tab.untitled', { number: ++state.untitledCounter });
+    tab.title = t('tab.untitled', { number: ++state.untitledCounters.file });
     tab.savedContent = '';
     tab.expectedSavedContent = '';
     tab.modified = tab.content !== '';
@@ -2728,17 +2748,29 @@
   }
 
   async function chooseFiles() {
-    const paths = await window.fileAPI.openFileDialog();
+    const paths = await window.fileAPI.openFileDialog(state.settings.defaultOpenPath || undefined);
     await openPaths(paths);
+    if (paths?.[0]) await rememberOpenDialogDirectory(paths[0]);
   }
   async function chooseFolder() {
-    const folder = await window.fileAPI.openFolderDialog();
+    const folder = await window.fileAPI.openFolderDialog(
+      state.settings.defaultOpenPath || undefined,
+    );
     if (folder) {
       await setWorkspace(folder);
       toggleSidebar(true);
       const filesTab = $('.toolbar-sidebar-tabs [data-view="files"]');
       if (filesTab && !filesTab.classList.contains('active')) filesTab.click();
     }
+  }
+
+  // Native dialogs do not expose the directory visited before cancellation.
+  // Remember the last confirmed selection instead.
+  async function rememberOpenDialogDirectory(filePath) {
+    const directory = await window.fileAPI.dirname(filePath);
+    if (!directory || directory === state.settings.defaultOpenPath) return;
+    state.settings.defaultOpenPath = directory;
+    await queueSettingsSave({ defaultOpenPath: directory });
   }
 
   async function setWorkspace(folder) {
@@ -2846,6 +2878,7 @@
       else {
         const children = document.createElement('div');
         children.className = 'tree-children';
+        children.dataset.parentPath = entry.path;
         container.appendChild(children);
         const targetDepth = entry.link?.workspaceDepth ?? depth + 1;
         const createsLinkCycle =
@@ -3049,32 +3082,31 @@
 
   function showTreeMenu(event, entry, row) {
     event.preventDefault();
-    const actions =
-      entry.type === 'directory'
-        ? [
-            { label: t('context.newFile'), action: () => createExplorerItem(entry.path, 'file') },
-            {
-              label: t('context.newFolder'),
-              action: () => createExplorerItem(entry.path, 'directory'),
-            },
-          ]
-        : [];
-    actions.push(
+    showContextMenu(event, [
       { label: t('context.rename'), action: () => renameExplorerItem(entry, row) },
       { label: t('context.trash'), action: () => deleteExplorerItem(entry) },
       { label: t('context.reveal'), action: () => window.appAPI.showItemInFolder(entry.path) },
-    );
-    showContextMenu(event, actions);
+    ]);
   }
 
-  function showWorkspaceTreeMenu(event) {
+  function treeContextParent(target) {
+    const element = target instanceof Element ? target : null;
+    return element?.closest('.tree-children')?.dataset.parentPath || state.workspace;
+  }
+
+  function showWorkspaceTreeMenu(event, parent = state.workspace) {
     event.preventDefault();
     const actions = [
       { label: t('context.changeWorkspace'), action: chooseFolder },
       {
         label: t('context.newFile'),
-        action: createWorkspaceUntitledFile,
-        disabled: !state.workspace,
+        action: () => createExplorerItem(parent, 'file'),
+        disabled: !parent,
+      },
+      {
+        label: t('context.newFolder'),
+        action: () => createExplorerItem(parent, 'directory'),
+        disabled: !parent,
       },
       {
         label: t('context.openWorkspace'),
@@ -3085,27 +3117,14 @@
     showContextMenu(event, actions);
   }
 
-  async function createWorkspaceUntitledFile() {
-    if (!state.workspace) return;
-    const number = state.untitledCounter + 1;
-    const name = `${t('tab.untitled', { number })}.md`;
-    try {
-      const created = await window.fileAPI.createItem(state.workspace, name, 'file');
-      state.untitledCounter = number;
-      await refreshTree();
-      await openPath(created);
-    } catch (error) {
-      showMessage(error.message, true);
-    }
-  }
-
   async function createExplorerItem(parent, type) {
-    const name = prompt(type === 'file' ? t('workspace.fileName') : t('workspace.folderName'));
-    if (!name) return;
+    if (!parent) return;
+    const number = await nextUntitledNumber(parent, type);
+    const name = untitledItemName(number, type);
     try {
       const created = await window.fileAPI.createItem(parent, name, type);
       await refreshTree();
-      if (type === 'file') openPath(created);
+      if (type === 'file') await openPath(created);
     } catch (error) {
       showMessage(error.message, true);
     }
@@ -3646,24 +3665,120 @@
     }
   }
 
-  function makeExportHTML(tab) {
-    const body = tab.vditor ? tab.vditor.getHTML() : `<pre>${escapeHTML(tab.content)}</pre>`;
-    return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHTML(stripExtension(tab.title))}</title><style>body{max-width:860px;margin:40px auto;padding:0 24px;font:16px/1.7 system-ui;color:#24292f}pre,code{font-family:ui-monospace,monospace}pre{padding:16px;overflow:auto;background:#f6f8fa}img{max-width:100%}table{border-collapse:collapse}td,th{border:1px solid #d0d7de;padding:6px 12px}</style></head><body>${body}</body></html>`;
+  function exportBodySnapshot(tab) {
+    return tab.vditor
+      ? VDITOR.withOriginalImageSources(tab.host, () => tab.vditor.getHTML())
+      : `<pre>${escapeHTML(tab.content)}</pre>`;
+  }
+
+  function portableExportSource(source, sourceBaseUrl, targetBaseUrl) {
+    if (!source || source.startsWith('#')) return source;
+    let resolved;
+    try {
+      resolved = new URL(source, sourceBaseUrl || 'https://vditor-export.invalid/');
+    } catch (_) {
+      return source;
+    }
+    if (resolved.protocol === 'app:') return null;
+    if (resolved.protocol !== 'local-file:') return source;
+    if (!targetBaseUrl) return null;
+    return VDITOR.relativeSourceFromLocalUrl(resolved.href, targetBaseUrl) || null;
+  }
+
+  function normalizeExportBody(body, tab, outputDirectory = tab.baseDir) {
+    const template = document.createElement('template');
+    template.innerHTML = body;
+    const sourceBaseUrl = localResourceBase(tab.baseDir);
+    const targetBaseUrl = localResourceBase(outputDirectory);
+    template.content.querySelectorAll('img[src], a[href]').forEach((element) => {
+      const attribute = element.tagName === 'IMG' ? 'src' : 'href';
+      const source = element.getAttribute(attribute) || '';
+      const portableSource = portableExportSource(source, sourceBaseUrl, targetBaseUrl);
+      if (portableSource === null) element.removeAttribute(attribute);
+      else if (portableSource !== source) element.setAttribute(attribute, portableSource);
+    });
+    return template.innerHTML;
+  }
+
+  function imageMimeType(source) {
+    const extension = source.split(/[?#]/, 1)[0].toLowerCase().split('.').pop();
+    return (
+      {
+        apng: 'image/apng',
+        avif: 'image/avif',
+        gif: 'image/gif',
+        jpeg: 'image/jpeg',
+        jpg: 'image/jpeg',
+        png: 'image/png',
+        svg: 'image/svg+xml',
+        webp: 'image/webp',
+      }[extension] || 'application/octet-stream'
+    );
+  }
+
+  function bytesToBase64(bytes) {
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize)
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+    return btoa(binary);
+  }
+
+  async function embedExportImages(body, tab) {
+    const baseUrl = localResourceBase(tab.baseDir);
+    if (!baseUrl) return body;
+    const template = document.createElement('template');
+    template.innerHTML = body;
+    const images = Array.from(template.content.querySelectorAll('img[src]'));
+    await Promise.all(
+      images.map(async (image) => {
+        const source = image.getAttribute('src') || '';
+        if (!source || source.startsWith('#')) return;
+        let resolved;
+        try {
+          resolved = new URL(source, baseUrl);
+        } catch (_) {
+          return;
+        }
+        if (resolved.protocol !== 'local-file:') return;
+        try {
+          const response = await fetch(resolved.href);
+          if (!response.ok) return;
+          const blob = await response.blob();
+          const bytes = new Uint8Array(await blob.arrayBuffer());
+          const contentType = blob.type.startsWith('image/') ? blob.type : imageMimeType(source);
+          image.setAttribute('src', `data:${contentType};base64,${bytesToBase64(bytes)}`);
+        } catch (_) {
+          // Keep the relative source when a local image cannot be read for PDF export.
+        }
+      }),
+    );
+    return template.innerHTML;
+  }
+
+  function makeExportHTML(tab, body = exportBodySnapshot(tab), outputDirectory = tab.baseDir) {
+    const portableBody = normalizeExportBody(body, tab, outputDirectory);
+    return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHTML(stripExtension(tab.title))}</title><style>body{max-width:860px;margin:40px auto;padding:0 24px;font:16px/1.7 system-ui;color:#24292f}pre,code{font-family:ui-monospace,monospace}pre{padding:16px;overflow:auto;background:#f6f8fa}img{max-width:100%}table{border-collapse:collapse}td,th{border:1px solid #d0d7de;padding:6px 12px}</style></head><body>${portableBody}</body></html>`;
   }
   async function exportHTML() {
     const tab = activeTab();
     if (!tab) return;
     const output = await window.fileAPI.exportDialog('html', `${stripExtension(tab.title)}.html`);
     if (output) {
-      await window.fileAPI.writeFile(output, makeExportHTML(tab));
+      const outputDirectory = await window.fileAPI.dirname(output);
+      await window.fileAPI.writeFile(
+        output,
+        makeExportHTML(tab, exportBodySnapshot(tab), outputDirectory),
+      );
       showMessage(`已导出 ${output}`);
     }
   }
   async function exportPDF() {
     const tab = activeTab();
     if (!tab) return;
+    const body = await embedExportImages(normalizeExportBody(exportBodySnapshot(tab), tab), tab);
     const output = await window.appAPI.exportPDF(
-      makeExportHTML(tab),
+      makeExportHTML(tab, body),
       `${stripExtension(tab.title)}.pdf`,
     );
     if (output) showMessage(`已导出 ${output}`);
@@ -4606,7 +4721,7 @@
     $('#refreshTree').onclick = refreshTree;
     $('#fileTree').addEventListener('contextmenu', (event) => {
       if (event.target.closest('.tree-row, button')) return;
-      showWorkspaceTreeMenu(event);
+      showWorkspaceTreeMenu(event, treeContextParent(event.target));
     });
     $('#workspaceHeading').onclick = () => {
       if (!state.workspace) chooseFolder();

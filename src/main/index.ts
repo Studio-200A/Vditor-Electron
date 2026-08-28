@@ -340,7 +340,8 @@ function onTrusted(channel: string, handler: TrustedMessageHandler): void {
 
 function registerIpcHandlers(): void {
   handleTrusted(IPC_CHANNELS.fileOpenDialog, async (_event, ...args) => {
-    requireArgumentCount(args, 0);
+    requireArgumentCount(args, 0, 1);
+    const defaultDirectory = parseOptionalAbsolutePath(args[0]);
     const result = await dialog.showOpenDialog(mainWindow!, {
       title: tr('Open Markdown Files', '打开 Markdown 文件', '開啟 Markdown 檔案'),
       filters: [
@@ -348,14 +349,17 @@ function registerIpcHandlers(): void {
         { name: 'All Files', extensions: ['*'] },
       ],
       properties: ['openFile', 'multiSelections'],
+      defaultPath: defaultDirectory,
     });
     return result.canceled ? [] : result.filePaths;
   });
   handleTrusted(IPC_CHANNELS.fileOpenFolderDialog, async (_event, ...args) => {
-    requireArgumentCount(args, 0);
+    requireArgumentCount(args, 0, 1);
+    const defaultDirectory = parseOptionalAbsolutePath(args[0]);
     const result = await dialog.showOpenDialog(mainWindow!, {
       title: tr('Open Folder', '打开文件夹', '開啟資料夾'),
       properties: ['openDirectory'],
+      defaultPath: defaultDirectory,
     });
     return result.canceled ? null : result.filePaths[0];
   });

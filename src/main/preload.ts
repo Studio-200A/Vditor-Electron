@@ -8,8 +8,10 @@ const on = (channel: string, callback: (...args: any[]) => void) => {
 };
 
 contextBridge.exposeInMainWorld('fileAPI', {
-  openFileDialog: () => ipcRenderer.invoke(IPC_CHANNELS.fileOpenDialog),
-  openFolderDialog: () => ipcRenderer.invoke(IPC_CHANNELS.fileOpenFolderDialog),
+  openFileDialog: (defaultDirectory?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.fileOpenDialog, defaultDirectory),
+  openFolderDialog: (defaultDirectory?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.fileOpenFolderDialog, defaultDirectory),
   saveFileDialog: (defaultPath?: string, defaultDirectory?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.fileSaveDialog, defaultPath, defaultDirectory),
   exportDialog: (type: 'html' | 'pdf', defaultPath?: string) =>

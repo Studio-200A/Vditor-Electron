@@ -1,8 +1,8 @@
 # Vditor-Electron Code Structure World Map
 
 - **生成时间：** 2026-08-28
-- **基于的工作区：** `dev-0.2.0`，P08 实现提交 `4f8d641`（已包含批次 6、计划外批次 6.5/6.6、批次 7 与批次 7.1 的源码、测试和文档修复；P08 Linux 全量回归和手测已完成）
-- **文档版本：** v1.10
+- **基于的工作区：** `dev-0.2.0` 当前 P09 实现（基础安全提交 `d89cff5`，包含 P09 手测反馈修正）
+- **文档版本：** v1.11
 - **对应 package.json 版本号：** 0.1.5
 
 ---
@@ -15,7 +15,7 @@
 
 **核心功能：** 多标签页 Markdown 编辑、三种编辑模式（IR/SV/WYSIWYG）、分栏预览、文件树侧栏、文档大纲、查找替换、图片插入与压缩、HTML/PDF 导出、TOML 配置持久化、三语国际化（英/简/繁）。
 
-**开发阶段：** 0.2.0 阶段开发中。保存、恢复、工作区内外 watcher、外部修改冲突、外部删除/重新出现/不可读状态、工作区读取/监听深度边界、目录级路径一致性、批次 7 本地闭环和批次 8 导航/外部链接安全代码、专项验证、Linux 全量回归及手测均已完成；IPC/本地资源安全、已有目标的长期 TOCTOU、发布门槛和 Windows/macOS 实体机验证仍在后续工作。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
+**开发阶段：** 0.2.0 阶段开发中。保存、恢复、工作区内外 watcher、外部修改冲突、外部删除/重新出现/不可读状态、工作区读取/监听深度边界、目录级路径一致性、批次 7 本地闭环和批次 8 导航/外部链接安全代码、专项验证、Linux 全量回归及手测均已完成。批次 9 的 IPC 来源和高风险参数校验、手测反馈修正、Linux `check:all`（163/163 单测、119/119 E2E）及约定手测均已完成；首轮手测的 4 个问题中 3 个已修复，长表格中文输入横向滚动问题已转入批次 9.1，当前尚未启动。IPC/本地资源安全、已有目标的长期 TOCTOU、发布门槛和 Windows/macOS 实体机验证仍在后续工作。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
 
 ---
 
@@ -71,6 +71,9 @@ Vditor-Electron/
 │   ├── main/                      # Electron 主进程（TypeScript）
 │   │   ├── index.ts               # 主入口，应用生命周期、所有 IPC handler 注册
 │   │   ├── preload.ts             # preload 脚本，contextBridge 暴露 API
+│   │   ├── ipc-contract.ts        # renderer-facing IPC channel 常量
+│   │   ├── ipc-guard.ts           # 可信顶层 renderer 来源校验与稳定错误码
+│   │   ├── ipc-validation.ts      # 高风险 IPC 参数的运行时解析与边界校验
 │   │   ├── protocol.ts            # app:// 与 local-file:// 协议注册
 │   │   ├── external-url.ts         # 外部 URL 协议白名单校验
 │   │   ├── menu.ts                # macOS 原生菜单构建（Menu.buildFromTemplate）
@@ -231,8 +234,8 @@ if (!ownsSingleInstanceLock) {
 
 | 对话框             | 触发 IPC 通道           | 实现                                        |
 | ------------------ | ----------------------- | ------------------------------------------- |
-| 打开文件           | `file:openDialog`       | `dialog.showOpenDialog`，多选文件（Markdown + All Files 过滤器） |
-| 打开文件夹         | `file:openFolderDialog` | `dialog.showOpenDialog`（openDirectory）    |
+| 打开文件           | `file:openDialog`       | `dialog.showOpenDialog`，多选文件（Markdown + All Files 过滤器）；可接收最近确认目录作为默认位置 |
+| 打开文件夹         | `file:openFolderDialog` | `dialog.showOpenDialog`（openDirectory）；与打开文件共用最近确认目录 |
 | 另存为             | `file:saveDialog`       | `dialog.showSaveDialog`                     |
 | 导出对话框         | `file:exportDialog`     | `dialog.showSaveDialog`（HTML/PDF）         |
 | 文件移至回收站     | `file:delete`           | `shell.trashItem()`                         |
@@ -264,8 +267,8 @@ webPreferences: {
 
 | 方法名                                            | 对应 IPC 通道           | 方向       | 入参                                  | 返回值                                  |
 | ------------------------------------------------- | ----------------------- | ---------- | ------------------------------------- | --------------------------------------- |
-| `openFileDialog()`                                | `file:openDialog`       | invoke     | 无                                    | `string[]`                              |
-| `openFolderDialog()`                              | `file:openFolderDialog` | invoke     | 无                                    | `string \| null`                        |
+| `openFileDialog(defaultDirectory?)`               | `file:openDialog`       | invoke     | `string?`                             | `string[]`                              |
+| `openFolderDialog(defaultDirectory?)`             | `file:openFolderDialog` | invoke     | `string?`                             | `string \| null`                        |
 | `saveFileDialog(defaultPath?, defaultDirectory?)` | `file:saveDialog`       | invoke     | `string?, string?`                    | `string \| null`                        |
 | `exportDialog(type, defaultPath?)`                | `file:exportDialog`     | invoke     | `'html'\|'pdf', string?`              | `string \| null`                        |
 | `readFile(filePath)`                              | `file:read`             | invoke     | `string`                              | `{ content: string, encoding: string }` |
@@ -386,7 +389,10 @@ const state = {
   settings: null,        // AppSettings 从主进程加载的完整配置
   defaultSettings: null, // AppSettings 默认配置（用于重置）
   locale: 'en_US',       // string 当前语言代码
-  untitledCounter: 0,    // number 新文件序号
+  untitledCounters: {     // number 文件与文件夹分别维护的新建序号
+    file: 0,
+    directory: 0,
+  },
   treeTimer: null,       // Timer 工作区树刷新防抖计时器
 };
 
@@ -648,8 +654,8 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 
 | 通道名                       | 入参                              | 返回值                                      | 处理逻辑                                     |
 | ---------------------------- | --------------------------------- | ------------------------------------------- | -------------------------------------------- |
-| `file:openDialog`            | 无                                | `string[]`                                  | 多选文件对话框（Markdown + All Files 过滤器） |
-| `file:openFolderDialog`      | 无                                | `string \| null`                            | 选择工作目录                                 |
+| `file:openDialog`            | `defaultDirectory?`               | `string[]`                                  | 多选文件对话框（Markdown + All Files 过滤器） |
+| `file:openFolderDialog`      | `defaultDirectory?`               | `string \| null`                            | 选择工作目录                                 |
 | `file:saveDialog`            | `defaultPath?, defaultDirectory?` | `string \| null`                            | 保存对话框                                   |
 | `file:exportDialog`          | `type, defaultPath?`              | `string \| null`                            | 导出对话框                                   |
 | `file:read`                  | `filePath: string`                | `{ content, encoding }`                     | 读取文件（UTF-8/BOM/GB18030）                |
@@ -740,7 +746,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 ```
 用户触发打开（菜单 / 快捷键 / 拖入 / 文件关联 / session 恢复）
   ↓
-window.fileAPI.openFileDialog()           # 主进程展示原生对话框
+window.fileAPI.openFileDialog(defaultOpenPath?) # 主进程展示原生对话框
   ↓
 renderer 调用 openPaths(paths)             # 顺序打开，激活最后一条
   ↓
@@ -755,6 +761,8 @@ openPath(filePath)
       ↓
     after() 回调 → 挂载工具栏、安装观察者、刷新 UI
 ```
+
+打开文件和打开文件夹共用 `settings.defaultOpenPath` 作为原生对话框的默认目录；用户确认选择文件后，renderer 取第一个文件的父目录持久化，确认选择工作区后则持久化该工作区。取消原生对话框不会改变该目录。
 
 Ctrl/Cmd+单击相对 Markdown 链接时，渲染器先调用 `file:resolveMarkdownLink(sourceFile, href)`；主进程拒绝协议、绝对路径、非 Markdown 和不存在目标，仅返回规范化的普通文件路径及可选片段。`openPath()` 复用已有标签或创建新标签，待 Vditor 就绪后将 `#片段` 定位到目标标题。
 
@@ -941,10 +949,10 @@ function rememberRecent(filePath) {
 - **实现：** `toggleSidebar()` 带 CSS transition、`appendDirectory()` 懒加载子目录
 - **提示：** `setupSidebarTooltips()` 通过事件委托读取 sidebar 内的 `data-tooltip`，与 Markdown 链接共用独立的 `#appTooltip`；文件名、工作区路径和图标操作不再依赖浏览器原生 `title` 提示。
 
-#### 文件树（`app.js` 的 `appendDirectory()` / `showTreeMenu()`，`index.html:127-131`）
+#### 文件树（`app.js` 的 `appendDirectory()` / `showTreeMenu()` / `showWorkspaceTreeMenu()`，`index.html:127-131`）
 
-- **职责：** 懒加载工作区目录树、文件展开状态持久化、文件名省略（canvas 测量）、右键菜单（新建/重命名/回收站/在管理器中显示）
-- **实现：** `appendDirectory()`、`showTreeMenu()`、`renameExplorerItem()`、`middleEllipsis()`；首次保存或另存为后直接调用 `refreshTree()`，避免自身保存事件被抑制时遗漏新文件。
+- **职责：** 懒加载工作区目录树、文件展开状态持久化、文件名省略（canvas 测量）；文件/目录条目右键菜单提供重命名、回收站和在管理器中显示，空白树区域菜单提供切换工作区、新建与打开工作区。
+- **实现：** `appendDirectory()`、`showTreeMenu()`、`showWorkspaceTreeMenu()`、`createExplorerItem()`、`nextUntitledNumber()`、`renameExplorerItem()`、`middleEllipsis()`；新建文件自动创建并打开 `Untitled x.md`，新建目录自动创建 `Untitled x`。文件和目录分别编号；文件还避开当前目录已有 Markdown 文件和已打开标签，目录只避开当前目录已有目录。首次保存或另存为后直接调用 `refreshTree()`，避免自身保存事件被抑制时遗漏新文件。
 - **过滤：** 仅显示 `fileExplorer.visibleExtensions` 中的扩展名，隐藏以 `.` 开头的文件
 - **资源边界：** `workspaceReadDepth` 在 Files & Session 中以 7–12 滑块持久化（默认 7）。根目录深度为 0，`appendDirectory()` 不读取超过该边界的后代，恢复展开状态同样受限；边界目录显示不可选中的本地化提示，语言切换时文件树会重建。可由 `realpath` 解析的目录链接会携带目标、相对工作区深度与工作区内外状态：内部目标可展开、外部目标灰色不可展开、循环目标被阻止；链接名称使用斜体和图标标记。工作区 watcher 使用相同深度且不跟随链接，资源错误只发送一次降级事件并关闭失效 watcher，手动浏览和刷新仍可用。`FileManagerService.listDir()` 会跳过读取过程中消失、失效或无权限的单个条目，不让一个损坏链接阻断整棵树。
 
@@ -1458,6 +1466,9 @@ flowchart TB
         FileWatch[services/file-watch-service.ts\nFileWatchService]
         AppState[services/app-state.ts\nAppSettings + DEFAULT_SETTINGS]
         Menu[menu.ts\ncreateAppMenu]
+        IPCContract[ipc-contract.ts\nIPC_CHANNELS]
+        IPCGuard[ipc-guard.ts\ntrusted main frame + errors]
+        IPCValidation[ipc-validation.ts\nruntime argument validation]
         IPC[index.ts\nregisterIpcHandlers]
     end
 
@@ -1482,6 +1493,9 @@ flowchart TB
 
     FileAPI -->|invoke/send| IPC
     AppAPI -->|invoke/send| IPC
+    IPCContract --> FileAPI
+    IPCContract --> AppAPI
+    IPCContract --> IPC
     preload -->|contextBridge| Controller
 
     Controller -->|"new Vditor\(\)"| Vditor
@@ -1492,6 +1506,8 @@ flowchart TB
     Controller --> AppAPI
 
     IPC --> FileManager
+    IPC --> IPCGuard
+    IPC --> IPCValidation
     FileManager --> FileIdentity
     FileWatch --> FileIdentity
     IPC --> FileWatch
@@ -1508,6 +1524,7 @@ flowchart TB
 
 - 主进程模块（`app-paths.ts` / `protocol.ts` / `services/*` / `menu.ts`）只在 `index.ts` 启动和注册阶段引用，运行时由 `ipcMain.handle` 回调驱动，不直接调用渲染器。
 - `preload.ts` 是唯一被 `contextBridge` 允许的通道，渲染器通过 `window.fileAPI` / `window.appAPI` 访问所有主进程能力。
+- `ipc-contract.ts` 让 main、preload 和菜单共用通道名称；`ipc-guard.ts` 在每个 renderer IPC 入口校验当前主窗口的可信顶层 `app://app` frame；`ipc-validation.ts` 在副作用前解析高风险参数并返回稳定错误码。
 - 渲染器内部的 `app.js` 同时依赖 `VditorDesktopAdapter`（Vditor 私有 DOM 隔离）和 `VditorDesktopLocales`（国际化字典）两个全局脚本挂载点。
 - `FileWatchService` 持有一个工作区结构 watcher 和每个打开文档的内容 watcher；事件通过 `mainWindow.webContents.send('file:changed')` 推送渲染器，并以 `scope` 区分树刷新和正文比较。
 
@@ -1515,7 +1532,7 @@ flowchart TB
 
 ## 15. 测试覆盖情况
 
-截至 2026-08-28，用户在 Linux 运行 P08 修改后的 `npm run check:all` 一次通过：13 个单元测试文件、154/154 单元测试通过，Electron Playwright 114/114 通过；格式、lint、类型、Vditor 版本检查和构建也通过。P08 URL/应用协议/导航策略专项单测为 7/7，`navigation-and-resources` 专项 E2E 为 9/9，危险协议与正常外部链接手测也已通过。以下覆盖说明反映当前代码，并不把 Linux 结果外推为 Windows/macOS 实体机验证。
+截至 2026-08-28，用户在 Linux 运行当前 P09 工作树的 `npm run check:all` 一次通过：15 个单元测试文件、163/163 单元测试通过，Electron Playwright 119/119 通过；格式、lint、类型、Vditor 版本检查和构建也通过。P09 IPC 安全专项、手测反馈修正专项和约定手测均已完成；首轮手测剩余的长表格中文输入横向滚动问题已登记到批次 9.1。以下覆盖说明反映当前代码，并不把 Linux 结果外推为 Windows/macOS 实体机验证。
 
 ### 15.1 单元测试（Vitest）
 
@@ -1529,6 +1546,8 @@ flowchart TB
 | `tests/unit/app-url.test.ts`        | `src/main/app-url.ts`                   | 受信任 `app://app` resource/page origin、顶层页面路径、host/端口/凭据、query、控制字符和非法百分号编码边界 |
 | `tests/unit/navigation-policy.test.ts` | `src/main/navigation-policy.ts`      | 受信任应用页面、允许的外部 URL 和阻断目标的统一导航分类 |
 | `tests/unit/resolve-markdown-link.test.ts` | `src/main/resolve-markdown-link.ts` | 相对 Markdown 路径、`../`、百分号编码、片段、Windows 路径、缺失/绝对/协议/非 Markdown/非法编码目标拒绝 |
+| `tests/unit/ipc-guard.test.ts`      | `src/main/ipc-guard.ts`              | 当前主窗口 `webContents`、顶层 sender frame、可信 `app://app` 页面与稳定 `IPC_UNTRUSTED_RENDERER` 错误边界 |
+| `tests/unit/ipc-validation.test.ts` | `src/main/ipc-validation.ts`         | 参数数量、绝对路径、跨平台文件名、枚举、数值、文本/二进制大小、设置对象和 `IPC_INVALID_ARGUMENT` 边界 |
 | `tests/unit/file-manager.test.ts`   | `src/main/services/file-manager.ts` 与 `safe-file-writer.ts` | UTF-8 读取、UTF-8 BOM 检测与剥离、GB18030 回退、同目录安全替换、权限保持、无变化跳过、expected content/absence 基线、临时创建/替换失败保留原文件及清理、权限错误映射、文件/目录创建、路径逃逸拒绝（`../`）、目录优先自然排序、目录链接工作区内外分类与深度、普通文件/目录重命名冲突与失败回滚、二进制图片写入 |
 | `tests/unit/file-identity.test.ts` | `src/main/services/file-identity.ts` | 已存在路径 realpath、大小写敏感规则、符号链接别名、缺失文件和缺失祖先路径拼接、跨平台 path 模型 |
 | `tests/unit/file-watch-service.test.ts` | `src/main/services/file-watch-service.ts` | 工作区结构与文档内容 watcher 分工、7–12 读取深度规范化及重建、资源错误一次降级、同路径去重、ready 后 reconciliation、稳定等待、read revision 乱序保护、瞬态 `unlink` 重核、权限不可读事件、工作区内文件重新出现的双 scope 事件、符号链接规范路径、释放后的迟到读取、workspace revision，以及 Linux raw rename 重绑 |
@@ -1539,13 +1558,13 @@ flowchart TB
 
 ### 15.2 E2E 测试（Playwright Electron，按行为域拆分）
 
-`tests/e2e/support/app-harness.ts` 统一提供 Electron 启动、每测试临时根目录、设置读取、主题选择和关闭清理；它不保留跨测试的应用、页面或文件状态。Playwright 自动发现以下四个 spec，当前为 109 个 `test()` 声明、114 条展开用例；P08 新增的 2 个声明位于 `navigation-and-resources.spec.ts`。
+`tests/e2e/support/app-harness.ts` 统一提供 Electron 启动、每测试临时根目录、设置读取、主题选择和关闭清理；它不保留跨测试的应用、页面或文件状态。Playwright 自动发现以下四个 spec，当前为 114 个 `test()` 声明、119 条展开用例；P09 新增的 5 个声明分布在 `navigation-and-resources.spec.ts`（IPC 边界）和 `document-lifecycle.spec.ts`（手测反馈修正）。
 
 | 测试文件 | 主要责任 |
 | --- | --- |
 | `app-shell.spec.ts` | 应用启动与单实例、标题栏/菜单/标签、主题、设置、窗口与本地化壳层 |
 | `editor-modes.spec.ts` | 查找替换、WYSIWYG / IR / SV、工具栏、选择、表格、分栏、滚动与 Vditor DOM 契约 |
-| `document-lifecycle.spec.ts` | 保存、恢复、工作区、watcher、外部冲突、删除、重命名与 Save As 路径一致性 |
+| `document-lifecycle.spec.ts` | 保存、恢复、工作区、文件树、原生打开对话框、导出资源、watcher、外部冲突、删除、重命名与 Save As 路径一致性 |
 | `navigation-and-resources.spec.ts` | Markdown/大纲导航、外部 URL 边界，以及本地/HTTPS 图片资源 |
 
 下列用例按功能域覆盖核心场景；具体数量以 Playwright 测试清单为准：
@@ -1597,6 +1616,7 @@ flowchart TB
 #### 工作区与文件树
 
 - 文件树头部仅显示工作区名 + 刷新按钮（无搜索 / 无新建文件按钮）
+- 文件/目录条目菜单不含新建；根目录和展开目录的空白区域菜单可自动创建并打开独立编号的 `Untitled x.md` 文件或创建 `Untitled x` 文件夹
 - 目录折叠/展开，`workspaceTreeStates` 按工作区单独持久化
 - 默认 7、可选 7–12 的目录读取深度；达到边界时不读取更深后代，并显示受限提示；设置变更会立即重建工作区 watcher 和刷新文件树
 - 切换工作区后各自保留展开状态，文件监听器拾取新文件
@@ -1619,6 +1639,7 @@ flowchart TB
 - 保存期间继续输入仍保持 dirty/recovery；同一 canonical identity 的并发保存串行化，Save As 目标冲突不会覆盖已有标签或磁盘文件
 - 删除后重建、editor 未 ready 保存、目录重命名的 editor rebuild/settings/watcher 重绑失败注入均保持标签路径、内存正文、session 和 watcher 一致
 - session 与 recovery 同 identity 合并；watcher 重绑后即时 reconciliation、读取乱序、符号链接祖先和工作区切换迟到结果均有回归覆盖
+- 文件和文件夹打开对话框共用并持久化最后确认目录；HTML 导出不保留应用内部资源 URL，PDF 导出将可读取的本地图片嵌入为 `data:` URL
 
 #### 查找替换
 

@@ -1741,9 +1741,10 @@ test('animates window control hover highlights', async () => {
   const running = await launchApp();
   try {
     const { page } = running;
-    const titlebarHeight = await page
-      .locator('#windowTitlebar')
-      .evaluate((node) => node.getBoundingClientRect().height);
+    const titlebarMetrics = await page.locator('#windowTitlebar').evaluate((node) => ({
+      height: node.getBoundingClientRect().height,
+      borderBottomWidth: parseFloat(getComputedStyle(node).borderBottomWidth),
+    }));
     for (const selector of ['#windowMinimize', '#windowMaximize', '#windowClose']) {
       const transitions = await page.locator(selector).evaluate((node) => ({
         properties: getComputedStyle(node).transitionProperty,
@@ -1753,7 +1754,10 @@ test('animates window control hover highlights', async () => {
       expect(transitions.properties).toContain('background-color');
       expect(transitions.properties).toContain('color');
       expect(transitions.durations).toContain('0.16s');
-      expect(Math.abs(transitions.height - titlebarHeight)).toBeLessThan(1);
+      expect(transitions.height).toBeCloseTo(
+        titlebarMetrics.height - titlebarMetrics.borderBottomWidth,
+        0,
+      );
     }
   } finally {
     await closeApp(running);
