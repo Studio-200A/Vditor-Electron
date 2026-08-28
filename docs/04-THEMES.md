@@ -86,6 +86,7 @@ Vditor 内容和代码主题仍各自保存亮暗偏好：`lightCodeTheme` / `da
 
 - `--bg`：应用整体背景；
 - `--panel` / `--panel-2`：卡片、输入控件和次级面板；
+- `--settings-control-surface`：设置页文本、数字和下拉控件的可编辑表面；
 - `--hover`：通用 hover 表面；
 - `--text` / `--muted`：正文和弱化文字；
 - `--border`：边框和分割线；
@@ -109,7 +110,7 @@ Vditor 内容和代码主题仍各自保存亮暗偏好：`lightCodeTheme` / `da
 | Monokai Pro Dark | `#2d2a2e` | `#2d2a2e` | `#272428` | 保留 Monokai 色调，文档画布略深 |
 | Monokai Pro Light | `#faf4f2` | `#ede7e5` | `#faf4f2` | sidebar 略深一档、编辑区暖白，Monokai Pro Dark 的同族浅色 |
 
-`.sidebar`、Windows/Linux 自定义主菜单的触发按钮与下拉菜单、titlebar、共享 Vditor toolbar、Files/Outline tabs、无标签的 `.editor-area` 及其新建/打开操作都使用 `--sidebar-surface`；这样顶部 chrome、菜单与空工作区随六套主题呈现同一中性导航壳层色，不与输入控件共用 `--panel` 的白色或近白色表面。`--panel-2` 保留给状态栏、设置导航等次级表面。编辑器宿主、`.vditor-content`、`.vditor-sv`、`.vditor-ir`、`.vditor-wysiwyg`、`.vditor-preview`、`.vditor-reset` 以及 SV 行号栏使用 `--editor-surface`，使行号栏成为文档画布的一部分，仅由右侧边框分隔。浅色主题的文档画布较导航壳层明亮，深色主题则较暗；设置页具体内容区域也使用编辑区表面。标签 hover 一律使用主题的 `--hover`，不使用跨主题固定颜色。
+`.sidebar`、Windows/Linux 自定义主菜单的触发按钮与下拉菜单、titlebar、共享 Vditor toolbar、Files/Outline tabs、无标签的 `.editor-area` 及其新建/打开操作，以及设置页的 titlebar、导航、footer 和右侧边缘都使用 `--sidebar-surface`；这样顶部 chrome、菜单、空工作区和设置页 chrome 随六套主题呈现同一中性导航壳层色，不与输入控件共用 `--panel` 的白色或近白色表面。`--panel-2` 保留给状态栏等其他次级表面。编辑器宿主、`.vditor-content`、`.vditor-sv`、`.vditor-ir`、`.vditor-wysiwyg`、`.vditor-preview`、`.vditor-reset` 以及 SV 行号栏使用 `--editor-surface`，使行号栏成为文档画布的一部分，仅由右侧边框分隔；设置页具体内容区域也使用编辑区表面。浅色主题的文档画布较导航壳层明亮，深色主题则较暗。标签 hover 一律使用主题的 `--hover`，不使用跨主题固定颜色。
 
 ## 5. 六套主题的实际实现
 

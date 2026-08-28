@@ -16,6 +16,7 @@
   --panel: #fff;
   --sidebar-surface: #f0f1f3;
   --editor-surface: #fff;
+  --settings-control-surface: #f7f7f8;
   --panel-2: #f0f1f3;
   --hover: #e7e9ec;
   --text: #25272b;
@@ -34,6 +35,7 @@
   --panel: #202124;
   --sidebar-surface: #202124;
   --editor-surface: #18191c;
+  --settings-control-surface: #202124;
   --panel-2: #292b2f;
   --hover: #34373c;
   --text: #e3e5e8;
@@ -51,6 +53,7 @@
   --panel: #2d2a2e;
   --sidebar-surface: #2d2a2e;
   --editor-surface: #272428;
+  --settings-control-surface: #2d2a2e;
   --panel-2: #272428;
   --hover: #403e41;
   --text: #fcfcfa;
@@ -77,6 +80,7 @@
   --panel: #fefaf9;
   --sidebar-surface: #ede7e5;
   --editor-surface: #faf4f2;
+  --settings-control-surface: #fefaf9;
   --panel-2: #e0dad9;
   --hover: #d3cdcc;
   --text: #29242a;
@@ -109,6 +113,7 @@
   --panel: #fff;
   --sidebar-surface: #f5f4ed;
   --editor-surface: #faf9f5;
+  --settings-control-surface: #fff;
   --panel-2: #f5f4ed;
   --hover: #e8e6dc;
   --text: #141413;
@@ -136,6 +141,7 @@
   --panel: #30302e;
   --sidebar-surface: #30302e;
   --editor-surface: #262624;
+  --settings-control-surface: #30302e;
   --panel-2: #262624;
   --hover: #3d3d3a;
   --text: #faf9f5;
@@ -2239,6 +2245,10 @@ body.settings-card-resizing {
   padding: 10px 14px;
   background: var(--panel-2);
 }
+.settings-card > header,
+.settings-card > footer {
+  background: var(--sidebar-surface);
+}
 .modal-card > header {
   justify-content: space-between;
   border-bottom: 1px solid var(--border);
@@ -2357,7 +2367,7 @@ body.confirm-card-dragging {
   width: 170px;
   flex: 0 0 170px;
   padding: 12px 8px;
-  background: var(--panel-2);
+  background: var(--sidebar-surface);
   border-right: 1px solid var(--border);
 }
 .settings-nav button {
@@ -2428,7 +2438,7 @@ body.confirm-card-dragging {
 .settings-right-edge {
   width: 10px;
   flex: 0 0 10px;
-  background: var(--panel-2);
+  background: var(--sidebar-surface);
   border-left: 1px solid var(--border);
 }
 .settings-content section {
@@ -2738,13 +2748,11 @@ body.confirm-card-dragging {
   gap: 14px;
   margin: 12px 0;
 }
-.settings-content input[type='text'],
-.settings-content input[type='number'],
-.settings-content select {
+#settingsForm :is(input[type='text'], input[type='number'], select, textarea) {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: 5px;
-  background: var(--bg);
+  background: var(--settings-control-surface) !important;
   padding: 7px;
 }
 .settings-content select:focus {

@@ -494,6 +494,21 @@ describe('renderer shell', () => {
     );
     expect(css).toMatch(/\.settings-content\s*\{[^}]*background:\s*var\(--editor-surface\)/s);
     expect(css).toMatch(
+      /#settingsForm :is\(input\[type='text'\], input\[type='number'\], select, textarea\)\s*\{[^}]*background:\s*var\(--settings-control-surface\) !important/s,
+    );
+    expect(css).toMatch(
+      /:root\s*\{[^}]*--editor-surface:\s*#fff[^}]*--settings-control-surface:\s*#f7f7f8/s,
+    );
+    expect(css).toMatch(
+      /:root\[data-theme='dark'\]\s*\{[^}]*--editor-surface:\s*#18191c[^}]*--settings-control-surface:\s*#202124/s,
+    );
+    expect(css).toMatch(
+      /:root\[data-theme='claude-light'\]\s*\{[^}]*--editor-surface:\s*#faf9f5[^}]*--settings-control-surface:\s*#fff/s,
+    );
+    expect(css).toMatch(
+      /:root\[data-theme='claude-dark'\]\s*\{[^}]*--editor-surface:\s*#262624[^}]*--settings-control-surface:\s*#30302e/s,
+    );
+    expect(css).toMatch(
       /:root\[data-theme='claude-light'\] \.modal-close:hover\s*\{[^}]*background:\s*#e8e6dc[^}]*color:\s*var\(--text\)/s,
     );
     expect(css).toMatch(
@@ -527,10 +542,10 @@ describe('renderer shell', () => {
     );
     expect(css).not.toMatch(/data-theme='claude-(?:light|dark)'[^}]*--ui-font/s);
     expect(css).toMatch(
-      /:root\[data-theme='monokai-pro-dark'\]\s*\{[^}]*--bg:\s*#2d2a2e[^}]*--editor-surface:\s*#272428[^}]*--accent:\s*#ffd866/s,
+      /:root\[data-theme='monokai-pro-dark'\]\s*\{[^}]*--bg:\s*#2d2a2e[^}]*--editor-surface:\s*#272428[^}]*--settings-control-surface:\s*#2d2a2e[^}]*--accent:\s*#ffd866/s,
     );
     expect(css).toMatch(
-      /:root\[data-theme='monokai-pro-light'\]\s*\{[^}]*--bg:\s*#faf4f2[^}]*--accent:\s*#e14775/s,
+      /:root\[data-theme='monokai-pro-light'\]\s*\{[^}]*--bg:\s*#faf4f2[^}]*--settings-control-surface:\s*#fefaf9[^}]*--accent:\s*#e14775/s,
     );
     expect(css).toContain('--monokai-h1: #ff6188');
     expect(css).toContain('--monokai-h6: #fc9867');
@@ -540,7 +555,7 @@ describe('renderer shell', () => {
       /\.theme-option-input:checked \+ \.theme-preview\s*\{[^}]*border-color:\s*var\(--accent\)/s,
     );
     expect(css).toMatch(
-      /\.settings-right-edge\s*\{[^}]*width:\s*10px[^}]*background:\s*var\(--panel-2\)/s,
+      /\.settings-right-edge\s*\{[^}]*width:\s*10px[^}]*background:\s*var\(--sidebar-surface\)/s,
     );
   });
 

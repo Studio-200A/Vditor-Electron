@@ -39,6 +39,7 @@
 - **fix(export resources):** HTML exports now use portable relative local resources, while PDF exports embed local images instead of retaining `local-file://` URLs.
 - **fix(open dialogs):** File and folder open dialogs now share the last confirmed selection directory.
 - **fix(accessibility):** Use the active theme accent for keyboard-visible focus rings across application controls.
+- **fix(settings theming):** Align the settings titlebar, navigation, footer, and edge with the active theme's sidebar surface while keeping settings content on the editor surface across all six application themes.
 - **fix(asset layout):** Organized application icons, symbolic UI icons, and notification icons under dedicated renderer asset directories; the offline asset build and Linux release script now follow the same paths.
 
 #### Workspace, files, and saving
