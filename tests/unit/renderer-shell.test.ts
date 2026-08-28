@@ -56,7 +56,9 @@ describe('renderer shell', () => {
     expect(document.querySelector('#statusSettings .status-settings-icon')).not.toBeNull();
     expect(css).toContain("mask: url('../assets/symbolic/settings.svg') center / contain");
     expect(document.querySelector('#openSettingsFolder .settings-path-icon')).not.toBeNull();
-    expect(css).toContain("mask: url('../assets/symbolic/settings-files.svg') center / contain");
+    expect(css).toMatch(
+      /\.settings-path-icon\s*\{[^}]*mask:\s*url\('\.\.\/assets\/symbolic\/settings-files\.svg'\) center \/ contain/s,
+    );
     for (const asset of [
       'app-icon/app-menu-logo.svg',
       'app-icon/vditor-desktop.svg',
