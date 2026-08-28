@@ -54,15 +54,75 @@ test('opens relative Markdown links from every editor mode and follows their fra
 test('rejects unsafe external URL protocols at the privileged IPC boundary', async () => {
   const running = await launchApp();
   try {
-    const message = await running.page.evaluate(async () => {
-      try {
-        await window.appAPI.openExternal('javascript:alert(1)');
-        return '';
-      } catch (error) {
-        return error instanceof Error ? error.message : String(error);
-      }
+    for (const value of [
+      'javascript:alert(1)',
+      ' data:text/html,unsafe',
+      'https://example.com/\njavascript:alert(1)',
+    ]) {
+      const message = await running.page.evaluate(async (url) => {
+        try {
+          await window.appAPI.openExternal(url);
+          return '';
+        } catch (error) {
+          return error instanceof Error ? error.message : String(error);
+        }
+      }, value);
+      expect(message).toContain('Unsupported URL protocol');
+    }
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps top-level navigation inside the trusted app page and denies app popups', async () => {
+  const running = await launchApp();
+  try {
+    const { page, app } = running;
+    const initialUrl = page.url();
+
+    const popupCreated = await page.evaluate(() => {
+      const popup = window.open('app://evil/index.html', '_blank');
+      return Boolean(popup);
     });
-    expect(message).toContain('Unsupported URL protocol');
+    expect(popupCreated).toBe(false);
+
+    for (const target of ['app://evil/index.html', 'app://app/vditor/dist/index.css']) {
+      await page.evaluate((href) => {
+        const link = document.createElement('a');
+        link.href = href;
+        link.click();
+      }, target);
+      await expect.poll(() => page.url()).toBe(initialUrl);
+    }
+
+    expect(app.windows()).toHaveLength(1);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('does not execute unsupported schemes from rendered document links', async () => {
+  const running = await launchApp({ editMode: 'wysiwyg' }, { 'unsafe.md': '# Ready' });
+  try {
+    const { page } = running;
+    await page.waitForSelector('.editor-host.active .vditor-wysiwyg');
+    await page.evaluate(() => {
+      (window as typeof window & { __unsafeLinkExecuted?: boolean }).__unsafeLinkExecuted = false;
+      const editor = document.querySelector('.editor-host.active .vditor-wysiwyg');
+      if (!editor) throw new Error('WYSIWYG editor surface is unavailable');
+      const link = document.createElement('a');
+      link.href = 'javascript:window.__unsafeLinkExecuted = true';
+      link.textContent = 'Unsafe';
+      editor.append(link);
+    });
+    const link = page.locator('.editor-host.active .vditor-wysiwyg a[href^="javascript:"]');
+    await expect(link).toHaveCount(1);
+    await link.click();
+    expect(
+      await page.evaluate(
+        () => (window as typeof window & { __unsafeLinkExecuted?: boolean }).__unsafeLinkExecuted,
+      ),
+    ).toBe(false);
   } finally {
     await closeApp(running);
   }

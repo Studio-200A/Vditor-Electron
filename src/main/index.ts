@@ -16,6 +16,7 @@ import { registerAppProtocol } from './protocol';
 import { createAppMenu } from './menu';
 import { extractOpenFilePaths } from './open-files';
 import { allowedExternalUrl } from './external-url';
+import { classifyNavigation } from './navigation-policy';
 import { resolveRelativeMarkdownLink } from './resolve-markdown-link';
 import { FileManagerService } from './services/file-manager';
 import { FileWatchService } from './services/file-watch-service';
@@ -566,14 +567,16 @@ app.on('before-quit', () => {
 });
 app.on('web-contents-created', (_event, contents) => {
   contents.on('will-navigate', (event, navigationUrl) => {
-    if (new URL(navigationUrl).protocol === 'app:') return;
+    // Only the canonical renderer page may be a top-level app: navigation;
+    // bundled assets remain valid as subresources, not navigable documents.
+    const decision = classifyNavigation(navigationUrl);
+    if (decision.kind === 'internal') return;
     event.preventDefault();
-    const externalUrl = allowedExternalUrl(navigationUrl);
-    if (externalUrl) void shell.openExternal(externalUrl);
+    if (decision.kind === 'external') void shell.openExternal(decision.url);
   });
   contents.setWindowOpenHandler(({ url }) => {
-    const externalUrl = allowedExternalUrl(url);
-    if (externalUrl) void shell.openExternal(externalUrl);
+    const decision = classifyNavigation(url);
+    if (decision.kind === 'external') void shell.openExternal(decision.url);
     return { action: 'deny' };
   });
 });

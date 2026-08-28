@@ -2,6 +2,7 @@ import { protocol, net } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { pathToFileURL } from 'url';
+import { isTrustedAppResourceUrl } from './app-url';
 
 const PROJECT_ROOT = path.join(__dirname, '..', '..');
 const RENDERER_DIR = path.join(PROJECT_ROOT, 'dist', 'renderer');
@@ -20,8 +21,15 @@ protocol.registerSchemesAsPrivileged([
 
 export function registerAppProtocol(): void {
   protocol.handle('app', (request) => {
+    if (!isTrustedAppResourceUrl(request.url)) return new Response('Not found', { status: 404 });
+
     const url = new URL(request.url);
-    const pathname = decodeURIComponent(url.pathname);
+    let pathname: string;
+    try {
+      pathname = decodeURIComponent(url.pathname);
+    } catch {
+      return new Response('Not found', { status: 404 });
+    }
 
     let filePath: string;
 

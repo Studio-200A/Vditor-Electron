@@ -3430,6 +3430,17 @@
       : null;
   }
 
+  function blockUnsupportedDocumentLinkNavigation(tab, event) {
+    const link = VDITOR.documentLink(event.target, tab.host);
+    if (!link || link.kind !== 'link') return false;
+    // The main process protects normal navigations, but javascript: and other
+    // active schemes can execute in the renderer without a will-navigate event.
+    event.preventDefault();
+    event.stopPropagation();
+    VDITOR.expandInstantLinkForEditing(link);
+    return true;
+  }
+
   async function openRelativeMarkdownLink(tab, href) {
     if (!tab.filePath) {
       showMessage(t('message.linkSaveFirst'), true);
@@ -3558,7 +3569,10 @@
       'click',
       (event) => {
         const target = documentLinkTarget(tab, event.target);
-        if (!target) return;
+        if (!target) {
+          blockUnsupportedDocumentLinkNavigation(tab, event);
+          return;
+        }
         setHoveredDocumentLink(target, event);
         if (hasDocumentNavigationModifier(event) || target.link.kind === 'toc') {
           event.preventDefault();
