@@ -1,7 +1,8 @@
 import { BrowserWindow, Menu, MenuItemConstructorOptions } from 'electron';
+import { IPC_CHANNELS } from './ipc-contract';
 
 function emit(win: Electron.BaseWindow | undefined, action: string, value?: string): void {
-  if (win instanceof BrowserWindow) win.webContents.send('menu:action', action, value);
+  if (win instanceof BrowserWindow) win.webContents.send(IPC_CHANNELS.menuAction, action, value);
 }
 
 type EditMode = 'wysiwyg' | 'ir' | 'sv';

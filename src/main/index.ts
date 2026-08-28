@@ -16,13 +16,34 @@ import { registerAppProtocol } from './protocol';
 import { createAppMenu } from './menu';
 import { extractOpenFilePaths } from './open-files';
 import { allowedExternalUrl } from './external-url';
+import { invalidIpcArgument, requireTrustedMainFrame } from './ipc-guard';
+import { IPC_CHANNELS } from './ipc-contract';
+import {
+  parseAbsolutePath,
+  parseBinary,
+  parseEnum,
+  parseFileName,
+  parseFiniteNumber,
+  parseOptionalAbsolutePath,
+  parseOptionalBoolean,
+  parseOptionalInteger,
+  parseOptionalText,
+  parseSettingsPatch,
+  parseText,
+  requireArgumentCount,
+} from './ipc-validation';
 import { classifyNavigation } from './navigation-policy';
 import { resolveRelativeMarkdownLink } from './resolve-markdown-link';
 import { FileManagerService } from './services/file-manager';
 import { FileWatchService } from './services/file-watch-service';
 import { RecoveryStore } from './services/recovery-store';
 import { SettingsStore } from './services/settings-store';
-import { AppSettings, DEFAULT_SETTINGS } from './services/app-state';
+import {
+  AppSettings,
+  DEFAULT_SETTINGS,
+  WORKSPACE_READ_DEPTH_MAX,
+  WORKSPACE_READ_DEPTH_MIN,
+} from './services/app-state';
 
 let mainWindow: BrowserWindow | null = null;
 let fileManager: FileManagerService;
@@ -177,7 +198,7 @@ function flushPendingOpenFiles(): void {
   if (!rendererReady || !pendingOpenFiles.length || !mainWindow || mainWindow.isDestroyed()) return;
   const paths = pendingOpenFiles;
   pendingOpenFiles = [];
-  send('app:openFiles', paths);
+  send(IPC_CHANNELS.appOpenFiles, paths);
 }
 
 function queueOpenFiles(paths: readonly string[]): void {
@@ -258,15 +279,15 @@ function createWindow(): void {
   boundsBeforeMaximize = { ...normalBounds };
   if (settings.windowMaximized) mainWindow.maximize();
   mainWindow.once('ready-to-show', () => mainWindow?.show());
-  mainWindow.on('enter-full-screen', () => send('window:fullscreenChanged', true));
-  mainWindow.on('leave-full-screen', () => send('window:fullscreenChanged', false));
+  mainWindow.on('enter-full-screen', () => send(IPC_CHANNELS.windowFullscreenChanged, true));
+  mainWindow.on('leave-full-screen', () => send(IPC_CHANNELS.windowFullscreenChanged, false));
   mainWindow.on('maximize', () => {
     persistWindowMaximized(true);
-    send('window:maximizedChanged', true);
+    send(IPC_CHANNELS.windowMaximizedChanged, true);
   });
   mainWindow.on('unmaximize', () => {
     persistWindowMaximized(false);
-    send('window:maximizedChanged', false);
+    send(IPC_CHANNELS.windowMaximizedChanged, false);
     scheduleNormalWindowBoundsSave();
   });
   mainWindow.on('move', scheduleNormalWindowBoundsSave);
@@ -278,7 +299,7 @@ function createWindow(): void {
     settingsStore.set('windowMaximized', windowMaximizedState);
     if (!closeConfirmed) {
       event.preventDefault();
-      send('app:requestClose');
+      send(IPC_CHANNELS.appRequestClose);
     }
   });
   mainWindow.on('closed', () => {
@@ -300,8 +321,26 @@ async function chooseSavePath(
   return result.canceled || !result.filePath ? null : result.filePath;
 }
 
+type TrustedInvokeHandler = (event: Electron.IpcMainInvokeEvent, ...args: unknown[]) => unknown;
+type TrustedMessageHandler = (event: Electron.IpcMainEvent, ...args: unknown[]) => void;
+
+function handleTrusted(channel: string, handler: TrustedInvokeHandler): void {
+  ipcMain.handle(channel, (event, ...args) => {
+    requireTrustedMainFrame(event, mainWindow?.webContents);
+    return handler(event, ...args);
+  });
+}
+
+function onTrusted(channel: string, handler: TrustedMessageHandler): void {
+  ipcMain.on(channel, (event, ...args) => {
+    requireTrustedMainFrame(event, mainWindow?.webContents);
+    handler(event, ...args);
+  });
+}
+
 function registerIpcHandlers(): void {
-  ipcMain.handle('file:openDialog', async () => {
+  handleTrusted(IPC_CHANNELS.fileOpenDialog, async (_event, ...args) => {
+    requireArgumentCount(args, 0);
     const result = await dialog.showOpenDialog(mainWindow!, {
       title: tr('Open Markdown Files', '打开 Markdown 文件', '開啟 Markdown 檔案'),
       filters: [
@@ -312,15 +351,19 @@ function registerIpcHandlers(): void {
     });
     return result.canceled ? [] : result.filePaths;
   });
-  ipcMain.handle('file:openFolderDialog', async () => {
+  handleTrusted(IPC_CHANNELS.fileOpenFolderDialog, async (_event, ...args) => {
+    requireArgumentCount(args, 0);
     const result = await dialog.showOpenDialog(mainWindow!, {
       title: tr('Open Folder', '打开文件夹', '開啟資料夾'),
       properties: ['openDirectory'],
     });
     return result.canceled ? null : result.filePaths[0];
   });
-  ipcMain.handle('file:saveDialog', (_event, defaultPath?: string, defaultDirectory?: string) =>
-    chooseSavePath(
+  handleTrusted(IPC_CHANNELS.fileSaveDialog, (_event, ...args) => {
+    requireArgumentCount(args, 0, 2);
+    const defaultPath = parseOptionalText(args[0]);
+    const defaultDirectory = parseOptionalAbsolutePath(args[1]);
+    return chooseSavePath(
       tr('Save Markdown File', '保存 Markdown 文件', '儲存 Markdown 檔案'),
       defaultDirectory
         ? path.join(defaultDirectory, defaultPath || 'untitled.md')
@@ -329,50 +372,68 @@ function registerIpcHandlers(): void {
         { name: 'Markdown', extensions: ['md', 'markdown'] },
         { name: 'All Files', extensions: ['*'] },
       ],
-    ),
-  );
-  ipcMain.handle('file:exportDialog', (_event, type: 'html' | 'pdf', defaultPath?: string) =>
-    chooseSavePath(`Export ${type.toUpperCase()}`, defaultPath || `document.${type}`, [
+    );
+  });
+  handleTrusted(IPC_CHANNELS.fileExportDialog, (_event, ...args) => {
+    requireArgumentCount(args, 1, 2);
+    const type = parseEnum(args[0], ['html', 'pdf']);
+    const defaultPath = parseOptionalText(args[1]);
+    return chooseSavePath(`Export ${type.toUpperCase()}`, defaultPath || `document.${type}`, [
       { name: type.toUpperCase(), extensions: [type] },
-    ]),
-  );
-  ipcMain.handle('file:read', (_event, filePath: string) => fileManager.readFile(filePath));
-  ipcMain.handle('file:write', (_event, filePath: string, content: string) =>
-    fileManager.writeFile(filePath, content),
-  );
-  ipcMain.handle(
-    'file:writeDocument',
-    async (
-      _event,
-      filePath: string,
-      content: string,
-      expectedContent?: string,
-      expectedAbsent = false,
-    ) => {
-      const result = await fileManager.writeDocument(
-        filePath,
-        content,
-        expectedContent,
-        expectedAbsent,
-      );
-      if (!('error' in result)) fileWatchService.markOwnDocumentWrite(filePath);
-      return result;
-    },
-  );
-  ipcMain.handle('file:writeBinary', (_event, filePath: string, bytes: Uint8Array) =>
-    fileManager.writeBinaryFile(filePath, bytes),
-  );
-  ipcMain.handle('file:exists', (_event, filePath: string) => fileManager.exists(filePath));
-  ipcMain.handle('file:identity', (_event, filePath: string) => fileManager.fileIdentity(filePath));
-  ipcMain.handle('file:listDir', (_event, dirPath: string, workspacePath?: string) =>
-    fileManager.listDir(dirPath, workspacePath),
-  );
-  ipcMain.handle(
-    'file:create',
-    (_event, parent: string, name: string, type: 'file' | 'directory') =>
-      fileManager.createItem(parent, name, type),
-  );
-  ipcMain.handle('file:rename', async (_event, oldPath: string, newName: string) => {
+    ]);
+  });
+  handleTrusted(IPC_CHANNELS.fileRead, (_event, ...args) => {
+    requireArgumentCount(args, 1);
+    return fileManager.readFile(parseAbsolutePath(args[0]));
+  });
+  handleTrusted(IPC_CHANNELS.fileWrite, (_event, ...args) => {
+    requireArgumentCount(args, 2);
+    return fileManager.writeFile(parseAbsolutePath(args[0]), parseText(args[1]));
+  });
+  handleTrusted(IPC_CHANNELS.fileWriteDocument, async (_event, ...args) => {
+    requireArgumentCount(args, 2, 4);
+    const filePath = parseAbsolutePath(args[0]);
+    const content = parseText(args[1]);
+    const expectedContent = parseOptionalText(args[2]);
+    const expectedAbsent = parseOptionalBoolean(args[3], false);
+    if (expectedContent !== undefined && expectedAbsent) invalidIpcArgument();
+    const result = await fileManager.writeDocument(
+      filePath,
+      content,
+      expectedContent,
+      expectedAbsent,
+    );
+    if (!('error' in result)) fileWatchService.markOwnDocumentWrite(filePath);
+    return result;
+  });
+  handleTrusted(IPC_CHANNELS.fileWriteBinary, (_event, ...args) => {
+    requireArgumentCount(args, 2);
+    return fileManager.writeBinaryFile(parseAbsolutePath(args[0]), parseBinary(args[1]));
+  });
+  handleTrusted(IPC_CHANNELS.fileExists, (_event, ...args) => {
+    requireArgumentCount(args, 1);
+    return fileManager.exists(parseAbsolutePath(args[0]));
+  });
+  handleTrusted(IPC_CHANNELS.fileIdentity, (_event, ...args) => {
+    requireArgumentCount(args, 1);
+    return fileManager.fileIdentity(parseAbsolutePath(args[0]));
+  });
+  handleTrusted(IPC_CHANNELS.fileListDir, (_event, ...args) => {
+    requireArgumentCount(args, 1, 2);
+    return fileManager.listDir(parseAbsolutePath(args[0]), parseOptionalAbsolutePath(args[1]));
+  });
+  handleTrusted(IPC_CHANNELS.fileCreate, (_event, ...args) => {
+    requireArgumentCount(args, 3);
+    return fileManager.createItem(
+      parseAbsolutePath(args[0]),
+      parseFileName(args[1]),
+      parseEnum(args[2], ['file', 'directory']),
+    );
+  });
+  handleTrusted(IPC_CHANNELS.fileRename, async (_event, ...args) => {
+    requireArgumentCount(args, 2);
+    const oldPath = parseAbsolutePath(args[0]);
+    const newName = parseFileName(args[1]);
     const destination = await fileManager.prepareRename(oldPath, newName);
     fileWatchService.markOwnWorkspaceRename(oldPath, destination);
     try {
@@ -382,45 +443,92 @@ function registerIpcHandlers(): void {
       throw error;
     }
   });
-  ipcMain.handle('file:prepareRename', (_event, oldPath: string, newName: string) =>
-    fileManager.prepareRename(oldPath, newName),
-  );
-  ipcMain.handle('file:delete', async (_event, filePath: string) =>
-    shell.trashItem(path.resolve(filePath)),
-  );
-  ipcMain.handle('file:basename', (_event, filePath: string) => path.basename(filePath));
-  ipcMain.handle('file:dirname', (_event, filePath: string) => path.dirname(filePath));
-  ipcMain.handle('file:relative', (_event, from: string, to: string) =>
-    path.relative(from, to).split(path.sep).join('/'),
-  );
-  ipcMain.handle('file:rebasePath', (_event, oldRoot: string, newRoot: string, candidate: string) =>
-    fileManager.rebasePath(oldRoot, newRoot, candidate),
-  );
-  ipcMain.handle('file:resolveMarkdownLink', (_event, sourceFile: unknown, href: unknown) =>
-    resolveRelativeMarkdownLink(sourceFile, href),
-  );
-  ipcMain.handle('file:setWorkspaceWatch', (_event, rootPath?: string, depth?: number) =>
-    fileWatchService.setWorkspace(rootPath, depth),
-  );
-  ipcMain.handle('file:watchDocument', (_event, filePath: string, reconcile = false) =>
-    fileWatchService.watchDocument(filePath, reconcile),
-  );
-  ipcMain.handle('file:unwatchDocument', (_event, filePath: string, identity?: string) =>
-    fileWatchService.unwatchDocument(filePath, identity),
-  );
+  handleTrusted(IPC_CHANNELS.filePrepareRename, (_event, ...args) => {
+    requireArgumentCount(args, 2);
+    return fileManager.prepareRename(parseAbsolutePath(args[0]), parseFileName(args[1]));
+  });
+  handleTrusted(IPC_CHANNELS.fileDelete, (_event, ...args) => {
+    requireArgumentCount(args, 1);
+    return shell.trashItem(parseAbsolutePath(args[0]));
+  });
+  handleTrusted(IPC_CHANNELS.fileBasename, (_event, ...args) => {
+    requireArgumentCount(args, 1);
+    return path.basename(parseAbsolutePath(args[0]));
+  });
+  handleTrusted(IPC_CHANNELS.fileDirname, (_event, ...args) => {
+    requireArgumentCount(args, 1);
+    return path.dirname(parseAbsolutePath(args[0]));
+  });
+  handleTrusted(IPC_CHANNELS.fileRelative, (_event, ...args) => {
+    requireArgumentCount(args, 2);
+    return path
+      .relative(parseAbsolutePath(args[0]), parseAbsolutePath(args[1]))
+      .split(path.sep)
+      .join('/');
+  });
+  handleTrusted(IPC_CHANNELS.fileRebasePath, (_event, ...args) => {
+    requireArgumentCount(args, 3);
+    return fileManager.rebasePath(
+      parseAbsolutePath(args[0]),
+      parseAbsolutePath(args[1]),
+      parseAbsolutePath(args[2]),
+    );
+  });
+  handleTrusted(IPC_CHANNELS.fileResolveMarkdownLink, (_event, ...args) => {
+    requireArgumentCount(args, 2);
+    return resolveRelativeMarkdownLink(parseAbsolutePath(args[0]), parseText(args[1]));
+  });
+  handleTrusted(IPC_CHANNELS.fileSetWorkspaceWatch, (_event, ...args) => {
+    requireArgumentCount(args, 0, 2);
+    return fileWatchService.setWorkspace(
+      parseOptionalAbsolutePath(args[0]),
+      parseOptionalInteger(args[1], WORKSPACE_READ_DEPTH_MIN, WORKSPACE_READ_DEPTH_MAX),
+    );
+  });
+  handleTrusted(IPC_CHANNELS.fileWatchDocument, (_event, ...args) => {
+    requireArgumentCount(args, 1, 2);
+    return fileWatchService.watchDocument(
+      parseAbsolutePath(args[0]),
+      parseOptionalBoolean(args[1], false),
+    );
+  });
+  handleTrusted(IPC_CHANNELS.fileUnwatchDocument, (_event, ...args) => {
+    requireArgumentCount(args, 1, 2);
+    return fileWatchService.unwatchDocument(parseAbsolutePath(args[0]), parseOptionalText(args[1]));
+  });
 
-  ipcMain.handle('app:getSettings', () => settingsStore.getAll());
-  ipcMain.handle('app:getRecoveryCandidates', () => recoveryStore.listCandidates());
-  ipcMain.handle('app:restoreRecovery', (_event, id: string) => recoveryStore.restore(id));
-  ipcMain.handle('app:saveRecovery', (_event, snapshot) => recoveryStore.save(snapshot));
-  ipcMain.handle('app:discardRecovery', (_event, id: string) => recoveryStore.discard(id));
-  ipcMain.on('app:rendererReady', (event) => {
-    if (!mainWindow || event.sender !== mainWindow.webContents) return;
+  handleTrusted(IPC_CHANNELS.appGetSettings, (_event, ...args) => {
+    requireArgumentCount(args, 0);
+    return settingsStore.getAll();
+  });
+  handleTrusted(IPC_CHANNELS.appGetRecoveryCandidates, (_event, ...args) => {
+    requireArgumentCount(args, 0);
+    return recoveryStore.listCandidates();
+  });
+  handleTrusted(IPC_CHANNELS.appRestoreRecovery, (_event, ...args) => {
+    requireArgumentCount(args, 1);
+    return recoveryStore.restore(parseText(args[0], 128));
+  });
+  handleTrusted(IPC_CHANNELS.appSaveRecovery, (_event, ...args) => {
+    requireArgumentCount(args, 1);
+    return recoveryStore.save(args[0]);
+  });
+  handleTrusted(IPC_CHANNELS.appDiscardRecovery, (_event, ...args) => {
+    requireArgumentCount(args, 1);
+    return recoveryStore.discard(parseText(args[0], 128));
+  });
+  onTrusted(IPC_CHANNELS.appRendererReady, (_event, ...args) => {
+    requireArgumentCount(args, 0);
     rendererReady = true;
     flushPendingOpenFiles();
   });
-  ipcMain.handle('app:getDefaultSettings', () => structuredClone(DEFAULT_SETTINGS));
-  ipcMain.handle('app:saveSettings', (_event, settings: Partial<AppSettings>) => {
+  handleTrusted(IPC_CHANNELS.appGetDefaultSettings, (_event, ...args) => {
+    requireArgumentCount(args, 0);
+    return structuredClone(DEFAULT_SETTINGS);
+  });
+  handleTrusted(IPC_CHANNELS.appSaveSettings, (_event, ...args) => {
+    requireArgumentCount(args, 1);
+    const settings = parseSettingsPatch(args[0]);
     const savedSettings = settingsStore.updateOrThrow(settings);
     if (
       Object.hasOwn(settings, 'locale') ||
@@ -430,60 +538,82 @@ function registerIpcHandlers(): void {
       updateApplicationMenu(savedSettings);
     return savedSettings;
   });
-  ipcMain.handle('app:resetSettings', () => {
+  handleTrusted(IPC_CHANNELS.appResetSettings, (_event, ...args) => {
+    requireArgumentCount(args, 0);
     const settings = settingsStore.reset();
     updateApplicationMenu(settings);
     return settings;
   });
-  ipcMain.handle('app:getSettingsPath', () => settingsStore.getPath());
-  ipcMain.handle('app:getSettingsDisplayPath', () => {
+  handleTrusted(IPC_CHANNELS.appGetSettingsPath, (_event, ...args) => {
+    requireArgumentCount(args, 0);
+    return settingsStore.getPath();
+  });
+  handleTrusted(IPC_CHANNELS.appGetSettingsDisplayPath, (_event, ...args) => {
+    requireArgumentCount(args, 0);
     const settingsPath = settingsStore.getPath();
     const homePath = app.getPath('home');
     return settingsPath.startsWith(homePath)
       ? `~${settingsPath.slice(homePath.length)}`
       : settingsPath;
   });
-  ipcMain.handle('app:getSystemLocale', () => app.getLocale());
-  ipcMain.handle('app:getSystemTheme', () =>
-    nativeTheme.shouldUseDarkColors ? 'dark' : 'classic',
-  );
-  ipcMain.handle('app:isFullscreen', () => mainWindow?.isFullScreen() || false);
-  ipcMain.handle('app:isMaximized', () => isWindowMaximized());
-  ipcMain.handle('app:getInfo', () => ({
-    app: app.getVersion(),
-    electron: process.versions.electron,
-    node: process.versions.node,
-    platform: process.platform,
-    vditor: '3.11.3',
-  }));
-  ipcMain.handle('app:setZoomFactor', (_event, zoom: number) => {
-    const factor = Math.min(2, Math.max(0.75, Number(zoom) / 100));
+  handleTrusted(IPC_CHANNELS.appGetSystemLocale, (_event, ...args) => {
+    requireArgumentCount(args, 0);
+    return app.getLocale();
+  });
+  handleTrusted(IPC_CHANNELS.appGetSystemTheme, (_event, ...args) => {
+    requireArgumentCount(args, 0);
+    return nativeTheme.shouldUseDarkColors ? 'dark' : 'classic';
+  });
+  handleTrusted(IPC_CHANNELS.appIsFullscreen, (_event, ...args) => {
+    requireArgumentCount(args, 0);
+    return mainWindow?.isFullScreen() || false;
+  });
+  handleTrusted(IPC_CHANNELS.appIsMaximized, (_event, ...args) => {
+    requireArgumentCount(args, 0);
+    return isWindowMaximized();
+  });
+  handleTrusted(IPC_CHANNELS.appGetInfo, (_event, ...args) => {
+    requireArgumentCount(args, 0);
+    return {
+      app: app.getVersion(),
+      electron: process.versions.electron,
+      node: process.versions.node,
+      platform: process.platform,
+      vditor: '3.11.3',
+    };
+  });
+  handleTrusted(IPC_CHANNELS.appSetZoomFactor, (_event, ...args) => {
+    requireArgumentCount(args, 1);
+    const factor = parseFiniteNumber(args[0], 75, 200) / 100;
     mainWindow?.webContents.setZoomFactor(factor);
     return factor;
   });
-  ipcMain.handle('app:readClipboard', (event) => {
-    if (!mainWindow || event.sender !== mainWindow.webContents)
-      throw new Error('Clipboard access is limited to the application window');
+  handleTrusted(IPC_CHANNELS.appReadClipboard, (_event, ...args) => {
+    requireArgumentCount(args, 0);
     return { text: clipboard.readText(), html: clipboard.readHTML() };
   });
-  ipcMain.handle('app:writeClipboard', (event, text: unknown) => {
-    if (!mainWindow || event.sender !== mainWindow.webContents)
-      throw new Error('Clipboard access is limited to the application window');
-    if (typeof text !== 'string') throw new Error('Clipboard text must be a string');
-    clipboard.writeText(text);
+  handleTrusted(IPC_CHANNELS.appWriteClipboard, (_event, ...args) => {
+    requireArgumentCount(args, 1);
+    clipboard.writeText(parseText(args[0]));
   });
-  ipcMain.handle('app:openExternal', (_event, url: unknown) => {
-    const externalUrl = allowedExternalUrl(url);
+  handleTrusted(IPC_CHANNELS.appOpenExternal, (_event, ...args) => {
+    requireArgumentCount(args, 1);
+    const externalUrl = allowedExternalUrl(args[0]);
     if (!externalUrl) throw new Error('Unsupported URL protocol');
     return shell.openExternal(externalUrl);
   });
-  ipcMain.handle('app:showItemInFolder', (_event, filePath: string) =>
-    shell.showItemInFolder(path.resolve(filePath)),
-  );
-  ipcMain.handle('app:openDirectory', (_event, dirPath: string) =>
-    shell.openPath(path.resolve(dirPath)),
-  );
-  ipcMain.handle('app:exportPDF', async (_event, html: string, defaultPath?: string) => {
+  handleTrusted(IPC_CHANNELS.appShowItemInFolder, (_event, ...args) => {
+    requireArgumentCount(args, 1);
+    return shell.showItemInFolder(parseAbsolutePath(args[0]));
+  });
+  handleTrusted(IPC_CHANNELS.appOpenDirectory, (_event, ...args) => {
+    requireArgumentCount(args, 1);
+    return shell.openPath(parseAbsolutePath(args[0]));
+  });
+  handleTrusted(IPC_CHANNELS.appExportPdf, async (_event, ...args) => {
+    requireArgumentCount(args, 1, 2);
+    const html = parseText(args[0]);
+    const defaultPath = parseOptionalText(args[1]);
     const output = await chooseSavePath('Export PDF', defaultPath || 'document.pdf', [
       { name: 'PDF', extensions: ['pdf'] },
     ]);
@@ -501,22 +631,29 @@ function registerIpcHandlers(): void {
       exportWindow.destroy();
     }
   });
-  ipcMain.on('app:toggleFullscreen', () => mainWindow?.setFullScreen(!mainWindow.isFullScreen()));
-  ipcMain.on('window:minimize', () => mainWindow?.minimize());
-  ipcMain.on('window:maximize', () => {
+  onTrusted(IPC_CHANNELS.appToggleFullscreen, (_event, ...args) => {
+    requireArgumentCount(args, 0);
+    mainWindow?.setFullScreen(!mainWindow.isFullScreen());
+  });
+  onTrusted(IPC_CHANNELS.windowMinimize, (_event, ...args) => {
+    requireArgumentCount(args, 0);
+    mainWindow?.minimize();
+  });
+  onTrusted(IPC_CHANNELS.windowMaximize, (_event, ...args) => {
+    requireArgumentCount(args, 0);
     toggleWindowMaximized();
   });
-  ipcMain.on('window:close', () => mainWindow?.close());
-  ipcMain.on('app:toggleDevTools', (event) => {
-    if (
-      !mainWindow ||
-      event.sender !== mainWindow.webContents ||
-      !settingsStore.get('devToolsEnabled')
-    )
-      return;
+  onTrusted(IPC_CHANNELS.windowClose, (_event, ...args) => {
+    requireArgumentCount(args, 0);
+    mainWindow?.close();
+  });
+  onTrusted(IPC_CHANNELS.appToggleDevTools, (_event, ...args) => {
+    requireArgumentCount(args, 0);
+    if (!mainWindow || !settingsStore.get('devToolsEnabled')) return;
     mainWindow.webContents.toggleDevTools();
   });
-  ipcMain.on('app:closeConfirmed', () => {
+  onTrusted(IPC_CHANNELS.appCloseConfirmed, (_event, ...args) => {
+    requireArgumentCount(args, 0);
     closeConfirmed = true;
     mainWindow?.close();
   });
@@ -545,12 +682,15 @@ if (!ownsSingleInstanceLock) {
     fileManager = new FileManagerService();
     fileWatchService = new FileWatchService(
       (filePath) => fileManager.readFile(filePath),
-      (event) => send('file:changed', event),
+      (event) => send(IPC_CHANNELS.fileChanged, event),
     );
     registerIpcHandlers();
     updateApplicationMenu();
     nativeTheme.on('updated', () =>
-      send('app:systemThemeChanged', nativeTheme.shouldUseDarkColors ? 'dark' : 'classic'),
+      send(
+        IPC_CHANNELS.appSystemThemeChanged,
+        nativeTheme.shouldUseDarkColors ? 'dark' : 'classic',
+      ),
     );
     createWindow();
     app.on('activate', () => {

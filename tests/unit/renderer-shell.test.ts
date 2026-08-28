@@ -207,9 +207,9 @@ describe('renderer shell', () => {
     expect(mainScript).toContain('app.requestSingleInstanceLock()');
     expect(mainScript).toContain("app.on('second-instance'");
     expect(mainScript).toContain("app.on('open-file'");
-    expect(mainScript).toContain("send('app:openFiles', paths)");
+    expect(mainScript).toContain('send(IPC_CHANNELS.appOpenFiles, paths)');
     expect(preloadScript).toContain('onOpenFiles: (callback: (paths: string[]) => void)');
-    expect(preloadScript).toContain("ipcRenderer.send('app:rendererReady')");
+    expect(preloadScript).toContain('ipcRenderer.send(IPC_CHANNELS.appRendererReady)');
     expect(rendererScript).toContain('window.appAPI.onOpenFiles((paths) => void openPaths(paths))');
     expect(rendererScript).toContain('window.appAPI.rendererReady()');
   });

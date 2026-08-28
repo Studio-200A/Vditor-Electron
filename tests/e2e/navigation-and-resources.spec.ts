@@ -74,6 +74,87 @@ test('rejects unsafe external URL protocols at the privileged IPC boundary', asy
   }
 });
 
+test('rejects malformed high-risk IPC arguments before they can create side effects', async () => {
+  const running = await launchApp();
+  try {
+    const result = await running.page.evaluate(async () => {
+      const rejectMessage = async (operation: () => Promise<unknown>) => {
+        try {
+          await operation();
+          return '';
+        } catch (error) {
+          return error instanceof Error ? error.message : String(error);
+        }
+      };
+      const before = await window.appAPI.getSettings();
+      const messages = await Promise.all([
+        rejectMessage(() => window.fileAPI.deleteItem('relative.md')),
+        rejectMessage(() =>
+          window.fileAPI.writeDocument(
+            '/tmp/vditor-ipc-validation.md',
+            'content',
+            'baseline',
+            true,
+          ),
+        ),
+        rejectMessage(() =>
+          window.fileAPI.writeBinaryFile('/tmp/vditor-ipc-validation.bin', {
+            byteLength: 1,
+          } as unknown as Uint8Array),
+        ),
+        rejectMessage(() => window.appAPI.saveSettings({ editMode: 'source' })),
+        rejectMessage(() => window.appAPI.setZoomFactor(250)),
+      ]);
+      const after = await window.appAPI.getSettings();
+      return {
+        messages,
+        localeUnchanged: after.locale === before.locale,
+        modeUnchanged: after.editMode === before.editMode,
+      };
+    });
+    expect(result.messages).toEqual(
+      Array.from({ length: 5 }, () => expect.stringContaining('IPC_INVALID_ARGUMENT')),
+    );
+    expect(result.localeUnchanged).toBe(true);
+    expect(result.modeUnchanged).toBe(true);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('does not authorize privileged IPC from a trusted-origin child frame', async () => {
+  const running = await launchApp();
+  try {
+    await running.page.evaluate(() => {
+      const frame = document.createElement('iframe');
+      frame.src = 'app://app/index.html';
+      frame.id = 'ipc-child-frame';
+      document.body.append(frame);
+    });
+    await expect
+      .poll(
+        () => running.page.frames().filter((frame) => frame !== running.page.mainFrame()).length,
+      )
+      .toBe(1);
+    const childFrame = running.page.frames().find((frame) => frame !== running.page.mainFrame());
+    if (!childFrame) throw new Error('Child frame did not load.');
+    const outcome = await childFrame.evaluate(async () => {
+      if (!window.appAPI) return 'bridge-unavailable';
+      try {
+        await window.appAPI.getSettings();
+        return 'allowed';
+      } catch (error) {
+        return error instanceof Error ? error.message : String(error);
+      }
+    });
+    expect(outcome === 'bridge-unavailable' || outcome.includes('IPC_UNTRUSTED_RENDERER')).toBe(
+      true,
+    );
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('keeps top-level navigation inside the trusted app page and denies app popups', async () => {
   const running = await launchApp();
   try {
