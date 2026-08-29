@@ -169,3 +169,18 @@ Start this section after the 0.2.5 renderer refactor has a stable branch and rea
 ### 9.3 Evidence and closure rule
 
 For every matrix row, record the evidence format from section 7, including filesystem case behavior and the exact Electron/Node versions. A platform failure reopens the linked Tracker risk with a concise reproduction; a passing native run closes only that platform row. Completing Linux batch work must not imply Windows/macOS validation, and later platform validation must not rewrite the 0.2.0 batch's Linux verification result. The current status is therefore: Linux-local batch 7 closure recorded, all native Windows/macOS rows deferred.
+
+## 10. 0.2.0 batch 10 Windows preflight observation
+
+This is a read-only Windows observation recorded before batch 10 starts. It is a reproduction clue for the Linux implementation phase, not Windows platform validation and not a reason to begin the deferred cross-platform work early.
+
+On 2026-08-29, the current renderer URL construction and protocol parsing were evaluated with the representative document directory `C:\\Users\\test\\Documents\\project` and relative image `assets/pixel.png`. The current `localResourceBase()` logic produces `local-file://rootC%3A%5CUsers%5Ctest%5CDocuments%5Cproject/`: the drive path is parsed as the URL host, while resolving the relative image leaves the pathname as `/assets/pixel.png`. The current `local-file` protocol handler decodes and passes that pathname to `path.resolve()`, which on this Windows workspace resolves it to `D:\\assets\\pixel.png`, rather than the document asset path.
+
+Batch 10 must therefore define and unit-test a platform-neutral conversion contract before it implements authorization:
+
+- A local-resource URL must use an explicit, fixed authority and a pathname that represents the complete encoded native path; an authority must never be formed by concatenating a path after `local-file://`.
+- The URL-to-native-path conversion must reject unexpected authority values and must map Windows drive paths, POSIX paths, encoded separators, malformed percent encoding, `..`, and backslash confusion deliberately before `path.resolve()`, `realpath()`, or containment checks.
+- Unit tests must exercise `path.win32` drive-letter and UNC inputs without requiring Windows, while native Windows verification later confirms actual filesystem and junction semantics.
+- Resource E2E must cover a workspace image, an out-of-workspace document image, and a pasted image on Windows after the Linux batch implementation is stable.
+
+The current checkout has no installed Vitest or Playwright dependencies, so the existing resource unit and Electron E2E suites could not be run during this observation. That is an environment limitation, not an automated test result.
