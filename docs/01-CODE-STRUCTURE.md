@@ -15,7 +15,7 @@
 
 **核心功能：** 多标签页 Markdown 编辑、三种编辑模式（IR/SV/WYSIWYG）、分栏预览、文件树侧栏、文档大纲、查找替换、图片插入与压缩、HTML/PDF 导出、TOML 配置持久化、三语国际化（英/简/繁）。
 
-**开发阶段：** 0.2.0 阶段开发中。保存、恢复、工作区内外 watcher、外部修改冲突、外部删除/重新出现/不可读状态、工作区读取/监听深度边界、目录级路径一致性、批次 7 本地闭环和批次 8/9/9.1 安全代码、专项验证、Linux 全量回归及手测均已完成。批次 9.1 已确认 Vditor 3.11.3 表格重建丢失横向滚动状态，并在 adapter 内完成局部补偿、滚动条设置统一、专项自动化和全量回归。批次 10 已完成受控 `local-file://root`、资源类型响应边界、Linux 专项自动化和用户手测；批次 11 已完成 CSP 收紧、sanitize 风险交互、手测反馈修正和 Linux 全量闭环。已有目标的长期 TOCTOU、主窗口 sandbox 的 bundled-preload 迁移、发布门槛和 Windows/macOS 实体机验证仍在后续工作。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
+**开发阶段：** 0.2.0 阶段开发中。保存、恢复、工作区内外 watcher、外部修改冲突、外部删除/重新出现/不可读状态、工作区读取/监听深度边界、目录级路径一致性、批次 7 本地闭环和批次 8/9/9.1 安全代码、专项验证、Linux 全量回归及手测均已完成。批次 9.1 已确认 Vditor 3.11.3 表格重建丢失横向滚动状态，并在 adapter 内完成局部补偿、滚动条设置统一、专项自动化和全量回归。批次 10 已完成受控 `local-file://root`、资源类型响应边界、Linux 专项自动化和用户手测；批次 11 已完成 CSP 收紧、sanitize 风险交互、手测反馈修正和 Linux 全量闭环；批次 12 已完成窗口级关闭确认与 Linux 全量闭环，macOS Dock 激活验证递延。已有目标的长期 TOCTOU、主窗口 sandbox 的 bundled-preload 迁移、发布门槛和其他 Windows/macOS 实体机验证仍在后续工作。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
 
 ---
 
@@ -1551,7 +1551,7 @@ flowchart TB
 
 ## 15. 测试覆盖情况
 
-截至 2026-08-28，用户在 Linux 运行当前 P09 工作树的 `npm run check:all` 一次通过：15 个单元测试文件、163/163 单元测试通过，Electron Playwright 119/119 通过；格式、lint、类型、Vditor 版本检查和构建也通过。P09 IPC 安全专项、手测反馈修正专项和约定手测均已完成。2026-08-31，P09.1 追加长表格滚动补偿后，`check:all` 的格式、lint、类型、Vditor 检查、构建和 170/170 单元测试通过；两次 122 项 Electron E2E 分别有 121 项和 119 项首次通过，3 项首次未通过的既有用例均已单独复跑通过。P09.1 专项和约定手测均已完成。批次 10 的本地资源和 Save As 重绑用例、Vditor 模式快捷键以及设置页/六主题壳层均已做聚焦验证，用户手测也已通过。用户于 2026-08-31 执行 P12 修改后的 `check:all`：格式、lint、类型、Vditor 检查、构建和 17 个单元测试文件的 183/183 全部通过，129 条 Electron E2E 也一次通过。该 Linux 结果包含 P12 的窗口关闭状态测试和既有关闭对话框回归，但不替代 macOS Dock 激活后的实体机验证。以下覆盖说明反映当前代码，并不把 Linux 结果外推为 Windows/macOS 实体机验证。
+本节用于定位测试责任，不维护实时测试总数。以 `npm test` 与 `npx playwright test --list` 发现当前测试；带日期的验证证据、专项范围和平台限制统一记录在 [`docs/13-0.2.0-EXECUTION-TRACKER.md`](13-0.2.0-EXECUTION-TRACKER.md)。Linux 结果不外推为 Windows/macOS 实体机验证。
 
 ### 15.1 单元测试（Vitest）
 
@@ -1579,7 +1579,7 @@ flowchart TB
 
 ### 15.2 E2E 测试（Playwright Electron，按行为域拆分）
 
-`tests/e2e/support/app-harness.ts` 统一提供 Electron 启动、每测试临时根目录、设置读取、主题选择和关闭清理；它不保留跨测试的应用、页面或文件状态。Playwright 自动发现以下四个 spec，当前为 122 个 `test()` 声明、129 条展开用例；P09/P09.1 与 P10 的 IPC、路径、资源和手测反馈用例分布在 `navigation-and-resources.spec.ts` 与 `document-lifecycle.spec.ts`。
+`tests/e2e/support/app-harness.ts` 统一提供 Electron 启动、每测试临时根目录、设置读取、主题选择和关闭清理；它不保留跨测试的应用、页面或文件状态。Playwright 从下列 spec 自动发现用例；当前清单以 `npx playwright test --list` 为准。P09/P09.1 与 P10 的 IPC、路径、资源和手测反馈用例分布在 `navigation-and-resources.spec.ts` 与 `document-lifecycle.spec.ts`。
 
 | 测试文件 | 主要责任 |
 | --- | --- |
@@ -1698,13 +1698,13 @@ flowchart TB
 - 平台感知开/关动画（`modal-open` / `modal-closing` CSS 类 + opacity/transform 过渡）
 - 编辑文本宽度滑块（`editorTextWidth`，WYSIWYG/IR 模式下段落宽度范围 40–100%）
 - 亮 / 暗代码主题过滤（切换壳层主题后 code-theme 下拉仅显示当前色调的主题）
-- 多平台预览选项（默认关闭，开启后 5 个预览动作图标）
-- 12 项 Markdown 检查项（`check-grid` 布局）
+- 多平台预览选项（默认关闭，显示对应预览动作）
+- Markdown 检查项（`check-grid` 布局）
 - 保存对话框关闭后滚动位置恢复（设置重建后滚动 ≥300px）
 
 #### 国际化
 
-- 简体中文 About 面板（7 个外部链接 + 居中 logo + 底部重置按钮）
+- 简体中文 About 面板（外部链接、居中 logo 与底部重置按钮）
 - 繁体中文设置面板（`lang="zh-Hant"`、`設定` 标题）
 - 未保存更改确认对话框（`zh_Hans` 下显示 "未保存的更改" 等本地化文案；可在窗口内拖动但不可调整尺寸）
 

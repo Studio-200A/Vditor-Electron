@@ -80,9 +80,9 @@ Node's `path` implementation varies with the host platform, and some `fs` operat
 - Directory rename, directory deletion, Save As watcher rebinding, descendant path updates, and invalid workspace-root reset are implemented and Linux-tested; Windows/macOS filesystem semantics remain unvalidated.
 - Batch 12 scopes a renderer-approved window close to its originating `BrowserWindow`; Linux state and focused Electron close-flow tests pass, while the macOS Dock activation lifecycle remains unvalidated in section 13.
 
-As of 2026-08-28, 0.2.0 development tracker batches 7, 7.1, and 8 are closed for the Linux-local implementation and regression scope. The user-run Linux `npm run check:all` result covered 154/154 unit tests and 114/114 Electron Playwright tests, in addition to formatting, lint, typecheck, Vditor-version, and build checks. Batch 8's dangerous-protocol and normal external-link manual checks also passed. This is local regression evidence only; it does not close any Windows or macOS row below.
+As of 2026-08-28, 0.2.0 development tracker batches 7, 7.1, and 8 are closed for the Linux-local implementation and regression scope. The user-run Linux `npm run check:all` passed its required static and Electron checks; the dated evidence is retained in the relevant Tracker records. Batch 8's dangerous-protocol and normal external-link manual checks also passed. This is local regression evidence only; it does not close any Windows or macOS row below.
 
-Batch 10 has since completed its Linux-local implementation, focused automation, user manual validation, and user-run full-check pass. The 2026-08-31 full check passed formatting, lint, typecheck, Vditor-version, build, and 181/181 unit tests; the Electron suite first passed 125/126 and its one timing-sensitive mode-shortcut case passed on an exact 1/1 rerun. P12 then added the window-scoped close-confirmation test; the user's subsequent 2026-08-31 full check passed the same static stages, 183/183 unit tests, and 129/129 Electron E2E. Windows drive/UNC and junction verification remains explicitly deferred to sections 12.1–12.3, and macOS remains a separate native-runtime task.
+Batch 10 has since completed its Linux-local implementation, focused automation, user manual validation, and user-run full-check pass. P12 subsequently added the window-scoped close-confirmation test and also has a passing Linux full-check record. The dated totals, exact reruns, and affected test scope belong to their Tracker records rather than this platform boundary document. Windows drive/UNC and junction verification remains explicitly deferred to sections 12.1–12.3, and macOS remains a separate native-runtime task.
 
 ### Not yet platform-validated
 
@@ -225,7 +225,7 @@ Each row above requires a real Windows result and its supporting screenshot or D
 
 ## 13. 0.2.0 batch 12 deferred macOS window lifecycle validation
 
-The batch 12 implementation keeps close confirmation associated with the exact `BrowserWindow` that received the renderer's explicit confirmation. Its unit test proves a replacement window cannot inherit that state, and the 2026-08-31 Linux `check:all` passed 183/183 unit tests and 129/129 Electron E2E, including the existing close-dialog IPC flow. Neither can prove macOS behavior after the final window closes while the application remains active. The user has explicitly deferred this native test until a macOS environment is available.
+The batch 12 implementation keeps close confirmation associated with the exact `BrowserWindow` that received the renderer's explicit confirmation. Its unit test proves a replacement window cannot inherit that state, and the passing Linux full-check record includes the existing close-dialog IPC flow; exact results are retained in the batch 12 Tracker record. Neither can prove macOS behavior after the final window closes while the application remains active. The user has explicitly deferred this native test until a macOS environment is available.
 
 Run this only on a native macOS installation after building the current branch:
 

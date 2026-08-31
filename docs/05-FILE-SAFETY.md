@@ -108,6 +108,6 @@ rename(临时文件, 目标文件)
 - `src/renderer/app.js`：content revision、保存队列、冲突/恢复状态和路径重绑定；
 - `tests/unit/` 中对应的文件管理、identity、watcher、recovery 测试，以及 `tests/e2e/document-lifecycle.spec.ts` 中的文件生命周期回归。
 
-截至 2026-08-27，用户在 Linux 手动运行 `npm run check:all`：149/149 单元测试、109/109 Electron E2E，以及格式、lint、类型、Vditor 版本检查和构建全部通过。该证据证明当前本地回归闭环，不关闭第 7 节的已有目标 TOCTOU 边界，也不替代 [`docs/03-CROSS-PLATFORM.md` §9](03-CROSS-PLATFORM.md#9-020-batch-7-deferred-platform-validation) 的 Windows/macOS 实机证据。
+截至 2026-08-27，用户在 Linux 手动运行的 `npm run check:all` 已通过；该次运行的精确结果记录在 [`docs/13-0.2.0-EXECUTION-TRACKER.md` 的批次 7](13-0.2.0-EXECUTION-TRACKER.md#批次-7阶段-b-独立复核)。该证据证明当前本地回归闭环，不关闭第 7 节的已有目标 TOCTOU 边界，也不替代 [`docs/03-CROSS-PLATFORM.md` §9](03-CROSS-PLATFORM.md#9-020-batch-7-deferred-platform-validation) 的 Windows/macOS 实机证据。
 
 版本 tracker 可以关闭一个批次的本地 TODO，但不得删除本文档的长期边界；若未来验证证明边界仍存在，只更新证据和状态，不用历史版本的“已完成”替代当前安全结论。
