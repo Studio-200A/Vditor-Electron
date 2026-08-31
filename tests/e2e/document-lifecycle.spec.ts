@@ -1272,7 +1272,7 @@ test('limits workspace tree reads to the selected directory depth and persists t
     await expect(internalLink).toHaveClass(/tree-link/);
     await expect(internalLink.locator('.tree-name')).toHaveCSS('font-style', 'italic');
     await expect(internalLink.locator('.tree-name')).toHaveCSS('text-decoration-line', 'underline');
-    await expect(internalLink.locator('.tree-link-badge')).toBeVisible();
+    await expect(internalLink.locator('.tree-entry-icon-folder-symlink')).toBeVisible();
     await internalLink.click();
     await expect(
       page.locator(`#fileTree .tree-dir[data-path="${insideLink}"] + .tree-children .tree-file`),

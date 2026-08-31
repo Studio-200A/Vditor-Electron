@@ -64,25 +64,40 @@ describe('renderer shell', () => {
       'app-icon/vditor-desktop.svg',
       'notification/notification.svg',
       'notification/warning.svg',
-      'symbolic/dark-symbolic.svg',
-      'symbolic/light-symbolic.svg',
-      'symbolic/system-symbolic.svg',
-      'symbolic/settings.svg',
-      'symbolic/settings-about.svg',
-      'symbolic/settings-appearance.svg',
-      'symbolic/settings-editor.svg',
-      'symbolic/settings-files.svg',
-      'symbolic/settings-fonts.svg',
-      'symbolic/settings-preview.svg',
-      'symbolic/replace.svg',
-      'symbolic/replace-all.svg',
-      'symbolic/symlink.svg',
-      'symbolic/titlebar-new.svg',
-      'symbolic/titlebar-open.svg',
-      'symbolic/titlebar-save.svg',
-      'symbolic/titlebar-sidebar.svg',
     ]) {
       expect(fs.existsSync(path.resolve('src/renderer/assets', asset))).toBe(true);
+    }
+    const sourceSymbolicDir = path.resolve('src/renderer/assets/symbolic');
+    expect(
+      !fs.existsSync(sourceSymbolicDir) || fs.readdirSync(sourceSymbolicDir).length === 0,
+    ).toBe(true);
+    expect(packageMetadata.devDependencies).toEqual(
+      expect.objectContaining({ 'lucide-static': expect.any(String) }),
+    );
+    for (const icon of [
+      'moon',
+      'sun',
+      'rotate-cw',
+      'info',
+      'palette',
+      'square-text',
+      'folder',
+      'type',
+      'eye',
+      'settings',
+      'monitor',
+      'file-plus-corner',
+      'folder-open',
+      'save',
+      'panel-left',
+      'replace',
+      'replace-all',
+      'file',
+      'folder-symlink',
+    ]) {
+      expect(fs.existsSync(path.resolve('node_modules/lucide-static/icons', `${icon}.svg`))).toBe(
+        true,
+      );
     }
     for (const asset of [
       'vditor-desktop.svg',
@@ -463,15 +478,6 @@ describe('renderer shell', () => {
     expect(document.querySelector('.theme-picker-dark')).not.toBeNull();
     expect(document.querySelectorAll('.theme-preview svg')).toHaveLength(6);
     expect(document.querySelector('[name="systemTheme"]')).toBeNull();
-    expect(fs.existsSync(path.resolve('src/renderer/assets/symbolic/light-symbolic.svg'))).toBe(
-      true,
-    );
-    expect(fs.existsSync(path.resolve('src/renderer/assets/symbolic/dark-symbolic.svg'))).toBe(
-      true,
-    );
-    expect(fs.existsSync(path.resolve('src/renderer/assets/symbolic/system-symbolic.svg'))).toBe(
-      true,
-    );
     expect(document.querySelector('.settings-right-edge')).not.toBeNull();
     expect(rendererScript).toContain(
       "theme === 'dark' || theme === 'claude-dark' || theme === 'monokai-pro-dark'",

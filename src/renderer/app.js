@@ -501,10 +501,9 @@
       .join('/');
     return `local-file://root${encodedPath.endsWith('/') ? encodedPath : `${encodedPath}/`}`;
   }
-  function treeIcon(type) {
-    return type === 'directory'
-      ? '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2.5 5.5h5l1.6 2h8.4v8.5h-15z"/><path d="M2.5 7.5v-3h5l1.6 2h8.4v1"/></svg>'
-      : '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.5h6l4 4v11H5z"/><path d="M11 2.5v4h4"/></svg>';
+  function treeIcon(entry) {
+    const icon = entry.type === 'directory' ? (entry.link ? 'folder-symlink' : 'folder') : 'file';
+    return `<span class="tree-entry-icon tree-entry-icon-${icon}" aria-hidden="true"></span>`;
   }
 
   function middleEllipsis(value, availableWidth, style) {
@@ -2882,14 +2881,10 @@
       const row = document.createElement('div');
       row.className = `tree-row tree-${entry.type === 'directory' ? 'dir' : 'file'}`;
       row.dataset.path = entry.path;
-      row.innerHTML = `<span class="chevron">${entry.type === 'directory' ? '›' : ''}</span><span class="file-icon">${treeIcon(entry.type)}</span><span class="tree-name" data-full-name="${escapeHTML(entry.name)}" data-tooltip="${escapeHTML(entry.name)}">${escapeHTML(entry.name)}</span>`;
+      row.innerHTML = `<span class="chevron">${entry.type === 'directory' ? '›' : ''}</span><span class="file-icon">${treeIcon(entry)}</span><span class="tree-name" data-full-name="${escapeHTML(entry.name)}" data-tooltip="${escapeHTML(entry.name)}">${escapeHTML(entry.name)}</span>`;
       if (entry.link) {
         row.classList.add('tree-link');
         row.dataset.linkStatus = entry.link.status;
-        const badge = document.createElement('span');
-        badge.className = 'tree-link-badge';
-        badge.setAttribute('aria-hidden', 'true');
-        row.querySelector('.file-icon').appendChild(badge);
         row.dataset.tooltip = t('workspace.linkTitle');
       }
       container.appendChild(row);

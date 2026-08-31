@@ -8,11 +8,11 @@
 
 - **feat(themes):** Added Monokai Pro Light, Claude Light and Claude Dark application themes based on official public UI colors. Light and dark application themes are selected independently. They change application chrome only; Vditor continues to own editor typography, content themes, and code-block highlighting.
 - **feat(theme mode):** Replaced the status-bar light/dark switch and Appearance-page system-theme checkbox with an icon-only three-way picker for fixed light, fixed dark, and follow-system modes. The resident icon shows the selected mode while the light/dark theme choices remain independently configurable.
-- **feat(symbolic icons):** Replaced the supplied desktop chrome, explorer refresh, theme-mode, settings, and settings-navigation icons with the corresponding Lucide symbolic assets, while keeping existing UI identifiers and accessible labels stable.
+- **feat(symbolic icons):** Replaced the supplied desktop chrome, explorer refresh, theme-mode, settings, settings-navigation, file-tree, and find-and-replace icons with the corresponding Lucide assets, including `file`, `folder`, `folder-symlink`, `replace`, and `replace-all`, while keeping existing UI identifiers and accessible labels stable. The selected SVGs are now sourced from the `lucide-static` build dependency; application logos and notification artwork remain project-owned assets.
 
 #### Workspace and file operations
 
-- **feat(workspace links):** The explorer now distinguishes real-path-resolvable directory links with an italic, underlined name and a themed link SVG badge. Links into the workspace follow the workspace depth limit; external and cyclic targets remain visible but cannot be expanded.
+- **feat(workspace links):** The explorer now distinguishes real-path-resolvable directory links with an italic, underlined name and the Lucide `folder-symlink` icon. Links into the workspace follow the workspace depth limit; external and cyclic targets remain visible but cannot be expanded.
 - **feat(workspace):** Added a persisted 7–12 workspace directory read-depth control (default 7). The explorer, restored folder expansion, and workspace monitoring share the same boundary, and the explorer explains when a deeper directory is intentionally not read.
 
 #### Recovery and unavailable files
@@ -63,6 +63,7 @@
 ### Project Maintenance
 
 - **docs(0.2.0):** Synchronized README/README_CN, the architecture map, file-safety contract, development plan, execution tracker, theme notes, and cross-platform handoff with the final 0.2.0 worktree. 
+- **chore(icons):** Added `lucide-static` as the build-time source for selected SVG assets and removed the manually downloaded symbolic icon copies from the renderer source tree.
 - **test(e2e):** split Electron coverage by behavior domain
 
 ## 0.1.5 - Editing Experience Improvement

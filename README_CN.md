@@ -216,6 +216,7 @@ Vditor Desktop 的实现离不开以下开源项目。各项目作者保留其�
 - [TypeScript](https://github.com/microsoft/TypeScript) · [ESLint](https://github.com/eslint/eslint) · [typescript-eslint](https://github.com/typescript-eslint/typescript-eslint)
 - [Prettier](https://github.com/prettier/prettier) · [Vitest](https://github.com/vitest-dev/vitest) · [jsdom](https://github.com/jsdom/jsdom)
 - [Playwright](https://github.com/microsoft/playwright) · [electron-builder](https://github.com/electron-userland/electron-builder) · [DefinitelyTyped](https://github.com/DefinitelyTyped/DefinitelyTyped)
+- [Lucide](https://lucide.dev) · [lucide-static](https://www.npmjs.com/package/lucide-static)（ISC）：提供应用界面、查找替换和文件树使用的 SVG 图标；`lucide-static` 仅在构建期复制选定资源，不引入 React。
 
 </details>
 

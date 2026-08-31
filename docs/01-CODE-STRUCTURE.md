@@ -1,8 +1,8 @@
 # Vditor-Electron Code Structure World Map
 
-- **生成时间：** 2026-08-28
-- **基于的工作区：** `dev-0.2.0` 当前 P09 实现（基础安全提交 `d89cff5`，包含 P09 手测反馈修正）
-- **文档版本：** v1.11
+- **生成时间：** 2026-08-31
+- **基于的工作区：** `dev-0.2.0` 当前工作区实现（包含 Lucide 静态图标资源构建链路）
+- **文档版本：** v1.12
 - **对应 package.json 版本号：** 0.1.5
 
 ---
@@ -44,6 +44,10 @@
 ### 构建工具
 
 **无 Vite / Webpack。** 主进程使用 TypeScript 直接编译（`tsc -p tsconfig.main.json`），渲染进程为纯 JavaScript + CSS 静态文件复制（`scripts/copy-vditor-assets.js`）。
+
+### 图标资源
+
+应用通用界面图标由 `lucide-static`（`devDependencies`，ISC）提供。该包只在构建期使用：`build:assets` 从其 `icons/` 目录复制选定 SVG 到生成的 `dist/renderer/assets/symbolic/`，渲染器通过 CSS mask 使用这些资源；运行时不引入 React 或 Lucide JavaScript 组件。应用 Logo、通知图标等项目自有资源仍保留在 `src/renderer/assets/`。
 
 ### 核心依赖（dependencies）
 
@@ -95,9 +99,8 @@ Vditor-Electron/
 │   ├── locales.js                 # 三语字典（en_US / zh_Hans / zh_Hant）
 │   ├── styles/
 │   │   └── app.css                # 单一应用样式文件（含主题变量、Vditor 覆盖）
-│   └── assets/                    # 内嵌 SVG 图标资源
+│   └── assets/                    # 项目自有静态资源
 │       ├── app-icon/              # 应用标识
-│       ├── symbolic/              # 标题栏、主题、设置和其他界面符号图标
 │       └── notification/          # 持久告警与短暂通知图标
 ├── static/
 │   └── dist/                      # [自动生成] 离线 Vditor 构建产物（由 build:assets 复制）
@@ -106,7 +109,7 @@ Vditor-Electron/
 │   ├── unit/                      # Vitest 单元测试
 │   └── e2e/                       # Playwright Electron E2E 测试
 ├── scripts/                       # 构建辅助脚本
-│   ├── copy-vditor-assets.js      # 复制 Vditor dist 与 renderer 到 dist/
+│   ├── copy-vditor-assets.js      # 复制 Vditor、renderer，并生成 Lucide 图标到 dist/
 │   ├── check-vditor-version.js    # Vditor 版本一致性校验
 │   └── release-linux.js           # Linux x64 portable / AppImage 发布脚本
 ├── resources/
@@ -954,7 +957,7 @@ function rememberRecent(filePath) {
 - **职责：** 懒加载工作区目录树、文件展开状态持久化、文件名省略（canvas 测量）；文件/目录条目右键菜单提供重命名、回收站和在管理器中显示，空白树区域菜单提供切换工作区、新建与打开工作区。
 - **实现：** `appendDirectory()`、`showTreeMenu()`、`showWorkspaceTreeMenu()`、`createExplorerItem()`、`nextUntitledNumber()`、`renameExplorerItem()`、`middleEllipsis()`；新建文件自动创建并打开 `Untitled x.md`，新建目录自动创建 `Untitled x`。文件和目录分别编号；文件还避开当前目录已有 Markdown 文件和已打开标签，目录只避开当前目录已有目录。首次保存或另存为后直接调用 `refreshTree()`，避免自身保存事件被抑制时遗漏新文件。
 - **过滤：** 仅显示 `fileExplorer.visibleExtensions` 中的扩展名，隐藏以 `.` 开头的文件
-- **资源边界：** `workspaceReadDepth` 在 Files & Session 中以 7–12 滑块持久化（默认 7）。根目录深度为 0，`appendDirectory()` 不读取超过该边界的后代，恢复展开状态同样受限；边界目录显示不可选中的本地化提示，语言切换时文件树会重建。可由 `realpath` 解析的目录链接会携带目标、相对工作区深度与工作区内外状态：内部目标可展开、外部目标灰色不可展开、循环目标被阻止；链接名称使用斜体和图标标记。工作区 watcher 使用相同深度且不跟随链接，资源错误只发送一次降级事件并关闭失效 watcher，手动浏览和刷新仍可用。`FileManagerService.listDir()` 会跳过读取过程中消失、失效或无权限的单个条目，不让一个损坏链接阻断整棵树。
+- **资源边界：** `workspaceReadDepth` 在 Files & Session 中以 7–12 滑块持久化（默认 7）。根目录深度为 0，`appendDirectory()` 不读取超过该边界的后代，恢复展开状态同样受限；边界目录显示不可选中的本地化提示，语言切换时文件树会重建。可由 `realpath` 解析的目录链接会携带目标、相对工作区深度与工作区内外状态：内部目标可展开、外部目标灰色不可展开、循环目标被阻止；链接名称使用斜体和下划线，目录图标切换为 Lucide `folder-symlink`。工作区 watcher 使用相同深度且不跟随链接，资源错误只发送一次降级事件并关闭失效 watcher，手动浏览和刷新仍可用。`FileManagerService.listDir()` 会跳过读取过程中消失、失效或无权限的单个条目，不让一个损坏链接阻断整棵树。
 
 #### 文档大纲（`app.js` 的 `renderOutline()`，`index.html:133-136`）
 
@@ -970,7 +973,7 @@ function rememberRecent(filePath) {
 
 - **职责：** 模态对话框，包含 6 个面板（Appearance/Fonts/Editor/Preview/Files & Session/About），支持拖拽移动和 8 方向拖拽调整大小，保存后按设置类型热应用或重建编辑器
 - **实现：** `openSettings()`、`saveSettings()`、`setupSettingsDrag()`、`restoreSettingsCardSize()`
-- **图标：** 左侧 6 个分类按钮使用 `assets/symbolic/settings-*.svg` 的资源化符号图标；状态栏设置入口使用 `assets/symbolic/settings.svg`，设置目录入口使用 `assets/symbolic/settings-files.svg`。
+- **图标：** 左侧 6 个分类按钮使用由 `lucide-static` 构建生成的 `assets/symbolic/settings-*.svg`；状态栏设置入口使用 `assets/symbolic/settings.svg`，设置目录入口使用 `assets/symbolic/settings-files.svg`。这些 SVG 不再作为手工下载的源码资源维护。
 
 ##### Appearance 面板
 
@@ -1227,7 +1230,10 @@ build:main:
 build:assets:
   node scripts/copy-vditor-assets.js
   ├── node_modules/vditor/dist/  → static/dist/（Vditor 离线资源）
-  └── src/renderer/              → dist/renderer/（HTML/CSS/JS/图标）
+  ├── src/renderer/              → dist/renderer/（HTML/CSS/JS/项目自有资源）
+  └── node_modules/lucide-static/icons/
+                                  → dist/renderer/assets/symbolic/
+                                    （选定的 Lucide SVG，含 file/folder/folder-symlink、replace/replace-all 等）
 ```
 
 ### 12.7 app 协议资源解析
@@ -1331,7 +1337,7 @@ build:assets:
 | 命令 | 作用 |
 |---|---|
 | `npm run build:main` | `tsc -p tsconfig.main.json` 编译主进程 → `dist/main/` |
-| `npm run build:assets` | `scripts/copy-vditor-assets.js` 复制 Vditor 离线资源与渲染器文件 |
+| `npm run build:assets` | `scripts/copy-vditor-assets.js` 复制 Vditor 离线资源、渲染器文件，并从 `lucide-static` 生成选定 SVG |
 | `npm run build` | = `build:main` + `build:assets` 的组合 |
 | `npm run start` | `build` + `electron .` 启动应用 |
 | `npm run dev` | 同 `start`（`build` + `electron .`） |
@@ -1622,6 +1628,7 @@ flowchart TB
 - 切换工作区后各自保留展开状态，文件监听器拾取新文件
 - 菜单"打开文件夹"后侧栏自动显示并持久化 `sidebarVisible`
 - 侧栏宽度调整，长文件名中间省略（canvas 测量）
+- 文件树使用 Lucide `file`、`folder` 和目录链接专用的 `folder-symlink` 图标；查找替换使用 Lucide `replace` 与 `replace-all` 图标
 - 文件树行无 `draggable` 属性
 
 #### 文件读写与外部变更

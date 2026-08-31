@@ -230,6 +230,7 @@ Vditor Desktop is made possible by the following open-source projects. Their aut
 - [TypeScript](https://github.com/microsoft/TypeScript) · [ESLint](https://github.com/eslint/eslint) · [typescript-eslint](https://github.com/typescript-eslint/typescript-eslint)
 - [Prettier](https://github.com/prettier/prettier) · [Vitest](https://github.com/vitest-dev/vitest) · [jsdom](https://github.com/jsdom/jsdom)
 - [Playwright](https://github.com/microsoft/playwright) · [electron-builder](https://github.com/electron-userland/electron-builder) · [DefinitelyTyped](https://github.com/DefinitelyTyped/DefinitelyTyped)
+- [Lucide](https://lucide.dev) · [lucide-static](https://www.npmjs.com/package/lucide-static) (ISC): provides the SVG icons used by the application chrome, find-and-replace controls, and file tree; `lucide-static` is used only at build time and does not introduce React.
 
 </details>
 
