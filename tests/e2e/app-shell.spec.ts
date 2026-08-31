@@ -996,15 +996,36 @@ test('saves settings live and keeps the enlarged settings dialog draggable', asy
     const edgeChrome = await page.evaluate(() => {
       const edge = document.querySelector('.settings-right-edge');
       const header = document.querySelector('.settings-card > header');
-      if (!edge || !header) throw new Error('Settings chrome is incomplete');
+      const footer = document.querySelector('.settings-card > footer');
+      if (!edge || !header || !footer) throw new Error('Settings chrome is incomplete');
       return {
         edge: getComputedStyle(edge).backgroundColor,
         header: getComputedStyle(header).backgroundColor,
         width: edge.getBoundingClientRect().width,
+        headerEdgeCover: {
+          background: getComputedStyle(header, '::after').backgroundColor,
+          width: getComputedStyle(header, '::after').width,
+          bottom: getComputedStyle(header, '::after').bottom,
+        },
+        footerEdgeCover: {
+          background: getComputedStyle(footer, '::after').backgroundColor,
+          width: getComputedStyle(footer, '::after').width,
+          top: getComputedStyle(footer, '::after').top,
+        },
       };
     });
     expect(edgeChrome.edge).toBe(edgeChrome.header);
     expect(edgeChrome.width).toBe(10);
+    expect(edgeChrome.headerEdgeCover).toEqual({
+      background: edgeChrome.edge,
+      width: '10px',
+      bottom: '-1px',
+    });
+    expect(edgeChrome.footerEdgeCover).toEqual({
+      background: edgeChrome.edge,
+      width: '10px',
+      top: '-1px',
+    });
     const initial = await card.boundingBox();
     expect(initial?.width).toBeGreaterThan(900);
     const header = card.locator(':scope > header');

@@ -14,6 +14,15 @@ import {
   replaceFileAtomically,
 } from './support/app-harness';
 
+function localResourceBase(directory: string): string {
+  const urlPath = process.platform === 'win32' ? directory.replace(/\\/g, '/') : directory;
+  const encoded = urlPath
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+  return `local-file://root/${encoded.endsWith('/') ? encoded : `${encoded}/`}`;
+}
+
 test('isolates TOML configuration and Chromium data in the configured directories', async () => {
   const running = await launchApp();
   try {
@@ -733,10 +742,7 @@ test('reconciles a renamed document after repeated watcher rebind failures', asy
     await expect(page.locator('#statusMessage')).toContainText(
       'Unable to restore 1 document watcher(s).',
     );
-    const resourceBase = `local-file://root${newDirectory
-      .split(path.sep)
-      .map((segment) => encodeURIComponent(segment))
-      .join('/')}/`;
+    const resourceBase = localResourceBase(newDirectory);
     await expect(page.locator('.editor-host.active')).toHaveAttribute(
       'data-local-resource-base',
       resourceBase,
@@ -856,10 +862,7 @@ test('keeps renamed document state coherent when editor rebuild fails repeatedly
     await expect(page.locator('#statusMessage')).toContainText(
       'Unable to rebuild every renamed document.',
     );
-    const resourceBase = `local-file://root${newDirectory
-      .split(path.sep)
-      .map((segment) => encodeURIComponent(segment))
-      .join('/')}/`;
+    const resourceBase = localResourceBase(newDirectory);
     await expect(page.locator('.editor-host.active')).toHaveAttribute(
       'data-local-resource-base',
       resourceBase,
@@ -933,6 +936,94 @@ test('refuses Save As when the chosen destination is already open in another tab
     );
   } finally {
     await closeApp(running);
+  }
+});
+
+test('rebinds local image resources to the Save As destination and revokes the old root', async () => {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-save-as-resource-'));
+  const workspace = path.join(fixture, 'workspace');
+  const sourceDirectory = path.join(fixture, 'source-document');
+  const destinationDirectory = path.join(fixture, 'save-as-target');
+  const sourcePath = path.join(sourceDirectory, 'source.md');
+  const destinationPath = path.join(destinationDirectory, 'copy.md');
+  const markdown = '![pixel](assets/pixel.png)\n\nSave As resource root';
+  const pixel = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64',
+  );
+  fs.mkdirSync(workspace);
+  fs.mkdirSync(path.join(sourceDirectory, 'assets'), { recursive: true });
+  fs.mkdirSync(path.join(destinationDirectory, 'assets'), { recursive: true });
+  fs.writeFileSync(sourcePath, markdown);
+  fs.writeFileSync(path.join(sourceDirectory, 'assets', 'pixel.png'), pixel);
+  fs.writeFileSync(path.join(destinationDirectory, 'assets', 'pixel.png'), pixel);
+
+  const running = await launchApp({
+    editMode: 'sv',
+    restoreTabs: true,
+    restoreWorkspace: true,
+    session: { workspacePath: workspace, activeFilePath: sourcePath, openFiles: [sourcePath] },
+  });
+  try {
+    const { app, page } = running;
+    const image = page.locator('.editor-host.active .vditor-preview img');
+    await expect(image).toBeVisible();
+    await expect.poll(() => image.evaluate((node: HTMLImageElement) => node.naturalWidth)).toBe(1);
+    const oldImageUrl = await image.getAttribute('src');
+    if (!oldImageUrl) throw new Error('The source image URL is unavailable.');
+
+    await app.evaluate(({ dialog }, selectedPath) => {
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: selectedPath });
+    }, destinationPath);
+    const modifier =
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+    await page.keyboard.press(`${modifier}+Shift+S`);
+
+    await expect(page.locator('#statusPath')).toHaveText(destinationPath);
+    await expect.poll(() => fs.readFileSync(destinationPath, 'utf8').trimEnd()).toBe(markdown);
+    const resourceBase = await page
+      .locator('.editor-host.active')
+      .getAttribute('data-local-resource-base');
+    if (!resourceBase) throw new Error('The Save As resource base is unavailable.');
+    expect(resourceBase).toBe(localResourceBase(destinationDirectory));
+
+    const destinationImage = page.locator('.editor-host.active .vditor-preview img');
+    await expect(destinationImage).toBeVisible();
+    await expect
+      .poll(() => destinationImage.evaluate((node: HTMLImageElement) => node.naturalWidth))
+      .toBe(1);
+    const newImageUrl = await destinationImage.getAttribute('src');
+    if (!newImageUrl) throw new Error('The destination image URL is unavailable.');
+    expect(newImageUrl).toBe(new URL('assets/pixel.png', resourceBase).href);
+
+    const inspect = async (url: string) =>
+      page.evaluate(async (resourceUrl) => {
+        const response = await fetch(resourceUrl, { cache: 'no-store' });
+        return {
+          status: response.status,
+          cacheControl: response.headers.get('cache-control'),
+          contentType: response.headers.get('content-type'),
+          noSniff: response.headers.get('x-content-type-options'),
+          bodyLength: (await response.arrayBuffer()).byteLength,
+        };
+      }, url);
+    expect(await inspect(oldImageUrl)).toEqual({
+      status: 404,
+      cacheControl: 'no-store',
+      contentType: 'text/plain; charset=utf-8',
+      noSniff: 'nosniff',
+      bodyLength: 'Not found'.length,
+    });
+    expect(await inspect(newImageUrl)).toEqual({
+      status: 200,
+      cacheControl: 'no-store',
+      contentType: 'image/png',
+      noSniff: 'nosniff',
+      bodyLength: pixel.length,
+    });
+  } finally {
+    await closeApp(running);
+    fs.rmSync(fixture, { recursive: true, force: true });
   }
 });
 

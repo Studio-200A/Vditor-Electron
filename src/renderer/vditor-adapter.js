@@ -97,6 +97,17 @@
     return true;
   }
 
+  function editModeShortcut(event) {
+    if (!event || event.isComposing || !event.altKey || event.shiftKey) return null;
+    // Vditor 3.11.3 handles these shortcuts inside its private keydown path.
+    // Match its platform modifier rule so Desktop can preserve scroll and sync
+    // application-owned state before Vditor rebuilds the target editing surface.
+    const isMac = /mac/i.test(navigator.platform || '');
+    const hasModifier = isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+    if (!hasModifier) return null;
+    return { Digit7: 'wysiwyg', Digit8: 'ir', Digit9: 'sv' }[event.code] || null;
+  }
+
   function toolbarHints(root = document) {
     return Array.from(root.querySelectorAll(selectors.toolbarHints));
   }
@@ -1210,6 +1221,7 @@
     keepSplitToolbarActionsAvailable,
     toolbarHint,
     selectEditMode,
+    editModeShortcut,
     toolbarHints,
     hoverTooltips,
     openSubmenus,

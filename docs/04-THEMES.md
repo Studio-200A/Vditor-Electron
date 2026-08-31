@@ -97,6 +97,8 @@ Vditor 内容和代码主题仍各自保存亮暗偏好：`lightCodeTheme` / `da
 
 按钮、焦点环和状态提示应引用语义变量，不应在组件规则中重复写主题专属颜色。
 
+浅色主题的 `--border` 既用于控件轮廓，也用于 sidebar、工具栏、设置页等结构分割线；因此它应保持低强调，接近 Classic 的视觉强度，而不是以正文文字的对比度作为基准。Claude Light 使用 `rgb(31 30 29 / 11%)`，Monokai Pro Light 使用暖灰 `#d8d3d1`；两者在各自导航表面上的边界对比度均与 Classic 接近，同时保留主题色温。
+
 ### 4.2 Sidebar 与编辑区表面
 
 应用使用两个专门的表面变量：`--sidebar-surface` 表示文件树和侧栏内容的基准表面，`--editor-surface` 表示编辑器宿主、Vditor 内容区以及设置页具体内容的表面。
@@ -124,7 +126,7 @@ Vditor 内容和代码主题仍各自保存亮暗偏好：`lightCodeTheme` / `da
 
 ### 5.3 Claude Light
 
-采用 Anthropic 风格暖色纸张视觉：`--bg` 和编辑区为 `#faf9f5`，sidebar 为 `#f5f4ed`，文字为 `#141413`，弱化文字为 `#73726c`，accent 和品牌强调色为 `#d97757`。sidebar hover 使用 `#e8e6dc`，边框使用 `rgb(31 30 29 / 30%)`，主按钮强制使用白色文字。该主题不定义字体、内容主题或代码高亮。
+采用 Anthropic 风格暖色纸张视觉：`--bg` 和编辑区为 `#faf9f5`，sidebar 为 `#f5f4ed`，文字为 `#141413`，弱化文字为 `#73726c`，accent 和品牌强调色为 `#d97757`。sidebar hover 使用 `#e8e6dc`，边框使用低强调的 `rgb(31 30 29 / 11%)`，主按钮强制使用白色文字。该主题不定义字体、内容主题或代码高亮。
 
 ### 5.4 Claude Dark
 
@@ -136,7 +138,7 @@ Vditor 内容和代码主题仍各自保存亮暗偏好：`lightCodeTheme` / `da
 
 ### 5.6 Monokai Pro Light
 
-Monokai Pro Dark 的同族浅色主题，调色取自官方 Monokai Pro Light VS Code 主题（非 Filter Sun）。应用和编辑区基准表面为暖白 `#faf4f2`，sidebar 为略深的 `#ede7e5`，次级面板为 `#e0dad9`，文字为 `#29242a`，弱化文字为 `#706b6e`，accent 和品牌强调色为 Monokai 红 `#e14775`。与 Monokai Pro Dark 一样，应用 CSS 复用输入背景、代码块背景、链接、引用和分割线的内容可读性覆盖，并为 H1–H6 提供红、橙、绿、蓝、紫、黑六级标题色；代码块高亮仍由 Vditor code theme 提供。
+Monokai Pro Dark 的同族浅色主题，调色取自官方 Monokai Pro Light VS Code 主题（非 Filter Sun）。应用和编辑区基准表面为暖白 `#faf4f2`，sidebar 为略深的 `#ede7e5`，次级面板为 `#e0dad9`，文字为 `#29242a`，弱化文字为 `#706b6e`，低强调暖灰边框为 `#d8d3d1`，accent 和品牌强调色为 Monokai 红 `#e14775`。与 Monokai Pro Dark 一样，应用 CSS 复用输入背景、代码块背景、链接、引用和分割线的内容可读性覆盖，并为 H1–H6 提供红、橙、绿、蓝、紫、黑六级标题色；代码块高亮仍由 Vditor code theme 提供。
 
 ## 6. 主题选择器与预览
 

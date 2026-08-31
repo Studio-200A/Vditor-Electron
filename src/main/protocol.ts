@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { pathToFileURL } from 'url';
 import { isTrustedAppResourceUrl } from './app-url';
+import { LocalResourcePolicy, localResourceContentType } from './local-resource';
 
 const PROJECT_ROOT = path.join(__dirname, '..', '..');
 const RENDERER_DIR = path.join(PROJECT_ROOT, 'dist', 'renderer');
@@ -19,7 +20,19 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
-export function registerAppProtocol(): void {
+function localResourceNotFound(reason?: 'method' | 'path' | 'type' | 'read'): Response {
+  if (reason) console.debug(`[local-file] denied: ${reason}`);
+  return new Response('Not found', {
+    status: 404,
+    headers: {
+      'Cache-Control': 'no-store',
+      'Content-Type': 'text/plain; charset=utf-8',
+      'X-Content-Type-Options': 'nosniff',
+    },
+  });
+}
+
+export function registerAppProtocol(localResourcePolicy: LocalResourcePolicy): void {
   protocol.handle('app', (request) => {
     if (!isTrustedAppResourceUrl(request.url)) return new Response('Not found', { status: 404 });
 
@@ -60,12 +73,26 @@ export function registerAppProtocol(): void {
     }
   });
 
-  protocol.handle('local-file', (request) => {
-    const url = new URL(request.url);
-    const filePath = path.resolve(decodeURIComponent(url.pathname));
-    if (!path.isAbsolute(filePath) || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
-      return new Response('Local file not found', { status: 404 });
+  protocol.handle('local-file', async (request) => {
+    if (request.method !== 'GET') return localResourceNotFound('method');
+    const filePath = await localResourcePolicy.resolveResourcePath(request.url);
+    const contentType = filePath ? localResourceContentType(filePath) : null;
+    if (!filePath) return localResourceNotFound('path');
+    if (!contentType) return localResourceNotFound('type');
+
+    try {
+      const response = await net.fetch(pathToFileURL(filePath).toString());
+      if (!response.ok) return localResourceNotFound('read');
+      return new Response(response.body, {
+        status: response.status,
+        headers: {
+          'Cache-Control': 'no-store',
+          'Content-Type': contentType,
+          'X-Content-Type-Options': 'nosniff',
+        },
+      });
+    } catch {
+      return localResourceNotFound('read');
     }
-    return net.fetch(pathToFileURL(filePath).toString());
   });
 }

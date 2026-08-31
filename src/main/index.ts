@@ -18,6 +18,7 @@ import { extractOpenFilePaths } from './open-files';
 import { allowedExternalUrl } from './external-url';
 import { invalidIpcArgument, normalizeIpcError, requireTrustedMainFrame } from './ipc-guard';
 import { IPC_CHANNELS } from './ipc-contract';
+import { LocalResourcePolicy } from './local-resource';
 import {
   parseAbsolutePath,
   parseBinary,
@@ -28,6 +29,7 @@ import {
   parseOptionalBoolean,
   parseOptionalInteger,
   parseOptionalText,
+  parseResourceRootPaths,
   parseSettingsPatch,
   parseText,
   requireArgumentCount,
@@ -61,6 +63,14 @@ const applicationPaths = resolveApplicationPaths();
 fs.mkdirSync(applicationPaths.chromiumDir, { recursive: true });
 app.setPath('userData', applicationPaths.chromiumDir);
 app.setPath('sessionData', applicationPaths.chromiumDir);
+const localResourcePolicy = new LocalResourcePolicy({
+  onRejected: (reason) => console.debug(`[local-file] denied: ${reason}`),
+  privateRoots: [
+    applicationPaths.configDir,
+    applicationPaths.chromiumDir,
+    applicationPaths.recoveryDir,
+  ],
+});
 
 function isWindowMaximized(): boolean {
   return windowMaximizedState;
@@ -309,6 +319,7 @@ function createWindow(): void {
     rendererReady = false;
     boundsBeforeMaximize = null;
     windowMaximizedState = false;
+    localResourcePolicy.clear();
   });
 }
 
@@ -519,6 +530,10 @@ function registerIpcHandlers(): void {
     requireArgumentCount(args, 1, 2);
     return fileWatchService.unwatchDocument(parseAbsolutePath(args[0]), parseOptionalText(args[1]));
   });
+  handleTrusted(IPC_CHANNELS.fileSetResourceRoots, (_event, ...args) => {
+    requireArgumentCount(args, 1);
+    return localResourcePolicy.setRoots(parseResourceRootPaths(args[0]));
+  });
 
   handleTrusted(IPC_CHANNELS.appGetSettings, (_event, ...args) => {
     requireArgumentCount(args, 0);
@@ -699,7 +714,7 @@ if (!ownsSingleInstanceLock) {
   });
 
   void app.whenReady().then(() => {
-    registerAppProtocol();
+    registerAppProtocol(localResourcePolicy);
     settingsStore = new SettingsStore(applicationPaths.configDir);
     recoveryStore = new RecoveryStore(applicationPaths.recoveryDir);
     fileManager = new FileManagerService();
@@ -726,6 +741,7 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 app.on('before-quit', () => {
+  localResourcePolicy.clear();
   void fileWatchService?.dispose();
 });
 app.on('web-contents-created', (_event, contents) => {

@@ -66,6 +66,25 @@ describe('Vditor DOM compatibility adapter', () => {
     ]);
   });
 
+  it('maps Vditor mode shortcuts using its platform modifier contract', () => {
+    const shortcut = (code: string, modifiers: KeyboardEventInit = {}) =>
+      new window.KeyboardEvent('keydown', { code, altKey: true, ctrlKey: true, ...modifiers });
+
+    expect(adapter.editModeShortcut(shortcut('Digit7'))).toBe('wysiwyg');
+    expect(adapter.editModeShortcut(shortcut('Digit8'))).toBe('ir');
+    expect(adapter.editModeShortcut(shortcut('Digit9'))).toBe('sv');
+    expect(adapter.editModeShortcut(shortcut('Digit8', { shiftKey: true }))).toBeNull();
+    expect(adapter.editModeShortcut(shortcut('Key8'))).toBeNull();
+
+    Object.defineProperty(window.navigator, 'platform', { configurable: true, value: 'MacIntel' });
+    expect(
+      adapter.editModeShortcut(
+        new window.KeyboardEvent('keydown', { code: 'Digit7', altKey: true, metaKey: true }),
+      ),
+    ).toBe('wysiwyg');
+    expect(adapter.editModeShortcut(shortcut('Digit7'))).toBeNull();
+  });
+
   it('keeps Vditor native outline internals available while hiding their control', () => {
     const toolbar = adapter.editorParts(createHost()).toolbar;
 
@@ -362,27 +381,27 @@ describe('Vditor DOM compatibility adapter', () => {
     image.src = 'app://app/assets/screenshot-light.webp';
     host.append(image);
 
-    adapter.resolveRelativeImageSources(host, 'local-file://root/home/project/');
+    adapter.resolveRelativeImageSources(host, 'local-file://root//home/project/');
 
     expect(image.dataset.vditorDesktopOriginalSrc).toBe('assets/screenshot-light.webp');
     expect(image.getAttribute('src')).toBe(
-      'local-file://root/home/project/assets/screenshot-light.webp',
+      'local-file://root//home/project/assets/screenshot-light.webp',
     );
   });
 
   it('restores link-base URLs to relative document paths', () => {
     const host = createHost();
     const link = window.document.createElement('a');
-    link.href = 'local-file://root/home/project/docs/target.md#section';
+    link.href = 'local-file://root//home/project/docs/target.md#section';
     host.append(link);
 
-    adapter.resolveRelativeDocumentLinks(host, 'local-file://root/home/project/docs/');
+    adapter.resolveRelativeDocumentLinks(host, 'local-file://root//home/project/docs/');
 
     expect(link.getAttribute('href')).toBe('target.md#section');
     expect(
       adapter.relativeSourceFromLocalUrl(
-        'local-file://root/home/project/assets/pixel.png',
-        'local-file://root/home/project/docs/',
+        'local-file://root//home/project/assets/pixel.png',
+        'local-file://root//home/project/docs/',
       ),
     ).toBe('../assets/pixel.png');
   });

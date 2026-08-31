@@ -87,7 +87,7 @@
   /* Muted is ~111 RGB units below sidebar/surface to keep toolbar icons readable,
      matching classic/claude light contrast. */
   --muted: #706b6e;
-  --border: #bfb9ba;
+  --border: #d8d3d1;
   --accent: #e14775;
   --on-accent: #faf4f2;
   --brand-accent: #e14775;
@@ -118,7 +118,7 @@
   --hover: #e8e6dc;
   --text: #141413;
   --muted: #73726c;
-  --border: rgb(31 30 29 / 30%);
+  --border: rgb(31 30 29 / 11%);
   --accent: #d97757;
   --on-accent: #141413;
   --brand-accent: #d97757;
@@ -2272,7 +2272,24 @@ body.settings-card-resizing {
 }
 .settings-card > header,
 .settings-card > footer {
+  position: relative;
   background: var(--sidebar-surface);
+}
+.settings-card > header::after,
+.settings-card > footer::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  width: 10px;
+  height: 1px;
+  background: var(--sidebar-surface);
+  pointer-events: none;
+}
+.settings-card > header::after {
+  bottom: -1px;
+}
+.settings-card > footer::after {
+  top: -1px;
 }
 .modal-card > header {
   justify-content: space-between;

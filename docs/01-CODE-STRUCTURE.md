@@ -2,7 +2,7 @@
 
 - **生成时间：** 2026-08-31
 - **基于的工作区：** `dev-0.2.0` 当前工作区实现（包含 Lucide 静态图标资源构建链路）
-- **文档版本：** v1.13
+- **文档版本：** v1.14
 - **对应 package.json 版本号：** 0.1.5
 
 ---
@@ -15,7 +15,7 @@
 
 **核心功能：** 多标签页 Markdown 编辑、三种编辑模式（IR/SV/WYSIWYG）、分栏预览、文件树侧栏、文档大纲、查找替换、图片插入与压缩、HTML/PDF 导出、TOML 配置持久化、三语国际化（英/简/繁）。
 
-**开发阶段：** 0.2.0 阶段开发中。保存、恢复、工作区内外 watcher、外部修改冲突、外部删除/重新出现/不可读状态、工作区读取/监听深度边界、目录级路径一致性、批次 7 本地闭环和批次 8/9/9.1 安全代码、专项验证、Linux 全量回归及手测均已完成。批次 9.1 已确认 Vditor 3.11.3 表格重建丢失横向滚动状态，并在 adapter 内完成局部补偿、滚动条设置统一、专项自动化和全量回归。IPC/本地资源安全、已有目标的长期 TOCTOU、发布门槛和 Windows/macOS 实体机验证仍在后续工作。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
+**开发阶段：** 0.2.0 阶段开发中。保存、恢复、工作区内外 watcher、外部修改冲突、外部删除/重新出现/不可读状态、工作区读取/监听深度边界、目录级路径一致性、批次 7 本地闭环和批次 8/9/9.1 安全代码、专项验证、Linux 全量回归及手测均已完成。批次 9.1 已确认 Vditor 3.11.3 表格重建丢失横向滚动状态，并在 adapter 内完成局部补偿、滚动条设置统一、专项自动化和全量回归。批次 10 已完成受控 `local-file://root`、资源类型响应边界、Linux 专项自动化、用户手测与本轮测试；已有目标的长期 TOCTOU、发布门槛和 Windows/macOS 实体机验证仍在后续工作。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
 
 ---
 
@@ -79,6 +79,7 @@ Vditor-Electron/
 │   │   ├── ipc-guard.ts           # 可信顶层 renderer 来源校验与稳定错误码
 │   │   ├── ipc-validation.ts      # 高风险 IPC 参数的运行时解析与边界校验
 │   │   ├── protocol.ts            # app:// 与 local-file:// 协议注册
+│   │   ├── local-resource.ts      # local-file URL、受控根和资源 MIME 策略
 │   │   ├── external-url.ts         # 外部 URL 协议白名单校验
 │   │   ├── menu.ts                # macOS 原生菜单构建（Menu.buildFromTemplate）
 │   │   ├── app-paths.ts           # 平台路径解析（config / chromium / recovery 数据目录）
@@ -141,7 +142,7 @@ Vditor-Electron/
    ├── 失败 → app.quit()
    └── 成功 → queueOpenFiles(extractOpenFilePaths(process.argv))
 2. app.whenReady() 回调：
-   ├── registerAppProtocol()              // 注册 app:// 与 local-file://
+   ├── registerAppProtocol(localResourcePolicy) // 注册 app:// 与受控 local-file://
    ├── new SettingsStore(configDir)       // 加载 TOML 配置
    ├── new RecoveryStore(recoveryDir)      // 初始化私有恢复快照存储
    ├── new FileManagerService()           // 初始化文件服务
@@ -680,6 +681,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `file:setWorkspaceWatch`     | `rootPath?, depth?`               | `void`                                      | 按 7–12 深度设置只报告目录结构变化的工作区 watcher，不跟随符号链接 |
 | `file:watchDocument`         | `filePath, reconcile?`            | `void`                                      | 为每个打开文档建立去重的稳定内容 watcher；可在 ready 后请求 reconciliation |
 | `file:unwatchDocument`       | `filePath, identity?`             | `void`                                      | 按路径或已保存 identity 关闭 watcher 并取消迟到读取 |
+| `file:setResourceRoots`      | `rootPaths: string[]`             | `void`                                      | 替换 local-file 受控根；仅接受最多 64 个绝对目录，由主进程执行 realpath、私有目录排除和边界校验 |
 | `app:getSettings`            | 无                                | `AppSettings`                               | 返回完整配置副本（structuredClone）          |
 | `app:getDefaultSettings`     | 无                                | `AppSettings`                               | 返回默认配置副本                             |
 | `app:saveSettings`           | `Partial<AppSettings>`            | `AppSettings`                               | 深合并并持久化；相关设置变化时更新 macOS 菜单 |
@@ -759,6 +761,7 @@ openPath(filePath)
   ├── window.fileAPI.readFile(filePath)    # 主进程异步读取、编码探测
   ├── window.fileAPI.fileIdentity(filePath) # 获取 canonical identity
   ├── window.fileAPI.dirname(filePath)     # 获取父目录作为 localResourceBase
+  ├── window.fileAPI.setResourceRoots(...) # 注册工作区和所有打开文档目录
   └── createTab({ filePath, fileIdentity, content, encoding, baseDir })
       ↓
     ensureEditor(tab)                      # 首次激活时创建 Vditor 实例
@@ -770,7 +773,7 @@ openPath(filePath)
 
 Ctrl/Cmd+单击相对 Markdown 链接时，渲染器先调用 `file:resolveMarkdownLink(sourceFile, href)`；主进程拒绝协议、绝对路径、非 Markdown 和不存在目标，仅返回规范化的普通文件路径及可选片段。`openPath()` 复用已有标签或创建新标签，待 Vditor 就绪后将 `#片段` 定位到目标标题。
 
-相对图片继续由 `vditor-adapter.js` 转换为 `local-file://` 资源 URL；不再使用 Vditor 的通用 `linkBase`，以保留 Markdown 链接原始相对目标供受限 IPC 解析。
+相对图片由 Vditor 的 `preview.markdown.linkBase` 和 `vditor-adapter.js` 共同处理：前者在初始渲染前提供 `local-file://` 基址，避免短暂的 `app://` 请求；后者负责异步插入图片、保存前恢复原始相对来源以及观察后续 DOM。资源协议只响应已由 renderer 生命周期同步的受控根。
 
 ### 9.2 文件保存流程
 
@@ -1246,9 +1249,11 @@ build:assets:
 | `app://app/vditor/...`     | `static/dist/...`                  |
 | `app://app/styles/app.css` | `dist/renderer/styles/app.css`     |
 | `app://app/index.html`     | `dist/renderer/index.html`         |
-| `local-file://root/<path>` | 绝对本地文件路径（`path.resolve`） |
+| `local-file://root/<encoded-path>` | 仅来自受控根集合的本地图片资源 |
 
 `app://` 协议先校验受信任的 `app://app` host、端口、凭据和 URI 编码，再将解码后的路径限制在固定的资源根目录内（`startsWith(path.resolve(allowedRoot) + sep)`）；`/` 与 `/index.html` 是唯一允许的顶层 renderer 页面，其他 bundled asset 只能作为子资源加载。
+
+`local-file://` 使用固定 `root` authority；POSIX、Windows drive 和 UNC 路径均把完整的绝对路径编码进 pathname，不能把盘符拼进 authority。`src/main/local-resource.ts` 的 `LocalResourcePolicy` 维护当前工作区根和打开文档父目录，打开、关闭、另存、重命名和工作区切换时由 `app.js` 通过 `file:setResourceRoots` 串行同步。主进程先做 URL 词法拒绝，再对注册目录和目标文件分别执行规范化、`realpath`、目录边界与 `stat` 检查；配置、Chromium user data 和 recovery 目录始终是私有边界，符号链接不能逃出受控根。授权后只响应当前预览需要的 PNG/JPEG/GIF/APNG/AVIF/WEBP，使用准确图片 `Content-Type`、`X-Content-Type-Options: nosniff` 和 `Cache-Control: no-store`；SVG、HTML、JavaScript、XML、未知扩展名、缺失和未授权目标统一返回中性的 404。拒绝日志只记录分类，不记录 URL、真实路径或正文。
 
 ---
 
@@ -1401,7 +1406,7 @@ resolveApplicationPaths()          # app-paths.ts：确定配置/数据目录
 app.requestSingleInstanceLock()
   ↓
 app.whenReady():
-  registerAppProtocol()            # protocol.ts：注册 app:// 和 local-file://
+  registerAppProtocol(localResourcePolicy) # protocol.ts：注册 app:// 和受控 local-file://
   new SettingsStore()              # settings-store.ts：加载 TOML 到内存
   new RecoveryStore()              # recovery-store.ts：加载/保存私有恢复快照
   new FileManagerService()         # file-manager.ts：注册文件服务
@@ -1539,7 +1544,7 @@ flowchart TB
 
 ## 15. 测试覆盖情况
 
-截至 2026-08-28，用户在 Linux 运行当前 P09 工作树的 `npm run check:all` 一次通过：15 个单元测试文件、163/163 单元测试通过，Electron Playwright 119/119 通过；格式、lint、类型、Vditor 版本检查和构建也通过。P09 IPC 安全专项、手测反馈修正专项和约定手测均已完成。2026-08-31，P09.1 追加长表格滚动补偿后，`check:all` 的格式、lint、类型、Vditor 检查、构建和 170/170 单元测试通过；两次 122 项 Electron E2E 分别有 121 项和 119 项首次通过，3 项首次未通过的既有用例均已单独复跑通过。P09.1 专项和约定手测均已完成。以下覆盖说明反映当前代码，并不把 Linux 结果外推为 Windows/macOS 实体机验证。
+截至 2026-08-28，用户在 Linux 运行当前 P09 工作树的 `npm run check:all` 一次通过：15 个单元测试文件、163/163 单元测试通过，Electron Playwright 119/119 通过；格式、lint、类型、Vditor 版本检查和构建也通过。P09 IPC 安全专项、手测反馈修正专项和约定手测均已完成。2026-08-31，P09.1 追加长表格滚动补偿后，`check:all` 的格式、lint、类型、Vditor 检查、构建和 170/170 单元测试通过；两次 122 项 Electron E2E 分别有 121 项和 119 项首次通过，3 项首次未通过的既有用例均已单独复跑通过。P09.1 专项和约定手测均已完成。批次 10 的本地资源和 Save As 重绑用例、Vditor 模式快捷键以及设置页/六主题壳层均已做聚焦验证，用户手测也已通过。用户于同日执行本轮 `check:all`，格式、lint、类型、Vditor 检查、构建和 16 个单元测试文件的 181/181 全部通过；126 条 Electron E2E 首轮 125 条通过，唯一的模式快捷键时机失败经精确重跑 1/1 通过。当前代码包含 16 个单元测试文件；Playwright 发现为 117 个 `test()` 声明、126 条展开用例。以下覆盖说明反映当前代码，并不把 Linux 结果外推为 Windows/macOS 实体机验证。
 
 ### 15.1 单元测试（Vitest）
 
@@ -1555,6 +1560,7 @@ flowchart TB
 | `tests/unit/resolve-markdown-link.test.ts` | `src/main/resolve-markdown-link.ts` | 相对 Markdown 路径、`../`、百分号编码、片段、Windows 路径、缺失/绝对/协议/非 Markdown/非法编码目标拒绝 |
 | `tests/unit/ipc-guard.test.ts`      | `src/main/ipc-guard.ts`              | 当前主窗口 `webContents`、顶层 sender frame、可信 `app://app` 页面与稳定 `IPC_UNTRUSTED_RENDERER` 错误边界 |
 | `tests/unit/ipc-validation.test.ts` | `src/main/ipc-validation.ts`         | 参数数量、绝对路径、跨平台文件名、枚举、数值、文本/二进制大小、设置对象和 `IPC_INVALID_ARGUMENT` 边界 |
+| `tests/unit/local-resource.test.ts` | `src/main/local-resource.ts`         | 固定 authority 的 POSIX/Windows drive/UNC URL、词法拒绝、路径边界、私有根、canonical 越界、根撤销、MIME allowlist 与安全拒绝分类 |
 | `tests/unit/file-manager.test.ts`   | `src/main/services/file-manager.ts` 与 `safe-file-writer.ts` | UTF-8 读取、UTF-8 BOM 检测与剥离、GB18030 回退、同目录安全替换、权限保持、无变化跳过、expected content/absence 基线、临时创建/替换失败保留原文件及清理、权限错误映射、文件/目录创建、路径逃逸拒绝（`../`）、目录优先自然排序、目录链接工作区内外分类与深度、普通文件/目录重命名冲突与失败回滚、二进制图片写入 |
 | `tests/unit/file-identity.test.ts` | `src/main/services/file-identity.ts` | 已存在路径 realpath、大小写敏感规则、符号链接别名、缺失文件和缺失祖先路径拼接、跨平台 path 模型 |
 | `tests/unit/file-watch-service.test.ts` | `src/main/services/file-watch-service.ts` | 工作区结构与文档内容 watcher 分工、7–12 读取深度规范化及重建、资源错误一次降级、同路径去重、ready 后 reconciliation、稳定等待、read revision 乱序保护、瞬态 `unlink` 重核、权限不可读事件、工作区内文件重新出现的双 scope 事件、符号链接规范路径、释放后的迟到读取、workspace revision，以及 Linux raw rename 重绑 |
@@ -1565,14 +1571,14 @@ flowchart TB
 
 ### 15.2 E2E 测试（Playwright Electron，按行为域拆分）
 
-`tests/e2e/support/app-harness.ts` 统一提供 Electron 启动、每测试临时根目录、设置读取、主题选择和关闭清理；它不保留跨测试的应用、页面或文件状态。Playwright 自动发现以下四个 spec，当前为 114 个 `test()` 声明、119 条展开用例；P09 新增的 5 个声明分布在 `navigation-and-resources.spec.ts`（IPC 边界）和 `document-lifecycle.spec.ts`（手测反馈修正）。
+`tests/e2e/support/app-harness.ts` 统一提供 Electron 启动、每测试临时根目录、设置读取、主题选择和关闭清理；它不保留跨测试的应用、页面或文件状态。Playwright 自动发现以下四个 spec，当前为 117 个 `test()` 声明、124 条展开用例；P09/P09.1 与 P10 的 IPC、路径、资源和手测反馈用例分布在 `navigation-and-resources.spec.ts` 与 `document-lifecycle.spec.ts`。
 
 | 测试文件 | 主要责任 |
 | --- | --- |
 | `app-shell.spec.ts` | 应用启动与单实例、标题栏/菜单/标签、主题、设置、窗口与本地化壳层 |
 | `editor-modes.spec.ts` | 查找替换、WYSIWYG / IR / SV、工具栏、选择、表格、分栏、滚动与 Vditor DOM 契约 |
 | `document-lifecycle.spec.ts` | 保存、恢复、工作区、文件树、原生打开对话框、导出资源、watcher、外部冲突、删除、重命名与 Save As 路径一致性 |
-| `navigation-and-resources.spec.ts` | Markdown/大纲导航、外部 URL 边界，以及本地/HTTPS 图片资源 |
+| `navigation-and-resources.spec.ts` | Markdown/大纲导航、外部 URL 边界，以及受控根下的本地/HTTPS/上传图片资源 |
 
 下列用例按功能域覆盖核心场景；具体数量以 Playwright 测试清单为准：
 
@@ -1618,6 +1624,7 @@ flowchart TB
 - `app:openExternal` 在特权 IPC 边界拒绝 `javascript:` 等非白名单协议
 - `will-navigate` 与 `window.open` 对受信任 `app://app` renderer 页面、外部白名单 URL 和其他目标使用同一套导航分类；不允许通过 `app:` 导航到任意 host 或 bundled asset 页面
 - renderer 阻止未被允许的文档 active scheme（包括注入的 `javascript:` 链接）执行，同时保留 Instant Rendering 链接展开编辑行为
+- `local-file://` 只从当前 workspace/打开文档父目录提供 allowlisted raster images；缺失、越界、私有、主动内容、SVG 和关闭文档后的旧根返回中性 404，Windows drive/UNC URL 使用固定 authority
 - 窄窗口工具栏折行时，下拉菜单不改变编辑区几何；隐藏工具栏后标题栏仅在编辑区侧保留投影
 
 #### 工作区与文件树
@@ -1699,7 +1706,7 @@ flowchart TB
 | ----------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/main/index.ts`                 | E2E + URL/导航策略单测                     | 缺乏 `resolveSystemLocale` / `isMaximizedLikeBounds` / `initialWindowBackground` 主题映射 / watcher `on('all')` 事件流的单元测试                |
 | `src/main/preload.ts`               | 仅 E2E 覆盖                                | 无 Bridge API surface 类型契约测试                                                                                                                                            |
-| `src/main/protocol.ts`              | app URL 单测 + 资源 E2E                    | 无 protocol handler 直接单测，以及 `local-file://` 非绝对路径 / 不存在文件 / URL 遍历攻击的单元测试                                                                              |
+| `src/main/protocol.ts`              | app URL 单测 + local-resource 策略单测 + 资源 E2E | 仍无 protocol handler 直接单测；响应头和 neutral 404 目前由真实 Electron E2E 覆盖                                                                              |
 | `src/main/menu.ts`                  | 仅 E2E 覆盖                                | 无三语言菜单标签生成的独立测试                                                                                                                                                |
 | `src/main/services/file-manager.ts` | 单元测试较完善                             | 已覆盖 `exists()`、空目录 `listDir`、创建/重命名目标冲突、路径逃逸、safe writer 基线和失败回滚；Windows/macOS 的权限、占用和目录级 no-replace 原生语义仍见 [`docs/03-CROSS-PLATFORM.md` §9](03-CROSS-PLATFORM.md#9-020-batch-7-deferred-platform-validation) |
 | `src/main/services/file-identity.ts` | 单元测试已覆盖 Linux 与注入路径模型       | Windows/macOS 实际卷大小写、Unicode 规范化、junction/Finder alias 和平台原生 identity 语义仍待实体机验证 |
@@ -1727,11 +1734,11 @@ flowchart TB
 
 2. **IPC handler 仍集中在 `src/main/index.ts`**：当前仓库没有 `src/main/ipc/` 实现目录，所有 handler 由 `registerIpcHandlers()` 注册；这仍是 0.2.5 的拆分候选，但不应为此预先创建空模块。
 
-3. **IPC 参数校验不足**：`file:write` / `file:read` / `app:saveSettings` 等通道未验证路径合法性、参数类型或授权范围。`local-file://` 协议无路径白名单，可访问任意本地文件。
+3. **preload API surface 缺乏独立类型契约测试**：真实 Electron E2E 会覆盖当前桥接调用，但新增能力仍需同时更新 channel、preload、main handler 和行为测试。
 
 4. **跨平台替换语义尚未实机验证**：文档安全写入已在 Linux 通过故障和 Electron 测试；Windows/macOS 对锁定目标、替换和大小写路径的真实语义按 [`docs/03-CROSS-PLATFORM.md`](03-CROSS-PLATFORM.md) 待实体机验证。
 
-5. **`local-file://` 无访问范围限制**：任何包含本地文件路径的 URL 均可被加载，缺少工作区或已授权路径的校验。
+5. **`local-file://` 直接 handler 单测仍缺失**：受控根、URL/native-path、realpath 和 MIME 策略已有纯单测与 Electron E2E；协议层的直接 `Response` 单测仍可在后续测试维护中补充。
 
 6. **非展示设置仍会触发全标签重建**：`saveSettings()` 已将主题、内容/代码主题、缩放和滚动条等展示设置分类为热应用；仍会对影响 Vditor 初始化契约的设置重建标签，分类边界和编辑状态保护属于 0.2.5 范围。
 
@@ -1749,7 +1756,7 @@ flowchart TB
 
 **P1（功能/安全）：**
 
-1. 在 `local-file://` 协议中增加工作区根目录白名单验证
+1. 为 `local-file://` 补充直接 protocol handler 的纯 `Response` 单测，并完成 Windows/macOS 实体机资源根、大小写、权限和 link 行为验证
 2. 在 `file:write` / `file:delete` handler 中增加路径授权校验
 3. 完成所有硬编码中文字符串的国际化
 

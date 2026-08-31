@@ -81,6 +81,8 @@ Node's `path` implementation varies with the host platform, and some `fs` operat
 
 As of 2026-08-28, 0.2.0 development tracker batches 7, 7.1, and 8 are closed for the Linux-local implementation and regression scope. The user-run Linux `npm run check:all` result covered 154/154 unit tests and 114/114 Electron Playwright tests, in addition to formatting, lint, typecheck, Vditor-version, and build checks. Batch 8's dangerous-protocol and normal external-link manual checks also passed. This is local regression evidence only; it does not close any Windows or macOS row below.
 
+Batch 10 has since completed its Linux-local implementation, focused automation, user manual validation, and user-run full-check pass. The 2026-08-31 full check passed formatting, lint, typecheck, Vditor-version, build, and 181/181 unit tests; the Electron suite first passed 125/126 and its one timing-sensitive mode-shortcut case passed on an exact 1/1 rerun. Windows drive/UNC and junction verification remains explicitly deferred to sections 12.1–12.3, and macOS remains a separate native-runtime task.
+
 ### Not yet platform-validated
 
 - Windows/macOS watcher event ordering, path casing, permissions, and atomic replacement
@@ -184,3 +186,37 @@ Batch 10 must therefore define and unit-test a platform-neutral conversion contr
 - Resource E2E must cover a workspace image, an out-of-workspace document image, and a pasted image on Windows after the Linux batch implementation is stable.
 
 The current checkout has no installed Vitest or Playwright dependencies, so the existing resource unit and Electron E2E suites could not be run during this observation. That is an environment limitation, not an automated test result.
+
+## 11. 0.2.0 batch 10 Linux implementation checkpoint
+
+Batch 10 was implemented on the Linux `dev-0.2.0` checkout on 2026-08-31. The implementation uses `local-file://root/<encoded-path>` with a fixed authority. POSIX absolute paths retain the leading slash in the pathname, Windows drive and UNC conversion are exercised through `path.win32`, and the old malformed `local-file://rootC%3A...` shape is rejected before any filesystem access.
+
+The renderer synchronizes the current workspace and every open document parent directory through the narrow `file:setResourceRoots` bridge. Opening, closing, Save As, directory rename, recovery restoration, and workspace changes refresh the root set. The main process rejects malformed URL paths, applies lexical and canonical path boundaries, blocks configured config/Chromium/recovery roots, rejects symlink/junction-equivalent canonical escapes, and returns the same 404/plain-text/`nosniff`/`no-store` response for missing, unauthorized, unsupported, and SVG resources. Only the currently used raster image types receive an allowlisted MIME response. Internal diagnostics retain only a rejection category.
+
+Focused Linux evidence at this checkpoint:
+
+- `npm run typecheck`, `npm run lint`, and the focused Vitest selection: 41/41 tests passed, including POSIX/Windows URL and boundary policy cases, private roots, canonical escape, stale root revocation, MIME allowlist, and bounded IPC roots.
+- After `npm run build`, focused Electron Playwright coverage passed 9/9: malformed high-risk IPC arguments, authorized/unauthorized local resources and response headers, root revocation after closing an outside document, restored relative images, raw HTML images, HTTPS images, uploaded/pasted images, and directory-rename resource rebinding.
+- The user-run 2026-08-31 full check passed formatting, lint, typecheck, Vditor-version, build, and 181/181 unit tests. Its 126 Electron cases first produced a single mode-shortcut timing failure (125/126); the exact failed case then passed 1/1. No Windows or macOS runtime result is claimed here; Windows native filesystem, junction, casing, dialog, and installed-build behavior remain pending.
+
+## 12. 0.2.0 batch 10 deferred Windows resource validation
+
+The batch 10 Linux implementation and `path.win32` unit tests do not prove real Windows URL loading, filesystem behavior, or junction resolution. Run this section only on a native Windows installation after the current batch has a stable build. It is intentionally deferred rather than inferred from Linux results.
+
+### 12.1 Drive and UNC resource URLs
+
+Copy the batch 10 manual fixture to a local Windows path, then open `workspace/README.md` and the separate `outside-document/outside.md`. Confirm that each relative image displays, including after changing editor mode, and that closing the outside document makes its previously captured `local-file:` image URL return the neutral 404 response.
+
+For a drive path, `data-local-resource-base` must retain the fixed `root` authority and encode the drive letter in the pathname, for example `local-file://root/C%3A/Users/<user>/Downloads/...`; it must never use a drive path as the URL authority. If an accessible UNC share is in scope, repeat the same document/image and close-revocation checks from `\\server\\share\\...`, recording the share, authentication context, and any policy restriction. A malformed legacy shape such as `local-file://rootC%3A...` must fail without reading a disk resource.
+
+### 12.2 Junction canonical escape
+
+Within the fixture workspace, create a directory junction that points to `outside-document`, then open a Markdown file whose image points through the junction. The image must not display; a direct fetch of its `local-file:` URL must return the same 404/plain-text/`nosniff`/`no-store` result as a missing resource. Delete the junction itself after the test, without deleting its target.
+
+### 12.3 Windows pathname edge cases
+
+Use document and asset names containing spaces, Chinese characters, `#`, and `%`; their legitimate relative images must display. A `..` reference outside the authorized root must not display. Record whether the tested volume is case-sensitive and retain the exact Windows, filesystem, Electron, Node, Vditor, and application commit versions with the result.
+
+### 12.4 Closure rule
+
+Each row above requires a real Windows result and its supporting screenshot or DevTools response evidence. A passing Linux E2E or `path.win32` unit test remains supporting evidence only; it does not close the Windows validation row. macOS resource behavior remains a separate native validation task.

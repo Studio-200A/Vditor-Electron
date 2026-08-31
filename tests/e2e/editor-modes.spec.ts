@@ -107,6 +107,68 @@ test('switches among all three modes from the View > Editing Mode submenu', asyn
   }
 });
 
+test('synchronizes status and preserves document position for Vditor mode shortcuts', async () => {
+  const markdown = Array.from(
+    { length: 180 },
+    (_, index) => `## Section ${index + 1}\n\n${'long document content '.repeat(12)}`,
+  ).join('\n\n');
+  const running = await launchApp({ editMode: 'sv' }, { 'mode-shortcuts.md': markdown });
+  try {
+    const { page } = running;
+    const host = page.locator('.editor-host.active');
+    const progressFor = (mode: 'wysiwyg' | 'ir' | 'sv') =>
+      host.evaluate((node, currentMode) => {
+        const scroller = window.VditorDesktopAdapter.editorScrollContainer(node, currentMode);
+        if (!scroller) throw new Error(`Missing ${currentMode} scroll container`);
+        const maximum = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+        return maximum ? scroller.scrollTop / maximum : 0;
+      }, mode);
+    const scrollToProgress = (mode: 'wysiwyg' | 'ir' | 'sv', progress: number) =>
+      host.evaluate(
+        (node, state) => {
+          const scroller = window.VditorDesktopAdapter.editorScrollContainer(node, state.mode);
+          if (!scroller) throw new Error(`Missing ${state.mode} scroll container`);
+          const maximum = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+          scroller.scrollTop = maximum * state.progress;
+          scroller.dispatchEvent(new Event('scroll'));
+          const editor = window.VditorDesktopAdapter.activeEditor(node, state.mode);
+          editor?.focus({ preventScroll: true });
+        },
+        { mode, progress },
+      );
+    const modifier =
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+    const switchWithShortcut = async (
+      shortcut: '7' | '8' | '9',
+      mode: 'wysiwyg' | 'ir' | 'sv',
+      label: string,
+      expectedProgress: number,
+    ) => {
+      await page.keyboard.press(`${modifier}+Alt+${shortcut}`);
+      await expect(
+        page.locator(`.editor-host.active .vditor-${mode === 'wysiwyg' ? 'wysiwyg' : mode}`),
+      ).toBeVisible();
+      await expect(page.locator('#statusMode')).toHaveText(label);
+      await expect.poll(() => progressFor(mode)).toBeGreaterThan(0.25);
+      expect(Math.abs((await progressFor(mode)) - expectedProgress)).toBeLessThan(0.2);
+    };
+
+    await scrollToProgress('sv', 0.62);
+    const sourceProgress = await progressFor('sv');
+    await expect(sourceProgress).toBeGreaterThan(0.5);
+
+    await switchWithShortcut('8', 'ir', 'IR', sourceProgress);
+    const instantRenderingProgress = await progressFor('ir');
+    await scrollToProgress('ir', instantRenderingProgress);
+    await switchWithShortcut('7', 'wysiwyg', 'WYSIWYG', instantRenderingProgress);
+    const wysiwygProgress = await progressFor('wysiwyg');
+    await scrollToProgress('wysiwyg', wysiwygProgress);
+    await switchWithShortcut('9', 'sv', 'SV', wysiwygProgress);
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('applies a changed default editor mode only to later tabs', async () => {
   const running = await launchApp({ editMode: 'sv' });
   try {

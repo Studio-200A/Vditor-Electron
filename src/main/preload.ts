@@ -58,6 +58,8 @@ contextBridge.exposeInMainWorld('fileAPI', {
     ipcRenderer.invoke(IPC_CHANNELS.fileWatchDocument, filePath, reconcile),
   unwatchDocument: (filePath: string, identity?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.fileUnwatchDocument, filePath, identity),
+  setResourceRoots: (rootPaths: string[]) =>
+    ipcRenderer.invoke(IPC_CHANNELS.fileSetResourceRoots, rootPaths),
   onChanged: (
     callback: (event: {
       event: 'add' | 'change' | 'unlink' | 'addDir' | 'unlinkDir' | 'unreadable' | 'watch-error';

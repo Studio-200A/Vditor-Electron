@@ -496,7 +496,7 @@ describe('renderer shell', () => {
       /:root\[data-theme='dark'\]\s*\{[^}]*--sidebar-surface:\s*#202124[^}]*--editor-surface:\s*#18191c/s,
     );
     expect(css).toMatch(
-      /:root\[data-theme='claude-light'\]\s*\{[^}]*--sidebar-surface:\s*#f5f4ed[^}]*--editor-surface:\s*#faf9f5[^}]*--accent:\s*#d97757[^}]*--brand-accent:\s*#d97757/s,
+      /:root\[data-theme='claude-light'\]\s*\{[^}]*--sidebar-surface:\s*#f5f4ed[^}]*--editor-surface:\s*#faf9f5[^}]*--border:\s*rgb\(31 30 29 \/ 11%\)[^}]*--accent:\s*#d97757[^}]*--brand-accent:\s*#d97757/s,
     );
     expect(css).toMatch(/\.settings-content\s*\{[^}]*background:\s*var\(--editor-surface\)/s);
     expect(css).toMatch(
@@ -551,7 +551,7 @@ describe('renderer shell', () => {
       /:root\[data-theme='monokai-pro-dark'\]\s*\{[^}]*--bg:\s*#2d2a2e[^}]*--editor-surface:\s*#272428[^}]*--settings-control-surface:\s*#2d2a2e[^}]*--accent:\s*#ffd866/s,
     );
     expect(css).toMatch(
-      /:root\[data-theme='monokai-pro-light'\]\s*\{[^}]*--bg:\s*#faf4f2[^}]*--settings-control-surface:\s*#fefaf9[^}]*--accent:\s*#e14775/s,
+      /:root\[data-theme='monokai-pro-light'\]\s*\{[^}]*--bg:\s*#faf4f2[^}]*--settings-control-surface:\s*#fefaf9[^}]*--border:\s*#d8d3d1[^}]*--accent:\s*#e14775/s,
     );
     expect(css).toContain('--monokai-h1: #ff6188');
     expect(css).toContain('--monokai-h6: #fc9867');

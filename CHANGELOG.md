@@ -25,6 +25,7 @@
 
 - **fix(navigation):** Unified URL validation and navigation decisions for `will-navigate`, `window.open`, and external-link handling; only `http:`, `https:`, and `mailto:` leave through the system handler, untrusted `app:` pages and bundled-asset navigations are blocked, and unsupported active schemes in rendered document links cannot execute in the renderer.
 - **fix(IPC security):** Restricted privileged renderer IPC to the trusted top-level application page and validated high-risk paths, names, enums, sizes, settings, and binary payloads before side effects; malformed or untrusted requests now fail with stable, localized errors, and invalid persisted settings fall back safely per field.
+- **fix(local resources):** Restricted `local-file://` previews to the active workspace and open-document directories, validated POSIX/Windows URL paths through canonical boundaries, blocked private and symlink-escaped paths, and limited responses to allowlisted raster images with accurate MIME headers; unsupported active content and SVG return a neutral 404. Save As now immediately rebinds preview authorization to the destination document directory and revokes the old root; it deliberately does not copy an existing `assets/` directory.
 
 ### Bug Fixes
 
@@ -40,11 +41,14 @@
 - **fix(open dialogs):** File and folder open dialogs now share the last confirmed selection directory.
 - **fix(accessibility):** Use the active theme accent for keyboard-visible focus rings across application controls.
 - **fix(settings theming):** Align the settings titlebar, navigation, footer, and edge with the active theme's sidebar surface while keeping settings content on the editor surface across all six application themes.
+- **fix(settings chrome):** Removed the short header/footer divider segments at the settings dialog's right-edge strip so that the sidebar-surface chrome reads as one continuous area.
+- **fix(light theme borders):** Reduced Claude Light and Monokai Pro Light structural-border contrast to match Classic's low-emphasis separators while preserving each theme's warm color temperature.
 - **fix(asset layout):** Organized application icons, symbolic UI icons, and notification icons under dedicated renderer asset directories; the offline asset build and Linux release script now follow the same paths.
 
 #### Editor interaction
 
 - **fix(table scrolling):** Kept WYSIWYG and Instant Rendering table cells horizontally positioned while Vditor rebuilds them after multi-character input or paste. When the caret would otherwise leave the visible part of a long table, Desktop now scrolls only far enough to keep it visible; table scrollbars also follow the configured always, automatic, or hidden visibility setting.
+- **fix(mode shortcuts):** Vditor's `Ctrl/Cmd+Alt+7/8/9` mode shortcuts now update the status-bar mode indicator and preserve the current document position, matching the application menu and status-bar mode picker.
 
 #### Workspace, files, and saving
 

@@ -21,6 +21,7 @@
     toolbarWrapHeight: 0,
   };
   const saveOperationsByIdentity = new Map();
+  let resourceRootsQueue = Promise.resolve();
   let settingsSaveQueue = Promise.resolve();
   const LOCALES = window.VditorDesktopLocales || {};
   const DEFAULT_TOOLBAR = [
@@ -492,14 +493,37 @@
   function detectLineEnding(content) {
     return /\r\n/.test(content) ? 'CRLF' : 'LF';
   }
+  function collectLocalResourceRoots(extraRoots = []) {
+    const roots = new Set();
+    if (state.workspace) roots.add(state.workspace);
+    state.tabs.forEach((tab) => {
+      if (tab.baseDir) roots.add(tab.baseDir);
+    });
+    extraRoots.forEach((root) => {
+      if (root) roots.add(root);
+    });
+    return [...roots];
+  }
+  function syncLocalResourceRoots(extraRoots = []) {
+    // Compute roots when the queued IPC operation runs so overlapping lifecycle events
+    // cannot restore a stale tab/workspace snapshot after a newer state transition.
+    const operation = resourceRootsQueue
+      .catch(() => undefined)
+      .then(() => window.fileAPI.setResourceRoots(collectLocalResourceRoots(extraRoots)));
+    resourceRootsQueue = operation.catch((error) => {
+      console.error('Unable to synchronize local resource roots.', error);
+    });
+    return operation;
+  }
   function localResourceBase(baseDir) {
     if (!baseDir) return '';
-    const encodedPath = baseDir
-      .replace(/\\/g, '/')
+    const nativePath = window.appAPI.platform === 'win32' ? baseDir.replace(/\\/g, '/') : baseDir;
+    if (window.appAPI.platform !== 'win32' && nativePath.includes('\\')) return '';
+    const encodedPath = nativePath
       .split('/')
       .map((segment) => encodeURIComponent(segment))
       .join('/');
-    return `local-file://root${encodedPath.endsWith('/') ? encodedPath : `${encodedPath}/`}`;
+    return `local-file://root/${encodedPath.endsWith('/') ? encodedPath : `${encodedPath}/`}`;
   }
   function treeIcon(entry) {
     const icon = entry.type === 'directory' ? (entry.link ? 'folder-symlink' : 'folder') : 'file';
@@ -1448,20 +1472,7 @@
       return;
     }
     if (type === 'edit-mode' && ['wysiwyg', 'ir', 'sv'].includes(button.dataset.mode)) {
-      if (button.dataset.mode !== tab.vditor?.getCurrentMode()) {
-        closeContextMenu();
-        tab.pendingScroll = captureEditorScroll(tab);
-        // Vditor rebuilds the target mode synchronously during this click.
-        // Restore before the next paint so the newly visible editor never
-        // presents its default top position for a frame.
-        requestAnimationFrame(() => restoreEditorScroll(tab));
-      }
-      setTimeout(() => {
-        if (!tab.vditor) return;
-        tab.mode = tab.vditor.getCurrentMode();
-        updateActiveUI();
-        scheduleSplitLineNumbers(tab);
-      }, 50);
+      prepareVditorModeTransition(tab, button.dataset.mode);
     } else if (type === 'code-theme') {
       const codeTheme = button.textContent.trim();
       if (!codeTheme) return;
@@ -1562,6 +1573,36 @@
       }, 80);
     };
     restoreUntilStable();
+  }
+
+  function synchronizeVditorMode(tab) {
+    if (!tab?.vditor) return;
+    tab.mode = tab.vditor.getCurrentMode();
+    if (tab.id === state.activeId) updateActiveUI();
+    scheduleSplitLineNumbers(tab);
+  }
+
+  function prepareVditorModeTransition(tab, targetMode) {
+    if (!tab?.vditor || !tab.ready || targetMode === tab.vditor.getCurrentMode()) return false;
+    closeContextMenu();
+    tab.pendingScroll = captureEditorScroll(tab);
+    // Vditor changes its internal mode synchronously for toolbar clicks and
+    // Ctrl/Cmd+Alt+7/8/9. Run after that handler, before the next paint.
+    requestAnimationFrame(() => {
+      if (!tab.vditor) return;
+      synchronizeVditorMode(tab);
+      restoreEditorScroll(tab);
+    });
+    setTimeout(() => synchronizeVditorMode(tab), 50);
+    return true;
+  }
+
+  function handleVditorModeShortcut(tab, event) {
+    const targetMode = VDITOR.editModeShortcut(event);
+    if (!targetMode || !tab?.vditor || !tab.ready) return;
+    const currentMode = tab.vditor.getCurrentMode();
+    if (!VDITOR.isEditableTarget(tab.host, currentMode, event.target)) return;
+    prepareVditorModeTransition(tab, targetMode);
   }
 
   function restoreEditorToolbar(tab) {
@@ -1666,6 +1707,7 @@
       outlineCollapsed: new Set(),
       outlineObserver: null,
       resourceObserver: null,
+      modeShortcutCleanup: null,
       splitResizer: null,
       externalConflict: null,
       externalChangeIgnored: false,
@@ -1686,14 +1728,14 @@
         const modeButton = event.target.closest && event.target.closest('[data-mode]');
         if (!modeButton || !['wysiwyg', 'ir', 'sv'].includes(modeButton.dataset.mode)) return;
         setTimeout(() => {
-          if (!tab.vditor) return;
-          tab.mode = tab.vditor.getCurrentMode();
-          if (tab.id === state.activeId) updateActiveUI();
-          scheduleSplitLineNumbers(tab);
+          synchronizeVditorMode(tab);
         }, 50);
       },
       true,
     );
+    const onModeShortcut = (event) => handleVditorModeShortcut(tab, event);
+    tab.host.addEventListener('keydown', onModeShortcut, true);
+    tab.modeShortcutCleanup = () => tab.host.removeEventListener('keydown', onModeShortcut, true);
     tab.host.addEventListener('contextmenu', (event) => showEditorContextMenu(tab, event), true);
     $('#editorArea').appendChild(tab.host);
     state.tabs.push(tab);
@@ -1749,6 +1791,7 @@
       }
       const result = await window.fileAPI.readFile(filePath);
       const baseDir = await window.fileAPI.dirname(filePath);
+      await syncLocalResourceRoots([baseDir]);
       const tab = createTab({
         filePath,
         content: result.content,
@@ -1758,6 +1801,10 @@
         pendingAnchor,
         fileIdentity,
       });
+      if (!tab) {
+        await syncLocalResourceRoots();
+        return null;
+      }
       await watchTabDocument(tab);
       rememberRecent(filePath);
       return tab;
@@ -1857,6 +1904,8 @@
     tab.outlineObserver = null;
     tab.tableCompositionScrollCleanup?.();
     tab.tableCompositionScrollCleanup = null;
+    tab.modeShortcutCleanup?.();
+    tab.modeShortcutCleanup = null;
     restoreEditorToolbar(tab);
     if (tab.vditor) {
       try {
@@ -1868,6 +1917,7 @@
     state.tabs.splice(index, 1);
     syncToolbarAvailability();
     await releaseDocumentWatch(tab.filePath, tab.fileIdentity);
+    await syncLocalResourceRoots();
     if (!state.tabs.length) {
       state.activeId = null;
       $('#vditorToolbarMount').innerHTML = '';
@@ -2202,6 +2252,7 @@
       tab.encoding = 'utf-8';
       tab.baseDir = await window.fileAPI.dirname(destination);
       await releaseDocumentWatch(previousPath, previousIdentity);
+      await syncLocalResourceRoots();
       await watchTabDocument(tab);
       if (tab.contentRevision === savedRevision) {
         await discardRecoverySnapshot(tab);
@@ -2338,17 +2389,19 @@
       const snapshot = await window.appAPI.restoreRecovery(candidate.id);
       if (!snapshot) continue;
       if (snapshot.diskState !== 'unchanged') {
+        const baseDir = snapshot.filePath ? await window.fileAPI.dirname(snapshot.filePath) : '';
+        await syncLocalResourceRoots(baseDir ? [baseDir] : []);
         const tab = createTab({
           title: t('recovery.conflictTitle', { title: snapshot.title }),
           content: snapshot.content,
           savedContent: '',
           encoding: snapshot.encoding,
-          baseDir: snapshot.filePath ? await window.fileAPI.dirname(snapshot.filePath) : '',
+          baseDir,
           mode: snapshot.mode,
           recoverySnapshotId: snapshot.id,
           recoveryState: snapshot.diskState,
         });
-        await watchTabDocument(tab);
+        if (tab) await watchTabDocument(tab);
       } else {
         const fileIdentity = snapshot.filePath
           ? await window.fileAPI.fileIdentity(snapshot.filePath)
@@ -2371,19 +2424,21 @@
           else existing.pendingEditorContent = true;
           continue;
         }
+        const baseDir = snapshot.filePath ? await window.fileAPI.dirname(snapshot.filePath) : '';
+        await syncLocalResourceRoots(baseDir ? [baseDir] : []);
         const tab = createTab({
           filePath: snapshot.filePath,
           content: snapshot.content,
           savedContent: snapshot.savedContent,
           encoding: snapshot.encoding,
-          baseDir: snapshot.filePath ? await window.fileAPI.dirname(snapshot.filePath) : '',
+          baseDir,
           mode: snapshot.mode,
           recoverySnapshotId: snapshot.id,
           recoveryState: 'unchanged',
           expectedSavedContent: snapshot.expectedSavedContent,
           fileIdentity,
         });
-        await watchTabDocument(tab);
+        if (tab) await watchTabDocument(tab);
       }
     }
   }
@@ -2704,6 +2759,7 @@
     tab.externalChangeIgnored = false;
     tab.externalFileState = null;
     await releaseDocumentWatch(previousPath, previousIdentity);
+    await syncLocalResourceRoots();
     scheduleRecoverySnapshot(tab);
     renderTabs();
     updateActiveUI();
@@ -2804,6 +2860,7 @@
     state.workspace = folder || '';
     $('#workspaceName').textContent = folder ? fileName(folder) : t('sidebar.noWorkspace');
     $('#workspaceHeading').dataset.tooltip = folder || t('sidebar.openFolder');
+    await syncLocalResourceRoots();
     await window.fileAPI.setWorkspaceWatch(folder || undefined, state.settings.workspaceReadDepth);
     if (revision !== state.workspaceRevision) return;
     await refreshTree(revision);
@@ -3224,6 +3281,7 @@
         }
         state.settings.recentFiles = settingsPlan.recentFiles;
         state.settings.workspaceTreeStates = settingsPlan.workspaceTreeStates;
+        await syncLocalResourceRoots();
         await queueSettingsSave(settingsPlan, { throwOnFailure: true });
         settingsPersisted = true;
         await rebindDocumentWatches(affectedTabs);
@@ -3241,6 +3299,11 @@
           failures.push(rebindError);
         }
         if (fileSystemCommitted) {
+          try {
+            await syncLocalResourceRoots();
+          } catch (resourceError) {
+            failures.push(resourceError);
+          }
           failures.push(...rebuildRenamedEditors(editorRebuilds));
           if (!settingsPersisted && settingsPlan) {
             try {

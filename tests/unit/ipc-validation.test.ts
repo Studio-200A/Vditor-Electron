@@ -4,6 +4,7 @@ import {
   parseBinary,
   parseFileName,
   parseFiniteNumber,
+  parseResourceRootPaths,
   parseSettingsPatch,
   requireArgumentCount,
 } from '../../src/main/ipc-validation';
@@ -29,6 +30,17 @@ describe('IPC request validation', () => {
     expect(() => requireArgumentCount(['one', 'two'], 1)).toThrow('IPC_INVALID_ARGUMENT');
     expect(parseBinary(new Uint8Array([1, 2, 3]))).toEqual(new Uint8Array([1, 2, 3]));
     expect(() => parseBinary({ byteLength: 3 })).toThrow('IPC_INVALID_ARGUMENT');
+  });
+
+  it('accepts only a bounded collection of absolute local resource roots', () => {
+    expect(parseResourceRootPaths(['/workspace', '/documents'])).toEqual([
+      '/workspace',
+      '/documents',
+    ]);
+    expect(() => parseResourceRootPaths(['relative'])).toThrow('IPC_INVALID_ARGUMENT');
+    expect(() => parseResourceRootPaths(Array.from({ length: 65 }, () => '/workspace'))).toThrow(
+      'IPC_INVALID_ARGUMENT',
+    );
   });
 
   it('accepts known settings fields with valid nested structures', () => {

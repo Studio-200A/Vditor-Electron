@@ -11,6 +11,7 @@ const MAX_PATH_LENGTH = 32_767;
 const MAX_TEXT_LENGTH = 16 * 1024 * 1024;
 const MAX_BINARY_LENGTH = 32 * 1024 * 1024;
 const MAX_COLLECTION_LENGTH = 512;
+const MAX_RESOURCE_ROOTS = 64;
 const MAX_UI_DIMENSION = 16_384;
 const WINDOWS_RESERVED_NAMES = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
 
@@ -163,6 +164,10 @@ function parseStringArray(value: unknown, maximumItems = MAX_COLLECTION_LENGTH):
 function parseAbsolutePathArray(value: unknown, maximumItems = MAX_COLLECTION_LENGTH): string[] {
   if (!Array.isArray(value) || value.length > maximumItems) invalidIpcArgument();
   return value.map((item) => parseAbsolutePath(item));
+}
+
+export function parseResourceRootPaths(value: unknown): string[] {
+  return parseAbsolutePathArray(value, MAX_RESOURCE_ROOTS);
 }
 
 function parseAbsolutePathOrEmpty(value: unknown): string {

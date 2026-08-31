@@ -2,7 +2,12 @@ import { expect, test } from '@playwright/test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { formatLocalResourceBase } from '../../src/main/local-resource';
 import { closeApp, createNewTab, launchApp } from './support/app-harness';
+
+function localResourceBase(directory: string, platform: 'posix' | 'win32'): string {
+  return formatLocalResourceBase(directory, platform);
+}
 
 test('opens relative Markdown links from every editor mode and follows their fragments', async () => {
   const running = await launchApp(
@@ -104,6 +109,7 @@ test('rejects malformed high-risk IPC arguments before they can create side effe
         ),
         rejectMessage(() => window.appAPI.saveSettings({ editMode: 'source' })),
         rejectMessage(() => window.appAPI.setZoomFactor(250)),
+        rejectMessage(() => window.fileAPI.setResourceRoots(['relative'])),
       ]);
       const after = await window.appAPI.getSettings();
       return {
@@ -113,7 +119,7 @@ test('rejects malformed high-risk IPC arguments before they can create side effe
       };
     });
     expect(result.messages).toEqual(
-      Array.from({ length: 5 }, () => expect.stringContaining('IPC_INVALID_ARGUMENT')),
+      Array.from({ length: 6 }, () => expect.stringContaining('IPC_INVALID_ARGUMENT')),
     );
     expect(result.localeUnchanged).toBe(true);
     expect(result.modeUnchanged).toBe(true);
@@ -298,6 +304,189 @@ test('loads a relative local image from a restored Markdown document', async () 
     await running.page.keyboard.press('Control+s');
     await expect(running.page.locator('#statusMessage')).toContainText('Saved');
     expect(fs.readFileSync(markdownPath, 'utf8')).toContain('\r\n');
+  } finally {
+    await closeApp(running);
+    fs.rmSync(testRoot, { recursive: true, force: true });
+  }
+});
+
+test('limits local resources to open roots and returns safe image responses', async () => {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-local-resource-policy-'));
+  const workspace = path.join(fixture, 'workspace');
+  const outsideDocumentDirectory = path.join(fixture, 'outside-document');
+  const unopenedDirectory = path.join(fixture, 'unopened');
+  const pixel = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64',
+  );
+  fs.mkdirSync(path.join(workspace, 'assets'), { recursive: true });
+  fs.mkdirSync(path.join(outsideDocumentDirectory, 'assets'), { recursive: true });
+  fs.mkdirSync(unopenedDirectory, { recursive: true });
+  const workspaceDocument = path.join(workspace, 'workspace.md');
+  const outsideDocument = path.join(outsideDocumentDirectory, 'outside.md');
+  fs.writeFileSync(workspaceDocument, '![workspace](assets/pixel.png)');
+  fs.writeFileSync(outsideDocument, '![outside](assets/pixel.png)');
+  fs.writeFileSync(path.join(workspace, 'assets', 'pixel.png'), pixel);
+  fs.writeFileSync(path.join(outsideDocumentDirectory, 'assets', 'pixel.png'), pixel);
+  fs.writeFileSync(path.join(workspace, 'script.js'), 'window.__batch10ScriptExecuted = true;');
+  fs.writeFileSync(
+    path.join(workspace, 'page.html'),
+    '<script>window.__batch10ScriptExecuted = true;</script>',
+  );
+  fs.writeFileSync(
+    path.join(workspace, 'data.xml'),
+    '<script>window.__batch10ScriptExecuted = true;</script>',
+  );
+  fs.writeFileSync(
+    path.join(workspace, 'vector.svg'),
+    '<svg><script>window.__batch10ScriptExecuted = true;</script></svg>',
+  );
+  fs.writeFileSync(path.join(unopenedDirectory, 'secret.png'), pixel);
+
+  const running = await launchApp({
+    editMode: 'sv',
+    restoreTabs: true,
+    restoreWorkspace: true,
+    session: {
+      workspacePath: workspace,
+      activeFilePath: outsideDocument,
+      openFiles: [workspaceDocument, outsideDocument],
+    },
+  });
+  try {
+    const { page } = running;
+    const platform =
+      (await page.evaluate(() => window.appAPI.platform)) === 'win32' ? 'win32' : 'posix';
+    const workspaceTab = page.locator('.document-tab').filter({ hasText: 'workspace.md' });
+    const outsideTab = page.locator('.document-tab').filter({ hasText: 'outside.md' });
+    await expect(workspaceTab).toHaveCount(1);
+    await expect(outsideTab).toHaveCount(1);
+
+    await outsideTab.click();
+    const outsideBase = await page
+      .locator('.editor-host.active')
+      .getAttribute('data-local-resource-base');
+    if (!outsideBase) throw new Error('The outside-document resource base is unavailable.');
+    await expect(page.locator('.editor-host.active .vditor-preview img')).toBeVisible();
+    await expect
+      .poll(() =>
+        page
+          .locator('.editor-host.active .vditor-preview img')
+          .evaluate((node: HTMLImageElement) => node.naturalWidth),
+      )
+      .toBe(1);
+
+    await workspaceTab.click();
+    const workspaceBase = await page
+      .locator('.editor-host.active')
+      .getAttribute('data-local-resource-base');
+    if (!workspaceBase) throw new Error('The workspace resource base is unavailable.');
+    await expect(page.locator('.editor-host.active .vditor-preview img')).toBeVisible();
+    await expect
+      .poll(() =>
+        page
+          .locator('.editor-host.active .vditor-preview img')
+          .evaluate((node: HTMLImageElement) => node.naturalWidth),
+      )
+      .toBe(1);
+
+    const inspect = async (url: string) =>
+      page.evaluate(async (resourceUrl) => {
+        const response = await fetch(resourceUrl);
+        return {
+          status: response.status,
+          cacheControl: response.headers.get('cache-control'),
+          contentType: response.headers.get('content-type'),
+          noSniff: response.headers.get('x-content-type-options'),
+          bodyLength: (await response.arrayBuffer()).byteLength,
+        };
+      }, url);
+    const allowed = await inspect(new URL('assets/pixel.png', workspaceBase).href);
+    const missing = await inspect(new URL('assets/missing.png', workspaceBase).href);
+    const outside = await inspect(
+      new URL('secret.png', localResourceBase(unopenedDirectory, platform)).href,
+    );
+    const script = await inspect(new URL('script.js', workspaceBase).href);
+    const html = await inspect(new URL('page.html', workspaceBase).href);
+    const xml = await inspect(new URL('data.xml', workspaceBase).href);
+    const svg = await inspect(new URL('vector.svg', workspaceBase).href);
+
+    expect(allowed).toEqual({
+      status: 200,
+      cacheControl: 'no-store',
+      contentType: 'image/png',
+      noSniff: 'nosniff',
+      bodyLength: pixel.length,
+    });
+    for (const response of [missing, outside, script, html, xml, svg]) {
+      expect(response).toEqual({
+        status: 404,
+        cacheControl: 'no-store',
+        contentType: 'text/plain; charset=utf-8',
+        noSniff: 'nosniff',
+        bodyLength: 'Not found'.length,
+      });
+    }
+
+    await outsideTab.click();
+    const outsideImageUrl = new URL('assets/pixel.png', outsideBase).href;
+    await outsideTab.locator('b').click();
+    await expect(page.locator('.document-tab')).toHaveCount(1);
+    const revoked = await inspect(outsideImageUrl);
+    expect(revoked).toEqual(missing);
+  } finally {
+    await closeApp(running);
+    fs.rmSync(fixture, { recursive: true, force: true });
+  }
+});
+
+test('stores uploaded images beside the saved document and previews the generated relative link', async () => {
+  const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-upload-resource-'));
+  const assetsDirectory = path.join(testRoot, 'assets');
+  const markdownPath = path.join(testRoot, 'notes.md');
+  const pixel = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64',
+  );
+  fs.writeFileSync(markdownPath, '');
+
+  const running = await launchApp({
+    editMode: 'sv',
+    restoreTabs: true,
+    session: {
+      workspacePath: '',
+      activeFilePath: markdownPath,
+      openFiles: [markdownPath],
+    },
+  });
+  try {
+    const { page } = running;
+    const uploadInput = page.locator(
+      '.vditor-toolbar__item [data-type="upload"] input[type="file"]',
+    );
+    await expect(uploadInput).toHaveCount(1);
+    await uploadInput.setInputFiles({
+      name: 'pasted.png',
+      mimeType: 'image/png',
+      buffer: pixel,
+    });
+
+    await expect
+      .poll(() => {
+        if (!fs.existsSync(assetsDirectory)) return 0;
+        return fs.readdirSync(assetsDirectory).filter((name) => name.endsWith('-pasted.png'))
+          .length;
+      })
+      .toBe(1);
+    await page.keyboard.press('Control+s');
+    await expect(page.locator('#statusMessage')).toContainText('Saved');
+    const saved = fs.readFileSync(markdownPath, 'utf8');
+    expect(saved).toMatch(/!\[pasted\.png\]\(assets\/\d+-pasted\.png\)/);
+    expect(saved).not.toContain('local-file://');
+
+    const image = page.locator('.editor-host.active .vditor-preview img');
+    await expect(image).toBeVisible();
+    await expect.poll(() => image.evaluate((node: HTMLImageElement) => node.naturalWidth)).toBe(1);
   } finally {
     await closeApp(running);
     fs.rmSync(testRoot, { recursive: true, force: true });
