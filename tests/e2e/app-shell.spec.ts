@@ -1156,7 +1156,48 @@ test('animates the settings dialog with platform-aware native-style transitions'
   }
 });
 
-test('preserves the editor scroll position when settings rebuild the editor', async () => {
+test('keeps undo history when presentation settings update without rebuilding the editor', async () => {
+  const running = await launchApp({ editMode: 'ir' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    const reset = page.locator('.editor-host.active .vditor-ir .vditor-reset');
+    await reset.click();
+    await reset.pressSequentially('Original draft');
+    await page.waitForTimeout(600);
+    await reset.pressSequentially(' with a reversible change');
+    await expect(reset).toContainText('with a reversible change');
+    await page.waitForTimeout(600);
+
+    await page.locator('#statusSettings').click();
+    await page.locator('.settings-nav [data-panel="fonts"]').click();
+    await page.locator('[name="editorFontSize"]').fill('18');
+    await page.locator('#saveSettings').click();
+    await expect(page.locator('#settingsModal')).toBeHidden();
+    await page.locator('#vditorToolbarMount button[data-type="undo"]').click();
+    await expect(reset).toHaveText('Original draft');
+
+    await page.locator('[data-menu="main"]').click();
+    await page.locator('.app-menu-popup button.has-submenu', { hasText: 'Layout' }).click();
+    await page.locator('.app-menu-popup.submenu button', { hasText: 'Show Toolbar' }).click();
+    await expect(page.locator('#vditorToolbarMount')).toBeHidden();
+    await page.locator('[data-menu="main"]').click();
+    await page.locator('[data-menu="main"]').click();
+    await page.locator('.app-menu-popup button.has-submenu', { hasText: 'Layout' }).click();
+    await page.locator('.app-menu-popup.submenu button', { hasText: 'Show Toolbar' }).click();
+    await expect(page.locator('#vditorToolbarMount')).toBeVisible();
+
+    await reset.press('End');
+    await reset.pressSequentially(' again');
+    await page.waitForTimeout(600);
+    await page.locator('#vditorToolbarMount button[data-type="undo"]').click();
+    await expect(reset).toHaveText('Original draft');
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('preserves the editor scroll position when an initialization setting rebuilds the editor', async () => {
   const running = await launchApp({ editMode: 'ir' });
   try {
     const { page } = running;
@@ -1175,8 +1216,8 @@ test('preserves the editor scroll position when settings rebuild the editor', as
     expect(before).toBeGreaterThan(300);
 
     await page.locator('#statusSettings').click();
-    await page.locator('.settings-nav [data-panel="fonts"]').click();
-    await page.locator('[name="editorFontSize"]').fill('18');
+    await page.locator('.settings-nav [data-panel="editor"]').click();
+    await page.locator('[name="typewriterMode"]').check();
     await page.locator('#saveSettings').click();
     await expect(page.locator('#settingsModal')).toBeHidden();
     await expect

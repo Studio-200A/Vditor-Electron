@@ -56,6 +56,38 @@
     'code-theme',
     'content-theme',
   ];
+  // Vditor 3.11.3 exposes public setters only for themes and preview mode.
+  // Keep this list limited to settings that are passed to its constructor and
+  // have no safe runtime setter; rebuilding clears Vditor's undo stack.
+  const VDITOR_INITIALIZATION_SETTINGS = new Set([
+    'iconSet',
+    'locale',
+    'placeholder',
+    'typewriterMode',
+    'tabInsertSpaces',
+    'tabSize',
+    'rtl',
+    'toolbarItems',
+    'previewDelay',
+    'previewMaxWidth',
+    'multiPlatformPreview',
+    'mathEngine',
+    'enableHighlight',
+    'lineNumbers',
+    'enableAutoSpace',
+    'enableCallout',
+    'enableFootnotes',
+    'enableImageCaption',
+    'enableMark',
+    'enableSub',
+    'enableSup',
+    'paragraphBeginningSpace',
+    'fixTermTypo',
+    'gfmAutoLink',
+    'toc',
+    'listStyle',
+    'sanitize',
+  ]);
   let messageTimer;
   let temporaryDocumentNoticeTimer;
   let appMenuCloseHandler;
@@ -858,6 +890,14 @@
       );
     $('#app').classList.toggle('toolbar-hidden', s.toolbarVisible === false);
     window.appAPI.setZoomFactor(uiZoom);
+  }
+
+  function applyLiveVditorSettings(changedSettings) {
+    if (!changedSettings.includes('previewMode')) return;
+    state.tabs.forEach((tab) => {
+      if (!tab.vditor || !tab.ready) return;
+      tab.vditor.setPreviewMode(state.settings.previewMode);
+    });
   }
 
   function scheduleSplitLineNumbers(tab) {
@@ -4002,32 +4042,12 @@
       showMessage(ipcErrorMessage(error), true);
       return;
     }
-    const nonRebuildingSettings = new Set([
-      'theme',
-      'systemTheme',
-      'lightTheme',
-      'darkTheme',
-      'contentTheme',
-      'codeTheme',
-      'lightCodeTheme',
-      'darkCodeTheme',
-      'uiZoom',
-      'editorZoom',
-      'previewZoom',
-      'scrollbarMode',
-      // This is a creation default. Existing tabs own their current mode.
-      'editMode',
-    ]);
-    const themeChanged =
-      patch.theme !== previousSettings.theme ||
-      patch.systemTheme !== previousSettings.systemTheme ||
-      patch.lightTheme !== previousSettings.lightTheme ||
-      patch.darkTheme !== previousSettings.darkTheme;
     const changedSettings = Object.keys(patch).filter(
       (key) => JSON.stringify(previousSettings[key]) !== JSON.stringify(state.settings[key]),
     );
-    const shouldRebuildEditors =
-      !themeChanged && changedSettings.some((key) => !nonRebuildingSettings.has(key));
+    const shouldRebuildEditors = changedSettings.some((key) =>
+      VDITOR_INITIALIZATION_SETTINGS.has(key),
+    );
     if (closeAfterSave) await closeSettings({ applyPresentation: false });
     applyLocale(state.settings.locale);
     if (state.workspace && previousWorkspaceReadDepth !== state.settings.workspaceReadDepth)
@@ -4040,6 +4060,7 @@
       await refreshTree();
     applyPresentationSettings();
     await applyTheme(await resolveTheme());
+    applyLiveVditorSettings(changedSettings);
     if (shouldRebuildEditors) {
       state.tabs.forEach((tab) => {
         tab.mode = openModes.get(tab.id) || tab.mode;

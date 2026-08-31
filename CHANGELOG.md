@@ -32,6 +32,7 @@
 
 #### Workbench, toolbar, and menus
 
+- **fix(settings updates):** Appearance, typography, zoom, scrollbar, toolbar and sidebar layout, and other application-only settings now update open documents without recreating Vditor, preserving the current undo history. Options that Vditor 3.11.3 can only apply at initialization still rebuild while retaining the active mode and scroll position.
 - **fix(macOS window close):** Scoped an approved unsaved-changes close to its originating application window, so a window recreated from the Dock must ask again before discarding unsaved content.
 - **fix(main menu theming):** Windows/Linux custom main-menu triggers and popups now use each theme's sidebar surface, so Claude Light and Monokai Pro Light retain their warm application-chrome tone instead of appearing white.
 - **fix(sidebar tooltips):** Replaced browser-native sidebar tooltips with the shared application tooltip used by document links, so workspace, file-tree, link-directory, refresh, and outline controls now follow the active theme consistently.

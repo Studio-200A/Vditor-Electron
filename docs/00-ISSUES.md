@@ -11,4 +11,4 @@
 
 ## 0.2.0 发版前需要完成的改善
 
-- 继续完成 0.2.0 tracker 批次 13–17 的设置热更新、导出隔离、应用标识和 Linux 候选包发布门槛；批次 11 已完成 CSP 收紧、sanitize 风险提示、手测反馈修正和 Linux 全量闭环，批次 12 已完成窗口级关闭确认和 Linux 全量闭环。主窗口 sandbox 仍受当前未打包 CommonJS preload 限制，必须在独立 preload 打包迁移中重新验证；macOS Dock 激活后的 P12 实机验证也递延到有环境时，具体清单见 [`docs/03-CROSS-PLATFORM.md`](03-CROSS-PLATFORM.md)。这些 Linux 结果不等同于 0.2.0 版本整体完成。具体 checkbox 和证据以 [`docs/13-0.2.0-EXECUTION-TRACKER.md`](13-0.2.0-EXECUTION-TRACKER.md) 及 [`docs/12-0.2.0-DEVELOPMENT-PLAN.md`](12-0.2.0-DEVELOPMENT-PLAN.md) 为准。
+- 继续完成 0.2.0 tracker 批次 14–17 的导出隔离、应用标识和 Linux 候选包发布门槛；批次 11 已完成 CSP 收紧、sanitize 风险提示、手测反馈修正和 Linux 全量闭环，批次 12 已完成窗口级关闭确认和 Linux 全量闭环，批次 13 已完成设置热更新、约定手测和 Linux 全量闭环。主窗口 sandbox 仍受当前未打包 CommonJS preload 限制，必须在独立 preload 打包迁移中重新验证；macOS Dock 激活后的 P12 实机验证也递延到有环境时，具体清单见 [`docs/03-CROSS-PLATFORM.md`](03-CROSS-PLATFORM.md)。这些 Linux 结果不等同于 0.2.0 版本整体完成。具体 checkbox 和证据以 [`docs/13-0.2.0-EXECUTION-TRACKER.md`](13-0.2.0-EXECUTION-TRACKER.md) 及 [`docs/12-0.2.0-DEVELOPMENT-PLAN.md`](12-0.2.0-DEVELOPMENT-PLAN.md) 为准。
