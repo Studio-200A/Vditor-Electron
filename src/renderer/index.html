@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self' app: data: blob:; script-src 'self' app: 'unsafe-inline' 'unsafe-eval'; style-src 'self' app: 'unsafe-inline'; img-src 'self' app: local-file: https: http: data: blob:; media-src 'self' app: local-file: https: http: data: blob:; font-src 'self' app: data:; connect-src 'self' app: local-file:"
+      content="default-src 'self' app: data: blob:; script-src 'self' app: 'sha256-qR4U4J3Ne5n0m3uNzGMB/tZ3TWJUf89OlxdXqjqALDM='; style-src 'self' app: 'unsafe-inline'; img-src 'self' app: local-file: https: http: data: blob:; media-src 'self' app: local-file: https: http: data: blob:; font-src 'self' app: data:; connect-src 'self' app: local-file:"
     />
     <title>Vditor Desktop</title>
     <link rel="stylesheet" href="app://app/vditor/dist/index.css" />
@@ -1323,6 +1323,27 @@
               <p class="muted" data-i18n="settings.editorTextWidthHint">
                 Applies to WYSIWYG and Instant Rendering modes.
               </p>
+              <h4 class="settings-subheading" data-i18n="settings.security">Security</h4>
+              <div class="settings-security-card">
+                <span class="settings-security-copy">
+                  <span class="settings-security-title" data-i18n="settings.sanitize"
+                    >Filter untrusted HTML (recommended)</span
+                  >
+                  <span class="settings-hint muted" data-i18n="settings.sanitizeHint"
+                    >When enabled, raw HTML in Markdown is sanitized. Turning it off may preserve
+                    more raw HTML from trusted documents, but it does not make untrusted HTML
+                    safe.</span
+                  >
+                </span>
+                <label
+                  class="theme-switch"
+                  data-i18n-title="settings.sanitizeToggle"
+                  aria-label="Toggle HTML safety filtering"
+                >
+                  <input name="sanitize" type="checkbox" />
+                  <span aria-hidden="true"></span>
+                </label>
+              </div>
             </section>
             <section data-settings-panel="preview">
               <h3 data-i18n="settings.previewMarkdown">Preview & Markdown</h3>
@@ -1382,9 +1403,6 @@
                 <label
                   ><input name="gfmAutoLink" type="checkbox" />
                   <span data-i18n="settings.autoLink">Auto link</span></label
-                ><label
-                  ><input name="sanitize" type="checkbox" />
-                  <span data-i18n="settings.sanitize">Sanitize XSS</span></label
                 >
               </div>
             </section>

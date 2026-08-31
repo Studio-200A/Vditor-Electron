@@ -271,6 +271,9 @@ function createWindow(): void {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      // The current preload is compiled as CommonJS and imports the shared IPC contract.
+      // Electron sandboxed preloads cannot load that local module; keep the narrow bridge working
+      // until a separately scoped bundled-preload migration can prove equivalent behavior.
       sandbox: false,
     },
   };

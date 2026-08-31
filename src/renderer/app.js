@@ -4080,8 +4080,30 @@
     await saveSettings(false);
   }
 
-  function scheduleLiveSettingsSave(event) {
+  async function scheduleLiveSettingsSave(event) {
     const input = event.target;
+    if (input.name === 'sanitize' && !input.checked && state.settings.sanitize) {
+      const confirmed =
+        (await showConfirmDialog({
+          title: t('settings.sanitizeWarningTitle'),
+          message: t('settings.sanitizeWarningMessage'),
+          detail: t('settings.sanitizeWarningDetail'),
+          actions: [
+            { id: 'cancel', label: t('settings.keepHtmlFilter') },
+            {
+              id: 'confirm',
+              label: t('settings.disableHtmlFilter'),
+              primary: true,
+              danger: true,
+            },
+          ],
+          draggable: true,
+        })) === 'confirm';
+      if (!confirmed) {
+        input.checked = true;
+        return;
+      }
+    }
     if (
       (input.type === 'number' || input.type === 'range') &&
       (!input.value || !input.validity.valid)

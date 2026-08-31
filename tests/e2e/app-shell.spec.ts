@@ -492,7 +492,7 @@ test('hides multi-platform preview actions by default and exposes them from sett
     await page.locator('#statusSettings').click();
     await page.locator('.settings-nav [data-panel="preview"]').click();
     const markdownChecks = page.locator('[data-settings-panel="preview"] .check-grid label');
-    await expect(markdownChecks).toHaveCount(12);
+    await expect(markdownChecks).toHaveCount(11);
     await expect(page.locator('[name="lineNumbers"] + span')).toHaveText(
       'Code block preview line numbers',
     );

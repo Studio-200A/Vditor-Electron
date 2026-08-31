@@ -215,6 +215,139 @@ test('does not execute unsupported schemes from rendered document links', async 
   }
 });
 
+test('keeps the main renderer isolated and blocks malicious Markdown HTML by default', async () => {
+  const maliciousMarkdown = [
+    '<img data-batch11="default" src="missing.png" onerror="window.__batch11HtmlExecuted = true">',
+    '<script>window.__batch11ScriptExecuted = true</script>',
+  ].join('\n');
+  const running = await launchApp({ editMode: 'wysiwyg' }, { 'unsafe.md': maliciousMarkdown });
+  try {
+    const { app, page } = running;
+    const preferences = await app.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      return window?.webContents.getLastWebPreferences();
+    });
+    expect(preferences).toMatchObject({
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    });
+    await page.waitForSelector('.editor-host.active .vditor-wysiwyg');
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (
+              window as typeof window & {
+                __batch11HtmlExecuted?: boolean;
+                __batch11ScriptExecuted?: boolean;
+              }
+            ).__batch11HtmlExecuted === true ||
+            (window as typeof window & { __batch11ScriptExecuted?: boolean })
+              .__batch11ScriptExecuted === true,
+        ),
+      )
+      .toBe(false);
+    expect(await page.locator('[data-batch11="default"]').count()).toBe(0);
+    expect(
+      await page.locator('script').filter({ hasText: '__batch11ScriptExecuted' }).count(),
+    ).toBe(0);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('warns before disabling sanitization and CSP still blocks inline HTML handlers', async () => {
+  const running = await launchApp(
+    { editMode: 'wysiwyg', sanitize: false },
+    { 'safe.md': '# Ready' },
+  );
+  try {
+    const { page } = running;
+    await page.waitForSelector('.editor-host.active .vditor-wysiwyg');
+    await page.evaluate(() => {
+      const image = document.createElement('img');
+      image.dataset.batch11 = 'disabled';
+      image.src = 'missing.png';
+      image.setAttribute('onerror', 'window.__batch11HtmlExecuted = true');
+      document.body.append(image);
+    });
+    await expect(page.locator('[data-batch11="disabled"]')).toHaveCount(1);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (window as typeof window & { __batch11HtmlExecuted?: boolean })
+              .__batch11HtmlExecuted === true,
+        ),
+      )
+      .toBe(false);
+
+    await page.locator('#statusSettings').click();
+    await page.locator('.settings-nav button[data-panel="editor"]').click();
+    const sanitize = page.locator('#settingsForm [name="sanitize"]');
+    const securityCard = page.locator('.settings-security-card');
+    await expect(securityCard).toBeVisible();
+    const securityLayout = await securityCard.evaluate((card) => {
+      const toggle = card.querySelector('.theme-switch');
+      const copy = card.querySelector('.settings-security-copy');
+      if (!(toggle instanceof HTMLElement) || !(copy instanceof HTMLElement))
+        throw new Error('Security card is incomplete.');
+      const cardBounds = card.getBoundingClientRect();
+      const toggleBounds = toggle.getBoundingClientRect();
+      return {
+        rightInset: cardBounds.right - toggleBounds.right,
+        cardWidth: cardBounds.width,
+        copyWidth: copy.getBoundingClientRect().width,
+      };
+    });
+    expect(securityLayout.rightInset).toBeLessThanOrEqual(22);
+    expect(securityLayout.copyWidth / securityLayout.cardWidth).toBeGreaterThan(0.7);
+    await expect(sanitize).not.toBeChecked();
+    await securityCard.locator('.settings-security-copy').click();
+    await expect(sanitize).not.toBeChecked();
+    await expect(page.locator('#confirmModal')).toBeHidden();
+    await sanitize.evaluate((input: HTMLInputElement) => {
+      input.checked = true;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await expect(sanitize).toBeChecked();
+    await page.waitForTimeout(100);
+    await securityCard.locator('.theme-switch').click();
+    await expect(page.locator('#confirmModal')).toBeVisible();
+    const confirmCard = page.locator('#confirmModal .confirm-card');
+    await expect(confirmCard).toHaveClass(/confirm-card-draggable/);
+    await expect(page.locator('#confirmModal .confirm-content')).toHaveCSS('user-select', 'none');
+    await expect(page.locator('#confirmMessage')).toHaveText(
+      'Turning it off may retain more raw HTML from trusted documents.',
+    );
+    await expect(page.locator('#confirmActions [data-action="confirm"]')).toHaveText(
+      'Disable filtering anyway',
+    );
+    await page.locator('#confirmActions [data-action="cancel"]').click();
+    await expect(sanitize).toBeChecked();
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('allows only the pinned MathJax inline loader required by Vditor', async () => {
+  const running = await launchApp(
+    { editMode: 'wysiwyg', mathEngine: 'MathJax' },
+    { 'math.md': '$$x^2$$' },
+  );
+  try {
+    const { page } = running;
+    await page.waitForSelector('.editor-host.active .vditor-wysiwyg');
+    await expect(page.locator('#protyleMathJaxScript')).toHaveCount(1);
+    await expect(
+      page.locator('.editor-host.active mjx-container, .editor-host.active svg'),
+    ).not.toHaveCount(0);
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('keeps the empty outline message below controls and non-selectable in fullscreen', async () => {
   const running = await launchApp({ sidebarVisible: true });
   try {

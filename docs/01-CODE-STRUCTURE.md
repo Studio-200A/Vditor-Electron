@@ -15,7 +15,7 @@
 
 **核心功能：** 多标签页 Markdown 编辑、三种编辑模式（IR/SV/WYSIWYG）、分栏预览、文件树侧栏、文档大纲、查找替换、图片插入与压缩、HTML/PDF 导出、TOML 配置持久化、三语国际化（英/简/繁）。
 
-**开发阶段：** 0.2.0 阶段开发中。保存、恢复、工作区内外 watcher、外部修改冲突、外部删除/重新出现/不可读状态、工作区读取/监听深度边界、目录级路径一致性、批次 7 本地闭环和批次 8/9/9.1 安全代码、专项验证、Linux 全量回归及手测均已完成。批次 9.1 已确认 Vditor 3.11.3 表格重建丢失横向滚动状态，并在 adapter 内完成局部补偿、滚动条设置统一、专项自动化和全量回归。批次 10 已完成受控 `local-file://root`、资源类型响应边界、Linux 专项自动化、用户手测与本轮测试；已有目标的长期 TOCTOU、发布门槛和 Windows/macOS 实体机验证仍在后续工作。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
+**开发阶段：** 0.2.0 阶段开发中。保存、恢复、工作区内外 watcher、外部修改冲突、外部删除/重新出现/不可读状态、工作区读取/监听深度边界、目录级路径一致性、批次 7 本地闭环和批次 8/9/9.1 安全代码、专项验证、Linux 全量回归及手测均已完成。批次 9.1 已确认 Vditor 3.11.3 表格重建丢失横向滚动状态，并在 adapter 内完成局部补偿、滚动条设置统一、专项自动化和全量回归。批次 10 已完成受控 `local-file://root`、资源类型响应边界、Linux 专项自动化和用户手测；批次 11 已完成 CSP 收紧、sanitize 风险交互、手测反馈修正和 Linux 全量闭环。已有目标的长期 TOCTOU、主窗口 sandbox 的 bundled-preload 迁移、发布门槛和 Windows/macOS 实体机验证仍在后续工作。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
 
 ---
 
@@ -178,7 +178,7 @@ const options: BrowserWindowConstructorOptions = {
     preload: path.join(__dirname, 'preload.js'),
     contextIsolation: true,
     nodeIntegration: false,
-    sandbox: false,
+    sandbox: false, // 当前 CommonJS preload 需要本地 IPC contract；见 §5.2 的限制
   },
 };
 ```
@@ -259,11 +259,13 @@ if (!ownsSingleInstanceLock) {
 
 ```typescript
 webPreferences: {
-  contextIsolation: true,    // 渲染进程无法直接访问 Node/Electron API
+  contextIsolation: true, // 渲染进程无法直接访问 Node/Electron API
   nodeIntegration: false,
-  sandbox: false,
+  sandbox: false, // 当前 CommonJS preload 需要本地 IPC contract；见下方限制
 }
 ```
+
+主窗口仍未启用 Electron `sandbox`：批次 11 在真实 Electron 中将它设为 `true` 后，窗口能创建但 renderer 在 `body[data-app-ready]` 前停止，因为当前由 TypeScript 生成的 preload 会 `require('./ipc-contract')`，而 sandbox preload 不允许该本地 CommonJS 加载。`contextIsolation: true` 与 `nodeIntegration: false` 继续保持；preload 仅暴露窄能力桥。要启用 sandbox，必须在单独迁移中把 preload 和共享 IPC contract 打包为可由 sandbox 加载的单一入口，并用完整 Electron 回归证明桥等价。
 
 ### 5.3 暴露的 API 完整清单
 
@@ -359,6 +361,8 @@ webPreferences: {
 3. vditor-adapter.js（window.VditorDesktopAdapter）
 4. app.js（IIFE，DOMContentLoaded 时执行 init()）
 ```
+
+`index.html` 的 CSP 允许 `self`、`app:` 和 Vditor 3.11.3 MathJax 同步 loader 所需的精确 SHA-256 hash；不允许脚本 `unsafe-inline` 或 `unsafe-eval`。`style-src 'unsafe-inline'` 是 Vditor 初始化时写入运行时 style 属性的兼容例外。升级 Vditor 或变更 MathJax 时，必须同时复核该 hash 和真实 MathJax 渲染。
 
 `init()` 函数（`src/renderer/app.js`）：
 
@@ -524,7 +528,7 @@ function mountEditorToolbar(tab) {
 
 ### 7.5 Markdown 解析配置
 
-参见 §7.1 `preview.markdown` 字段，支持 callout、footnotes、mark、sub/sup、TOC、auto-space、auto-link、list-style 等扩展语法，均可通过设置面板独立控制。
+参见 §7.1 `preview.markdown` 字段，支持 callout、footnotes、mark、sub/sup、TOC、auto-space、auto-link、list-style 等扩展语法，均可通过设置面板独立控制。`sanitize` 默认启用，传入 Vditor 的 `preview.markdown.sanitize`；它清理 Markdown 中的原始 HTML。关闭时，Vditor 仍可能按编辑模式把原始 HTML 显示为字面源码或在聚焦后显示源码，这不是主动内容已执行的信号。
 
 ### 7.6 主题适配
 
@@ -1007,6 +1011,7 @@ function rememberRecent(filePath) {
 - `wordWrap`（自动换行，checkbox）
 - `rtl`（从右到左布局，checkbox）
 - **Editor layout 子组：** `editorTextWidth`（段落宽度滑块 40–100%，仅 WYSIWYG/IR 模式生效）
+- **Security 子组：** `sanitize`（过滤不受信任的 HTML，默认开启）。它使用独立卡片，只有右侧开关可改变状态；关闭前复用通用确认卡片，展示三语风险说明、可从标题栏受限拖拽。
 
 ##### Preview 面板
 
@@ -1014,7 +1019,7 @@ function rememberRecent(filePath) {
 - `previewMaxWidth`（预览最大宽度，320–2400）
 - `multiPlatformPreview`（多平台布局预览，checkbox）
 - `mathEngine`（公式引擎：`KaTeX` / `MathJax`）
-- **Markdown 功能网格（12 项 checkbox）：** `enableHighlight`（代码高亮）、`lineNumbers`（代码块行号）、`enableAutoSpace`（自动空格）、`enableCallout`、`enableFootnotes`、`enableImageCaption`、`enableMark`、`enableSub`、`enableSup`、`toc`（目录）、`gfmAutoLink`、`sanitize`（XSS 过滤）
+- **Markdown 功能网格（11 项 checkbox）：** `enableHighlight`（代码高亮）、`lineNumbers`（代码块行号）、`enableAutoSpace`（自动空格）、`enableCallout`、`enableFootnotes`、`enableImageCaption`、`enableMark`、`enableSub`、`enableSup`、`toc`（目录）、`gfmAutoLink`
 
 ##### Files & Session 面板
 
@@ -1039,7 +1044,7 @@ function rememberRecent(filePath) {
 
 - **职责：** 通用确认对话框，支持自定义标题/消息/操作按钮列表，返回 Promise
 - **实现：** `showConfirmDialog({ title, message, detail, actions, draggable })` 直接返回由操作按钮结果兑现的 `Promise<string>`。
-- **受限拖动交互：** 未保存变更与移到回收站确认框启用 `draggable`；拖动仅从标题栏开始，位置限制在模态窗口可用范围内，关闭后回到居中位置，不提供尺寸调整手柄或持久化位置。
+- **受限拖动交互：** 未保存变更、移到回收站和关闭 HTML 过滤确认框启用 `draggable`；拖动仅从标题栏开始，位置限制在模态窗口可用范围内，关闭后回到居中位置，不提供尺寸调整手柄或持久化位置。通用 `.confirm-content` 统一禁止文字和图标选中，按钮仍可操作。
 
 #### 右键菜单（`app.js` 的 `showContextMenu()` / `showEditorContextMenu()`，`#contextMenu`）
 
@@ -1254,6 +1259,8 @@ build:assets:
 `app://` 协议先校验受信任的 `app://app` host、端口、凭据和 URI 编码，再将解码后的路径限制在固定的资源根目录内（`startsWith(path.resolve(allowedRoot) + sep)`）；`/` 与 `/index.html` 是唯一允许的顶层 renderer 页面，其他 bundled asset 只能作为子资源加载。
 
 `local-file://` 使用固定 `root` authority；POSIX、Windows drive 和 UNC 路径均把完整的绝对路径编码进 pathname，不能把盘符拼进 authority。`src/main/local-resource.ts` 的 `LocalResourcePolicy` 维护当前工作区根和打开文档父目录，打开、关闭、另存、重命名和工作区切换时由 `app.js` 通过 `file:setResourceRoots` 串行同步。主进程先做 URL 词法拒绝，再对注册目录和目标文件分别执行规范化、`realpath`、目录边界与 `stat` 检查；配置、Chromium user data 和 recovery 目录始终是私有边界，符号链接不能逃出受控根。授权后只响应当前预览需要的 PNG/JPEG/GIF/APNG/AVIF/WEBP，使用准确图片 `Content-Type`、`X-Content-Type-Options: nosniff` 和 `Cache-Control: no-store`；SVG、HTML、JavaScript、XML、未知扩展名、缺失和未授权目标统一返回中性的 404。拒绝日志只记录分类，不记录 URL、真实路径或正文。
+
+Renderer CSP 只允许 bundled `app:`/`self` 脚本和 Vditor 3.11.3 内置 MathJax `tex-svg-full.js` 的精确 SHA-256 hash，未放行 `unsafe-inline` 或 `unsafe-eval`；MathJax 通过 Vditor 的同步 loader 将该固定文件作为内联脚本插入。图片/媒体与连接策略仍沿用受控本地资源和既有远程图片边界。`style-src` 暂保留 `unsafe-inline`，因为 Vditor 3.11.3 在创建编辑器时生成运行时 style 属性；移除它会破坏编辑器布局。Markdown XSS sanitize 默认开启，用户关闭时须经过本地化风险确认；其余层是纵深防御，不能使不受信任 HTML 变得安全。升级 Vditor 时必须复核该脚本 hash 与 MathJax 渲染回归。
 
 ---
 
@@ -1544,7 +1551,7 @@ flowchart TB
 
 ## 15. 测试覆盖情况
 
-截至 2026-08-28，用户在 Linux 运行当前 P09 工作树的 `npm run check:all` 一次通过：15 个单元测试文件、163/163 单元测试通过，Electron Playwright 119/119 通过；格式、lint、类型、Vditor 版本检查和构建也通过。P09 IPC 安全专项、手测反馈修正专项和约定手测均已完成。2026-08-31，P09.1 追加长表格滚动补偿后，`check:all` 的格式、lint、类型、Vditor 检查、构建和 170/170 单元测试通过；两次 122 项 Electron E2E 分别有 121 项和 119 项首次通过，3 项首次未通过的既有用例均已单独复跑通过。P09.1 专项和约定手测均已完成。批次 10 的本地资源和 Save As 重绑用例、Vditor 模式快捷键以及设置页/六主题壳层均已做聚焦验证，用户手测也已通过。用户于同日执行本轮 `check:all`，格式、lint、类型、Vditor 检查、构建和 16 个单元测试文件的 181/181 全部通过；126 条 Electron E2E 首轮 125 条通过，唯一的模式快捷键时机失败经精确重跑 1/1 通过。当前代码包含 16 个单元测试文件；Playwright 发现为 117 个 `test()` 声明、126 条展开用例。以下覆盖说明反映当前代码，并不把 Linux 结果外推为 Windows/macOS 实体机验证。
+截至 2026-08-28，用户在 Linux 运行当前 P09 工作树的 `npm run check:all` 一次通过：15 个单元测试文件、163/163 单元测试通过，Electron Playwright 119/119 通过；格式、lint、类型、Vditor 版本检查和构建也通过。P09 IPC 安全专项、手测反馈修正专项和约定手测均已完成。2026-08-31，P09.1 追加长表格滚动补偿后，`check:all` 的格式、lint、类型、Vditor 检查、构建和 170/170 单元测试通过；两次 122 项 Electron E2E 分别有 121 项和 119 项首次通过，3 项首次未通过的既有用例均已单独复跑通过。P09.1 专项和约定手测均已完成。批次 10 的本地资源和 Save As 重绑用例、Vditor 模式快捷键以及设置页/六主题壳层均已做聚焦验证，用户手测也已通过。用户于同日执行本轮 `check:all`，格式、lint、类型、Vditor 检查、构建和 16 个单元测试文件的 181/181 全部通过；129 条 Electron E2E 首轮 128 条通过，唯一的模式快捷键时机失败经原用例精确复跑 1/1 通过。批次 11 追加的 renderer-shell 定向单测、CSP/sanitize/MathJax Electron 专项和手测均已通过。以下覆盖说明反映当前代码，并不把 Linux 结果外推为 Windows/macOS 实体机验证。
 
 ### 15.1 单元测试（Vitest）
 
@@ -1727,6 +1734,7 @@ flowchart TB
 | ---- | ---- |
 | `src/renderer/app.js` | 图片插入、导出和拖放失败提示仍有少量硬编码中文，后续需补齐三语国际化。 |
 | `src/main/index.ts` | Linux `unmaximize` 后的多次延迟 bounds 复核是平台兼容 workaround，需在真实平台环境持续确认。 |
+| `src/main/preload.ts` | 主窗口尚未启用 Electron sandbox：当前 CommonJS preload 依赖本地 `ipc-contract`；需要单独 bundled-preload 迁移与完整桥接回归。 |
 
 ### 16.2 架构风险点
 

@@ -238,6 +238,7 @@ describe('renderer shell', () => {
     expect(document.querySelectorAll('.confirm-card [data-settings-resize]')).toHaveLength(0);
     expect(rendererScript).toContain('setupConfirmDialogDrag()');
     expect(css).toMatch(/\.confirm-card\.confirm-card-draggable > header\s*\{[^}]*cursor:\s*move/s);
+    expect(css).toMatch(/\.confirm-content\s*\{[^}]*user-select:\s*none/s);
     expect(css).toMatch(/\.modal\s*\{[^}]*inset:\s*14px 20px 28px/s);
   });
 
@@ -439,6 +440,24 @@ describe('renderer shell', () => {
     expect(policy).toContain("img-src 'self' app: local-file: https: http: data: blob:");
     expect(policy).toContain("connect-src 'self' app: local-file:");
     expect(policy).not.toMatch(/connect-src[^;]*https:/);
+    expect(policy).toContain(
+      "script-src 'self' app: 'sha256-qR4U4J3Ne5n0m3uNzGMB/tZ3TWJUf89OlxdXqjqALDM='",
+    );
+    expect(policy).not.toMatch(/script-src[^;]*unsafe-(?:inline|eval)/);
+    // Vditor 3.11.3 creates runtime style attributes for its editing surfaces.
+    expect(policy).toContain("style-src 'self' app: 'unsafe-inline'");
+    expect(mainScript).toContain('contextIsolation: true');
+    expect(mainScript).toContain('nodeIntegration: false');
+    expect(mainScript).toContain('sandbox: false');
+    expect(document.querySelector('.settings-security-card [name="sanitize"]')).not.toBeNull();
+    expect(document.querySelector('[data-settings-panel="preview"] [name="sanitize"]')).toBeNull();
+    expect(css).toMatch(
+      /\.settings-security-card\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto/s,
+    );
+    expect(css).toMatch(
+      /\.settings-content section > \.settings-security-card\s*\{[^}]*width:\s*100%[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 42px/s,
+    );
+    expect(css).toMatch(/\.settings-security-card \.theme-switch\s*\{[^}]*justify-self:\s*end/s);
   });
 
   it('renders the outline without a redundant heading and highlights items on hover', () => {
@@ -579,11 +598,14 @@ describe('renderer shell', () => {
     expect(css).toMatch(/\.vditor-toolbar-mount button\[hidden\]\s*\{[^}]*display:\s*none/s);
   });
 
-  it('groups font settings under secondary headings', () => {
-    expect(document.querySelectorAll('.settings-subheading')).toHaveLength(4);
+  it('groups font and editor security settings under secondary headings', () => {
+    expect(document.querySelectorAll('.settings-subheading')).toHaveLength(5);
     expect(document.querySelector('.settings-nav [data-panel="fonts"]')).not.toBeNull();
     expect(
       document.querySelector('[data-settings-panel="fonts"] [name="uiFontFamily"]'),
+    ).not.toBeNull();
+    expect(
+      document.querySelector('[data-settings-panel="editor"] .settings-security-card'),
     ).not.toBeNull();
   });
 
@@ -731,7 +753,7 @@ describe('renderer shell', () => {
   it('lays out Markdown checkboxes as a compact aligned grid', () => {
     expect(
       document.querySelectorAll('[data-settings-panel="preview"] .check-grid label'),
-    ).toHaveLength(12);
+    ).toHaveLength(11);
     expect(css).toMatch(/\.check-grid\s*\{[^}]*grid-template-columns:\s*repeat\(auto-fit/s);
     expect(css).toMatch(
       /\.settings-content \.check-grid label\s*\{[^}]*display:\s*flex[^}]*gap:\s*8px[^}]*margin:\s*0/s,
