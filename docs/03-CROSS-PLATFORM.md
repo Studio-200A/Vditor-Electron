@@ -63,7 +63,7 @@ Node's `path` implementation varies with the host platform, and some `fs` operat
 | Directory watcher | Linux backend and event timing | Windows backend and event timing | FSEvents behavior and coalescing | Create/change/rename/delete/reappear tests on each OS |
 | Permissions | POSIX mode/ACL behavior | Windows permission model and sharing/lock rules | POSIX mode plus ACL and filesystem metadata | Test readable, writable, locked, and unavailable states on each OS |
 | Safe replacement | Linux rename and open-file semantics | Windows replacement and sharing semantics | macOS rename and open-file semantics | Test manual and automatic save with open/locked targets |
-| Window chrome | Custom controls | Custom controls | Native traffic lights plus safe area | Real-window visual and interaction test |
+| Window chrome | Custom controls | Custom controls | Native traffic lights plus safe area | Real-window visual and interaction test; on macOS, also verify Dock activation creates a fresh close-confirmation cycle |
 | Menus | Renderer menu | Renderer menu | Renderer plus native menu | Verify menu parity and platform conventions |
 | Data paths | XDG config/data paths | APPDATA/LOCALAPPDATA | Library/Application Support | Unit tests plus one installed/runtime smoke test per OS |
 
@@ -78,16 +78,18 @@ Node's `path` implementation varies with the host platform, and some `fs` operat
 - Safe document writes use a same-directory temporary file and replacement flow; failure paths preserve the original file.
 - The 0.2.0 file-state flows cover external modification, deletion, reappearance, and unreadable/permission states.
 - Directory rename, directory deletion, Save As watcher rebinding, descendant path updates, and invalid workspace-root reset are implemented and Linux-tested; Windows/macOS filesystem semantics remain unvalidated.
+- Batch 12 scopes a renderer-approved window close to its originating `BrowserWindow`; Linux state and focused Electron close-flow tests pass, while the macOS Dock activation lifecycle remains unvalidated in section 13.
 
 As of 2026-08-28, 0.2.0 development tracker batches 7, 7.1, and 8 are closed for the Linux-local implementation and regression scope. The user-run Linux `npm run check:all` result covered 154/154 unit tests and 114/114 Electron Playwright tests, in addition to formatting, lint, typecheck, Vditor-version, and build checks. Batch 8's dangerous-protocol and normal external-link manual checks also passed. This is local regression evidence only; it does not close any Windows or macOS row below.
 
-Batch 10 has since completed its Linux-local implementation, focused automation, user manual validation, and user-run full-check pass. The 2026-08-31 full check passed formatting, lint, typecheck, Vditor-version, build, and 181/181 unit tests; the Electron suite first passed 125/126 and its one timing-sensitive mode-shortcut case passed on an exact 1/1 rerun. Windows drive/UNC and junction verification remains explicitly deferred to sections 12.1–12.3, and macOS remains a separate native-runtime task.
+Batch 10 has since completed its Linux-local implementation, focused automation, user manual validation, and user-run full-check pass. The 2026-08-31 full check passed formatting, lint, typecheck, Vditor-version, build, and 181/181 unit tests; the Electron suite first passed 125/126 and its one timing-sensitive mode-shortcut case passed on an exact 1/1 rerun. P12 then added the window-scoped close-confirmation test; the user's subsequent 2026-08-31 full check passed the same static stages, 183/183 unit tests, and 129/129 Electron E2E. Windows drive/UNC and junction verification remains explicitly deferred to sections 12.1–12.3, and macOS remains a separate native-runtime task.
 
 ### Not yet platform-validated
 
 - Windows/macOS watcher event ordering, path casing, permissions, and atomic replacement
 - Windows junction behavior and macOS symlink/Finder alias behavior
 - Native dialogs, menus, title bars, clipboard, packaging, signing, and installed-app data paths
+- macOS Dock activation after the last window closes, including a fresh unsaved-document close confirmation in the replacement window
 - Filesystem-specific Unicode normalization and case-collision behavior
 
 The current batch and release status remains in [`docs/13-0.2.0-EXECUTION-TRACKER.md`](13-0.2.0-EXECUTION-TRACKER.md). Do not duplicate detailed platform evidence there.
@@ -220,3 +222,15 @@ Use document and asset names containing spaces, Chinese characters, `#`, and `%`
 ### 12.4 Closure rule
 
 Each row above requires a real Windows result and its supporting screenshot or DevTools response evidence. A passing Linux E2E or `path.win32` unit test remains supporting evidence only; it does not close the Windows validation row. macOS resource behavior remains a separate native validation task.
+
+## 13. 0.2.0 batch 12 deferred macOS window lifecycle validation
+
+The batch 12 implementation keeps close confirmation associated with the exact `BrowserWindow` that received the renderer's explicit confirmation. Its unit test proves a replacement window cannot inherit that state, and the 2026-08-31 Linux `check:all` passed 183/183 unit tests and 129/129 Electron E2E, including the existing close-dialog IPC flow. Neither can prove macOS behavior after the final window closes while the application remains active. The user has explicitly deferred this native test until a macOS environment is available.
+
+Run this only on a native macOS installation after building the current branch:
+
+1. Open a new untitled document, enter text without saving, close the window, and select **Don't Save**.
+2. Click the application icon in the Dock to trigger `activate` and create a replacement window.
+3. Open another new untitled document, enter text without saving, and close that replacement window.
+
+The second close must display the unsaved-changes confirmation. Record the macOS version, Electron and Node versions, application commit, whether the original window disappeared before Dock activation, the final result, and a screenshot or screen recording. A missing confirmation is a batch 12 product failure; a passing native result closes only this macOS lifecycle row and updates the corresponding Tracker hand-test record.

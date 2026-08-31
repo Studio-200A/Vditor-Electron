@@ -32,6 +32,7 @@
 
 #### Workbench, toolbar, and menus
 
+- **fix(macOS window close):** Scoped an approved unsaved-changes close to its originating application window, so a window recreated from the Dock must ask again before discarding unsaved content.
 - **fix(main menu theming):** Windows/Linux custom main-menu triggers and popups now use each theme's sidebar surface, so Claude Light and Monokai Pro Light retain their warm application-chrome tone instead of appearing white.
 - **fix(sidebar tooltips):** Replaced browser-native sidebar tooltips with the shared application tooltip used by document links, so workspace, file-tree, link-directory, refresh, and outline controls now follow the active theme consistently.
 - **fix(persistent notices):** Unified recovery and external-conflict banners around the persistent warning style, including the warning SVG, two-row narrow-layout behavior, larger 15px copy and action text, draggable overwrite confirmation, and readable red-and-white danger actions across light, dark, and Monokai themes.

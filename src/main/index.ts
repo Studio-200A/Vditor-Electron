@@ -40,6 +40,7 @@ import { FileManagerService } from './services/file-manager';
 import { FileWatchService } from './services/file-watch-service';
 import { RecoveryStore } from './services/recovery-store';
 import { SettingsStore } from './services/settings-store';
+import { WindowCloseConfirmation } from './services/window-close-confirmation';
 import {
   AppSettings,
   DEFAULT_SETTINGS,
@@ -52,7 +53,7 @@ let fileManager: FileManagerService;
 let settingsStore: SettingsStore;
 let recoveryStore: RecoveryStore;
 let fileWatchService: FileWatchService;
-let closeConfirmed = false;
+const windowCloseConfirmation = new WindowCloseConfirmation<BrowserWindow>();
 let boundsBeforeMaximize: Electron.Rectangle | null = null;
 let windowMaximizedState = false;
 let windowBoundsSaveTimer: NodeJS.Timeout | null = null;
@@ -280,6 +281,7 @@ function createWindow(): void {
   options.x = normalBounds.x;
   options.y = normalBounds.y;
   mainWindow = new BrowserWindow(options);
+  const createdWindow = mainWindow;
   rendererReady = false;
   mainWindow.webContents.on('did-start-loading', () => {
     rendererReady = false;
@@ -310,12 +312,13 @@ function createWindow(): void {
     if (!mainWindow) return;
     if (!windowMaximizedState) persistNormalWindowBounds();
     settingsStore.set('windowMaximized', windowMaximizedState);
-    if (!closeConfirmed) {
+    if (!windowCloseConfirmation.isConfirmed(mainWindow)) {
       event.preventDefault();
       send(IPC_CHANNELS.appRequestClose);
     }
   });
   mainWindow.on('closed', () => {
+    windowCloseConfirmation.clear(createdWindow);
     if (windowBoundsSaveTimer) clearTimeout(windowBoundsSaveTimer);
     windowBoundsSaveTimer = null;
     mainWindow = null;
@@ -695,7 +698,7 @@ function registerIpcHandlers(): void {
   });
   onTrusted(IPC_CHANNELS.appCloseConfirmed, (_event, ...args) => {
     requireArgumentCount(args, 0);
-    closeConfirmed = true;
+    if (mainWindow) windowCloseConfirmation.confirm(mainWindow);
     mainWindow?.close();
   });
 }

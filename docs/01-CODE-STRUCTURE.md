@@ -195,7 +195,7 @@ const options: BrowserWindowConstructorOptions = {
 | `before-quit`          | 关闭 chokidar watcher                                                  |
 | `second-instance`      | 解析 CLI 参数中的文件路径，入队 `pendingOpenFiles`，唤醒主窗口         |
 | `open-file`（macOS）   | 阻止默认行为，将文件路径入队并唤醒主窗口                               |
-| `window.close`         | 拦截关闭，向渲染进程发送 `app:requestClose`，等待 `app:closeConfirmed` |
+| `window.close`         | 拦截关闭，向渲染进程发送 `app:requestClose`，等待该 `BrowserWindow` 的 `app:closeConfirmed`；替换窗口必须重新确认 |
 | `web-contents-created` | 阻止非 `app:` 导航与新窗口；仅白名单 `http(s)` / `mailto:` 才转发到 `shell.openExternal()` |
 
 ### 4.4 系统菜单
@@ -719,7 +719,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `window:maximize`      | 无   | `toggleWindowMaximized()`（含 Linux bounds 修复）    |
 | `window:close`         | 无   | `mainWindow.close()`（触发 close 拦截）              |
 | `app:toggleDevTools`   | 无   | 主进程确认来源窗口及 `devToolsEnabled` 后调用 `webContents.toggleDevTools()` |
-| `app:closeConfirmed`   | 无   | 设置 `closeConfirmed = true` 后重新 `close()`        |
+| `app:closeConfirmed`   | 无   | 仅确认当前 `BrowserWindow` 后重新 `close()`；窗口关闭时清理确认状态 |
 
 #### 主进程 → 渲染器（main.send）
 
@@ -737,7 +737,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 
 以下通道同时存在两个方向的数据流：
 
-- `app:closeConfirmed`（渲染器 send）与 `app:requestClose`（main send）构成完整的双向关闭确认协议
+- `app:closeConfirmed`（渲染器 send）与 `app:requestClose`（main send）构成完整的双向关闭确认协议；确认状态由 `WindowCloseConfirmation` 按 `BrowserWindow` 绑定，避免 macOS `activate` 的替换窗口继承旧确认
 - `file:setWorkspaceWatch` / `file:watchDocument` / `file:unwatchDocument`（渲染器 invoke）与 `file:changed`（main send 通知变更）配合使用
 
 ### 8.3 错误处理机制
@@ -1551,7 +1551,7 @@ flowchart TB
 
 ## 15. 测试覆盖情况
 
-截至 2026-08-28，用户在 Linux 运行当前 P09 工作树的 `npm run check:all` 一次通过：15 个单元测试文件、163/163 单元测试通过，Electron Playwright 119/119 通过；格式、lint、类型、Vditor 版本检查和构建也通过。P09 IPC 安全专项、手测反馈修正专项和约定手测均已完成。2026-08-31，P09.1 追加长表格滚动补偿后，`check:all` 的格式、lint、类型、Vditor 检查、构建和 170/170 单元测试通过；两次 122 项 Electron E2E 分别有 121 项和 119 项首次通过，3 项首次未通过的既有用例均已单独复跑通过。P09.1 专项和约定手测均已完成。批次 10 的本地资源和 Save As 重绑用例、Vditor 模式快捷键以及设置页/六主题壳层均已做聚焦验证，用户手测也已通过。用户于同日执行本轮 `check:all`，格式、lint、类型、Vditor 检查、构建和 16 个单元测试文件的 181/181 全部通过；129 条 Electron E2E 首轮 128 条通过，唯一的模式快捷键时机失败经原用例精确复跑 1/1 通过。批次 11 追加的 renderer-shell 定向单测、CSP/sanitize/MathJax Electron 专项和手测均已通过。以下覆盖说明反映当前代码，并不把 Linux 结果外推为 Windows/macOS 实体机验证。
+截至 2026-08-28，用户在 Linux 运行当前 P09 工作树的 `npm run check:all` 一次通过：15 个单元测试文件、163/163 单元测试通过，Electron Playwright 119/119 通过；格式、lint、类型、Vditor 版本检查和构建也通过。P09 IPC 安全专项、手测反馈修正专项和约定手测均已完成。2026-08-31，P09.1 追加长表格滚动补偿后，`check:all` 的格式、lint、类型、Vditor 检查、构建和 170/170 单元测试通过；两次 122 项 Electron E2E 分别有 121 项和 119 项首次通过，3 项首次未通过的既有用例均已单独复跑通过。P09.1 专项和约定手测均已完成。批次 10 的本地资源和 Save As 重绑用例、Vditor 模式快捷键以及设置页/六主题壳层均已做聚焦验证，用户手测也已通过。用户于 2026-08-31 执行 P12 修改后的 `check:all`：格式、lint、类型、Vditor 检查、构建和 17 个单元测试文件的 183/183 全部通过，129 条 Electron E2E 也一次通过。该 Linux 结果包含 P12 的窗口关闭状态测试和既有关闭对话框回归，但不替代 macOS Dock 激活后的实体机验证。以下覆盖说明反映当前代码，并不把 Linux 结果外推为 Windows/macOS 实体机验证。
 
 ### 15.1 单元测试（Vitest）
 
@@ -1571,6 +1571,7 @@ flowchart TB
 | `tests/unit/file-manager.test.ts`   | `src/main/services/file-manager.ts` 与 `safe-file-writer.ts` | UTF-8 读取、UTF-8 BOM 检测与剥离、GB18030 回退、同目录安全替换、权限保持、无变化跳过、expected content/absence 基线、临时创建/替换失败保留原文件及清理、权限错误映射、文件/目录创建、路径逃逸拒绝（`../`）、目录优先自然排序、目录链接工作区内外分类与深度、普通文件/目录重命名冲突与失败回滚、二进制图片写入 |
 | `tests/unit/file-identity.test.ts` | `src/main/services/file-identity.ts` | 已存在路径 realpath、大小写敏感规则、符号链接别名、缺失文件和缺失祖先路径拼接、跨平台 path 模型 |
 | `tests/unit/file-watch-service.test.ts` | `src/main/services/file-watch-service.ts` | 工作区结构与文档内容 watcher 分工、7–12 读取深度规范化及重建、资源错误一次降级、同路径去重、ready 后 reconciliation、稳定等待、read revision 乱序保护、瞬态 `unlink` 重核、权限不可读事件、工作区内文件重新出现的双 scope 事件、符号链接规范路径、释放后的迟到读取、workspace revision，以及 Linux raw rename 重绑 |
+| `tests/unit/window-close-confirmation.test.ts` | `src/main/services/window-close-confirmation.ts` | 关闭确认仅对原窗口有效，替换窗口不能继承确认，以及关闭窗口时的状态清理 |
 | `tests/unit/settings-store.test.ts` | `src/main/services/settings-store.ts`   | 首次加载返回默认值、TOML 部分深合并与默认值、未知字段丢弃、`set` 持久化（含 TOML 段结构验证）、`update` 多字段快照（含 `workspaceTreeStates` 数组和 `workspaceReadDepth` 边界）、设置对话框尺寸持久化（`window.settingsDialog`）、`getAll` 返回克隆副本、`reset` 重置内存和磁盘                                                                                                                                                                                                                                                               |
 | `tests/unit/recovery-store.test.ts` | `src/main/services/recovery-store.ts` | 私有目录/文件权限、候选元数据不含正文、原子写入与显式清理、损坏/未知 schema/超限快照移除，以及 `unchanged` / `changed` / `unavailable` 三种磁盘状态 |
 | `tests/unit/vditor-adapter.test.ts` | `src/renderer/vditor-adapter.js`        | 冻结的 selectors 对象、`validateHost` 成功（toolbar 通过 `mountedToolbar` 参数提供）、代码主题亮/暗分界点（`ant-design` 前为 dark 组）、DOM 漂移检测（缺少 source 节点时 `valid: false`）、列表 `marker`/`padding` 解析、动态尾部留白写入全部 Vditor 表面、hash anchor 到标题索引（IR 内部链接 + 元素 id + slug）、原生大纲 snapshot、标题间普通块时的准确目标节点及 SV preview 外层滚动容器、跨多 span 文本节点的匹配与选区                                                                                                                                                                                                   |
@@ -1578,7 +1579,7 @@ flowchart TB
 
 ### 15.2 E2E 测试（Playwright Electron，按行为域拆分）
 
-`tests/e2e/support/app-harness.ts` 统一提供 Electron 启动、每测试临时根目录、设置读取、主题选择和关闭清理；它不保留跨测试的应用、页面或文件状态。Playwright 自动发现以下四个 spec，当前为 117 个 `test()` 声明、124 条展开用例；P09/P09.1 与 P10 的 IPC、路径、资源和手测反馈用例分布在 `navigation-and-resources.spec.ts` 与 `document-lifecycle.spec.ts`。
+`tests/e2e/support/app-harness.ts` 统一提供 Electron 启动、每测试临时根目录、设置读取、主题选择和关闭清理；它不保留跨测试的应用、页面或文件状态。Playwright 自动发现以下四个 spec，当前为 122 个 `test()` 声明、129 条展开用例；P09/P09.1 与 P10 的 IPC、路径、资源和手测反馈用例分布在 `navigation-and-resources.spec.ts` 与 `document-lifecycle.spec.ts`。
 
 | 测试文件 | 主要责任 |
 | --- | --- |
