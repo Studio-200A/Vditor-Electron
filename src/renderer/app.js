@@ -1313,6 +1313,11 @@
         });
         setupDocumentAnchorNavigation(tab);
         VDITOR.scrollContainers(tab.host).forEach(setupAutoHideScrollbar);
+        tab.tableCompositionScrollCleanup?.();
+        tab.tableCompositionScrollCleanup = VDITOR.preserveTableScrollDuringInput(
+          tab.host,
+          () => tab.vditor?.getCurrentMode() || tab.mode,
+        );
         const pendingEditorContent = tab.pendingEditorContent;
         const pendingSavedContent = tab.savedContent;
         const pendingModified = tab.modified;
@@ -1850,6 +1855,8 @@
     tab.resourceObserver = null;
     tab.outlineObserver?.disconnect();
     tab.outlineObserver = null;
+    tab.tableCompositionScrollCleanup?.();
+    tab.tableCompositionScrollCleanup = null;
     restoreEditorToolbar(tab);
     if (tab.vditor) {
       try {

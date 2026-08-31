@@ -42,6 +42,10 @@
 - **fix(settings theming):** Align the settings titlebar, navigation, footer, and edge with the active theme's sidebar surface while keeping settings content on the editor surface across all six application themes.
 - **fix(asset layout):** Organized application icons, symbolic UI icons, and notification icons under dedicated renderer asset directories; the offline asset build and Linux release script now follow the same paths.
 
+#### Editor interaction
+
+- **fix(table scrolling):** Kept WYSIWYG and Instant Rendering table cells horizontally positioned while Vditor rebuilds them after multi-character input or paste. When the caret would otherwise leave the visible part of a long table, Desktop now scrolls only far enough to keep it visible; table scrollbars also follow the configured always, automatic, or hidden visibility setting.
+
 #### Workspace, files, and saving
 
 - **fix(save reliability):** Serialized saves by canonical file identity, kept newer edits dirty and recoverable when an earlier save finishes late, and rechecked the expected disk baseline before replacement so stale saves surface an explicit external-change result.

@@ -607,6 +607,167 @@ test('performs table context-menu actions in WYSIWYG and Instant Rendering', asy
   }
 });
 
+test('keeps a long table cell horizontally positioned after multi-character paste', async () => {
+  const longCell = 'x'.repeat(1024);
+  const markdown = `| content |\n| --- |\n| ${longCell} |`;
+  for (const mode of ['ir', 'wysiwyg'] as const) {
+    const running = await launchApp({ editMode: mode }, { 'table-composition.md': markdown });
+    try {
+      const { page } = running;
+      const outcome = await page.locator('.editor-host.active table').evaluate((table) => {
+        const cell = table.querySelector('tbody td');
+        const text = cell?.firstChild;
+        if (!cell || !text) throw new Error('Expected a populated table cell.');
+        table.scrollLeft = Math.min(160, table.scrollWidth - table.clientWidth);
+        if (table.scrollLeft <= 0) throw new Error('Expected the table to overflow horizontally.');
+        const before = table.scrollLeft;
+        const range = document.createRange();
+        range.setStart(text, text.textContent?.length || 0);
+        range.collapse(true);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        text.textContent += '中文';
+        cell.dispatchEvent(
+          new InputEvent('input', {
+            bubbles: true,
+            data: '中文',
+            inputType: 'insertFromPaste',
+          }),
+        );
+        window.setTimeout(() => {
+          const replacement = document.querySelector('.editor-host.active table');
+          const replacementCell = replacement?.querySelector('tbody td');
+          if (!(replacement instanceof HTMLElement) || !replacementCell) return;
+          replacement.scrollLeft = 0;
+          replacementCell.dispatchEvent(
+            new InputEvent('input', {
+              bubbles: true,
+              data: '中文',
+              inputType: 'insertFromPaste',
+            }),
+          );
+        }, 0);
+        return { before };
+      });
+      await page.waitForTimeout(300);
+      const after = await page.locator('.editor-host.active table').evaluate((table) => ({
+        scrollLeft: table.scrollLeft,
+        text: table.textContent,
+      }));
+
+      expect(outcome.before).toBeGreaterThan(0);
+      expect(after.scrollLeft).toBeGreaterThan(0);
+      expect(after.text).toContain('中文');
+    } finally {
+      await closeApp(running);
+    }
+  }
+});
+
+test('keeps a long table cell at its right edge after Vditor handles a paste', async () => {
+  const markdown = `| content |\n| --- |\n| ${'x'.repeat(1024)} |`;
+  for (const mode of ['ir', 'wysiwyg'] as const) {
+    const running = await launchApp({ editMode: mode }, { 'table-native-paste.md': markdown });
+    try {
+      const { page } = running;
+      const before = await page.locator('.editor-host.active table').evaluate((table) => {
+        const cell = table.querySelector('tbody td');
+        const text = cell?.firstChild;
+        if (!cell || !text) throw new Error('Expected a populated table cell.');
+        table.scrollLeft = table.scrollWidth - table.clientWidth;
+        if (table.scrollLeft <= 0) throw new Error('Expected the table to overflow horizontally.');
+        const before = table.scrollLeft;
+        const range = document.createRange();
+        range.setStart(text, text.textContent?.length || 0);
+        range.collapse(true);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        const clipboard = new DataTransfer();
+        clipboard.setData('text/plain', ' pasted words');
+        cell.dispatchEvent(
+          new ClipboardEvent('paste', {
+            bubbles: true,
+            cancelable: true,
+            clipboardData: clipboard,
+          }),
+        );
+        return before;
+      });
+      await expect
+        .poll(() => page.locator('.editor-host.active table').textContent())
+        .toContain('pasted words');
+      await expect
+        .poll(() =>
+          page.locator('.editor-host.active table').evaluate((table) => {
+            return table.scrollLeft - (table.scrollWidth - table.clientWidth);
+          }),
+        )
+        .toBeCloseTo(0, 0);
+      const after = await page.locator('.editor-host.active table').evaluate((table) => ({
+        scrollLeft: table.scrollLeft,
+        maximumLeft: table.scrollWidth - table.clientWidth,
+      }));
+
+      expect(before).toBeGreaterThan(0);
+      expect(after.maximumLeft).toBeGreaterThan(0);
+      expect(after.scrollLeft).toBeCloseTo(after.maximumLeft, 0);
+    } finally {
+      await closeApp(running);
+    }
+  }
+});
+
+test('moves a long table only enough to keep a pasted middle caret visible', async () => {
+  const markdown = `| content |\n| --- |\n| ${'x'.repeat(1024)} |`;
+  for (const mode of ['ir', 'wysiwyg'] as const) {
+    const running = await launchApp({ editMode: mode }, { 'table-paste-caret.md': markdown });
+    try {
+      const { page } = running;
+      const before = await page.locator('.editor-host.active table').evaluate((table) => {
+        const cell = table.querySelector('tbody td');
+        const text = cell?.firstChild;
+        if (!cell || !text) throw new Error('Expected a populated table cell.');
+        const range = document.createRange();
+        const offset = Math.floor((text.textContent?.length || 0) / 2);
+        range.setStart(text, offset);
+        range.collapse(true);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        const caret = range.getBoundingClientRect();
+        const tableRect = table.getBoundingClientRect();
+        table.scrollLeft = Math.max(1, caret.left - tableRect.left - table.clientWidth + 30);
+        const before = table.scrollLeft;
+        const clipboard = new DataTransfer();
+        clipboard.setData('text/plain', ' pasted content '.repeat(12));
+        cell.dispatchEvent(
+          new ClipboardEvent('paste', {
+            bubbles: true,
+            cancelable: true,
+            clipboardData: clipboard,
+          }),
+        );
+        return before;
+      });
+      await expect
+        .poll(() => page.locator('.editor-host.active table').textContent())
+        .toContain('pasted content');
+      const after = await page.locator('.editor-host.active table').evaluate((table) => ({
+        scrollLeft: table.scrollLeft,
+        maximumLeft: table.scrollWidth - table.clientWidth,
+      }));
+
+      expect(before).toBeGreaterThan(0);
+      expect(after.scrollLeft).toBeGreaterThan(before);
+      expect(after.scrollLeft).toBeLessThan(after.maximumLeft);
+    } finally {
+      await closeApp(running);
+    }
+  }
+});
+
 test('satisfies the Vditor DOM integration contract', async () => {
   const running = await launchApp({ editMode: 'sv' });
   try {

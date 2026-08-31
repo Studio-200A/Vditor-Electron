@@ -2,7 +2,7 @@
 
 - **生成时间：** 2026-08-31
 - **基于的工作区：** `dev-0.2.0` 当前工作区实现（包含 Lucide 静态图标资源构建链路）
-- **文档版本：** v1.12
+- **文档版本：** v1.13
 - **对应 package.json 版本号：** 0.1.5
 
 ---
@@ -15,7 +15,7 @@
 
 **核心功能：** 多标签页 Markdown 编辑、三种编辑模式（IR/SV/WYSIWYG）、分栏预览、文件树侧栏、文档大纲、查找替换、图片插入与压缩、HTML/PDF 导出、TOML 配置持久化、三语国际化（英/简/繁）。
 
-**开发阶段：** 0.2.0 阶段开发中。保存、恢复、工作区内外 watcher、外部修改冲突、外部删除/重新出现/不可读状态、工作区读取/监听深度边界、目录级路径一致性、批次 7 本地闭环和批次 8 导航/外部链接安全代码、专项验证、Linux 全量回归及手测均已完成。批次 9 的 IPC 来源和高风险参数校验、手测反馈修正、Linux `check:all`（163/163 单测、119/119 E2E）及约定手测均已完成；首轮手测的 4 个问题中 3 个已修复，长表格中文输入横向滚动问题已转入批次 9.1，当前尚未启动。IPC/本地资源安全、已有目标的长期 TOCTOU、发布门槛和 Windows/macOS 实体机验证仍在后续工作。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
+**开发阶段：** 0.2.0 阶段开发中。保存、恢复、工作区内外 watcher、外部修改冲突、外部删除/重新出现/不可读状态、工作区读取/监听深度边界、目录级路径一致性、批次 7 本地闭环和批次 8/9/9.1 安全代码、专项验证、Linux 全量回归及手测均已完成。批次 9.1 已确认 Vditor 3.11.3 表格重建丢失横向滚动状态，并在 adapter 内完成局部补偿、滚动条设置统一、专项自动化和全量回归。IPC/本地资源安全、已有目标的长期 TOCTOU、发布门槛和 Windows/macOS 实体机验证仍在后续工作。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
 
 ---
 
@@ -572,6 +572,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `setEditorBottomSpacer(host, height)` | `host, pixels`                | `boolean`                                                          | 为 SV、IR、WYSIWYG 与 preview 写入 Vditor 私有 `--editor-bottom`，形成动态尾部留白                                   |
 | `scrollContainers(host)`              | `host`                        | `Element[]`                                                        | 获取所有可滚动容器节点（用于自动隐藏滚动条）                                                                           |
 | `innerScroller(node)`                 | `node`                        | `Element \| null`                                                  | 获取节点最近的 `.vditor-reset` 内层滚动容器                                                                            |
+| `preserveTableScrollDuringInput(host, getMode)` | `host, getMode` | `() => void` | 在 Vditor 3.11.3 的 paste/input/composition 处理前快照表格 `scrollLeft`，重建后恢复位置并在必要时以最小距离显示光标；关闭 tab 时调用 disposer |
 
 #### 工具栏交互
 
@@ -1538,7 +1539,7 @@ flowchart TB
 
 ## 15. 测试覆盖情况
 
-截至 2026-08-28，用户在 Linux 运行当前 P09 工作树的 `npm run check:all` 一次通过：15 个单元测试文件、163/163 单元测试通过，Electron Playwright 119/119 通过；格式、lint、类型、Vditor 版本检查和构建也通过。P09 IPC 安全专项、手测反馈修正专项和约定手测均已完成；首轮手测剩余的长表格中文输入横向滚动问题已登记到批次 9.1。以下覆盖说明反映当前代码，并不把 Linux 结果外推为 Windows/macOS 实体机验证。
+截至 2026-08-28，用户在 Linux 运行当前 P09 工作树的 `npm run check:all` 一次通过：15 个单元测试文件、163/163 单元测试通过，Electron Playwright 119/119 通过；格式、lint、类型、Vditor 版本检查和构建也通过。P09 IPC 安全专项、手测反馈修正专项和约定手测均已完成。2026-08-31，P09.1 追加长表格滚动补偿后，`check:all` 的格式、lint、类型、Vditor 检查、构建和 170/170 单元测试通过；两次 122 项 Electron E2E 分别有 121 项和 119 项首次通过，3 项首次未通过的既有用例均已单独复跑通过。P09.1 专项和约定手测均已完成。以下覆盖说明反映当前代码，并不把 Linux 结果外推为 Windows/macOS 实体机验证。
 
 ### 15.1 单元测试（Vitest）
 

@@ -20,6 +20,7 @@
     sourceNewline: 'span[data-type="newline"]',
     sourceHeading: '[data-type="heading-marker"]',
     sourceBlock: '[data-block="0"]',
+    table: 'table',
     tableCell: 'td,th',
     listMarker: '[data-type="li-marker"]',
     listPadding: '[data-type="padding"]',
@@ -300,6 +301,126 @@
     // In Vditor 3.11.x rendered modes scroll their private .vditor-reset child,
     // while SV scrolls its editor element directly.
     return mode === 'sv' ? editor : editor.querySelector(selectors.reset) || editor;
+  }
+
+  function preserveTableScrollDuringInput(host, getMode) {
+    if (!host || typeof getMode !== 'function') return () => {};
+    let session = null;
+    const tableForSelection = (mode) => {
+      if (!['ir', 'wysiwyg'].includes(mode)) return null;
+      const editor = editableContent(host, mode);
+      const selection = window.getSelection();
+      const table = closestWithin(selection?.anchorNode, selectors.table, editor);
+      return table && editor?.contains(table) ? { editor, table } : null;
+    };
+    const stopSession = (current) => {
+      if (!current) return;
+      current.observer.disconnect();
+      window.clearTimeout(current.stopTimer);
+      if (current.restoreFrame !== null) window.cancelAnimationFrame(current.restoreFrame);
+      if (session === current) session = null;
+    };
+    const restore = (current) => {
+      if (session !== current || getMode() !== current.mode) return;
+      const editor = editableContent(host, current.mode);
+      const table = editor?.querySelectorAll(selectors.table)[current.index];
+      if (!table) return;
+      const maximumLeft = Math.max(0, table.scrollWidth - table.clientWidth);
+      const wasAtRightEdge = current.maximumLeft - current.scrollLeft <= 2;
+      table.scrollLeft = wasAtRightEdge ? maximumLeft : Math.min(maximumLeft, current.scrollLeft);
+      const range = selectionRangeIn(editor);
+      if (!range || !containsNode(table, range.startContainer)) return;
+      const caret =
+        (typeof range.getClientRects === 'function' && Array.from(range.getClientRects()).at(-1)) ||
+        (typeof range.getBoundingClientRect === 'function' && range.getBoundingClientRect());
+      if (!caret) return;
+      const tableRect = table.getBoundingClientRect();
+      if (!tableRect.width) return;
+      const inset = 8;
+      if (caret.left < tableRect.left + inset) {
+        table.scrollLeft = Math.max(0, table.scrollLeft + caret.left - tableRect.left - inset);
+      } else if (caret.right > tableRect.right - inset) {
+        table.scrollLeft = Math.min(
+          maximumLeft,
+          table.scrollLeft + caret.right - tableRect.right + inset,
+        );
+      }
+    };
+    const scheduleRestore = (current) => {
+      if (session !== current || current.restoreFrame !== null) return;
+      current.restoreFrame = window.requestAnimationFrame(() => {
+        current.restoreFrame = null;
+        restore(current);
+      });
+    };
+    const startSession = () => {
+      stopSession(session);
+      const mode = getMode();
+      const context = tableForSelection(mode);
+      if (!context || context.table.scrollLeft <= 0) {
+        return;
+      }
+      const tables = Array.from(context.editor.querySelectorAll(selectors.table));
+      const current = {
+        mode,
+        index: tables.indexOf(context.table),
+        scrollLeft: context.table.scrollLeft,
+        maximumLeft: Math.max(0, context.table.scrollWidth - context.table.clientWidth),
+        isComposing: false,
+        observer: null,
+        restoreFrame: null,
+        stopTimer: null,
+      };
+      current.observer = new MutationObserver(() => {
+        if (!current.isComposing) scheduleRestore(current);
+      });
+      current.observer.observe(context.editor, { childList: true, subtree: true });
+      session = current;
+    };
+    const keepSessionAlive = (current) => {
+      window.clearTimeout(current.stopTimer);
+      current.stopTimer = window.setTimeout(() => {
+        restore(current);
+        stopSession(current);
+      }, 250);
+    };
+    const onCompositionStart = () => {
+      startSession();
+      if (session) session.isComposing = true;
+    };
+    const onCompositionEnd = () => {
+      const current = session;
+      if (!current) return;
+      current.isComposing = false;
+      keepSessionAlive(current);
+      scheduleRestore(current);
+    };
+    const onInputCapture = () => {
+      if (!session) startSession();
+      if (session) keepSessionAlive(session);
+    };
+    const onPasteCapture = () => {
+      startSession();
+      if (session) keepSessionAlive(session);
+    };
+    const onInput = () => {
+      if (session && !session.isComposing) scheduleRestore(session);
+    };
+    // Vditor 3.11.3 may reparse a table directly from its paste handler, before
+    // input fires. Capture both entry paths without handling text or clipboard data.
+    host.addEventListener('compositionstart', onCompositionStart, true);
+    host.addEventListener('compositionend', onCompositionEnd, true);
+    host.addEventListener('input', onInputCapture, true);
+    host.addEventListener('paste', onPasteCapture, true);
+    host.addEventListener('input', onInput);
+    return () => {
+      stopSession(session);
+      host.removeEventListener('compositionstart', onCompositionStart, true);
+      host.removeEventListener('compositionend', onCompositionEnd, true);
+      host.removeEventListener('input', onInputCapture, true);
+      host.removeEventListener('paste', onPasteCapture, true);
+      host.removeEventListener('input', onInput);
+    };
   }
 
   function elementForNode(node) {
@@ -1107,6 +1228,7 @@
     scrollContainers,
     activeEditor,
     editorScrollContainer,
+    preserveTableScrollDuringInput,
     isEditableTarget,
     captureEditorSelection,
     restoreEditorSelection,

@@ -241,3 +241,34 @@ Desktop 因此只在 adapter 中保存/恢复编辑 Range、识别真实 `td` / 
 当前自动化覆盖菜单可见性、Range 恢复和四项表格 DOM 结果；剪切、复制、两种粘贴和四项表格行列操作已完成人工验收。Vditor undo 栈及跨块光标恢复仍属于上游限制，不作为右键菜单能力承诺；不能把该场景改为 Desktop 自建 undo，或以 `getValue()` / `setValue()` 回写来伪造撤销，否则会越过 Vditor 的选区与历史边界。
 
 右键菜单自身是应用层共享的 `#contextMenu`：文件树和编辑区不再争用不同容器。编辑菜单仅捕获当前活动标签的可编辑表面，SV preview、查找输入框、设置与文件树不被接管；菜单在视窗边界内定位，`Escape`、外部点击、标签/模式切换、重建和标签关闭都会清理保存的 Range。撤销/重做不在右键菜单中提供，继续使用 Ctrl/Cmd+Z、Ctrl/Cmd+Shift+Z 与 Vditor 工具栏，避免将 Vditor 3.11.3 的私有 undo 快照限制伪装成稳定的菜单命令。由于 Chromium 的 `execCommand('paste')` 不能可靠地向 Vditor 传递剪贴板数据，preload 只暴露 `readClipboard()`，由 adapter 构造 Vditor 既有的 paste 事件；纯文本粘贴不传递 HTML。
+
+---
+
+# Vditor 3.11.3：长表格编辑横向滚动补偿
+
+## 问题与边界
+
+Vditor `3.11.3` 的 WYSIWYG/IR 将表格本身作为横向滚动容器（`display: block; overflow: auto`）。在多字符输入、IME 多字提交或原生粘贴中，Vditor 会重建当前表格或父级块；新表格节点没有旧节点的运行时 `scrollLeft`，因而回到最左侧。
+
+该行为在纯 Chromium 的固定 `3.11.3` 对照页中复现。保存的官方指南页也使用二进制一致的 `3.11.3` JS/CSS；其公开配置近似版仍复现。因此这不是 Electron 或 Rime 专有问题，Desktop 只补偿可观察的滚动状态，不接管 Vditor 的文本、选区、undo 或剪贴板语义。
+
+## Desktop 策略
+
+`vditor-adapter.js` 的 `preserveTableScrollDuringInput(host, getMode)` 在 `paste`、`input`、`compositionstart` 捕获阶段保存当前选区所属表格的序号、`scrollLeft` 和最大横向范围。它以短生命周期 `MutationObserver` 等待 Vditor 重建，在事件完成后恢复同序号表格；250ms 后或 tab 关闭时清理 observer、timer 和 animation frame。
+
+恢复先保留用户原位置。若输入前已贴住右边界，恢复到新表格右边界；最后只在当前 Vditor selection 越出表格可视范围时移动最小距离以显示光标。这样不强制中间阅读位置跳到右端，也允许内容增长后继续跟随输入。
+
+| 场景 | Vditor 网页 3.11.3 | Desktop | 处理原则 |
+| --- | --- | --- | --- |
+| 短单元格持续输入至超宽 | 跟随 | 跟随 | 上游行为 |
+| 短单元格粘贴至首次超宽 | 不跟随 | 不跟随 | 不扩展范围 |
+| 超长单元格右侧输入 | 跟随 | 跟随 | 上游行为 |
+| 超长单元格右侧多字符粘贴 | 回到左侧 | 跟随 | Desktop 补全 |
+| 超长单元格中间输入至光标越界 | 不跟随 | 最小距离右移 | Desktop 补全 |
+
+## 维护约束
+
+- 任何表格 DOM 查询、selection/Ranges 和重建兼容逻辑只能保留在 adapter；`app.js` 只负责安装并在 tab 关闭时调用 disposer。
+- 不得以 `getValue()` / `setValue()` 回写全文修复滚动，否则会损害 selection、undo 和 mode 状态。
+- 不得把短单元格首次粘贴超宽的“不跟随”单独修成另一套规则，除非产品另行决定偏离上游行为。
+- Vditor 升级时按照 `docs/20-VDITOR-UPGRADE.md` 验证此私有契约；若上游已保留表格横向位置或提供公共 API，应删除本补偿。

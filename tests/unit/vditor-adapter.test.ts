@@ -84,6 +84,85 @@ describe('Vditor DOM compatibility adapter', () => {
     });
   });
 
+  it('restores a replaced rendered-table scroll position after multi-character input', async () => {
+    const host = createHost();
+    const editor = adapter.editorParts(host).instantRendering.querySelector('.vditor-reset');
+    editor.innerHTML = '<table><tbody><tr><td>long content</td></tr></tbody></table>';
+    window.document.body.appendChild(host);
+    const table = editor.querySelector('table') as HTMLTableElement;
+    Object.defineProperties(table, {
+      clientWidth: { configurable: true, value: 100 },
+      scrollWidth: { configurable: true, value: 500 },
+    });
+    table.scrollLeft = 160;
+    const text = table.querySelector('td')!.firstChild!;
+    const range = window.document.createRange();
+    range.setStart(text, text.textContent!.length);
+    range.collapse(true);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    window.requestAnimationFrame = (callback) => window.setTimeout(callback, 0);
+    const cleanup = adapter.preserveTableScrollDuringInput(host, () => 'ir');
+
+    table.dispatchEvent(new window.CompositionEvent('compositionstart', { bubbles: true }));
+    table.outerHTML = '<table><tbody><tr><td>long content Chinese</td></tr></tbody></table>';
+    const replacement = editor.querySelector('table') as HTMLTableElement;
+    Object.defineProperties(replacement, {
+      clientWidth: { configurable: true, value: 100 },
+      scrollWidth: { configurable: true, value: 500 },
+    });
+    replacement.dispatchEvent(new window.CompositionEvent('compositionend', { bubbles: true }));
+    await new Promise((resolve) => window.setTimeout(resolve, 20));
+
+    expect(replacement.scrollLeft).toBe(160);
+    replacement.scrollLeft = 0;
+    const replacementText = replacement.querySelector('td')!.firstChild!;
+    const replacementRange = window.document.createRange();
+    replacementRange.setStart(replacementText, replacementText.textContent!.length);
+    replacementRange.collapse(true);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(replacementRange);
+    replacement.dispatchEvent(
+      new window.InputEvent('input', { bubbles: true, inputType: 'insertFromComposition' }),
+    );
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    expect(replacement.scrollLeft).toBe(160);
+    cleanup();
+  });
+
+  it('captures table scroll before Vditor handles a paste', async () => {
+    const host = createHost();
+    const editor = adapter.editorParts(host).instantRendering.querySelector('.vditor-reset');
+    editor.innerHTML = '<table><tbody><tr><td>long content</td></tr></tbody></table>';
+    window.document.body.appendChild(host);
+    const table = editor.querySelector('table') as HTMLTableElement;
+    Object.defineProperties(table, {
+      clientWidth: { configurable: true, value: 100 },
+      scrollWidth: { configurable: true, value: 500 },
+    });
+    table.scrollLeft = 160;
+    const text = table.querySelector('td')!.firstChild!;
+    const range = window.document.createRange();
+    range.setStart(text, text.textContent!.length);
+    range.collapse(true);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    window.requestAnimationFrame = (callback) => window.setTimeout(callback, 0);
+    const cleanup = adapter.preserveTableScrollDuringInput(host, () => 'ir');
+
+    table.dispatchEvent(new window.Event('paste', { bubbles: true }));
+    table.outerHTML = '<table><tbody><tr><td>long content pasted text</td></tr></tbody></table>';
+    const replacement = editor.querySelector('table') as HTMLTableElement;
+    Object.defineProperties(replacement, {
+      clientWidth: { configurable: true, value: 100 },
+      scrollWidth: { configurable: true, value: 500 },
+    });
+    await new Promise((resolve) => window.setTimeout(resolve, 20));
+
+    expect(replacement.scrollLeft).toBe(160);
+    cleanup();
+  });
+
   it('reports private DOM drift instead of failing silently', () => {
     const host = createHost();
     adapter.editorParts(host).source.remove();

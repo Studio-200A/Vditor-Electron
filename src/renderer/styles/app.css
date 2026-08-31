@@ -1280,24 +1280,57 @@ button.primary.danger {
   background-clip: padding-box;
   transition: background-color 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
+.editor-host .vditor-reset table::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+.editor-host .vditor-reset table::-webkit-scrollbar-track {
+  background: transparent;
+}
+.editor-host .vditor-reset table::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
 html[data-scrollbar-mode='always'] .app-scrollbar {
   scrollbar-color: color-mix(in srgb, var(--muted) 55%, transparent) transparent;
 }
+html[data-scrollbar-mode='always'] .editor-host .vditor-reset table {
+  scrollbar-color: color-mix(in srgb, var(--muted) 55%, transparent) transparent;
+}
 html[data-scrollbar-mode='always'] .app-scrollbar::-webkit-scrollbar-thumb,
-html[data-scrollbar-mode='auto'] .app-scrollbar.scrollbar-visible::-webkit-scrollbar-thumb {
+html[data-scrollbar-mode='always'] .editor-host .vditor-reset table::-webkit-scrollbar-thumb,
+html[data-scrollbar-mode='auto'] .app-scrollbar.scrollbar-visible::-webkit-scrollbar-thumb,
+html[data-scrollbar-mode='auto']
+  .editor-host
+  .vditor-reset
+  table:is(:hover, :focus-within)::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--muted) 55%, transparent);
   background-clip: padding-box;
 }
 html[data-scrollbar-mode='auto'] .app-scrollbar {
   scrollbar-color: transparent transparent;
 }
+html[data-scrollbar-mode='auto'] .editor-host .vditor-reset table {
+  scrollbar-color: transparent transparent;
+}
 html[data-scrollbar-mode='auto'] .app-scrollbar.scrollbar-visible {
+  scrollbar-color: color-mix(in srgb, var(--muted) 55%, transparent) transparent;
+}
+html[data-scrollbar-mode='auto'] .editor-host .vditor-reset table:is(:hover, :focus-within) {
   scrollbar-color: color-mix(in srgb, var(--muted) 55%, transparent) transparent;
 }
 html[data-scrollbar-mode='hidden'] .app-scrollbar {
   scrollbar-width: none;
 }
+html[data-scrollbar-mode='hidden'] .editor-host .vditor-reset table {
+  scrollbar-width: none;
+}
 html[data-scrollbar-mode='hidden'] .app-scrollbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+html[data-scrollbar-mode='hidden'] .editor-host .vditor-reset table::-webkit-scrollbar {
   width: 0;
   height: 0;
 }
