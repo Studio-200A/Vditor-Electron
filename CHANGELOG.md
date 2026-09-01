@@ -76,6 +76,7 @@
 
 - **chore(runtime):** Bumped the desktop runtime to the exact Electron 44.1.0 stable release and migrated the privileged clipboard bridge to Electron 44's asynchronous ClipboardItem API.
 - **chore(project metadata):** Released the project metadata as 0.2.0, declared the supported Node.js engine range, enforced strict engine checks, unified Linux application identifiers, and added a reproducible project metadata check.
+- **fix(Linux packaging):** Preserved the stable `com.github.studio-200a.vditor-electron` application ID in AppImages while validating project metadata separately from appimagetool's stricter hyphen policy.
 - **docs(0.2.0):** Synchronized README/README_CN, the architecture map, file-safety contract, development plan, execution tracker, theme notes, and cross-platform handoff with the final 0.2.0 worktree. 
 - **chore(icons):** Added `lucide-static` as the build-time source for selected SVG assets and removed the manually downloaded symbolic icon copies from the renderer source tree.
 - **test(e2e):** split Electron coverage by behavior domain

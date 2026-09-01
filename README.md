@@ -141,6 +141,8 @@ release/vditor-desktop-x86_64-<version>-portable.AppImage
 
 The portable desktop entry uses `/path/to/vditor-desktop` as an installation-path placeholder. Replace it with the actual extraction path before installing the entry into your desktop environment. The AppImage can be run after making it executable.
 
+The release script verifies the project metadata and the pinned AppImage tool/runtime checksums before packaging. It passes `--no-appstream` to appimagetool because its bundled advisory validator rejects this project's stable hyphenated reverse-domain ID; the project's own metadata check still requires the exact ID in the AppStream and desktop references.
+
 Linux is the primary development and validation platform at present. Windows and macOS-specific window and data-directory adaptations are included, but physical-device watcher, permission, path-case, packaging, and release validation are still pending.
 
 ## Everyday shortcuts

@@ -140,6 +140,8 @@ release/vditor-desktop-x86_64-<版本号>-portable.AppImage
 
 Portable 压缩包中的 desktop 文件使用 `/path/to/vditor-desktop` 作为安装路径占位符。安装到桌面环境前，请将其替换为实际解压路径。AppImage 添加可执行权限后即可运行。
 
+发行脚本会在打包前校验项目 metadata 以及固定的 AppImage 工具/runtime SHA-256。由于 appimagetool 内置的 advisory 校验器会拒绝本项目稳定的、包含连字符的反向域名 ID，脚本传入 `--no-appstream`；项目自身的 metadata 检查仍会强制 AppStream 和 desktop 引用使用完整且一致的应用 ID。
+
 目前 Linux 是主要开发和验证平台；项目已经包含 Windows 和 macOS 的窗口及数据目录适配，但文件监听（watcher）、权限、路径大小写、打包和发布仍需在实体设备上验证。
 
 ## 常用快捷键

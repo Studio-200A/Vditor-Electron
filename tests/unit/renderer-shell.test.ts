@@ -206,6 +206,7 @@ describe('renderer shell', () => {
     expect(releaseScript).toContain('vditor-desktop-x86_64-${version}-portable.AppImage');
     expect(releaseScript).toContain('appImageToolChecksum');
     expect(releaseScript).toContain('appImageRuntimeChecksum');
+    expect(releaseScript).toContain("'--no-appstream'");
     expect(desktopTemplate).toContain('MimeType=text/markdown;text/x-markdown;');
     expect(desktopTemplate).toContain('StartupWMClass=com.github.studio-200a.vditor-electron');
     expect(appRun).toContain('usr/lib/vditor-desktop/vditor-desktop');

@@ -1212,7 +1212,7 @@ function rememberRecent(filePath) {
 
 **当前状态：**
 
-- **Linux：** `electron-builder --linux` 支持 AppImage/deb/rpm，另有自定义 `release-linux.js` 生成 x86_64 portable tar.gz 和独立 AppImage
+- **Linux：** `electron-builder --linux` 支持 AppImage/deb/rpm，另有自定义 `release-linux.js` 生成 x86_64 portable tar.gz 和独立 AppImage；发布脚本先运行项目 metadata 检查，并对固定 appimagetool 传入 `--no-appstream`，以保留含连字符的统一应用 ID
 - **macOS：** 配置缺失（`build.mac` 字段不存在），构建命令 `npm run dist` 使用 electron-builder 默认行为
 - **Windows：** 未配置签名；无 NSIS/MSI 安装程序配置（允许 `electron-winstaller` 脚本）
 
@@ -1382,7 +1382,7 @@ build:assets:
 | `npm run dist:linux` | 调用 `release:linux`（默认 Linux 发布入口） |
 | `npm run release:linux` | `build` + `scripts/release-linux.js all`（同时生成 portable tar.gz + AppImage） |
 | `npm run release:linux:portable` | 仅生成 x86_64 portable `.tar.gz`（含 `.desktop` 文件与图标） |
-| `npm run release:linux:appimage` | 仅生成 x86_64 AppImage（使用 appimagetool 1.9.1 + type2 runtime） |
+| `npm run release:linux:appimage` | 仅生成 x86_64 AppImage（使用 appimagetool 1.9.1 + type2 runtime；先做项目 metadata 检查并跳过其不兼容的 AppStream advisory 校验） |
 
 ### 13.8 Git Hooks
 

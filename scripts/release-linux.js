@@ -221,9 +221,16 @@ async function buildAppImage() {
   const artifact = path.join(releaseDir, `vditor-desktop-x86_64-${version}-portable.AppImage`);
   const [tool, runtime] = await Promise.all([ensureAppImageTool(), ensureAppImageRuntime()]);
   remove(artifact);
-  run(tool, ['--appimage-extract-and-run', '--runtime-file', runtime, appDir, artifact], {
-    env: { ...process.env, ARCH: 'x86_64' },
-  });
+  // appimagetool's bundled AppStream policy rejects the stable reverse-domain ID because it
+  // contains hyphens. check-project-metadata validates our exact ID and metadata references;
+  // skip only that stricter advisory validator so the AppImage can retain the product ID.
+  run(
+    tool,
+    ['--appimage-extract-and-run', '--no-appstream', '--runtime-file', runtime, appDir, artifact],
+    {
+      env: { ...process.env, ARCH: 'x86_64' },
+    },
+  );
   fs.chmodSync(artifact, 0o755);
   console.log(`AppImage artifact: ${artifact}`);
 }
@@ -235,6 +242,7 @@ async function main() {
   if (!['portable', 'appimage', 'all'].includes(mode)) {
     fail('usage: node scripts/release-linux.js [portable|appimage|all]');
   }
+  run(process.execPath, [path.join(projectRoot, 'scripts', 'check-project-metadata.js')]);
   fs.mkdirSync(stagingDir, { recursive: true });
   buildUnpackedApplication();
   if (mode === 'portable' || mode === 'all') buildPortable();
