@@ -118,7 +118,7 @@ npm ci
 npm start
 ```
 
-首次启动或打包 Electron 的命令可能会把固定版本 Electron 44.1.0 的运行时下载到 Electron 本地缓存；这一步独立于 `npm ci`，不会修改 lockfile。该运行时要求 macOS 13 或更高版本，Electron 44 也不再提供 Windows 32 位或 Linux ARMv7 预构建程序。本仓库的 Linux 发布脚本目前只生成 x86_64；Windows/macOS 打包和实体机验证仍是独立的平台工作。
+在 Linux 上，`npm run test:e2e` 会优先复用已解压的 `node_modules/electron/dist` 运行时，再决定是否下载。其他首次启动或打包 Electron 的命令可能会把固定版本 Electron 44.1.0 的运行时下载到 Electron 本地缓存；这一步独立于 `npm ci`，不会修改 lockfile。该运行时要求 macOS 13 或更高版本，Electron 44 也不再提供 Windows 32 位或 Linux ARMv7 预构建程序。本仓库的 Linux 发布脚本目前只生成 x86_64；Windows/macOS 打包和实体机验证仍是独立的平台工作。
 
 构建过程会将 Vditor 的资源复制到本地，运行时不依赖 Vditor CDN。
 

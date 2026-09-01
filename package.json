@@ -17,7 +17,7 @@
     "typecheck": "tsc -p tsconfig.main.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "npm run build && playwright test",
+    "test:e2e": "npm run build && node scripts/run-electron-e2e.js",
     "check": "npm run format:check && npm run check:project && npm run lint && npm run typecheck && npm run check:vditor && npm test && npm run build",
     "check:all": "npm run check && npm run test:e2e",
     "build:main": "tsc -p tsconfig.main.json",

@@ -1369,7 +1369,7 @@ build:assets:
 | `npm run check:vditor` | `scripts/check-vditor-version.js` 校验 package.json / lock / node_modules / 主源码版本一致 |
 | `npm test` | `vitest run` 运行全部单元测试 |
 | `npm run test:watch` | `vitest` 监听模式运行单元测试 |
-| `npm run test:e2e` | `build` + `playwright test` 运行 E2E 测试 |
+| `npm run test:e2e` | `build` + `run-electron-e2e.js` 运行 E2E；Linux 优先复用本地 Electron `dist` |
 | `npm run check` | 流水线验证：`format:check` + `lint` + `typecheck` + `check:vditor` + `test` + `build` |
 | `npm run check:all` | `check` + `test:e2e`（含 E2E 的全量验证） |
 
