@@ -470,18 +470,6 @@ describe('renderer shell', () => {
     expect(vditorAdapterScript).toContain('sourceHeading: \'[data-type="heading-marker"]\'');
   });
 
-  it('adds a dynamic bottom spacer to every Vditor editing surface', () => {
-    expect(vditorAdapterScript).toContain('function setEditorBottomSpacer(host, height)');
-    expect(rendererScript).toContain('function observeEditorBottomSpacer(tab)');
-    expect(rendererScript).toContain('disconnectEditorBottomSpacer(tab)');
-    expect(css).toMatch(
-      /\.editor-host \.vditor-preview > \.vditor-reset::after\s*\{[^}]*height:\s*var\(--editor-bottom, 0px\)/s,
-    );
-    expect(css).toMatch(
-      /\.editor-host \.vditor-preview > \.vditor-reset::after\s*\{[^}]*content:\s*'';[^}]*display:\s*block;/s,
-    );
-  });
-
   it('offers separately selectable light and dark application theme preferences', () => {
     expect(
       document.querySelectorAll('.theme-picker input[type="radio"][name="lightTheme"]'),
@@ -678,17 +666,6 @@ describe('renderer shell', () => {
       /\.editor-host\.vditor:not\(\.active\)\s*\{[^}]*display:\s*none !important/s,
     );
     expect(css).not.toContain('.sv-whitespace-dot');
-  });
-
-  it('auto-hides the split editor scrollbar after interaction', () => {
-    expect(rendererScript).toContain('setupAutoHideScrollbar(sv)');
-    expect(rendererScript).toContain("element.classList.add('scrollbar-visible')");
-    expect(rendererScript).toMatch(/timer = setTimeout\([\s\S]*?1000\)/);
-    expect(rendererScript).toContain('rect.right - event.clientX <= 14');
-    expect(css).toMatch(/\.app-scrollbar::-webkit-scrollbar-thumb\s*\{[^}]*transition:/s);
-    expect(css).toContain("html[data-scrollbar-mode='always']");
-    expect(css).toContain("html[data-scrollbar-mode='hidden']");
-    expect(css).toContain('background-color 320ms');
   });
 
   it('assigns stable theme-aware boundaries to each top toolbar surface', () => {

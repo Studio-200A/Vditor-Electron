@@ -116,6 +116,9 @@ test('synchronizes status and preserves document position for Vditor mode shortc
   try {
     const { page } = running;
     const host = page.locator('.editor-host.active');
+    // app-ready means the startup path finished, but Vditor may still be
+    // constructing the initial mode asynchronously.
+    await expect(host.locator('.vditor-sv')).toBeVisible();
     const progressFor = (mode: 'wysiwyg' | 'ir' | 'sv') =>
       host.evaluate((node, currentMode) => {
         const scroller = window.VditorDesktopAdapter.editorScrollContainer(node, currentMode);

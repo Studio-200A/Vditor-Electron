@@ -12,7 +12,6 @@ describe('application paths', () => {
       ),
     ).toEqual({
       configDir: '/xdg/config/vditor-desktop',
-      configFile: '/xdg/config/vditor-desktop/config.toml',
       recoveryDir: '/xdg/data/vditor-desktop/recovery',
       chromiumDir: '/xdg/data/vditor-desktop/chromium',
     });
@@ -27,7 +26,6 @@ describe('application paths', () => {
       ),
     ).toEqual({
       configDir: '/home/user/.config/vditor-desktop',
-      configFile: '/home/user/.config/vditor-desktop/config.toml',
       recoveryDir: '/home/user/.local/share/vditor-desktop/recovery',
       chromiumDir: '/home/user/.local/share/vditor-desktop/chromium',
     });
@@ -44,7 +42,6 @@ describe('application paths', () => {
       ),
     ).toEqual({
       configDir: path.win32.join(roaming, 'vditor-desktop'),
-      configFile: path.win32.join(roaming, 'vditor-desktop', 'config.toml'),
       recoveryDir: path.win32.join(local, 'vditor-desktop', 'recovery'),
       chromiumDir: path.win32.join(local, 'vditor-desktop', 'chromium'),
     });
@@ -54,7 +51,6 @@ describe('application paths', () => {
     const root = `/Users/user/Library/Application Support/${APP_IDENTIFIER}`;
     expect(resolveApplicationPaths('darwin', {}, '/Users/user')).toEqual({
       configDir: `${root}/Config`,
-      configFile: `${root}/Config/config.toml`,
       recoveryDir: `${root}/recovery`,
       chromiumDir: `${root}/Chromium`,
     });
@@ -72,7 +68,6 @@ describe('application paths', () => {
       ),
     ).toEqual({
       configDir: '/tmp/test-config',
-      configFile: '/tmp/test-config/config.toml',
       recoveryDir: '/tmp/recovery',
       chromiumDir: '/tmp/test-chromium',
     });

@@ -751,54 +751,77 @@ test('switches between separately selected application themes without changing e
   }
 });
 
-test('colors all six rendered heading levels in Monokai Pro Dark', async () => {
-  const running = await launchApp({
-    theme: 'monokai-pro-dark',
-    darkTheme: 'monokai-pro-dark',
-    editMode: 'ir',
-  });
-  try {
-    const { page } = running;
-    await createNewTab(page);
-    const markdown = '# H1\n## H2\n### H3\n#### H4\n##### H5\n###### H6';
-    const expected = [
+const monokaiHeadingCases: Array<{
+  label: string;
+  settings: Record<string, string>;
+  expected: string[];
+}> = [
+  {
+    label: 'Monokai Pro Dark',
+    settings: { theme: 'monokai-pro-dark', darkTheme: 'monokai-pro-dark' },
+    expected: [
       'rgb(255, 97, 136)',
       'rgb(255, 216, 102)',
       'rgb(169, 220, 118)',
       'rgb(120, 220, 232)',
       'rgb(171, 157, 242)',
       'rgb(252, 152, 103)',
-    ];
-    const headingColors = (root: string, prefix = '.') =>
-      page.evaluate(
-        ({ rootSelector, classPrefix }) =>
-          Array.from({ length: 6 }, (_, index) => {
-            const level = index + 1;
-            const heading = document.querySelector(`${rootSelector} ${classPrefix}h${level}`);
-            return heading ? getComputedStyle(heading).color : null;
-          }),
-        { rootSelector: root, classPrefix: prefix },
-      );
+    ],
+  },
+  {
+    label: 'Monokai Pro Light',
+    settings: { theme: 'monokai-pro-light', lightTheme: 'monokai-pro-light' },
+    expected: [
+      'rgb(212, 0, 69)',
+      'rgb(255, 127, 0)',
+      'rgb(102, 184, 43)',
+      'rgb(9, 63, 134)',
+      'rgb(52, 12, 129)',
+      'rgb(55, 53, 48)',
+    ],
+  },
+];
 
-    await page.locator('.editor-host.active .vditor-ir .vditor-reset').fill(markdown);
-    await expect.poll(() => headingColors('.editor-host.active .vditor-ir', '')).toEqual(expected);
+for (const { label, settings, expected } of monokaiHeadingCases) {
+  test(`colors all six rendered heading levels in ${label}`, async () => {
+    const running = await launchApp({ ...settings, editMode: 'ir' });
+    try {
+      const { page } = running;
+      await createNewTab(page);
+      const markdown = '# H1\n## H2\n### H3\n#### H4\n##### H5\n###### H6';
+      const headingColors = (root: string, prefix = '.') =>
+        page.evaluate(
+          ({ rootSelector, classPrefix }) =>
+            Array.from({ length: 6 }, (_, index) => {
+              const level = index + 1;
+              const heading = document.querySelector(`${rootSelector} ${classPrefix}h${level}`);
+              return heading ? getComputedStyle(heading).color : null;
+            }),
+          { rootSelector: root, classPrefix: prefix },
+        );
 
-    const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
-    await modeTrigger.click();
-    await page.locator('#vditorToolbarMount button[data-mode="wysiwyg"]').click();
-    await expect
-      .poll(() => headingColors('.editor-host.active .vditor-wysiwyg', ''))
-      .toEqual(expected);
+      await page.locator('.editor-host.active .vditor-ir .vditor-reset').fill(markdown);
+      await expect
+        .poll(() => headingColors('.editor-host.active .vditor-ir', ''))
+        .toEqual(expected);
 
-    await modeTrigger.click();
-    await page.locator('#vditorToolbarMount button[data-mode="sv"]').click();
-    await expect
-      .poll(() => headingColors('.editor-host.active .vditor-preview', ''))
-      .toEqual(expected);
-  } finally {
-    await closeApp(running);
-  }
-});
+      const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+      await modeTrigger.click();
+      await page.locator('#vditorToolbarMount button[data-mode="wysiwyg"]').click();
+      await expect
+        .poll(() => headingColors('.editor-host.active .vditor-wysiwyg', ''))
+        .toEqual(expected);
+
+      await modeTrigger.click();
+      await page.locator('#vditorToolbarMount button[data-mode="sv"]').click();
+      await expect
+        .poll(() => headingColors('.editor-host.active .vditor-preview', ''))
+        .toEqual(expected);
+    } finally {
+      await closeApp(running);
+    }
+  });
+}
 
 test('uses the sidebar surface for the custom main menu in light themes', async () => {
   const running = await launchApp({
@@ -875,55 +898,6 @@ test('uses consistent navigation and document surfaces across all application th
     } finally {
       await closeApp(running);
     }
-  }
-});
-
-test('colors all six rendered heading levels in Monokai Pro Light', async () => {
-  const running = await launchApp({
-    theme: 'monokai-pro-light',
-    lightTheme: 'monokai-pro-light',
-    editMode: 'ir',
-  });
-  try {
-    const { page } = running;
-    await createNewTab(page);
-    const markdown = '# H1\n## H2\n### H3\n#### H4\n##### H5\n###### H6';
-    const expected = [
-      'rgb(212, 0, 69)',
-      'rgb(255, 127, 0)',
-      'rgb(102, 184, 43)',
-      'rgb(9, 63, 134)',
-      'rgb(52, 12, 129)',
-      'rgb(55, 53, 48)',
-    ];
-    const headingColors = (root: string, prefix = '.') =>
-      page.evaluate(
-        ({ rootSelector, classPrefix }) =>
-          Array.from({ length: 6 }, (_, index) => {
-            const level = index + 1;
-            const heading = document.querySelector(`${rootSelector} ${classPrefix}h${level}`);
-            return heading ? getComputedStyle(heading).color : null;
-          }),
-        { rootSelector: root, classPrefix: prefix },
-      );
-
-    await page.locator('.editor-host.active .vditor-ir .vditor-reset').fill(markdown);
-    await expect.poll(() => headingColors('.editor-host.active .vditor-ir', '')).toEqual(expected);
-
-    const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
-    await modeTrigger.click();
-    await page.locator('#vditorToolbarMount button[data-mode="wysiwyg"]').click();
-    await expect
-      .poll(() => headingColors('.editor-host.active .vditor-wysiwyg', ''))
-      .toEqual(expected);
-
-    await modeTrigger.click();
-    await page.locator('#vditorToolbarMount button[data-mode="sv"]').click();
-    await expect
-      .poll(() => headingColors('.editor-host.active .vditor-preview', ''))
-      .toEqual(expected);
-  } finally {
-    await closeApp(running);
   }
 });
 

@@ -6,7 +6,6 @@ export const APP_DIRECTORY_NAME = 'vditor-desktop';
 
 export interface ApplicationPaths {
   configDir: string;
-  configFile: string;
   recoveryDir: string;
   chromiumDir: string;
 }
@@ -70,7 +69,6 @@ export function resolveApplicationPaths(
 
   return {
     configDir,
-    configFile: pathApi.join(configDir, 'config.toml'),
     recoveryDir: pathApi.join(pathApi.dirname(chromiumDir), 'recovery'),
     chromiumDir,
   };

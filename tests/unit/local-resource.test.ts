@@ -126,7 +126,6 @@ describe('local resource policy', () => {
     });
     await policy.setRoots(['/private', '/workspace', '/workspace']);
 
-    expect(policy.getRegisteredRoots()).toEqual(['/workspace']);
     expect(await policy.resolveResourcePath('local-file://root//workspace/assets/pixel.png')).toBe(
       '/workspace/assets/pixel.png',
     );
@@ -149,7 +148,6 @@ describe('local resource policy', () => {
     const policy = new LocalResourcePolicy({ platform: 'win32', fileSystem });
     await policy.setRoots(['C:\\Workspace\\assets', 'C:\\Workspace']);
 
-    expect(policy.getRegisteredRoots()).toEqual(['C:\\Workspace']);
     const base = formatLocalResourceBase('C:\\Workspace', 'win32');
     expect(await policy.resolveResourcePath(new URL('assets/pixel.png', base).href)).toBe(
       'C:\\Workspace\\assets\\pixel.png',
@@ -168,7 +166,6 @@ describe('local resource policy', () => {
     policy.clear();
     await pending;
 
-    expect(policy.getRegisteredRoots()).toEqual([]);
     expect(
       await policy.resolveResourcePath('local-file://root//workspace/assets/pixel.png'),
     ).toBeNull();

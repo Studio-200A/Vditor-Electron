@@ -3,6 +3,7 @@ import { _electron as electron, type ElectronApplication } from 'playwright';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { formatLocalResourceBase } from '../../src/main/local-resource';
 import { RECOVERY_SCHEMA_VERSION, RecoveryStore } from '../../src/main/services/recovery-store';
 import { SettingsStore } from '../../src/main/services/settings-store';
 import {
@@ -13,15 +14,6 @@ import {
   readSetting,
   replaceFileAtomically,
 } from './support/app-harness';
-
-function localResourceBase(directory: string): string {
-  const urlPath = process.platform === 'win32' ? directory.replace(/\\/g, '/') : directory;
-  const encoded = urlPath
-    .split('/')
-    .map((segment) => encodeURIComponent(segment))
-    .join('/');
-  return `local-file://root/${encoded.endsWith('/') ? encoded : `${encoded}/`}`;
-}
 
 test('isolates TOML configuration and Chromium data in the configured directories', async () => {
   const running = await launchApp();
@@ -742,7 +734,7 @@ test('reconciles a renamed document after repeated watcher rebind failures', asy
     await expect(page.locator('#statusMessage')).toContainText(
       'Unable to restore 1 document watcher(s).',
     );
-    const resourceBase = localResourceBase(newDirectory);
+    const resourceBase = formatLocalResourceBase(newDirectory);
     await expect(page.locator('.editor-host.active')).toHaveAttribute(
       'data-local-resource-base',
       resourceBase,
@@ -862,7 +854,7 @@ test('keeps renamed document state coherent when editor rebuild fails repeatedly
     await expect(page.locator('#statusMessage')).toContainText(
       'Unable to rebuild every renamed document.',
     );
-    const resourceBase = localResourceBase(newDirectory);
+    const resourceBase = formatLocalResourceBase(newDirectory);
     await expect(page.locator('.editor-host.active')).toHaveAttribute(
       'data-local-resource-base',
       resourceBase,
@@ -985,7 +977,7 @@ test('rebinds local image resources to the Save As destination and revokes the o
       .locator('.editor-host.active')
       .getAttribute('data-local-resource-base');
     if (!resourceBase) throw new Error('The Save As resource base is unavailable.');
-    expect(resourceBase).toBe(localResourceBase(destinationDirectory));
+    expect(resourceBase).toBe(formatLocalResourceBase(destinationDirectory));
 
     const destinationImage = page.locator('.editor-host.active .vditor-preview img');
     await expect(destinationImage).toBeVisible();

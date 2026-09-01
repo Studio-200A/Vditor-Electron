@@ -337,10 +337,6 @@ export class LocalResourcePolicy {
     this.roots = [];
   }
 
-  getRegisteredRoots(): string[] {
-    return this.roots.map(({ realPath }) => realPath);
-  }
-
   async resolveResourcePath(url: unknown): Promise<string | null> {
     const nativePath = parseLocalResourcePath(url, this.pathApi);
     if (!nativePath) return this.reject('invalid-url');
