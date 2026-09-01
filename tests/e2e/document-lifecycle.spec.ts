@@ -1493,6 +1493,23 @@ test('reveals the file explorer after opening a folder from the File menu', asyn
   }
 });
 
+test('opens a folder with the configured application shortcut', async () => {
+  const running = await launchApp({ sidebarVisible: false });
+  try {
+    const { app, page, testRoot } = running;
+    await app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+    }, testRoot);
+    const modifier =
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+    await page.keyboard.press(`${modifier}+Alt+k`);
+    await expect(page.locator('#workspaceName')).toHaveText(path.basename(testRoot));
+    await expect(page.locator('#sidebar')).not.toHaveClass(/collapsed/);
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('uses one remembered directory for file and folder open dialogs', async () => {
   const initialDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-open-initial-'));
   const selectedDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-open-selected-'));

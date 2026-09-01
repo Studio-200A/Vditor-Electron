@@ -348,6 +348,19 @@ describe('renderer shell', () => {
     expect(css).toMatch(/\.find-widget\s*\{[^}]*position:\s*absolute[^}]*z-index:\s*12/s);
   });
 
+  it('keeps application accelerators separate from Vditor formatting and table shortcuts', () => {
+    const nativeMenu = fs.readFileSync(path.resolve('src/main/menu.ts'), 'utf8');
+    expect(nativeMenu).toContain("accelerator: 'CmdOrCtrl+Alt+O'");
+    expect(nativeMenu).toContain("accelerator: 'CmdOrCtrl+Alt+K'");
+    expect(nativeMenu).toContain("accelerator: 'CmdOrCtrl+Alt+B'");
+    expect(nativeMenu).not.toContain("role: 'zoomIn'");
+    expect(nativeMenu).not.toContain("role: 'zoomOut'");
+    expect(nativeMenu).not.toContain("role: 'resetZoom'");
+    expect(rendererScript).toContain("key === 'k' && event.altKey && !event.shiftKey");
+    expect(rendererScript).toContain('if (event.defaultPrevented) return;');
+    expect(mainScript).toContain("if (input.key !== 'F12') return;");
+  });
+
   it('keeps explorer entries non-draggable', () => {
     expect(rendererScript).not.toContain('text/x-vditor-path');
     expect(rendererScript).not.toMatch(/row\.draggable\s*=/);

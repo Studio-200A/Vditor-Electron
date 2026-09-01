@@ -211,10 +211,10 @@ File 菜单:  New File / Open File / Open Folder / Save / Save As /
             Export HTML / Export PDF / Close Tab / Close Window
 View 菜单:  Editing Mode (WYSIWYG / IR / SV) /
             Toggle Sidebar / Settings /
-            Toggle Fullscreen / Zoom In / Zoom Out / Reset Zoom
+            Toggle Fullscreen
 ```
 
-菜单业务项通过 `mainWindow.webContents.send('menu:action', action, value?)` 通知渲染进程处理，不在主进程直接执行业务逻辑。Chrome DevTools 不属于原生菜单项；设置页开启后，渲染进程的 `Ctrl/Cmd+Shift+I` 请求仍由主进程依据 `devToolsEnabled` 授权，`F12` 始终被拦截。
+菜单业务项通过 `mainWindow.webContents.send('menu:action', action, value?)` 通知渲染进程处理，不在主进程直接执行业务逻辑。缩放仅通过设置页的 UI、编辑区与预览区缩放字段调整，菜单不注册 Electron zoom role 或其快捷键。Chrome DevTools 不属于原生菜单项；主进程在 `before-input-event` 处理 `F12`，并仅在 `devToolsEnabled` 开启时切换 DevTools。
 
 ### 4.5 系统托盘
 
@@ -222,7 +222,16 @@ View 菜单:  Editing Mode (WYSIWYG / IR / SV) /
 
 ### 4.6 全局快捷键
 
-无全局快捷键注册（`globalShortcut` API 未使用）。应用快捷键在渲染进程通过 `keydown` 事件处理；Chrome DevTools 的 `Ctrl/Cmd+Shift+I` 还需通过主进程的 `devToolsEnabled` 授权，`F12` 不作为 DevTools 快捷键。
+无全局快捷键注册（`globalShortcut` API 未使用）。应用快捷键通常在渲染进程通过 `keydown` 事件处理；Chrome DevTools 的 `F12` 在主进程处理，并仍需 `devToolsEnabled` 授权。
+
+| 应用动作 | 快捷键 | 处理位置 |
+| --- | --- | --- |
+| 新建、保存、另存为、关闭标签、设置、查找、退出 | `Ctrl/Cmd+N`、`S`、`Shift+S`、`W`、`,`、`F`、`Q` | renderer `keydown` |
+| 关闭窗口 | `Ctrl/Cmd+Shift+W` | macOS native menu |
+| 打开文件、文件夹、切换侧栏 | `Ctrl/Cmd+Alt+O`、`K`、`B` | native menu（macOS）及 renderer `keydown` |
+| 全屏、DevTools | `F11`、`F12` | renderer、main `before-input-event` |
+
+缩放没有快捷键。应用监听在 Vditor 已 `preventDefault()` 的编辑器按键后退出，避免重入 Vditor 命令；完整应用/Vditor 对照见 [`40-DEV-NOTE.md`](40-DEV-NOTE.md#快捷键归属与冲突边界)。
 
 ### 4.7 单实例锁定
 

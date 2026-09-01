@@ -149,6 +149,39 @@ Status bar
 - 搜索/替换仅通过 `Ctrl/Cmd + F` 触达。
 - 顶部交互元素都使用 `-webkit-app-region: no-drag`；窗口栏保留空白拖拽区域。macOS 继续为原生 traffic lights 预留左侧安全区。
 
+## 快捷键归属与冲突边界
+
+### 应用快捷键
+
+`Cmd` 表示 macOS，`Ctrl` 表示 Linux/Windows。`globalShortcut` 未使用；除 `F12` 外，应用命令在 renderer `keydown` 中处理。native menu 仅在 macOS 注册相同的 File/View accelerator。
+
+| 应用动作 | 快捷键 | 约束 |
+| --- | --- | --- |
+| 新建文件 | `Ctrl/Cmd+N` | 应用命令 |
+| 打开文件 | `Ctrl/Cmd+Alt+O` | 不占用 Vditor 的有序列表 `Ctrl/Cmd+O` |
+| 打开文件夹 | `Ctrl/Cmd+Alt+K` | 不占用 Vditor 的链接 `Ctrl/Cmd+K` |
+| 保存 / 另存为 | `Ctrl/Cmd+S` / `Ctrl/Cmd+Shift+S` | 应用命令 |
+| 关闭标签 / 关闭窗口 / 退出 | `Ctrl/Cmd+W` / `Ctrl/Cmd+Shift+W` / `Ctrl/Cmd+Q` | 关闭窗口 accelerator 仅由 macOS 原生菜单注册；其余为应用命令 |
+| 切换资源管理器 | `Ctrl/Cmd+Alt+B` | 不占用 Vditor 的加粗 `Ctrl/Cmd+B` |
+| 查找和替换 / 设置 | `Ctrl/Cmd+F` / `Ctrl/Cmd+,` | 查找框内的 `F3`、`Shift+F3`、`Enter`、`Escape` 和 `Ctrl/Cmd+S` 为局部命令 |
+| 上下文 / 全文选择 | `Ctrl/Cmd+A` | Desktop 有意提供“当前上下文 → 全文”两段式选择；非编辑控件保留原生全选 |
+| 全屏 | `F11` | 应用命令 |
+| Chrome DevTools | `F12` | main `before-input-event` 始终拦截；仅 `devToolsEnabled` 为真时切换 |
+| UI / 编辑区 / 预览区缩放 | 无 | 只能从设置页调整；不得重新加入 Electron `zoomIn`、`zoomOut`、`resetZoom` role |
+
+### Vditor 3.11.3 默认快捷键
+
+| 类别 | 快捷键 | 动作 |
+| --- | --- | --- |
+| 工具栏格式 | `Ctrl/Cmd+E/H/B/I/D/K` | 表情、标题菜单、加粗、斜体、删除线、链接 |
+| 列表与块 | `Ctrl/Cmd+L/O/J`、`Ctrl/Cmd+Shift+I/O`、`Ctrl/Cmd+;`、`Ctrl/Cmd+Shift+H` | 无序列表、有序列表、任务列表、减少/增加缩进、引用、分隔线 |
+| 代码与结构 | `Ctrl/Cmd+U/G/M`、`Ctrl/Cmd+Shift+B/E` | 代码块、行内代码、表格、在当前块前/后插入 |
+| 历史与视图 | `Ctrl/Cmd+Z/Y`、`Ctrl/Cmd+'`、`Ctrl/Cmd+P` | 撤销、重做、Vditor 全屏、双面板预览 |
+| 标题与模式 | `Ctrl/Cmd+Alt+1…6`、`Ctrl/Cmd+Alt+7…9` | 标题级别 1–6；WYSIWYG、IR、SV 模式 |
+| 表格上下文 | `Ctrl/Cmd+=`、`-`、`Shift+=`、`Shift+-`、`Shift+F/G/L/C/R/U/D/X` | 行列增删、对齐和表格/块的上下文操作；仅对应模式和表格状态下生效 |
+
+Vditor 的 `keydown` 会先在编辑器 host 内运行。document 级应用监听必须先检查 `event.defaultPrevented`；这保证将来新增的 Vditor 编辑器快捷键不会继续触发同键的应用命令。`Escape` 与 `F3` 的应用优先级只在可见弹层或查找框内生效，属于有意的局部焦点行为，不是编辑器冲突。
+
 ## 实现模块
 
 - 结构：`src/renderer/index.html`

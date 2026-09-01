@@ -4539,8 +4539,8 @@
     const menus = {
       main: () => [
         ['menu.new', run('new'), 'Ctrl+N'],
-        ['menu.open', run('open'), 'Ctrl+O'],
-        ['menu.openFolder', run('open-folder')],
+        ['menu.open', run('open'), 'Ctrl/⌘+Alt+O'],
+        ['menu.openFolder', run('open-folder'), 'Ctrl/⌘+Alt+K'],
         null,
         ['menu.save', run('save'), 'Ctrl+S'],
         ['menu.saveAs', run('save-as'), 'Ctrl+Shift+S'],
@@ -4575,7 +4575,7 @@
             [
               'menu.layoutSidebar',
               () => toggleSidebar(),
-              'Ctrl+B',
+              'Ctrl/⌘+Alt+B',
               () => state.settings.sidebarVisible,
             ],
             [
@@ -5095,6 +5095,9 @@
         window.appAPI.toggleFullscreen();
         return;
       }
+      // Vditor 3.11.3 consumes its editor shortcuts before this document listener.
+      // Do not run an application command for the same editor gesture.
+      if (event.defaultPrevented) return;
       if (!(event.ctrlKey || event.metaKey)) return;
       const key = event.key.toLowerCase();
       if (key === 'a') {
@@ -5102,19 +5105,19 @@
         if (!keepsNativeSelectAll(event.target)) event.preventDefault();
         return;
       }
-      if (key === 'i' && event.shiftKey) {
-        event.preventDefault();
-        window.appAPI.toggleDevTools();
-      } else if (key === 's') {
+      if (key === 's') {
         event.preventDefault();
         saveTab(activeTab(), event.shiftKey);
-      } else if (key === 'o') {
+      } else if (key === 'o' && event.altKey && !event.shiftKey) {
         event.preventDefault();
         chooseFiles();
+      } else if (key === 'k' && event.altKey && !event.shiftKey) {
+        event.preventDefault();
+        chooseFolder();
       } else if (key === 'n') {
         event.preventDefault();
         newTab();
-      } else if (key === 'b') {
+      } else if (key === 'b' && event.altKey && !event.shiftKey) {
         event.preventDefault();
         toggleSidebar();
       } else if (key === 'f') {

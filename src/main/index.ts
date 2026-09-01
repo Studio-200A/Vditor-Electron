@@ -263,11 +263,6 @@ function initialWindowBackground(settings: AppSettings): string {
   return theme === 'dark' ? '#17181a' : '#f7f7f8';
 }
 
-function isDevToolsShortcut(input: Electron.Input): boolean {
-  if (input.key.toLowerCase() !== 'i') return false;
-  return (input.control || input.meta) && input.shift;
-}
-
 function updateApplicationMenu(settings = settingsStore.getAll()): void {
   if (process.platform !== 'darwin') {
     Menu.setApplicationMenu(null);
@@ -313,8 +308,9 @@ function createWindow(): void {
     rendererReady = false;
   });
   mainWindow.webContents.on('before-input-event', (event, input) => {
-    if (input.key === 'F12' || (!settingsStore.get('devToolsEnabled') && isDevToolsShortcut(input)))
-      event.preventDefault();
+    if (input.key !== 'F12') return;
+    event.preventDefault();
+    if (settingsStore.get('devToolsEnabled')) createdWindow.webContents.toggleDevTools();
   });
   windowMaximizedState = settings.windowMaximized;
   boundsBeforeMaximize = { ...normalBounds };

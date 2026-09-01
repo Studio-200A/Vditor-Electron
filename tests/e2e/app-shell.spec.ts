@@ -1596,7 +1596,7 @@ test('only opens Chrome DevTools after enabling its persisted setting', async ()
     const toggle = page.locator('[name="devToolsEnabled"]');
     await expect(toggle).not.toBeChecked();
 
-    await sendShortcut('I', ['control', 'shift']);
+    await sendShortcut('F12');
     await expect.poll(devToolsOpen).toBe(false);
 
     await page.evaluate(() =>
@@ -1604,20 +1604,17 @@ test('only opens Chrome DevTools after enabling its persisted setting', async ()
     );
     await expect(toggle).toBeChecked();
     await expect.poll(() => readSetting(testRoot, 'application', 'devToolsEnabled')).toBe(true);
-    await sendShortcut('I', ['control', 'shift']);
+    await sendShortcut('F12');
     await expect.poll(devToolsOpen).toBe(true);
     await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].webContents.closeDevTools(),
     );
-    await sendShortcut('F12');
-    await expect.poll(devToolsOpen).toBe(false);
-
     await page.evaluate(() =>
       (document.querySelector('.about-devtools-setting') as HTMLLabelElement).click(),
     );
     await expect(toggle).not.toBeChecked();
     await expect.poll(() => readSetting(testRoot, 'application', 'devToolsEnabled')).toBe(false);
-    await sendShortcut('I', ['control', 'shift']);
+    await sendShortcut('F12');
     await expect.poll(devToolsOpen).toBe(false);
   } finally {
     await closeApp(running);

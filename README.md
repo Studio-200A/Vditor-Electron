@@ -53,6 +53,7 @@ Vditor Desktop takes the writing experience of [Vditor](https://github.com/Vanes
 
 ## Editing modes
 
+
 | Mode                  | Best for                                                                                |
 | --------------------- | --------------------------------------------------------------------------------------- |
 | **WYSIWYG**           | Writing and formatting while seeing the final document appearance.                      |
@@ -147,23 +148,26 @@ Linux is the primary development and validation platform at present. Windows and
 
 ## Everyday shortcuts
 
+
 | Action                                | Shortcut               |
 | ------------------------------------- | ---------------------- |
 | New file                              | `Ctrl/Cmd + N`         |
-| Open file                             | `Ctrl/Cmd + O`         |
+| Open file                             | `Ctrl/Cmd + Alt + O`   |
+| Open folder                           | `Ctrl/Cmd + Alt + K`   |
 | Save                                  | `Ctrl/Cmd + S`         |
 | Save As                               | `Ctrl/Cmd + Shift + S` |
 | Find and replace                      | `Ctrl/Cmd + F`         |
 | Select context / all                  | `Ctrl/Cmd + A`         |
 | Close tab                             | `Ctrl/Cmd + W`         |
-| Toggle explorer                       | `Ctrl/Cmd + B`         |
+| Toggle explorer                       | `Ctrl/Cmd + Alt + B`   |
 | Open settings                         | `Ctrl/Cmd + ,`         |
-| Toggle Chrome DevTools (when enabled) | `Ctrl/Cmd + Shift + I` |
+| Toggle Chrome DevTools (when enabled) | `F12`                  |
 | Toggle fullscreen                     | `F11`                  |
 
 ## Configuration and data
 
 Application configuration and Chromium user data are kept separate:
+
 
 | Platform | Configuration                                                                             | Chromium data                                                                    | Recovery data                                                                    |
 | -------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
@@ -208,6 +212,7 @@ Vditor Desktop is made possible by the following open-source projects. Their aut
 
 <details>
 <summary>Runtime and direct dependencies</summary>
+
 
 | Project                                                        | Role                               | License                 |
 | -------------------------------------------------------------- | ---------------------------------- | ----------------------- |

@@ -106,11 +106,11 @@ GNOME Loupe 是专门的原生图片浏览器。其源码按 MIME 识别 `image/
 - 侧边栏开关应位于自定义 titlebar 左侧，并排列在文件、编辑、视图、帮助菜单之前。
 - 使用明确表示“左侧面板”的图标，不继续使用容易被误解为汉堡菜单的图标。
 - 侧边栏按钮与文件菜单之间保留适当间距或细分隔线。
-- tooltip 显示“切换侧边栏（Ctrl+B）”及对应本地化文本；进入 macOS 支持范围后，显示和交互均使用主修饰键策略（通常为 `Cmd+B`），不得只改 native menu 而保留错误的 renderer 提示。
+- tooltip 显示“切换侧边栏（Ctrl/⌘+Alt+B）”及对应本地化文本；显示和交互均使用与平台对应的主修饰键，不得只改 native menu 而保留错误的 renderer 提示。
 - 使用 `aria-label` 和 `aria-pressed` 表达用途及当前状态。
 - 位于 Electron 可拖动标题栏时，按钮必须设置 `-webkit-app-region: no-drag`。
 - 检查 Linux、Windows、macOS 布局；macOS 左侧窗口控制区域应预留安全间距。
-- “视图”菜单中的“显示侧边栏”从“布局”子菜单提升到“视图”一级，并保留勾选状态和主修饰键快捷键（Linux/Windows 为 `Ctrl+B`，macOS 为 `Cmd+B`）。
+- “视图”菜单中的“显示侧边栏”从“布局”子菜单提升到“视图”一级，并保留勾选状态和主修饰键快捷键（Linux/Windows 为 `Ctrl+Alt+B`，macOS 为 `Cmd+Alt+B`），避免与 Vditor 加粗冲突。
 
 验收标准：固定工具栏隐藏后，鼠标用户仍可一键开关侧边栏；按钮、快捷键和菜单同步同一个 `sidebarVisible` 状态；重启后正确恢复状态。
 
@@ -168,7 +168,7 @@ toolbarMode: ToolbarMode;
 
 ```text
 视图
-├─ 显示侧边栏                         Ctrl+B
+├─ 显示侧边栏                         Ctrl/⌘+Alt+B
 ├─ 编辑模式
 │  ├─ 所见即所得
 │  ├─ 即时渲染

@@ -33,6 +33,7 @@
 
 #### Workbench, toolbar, and menus
 
+- **fix(shortcuts):** Moved Open File, Open Folder, and Toggle Sidebar to `Ctrl/Cmd+Alt+O`, `Ctrl/Cmd+Alt+K`, and `Ctrl/Cmd+Alt+B`, so Vditor's ordered-list, link, and bold shortcuts remain editor-owned. Application keyboard handling now also defers to a Vditor shortcut that has already consumed the event; Chrome DevTools uses `F12` only when enabled in Settings > About, and Electron's menu no longer registers zoom shortcuts that conflict with Vditor table editing.
 - **fix(settings updates):** Appearance, typography, zoom, scrollbar, toolbar and sidebar layout, and other application-only settings now update open documents without recreating Vditor, preserving the current undo history. Options that Vditor 3.11.3 can only apply at initialization still rebuild while retaining the active mode and scroll position.
 - **fix(macOS window close):** Scoped an approved unsaved-changes close to its originating application window, so a window recreated from the Dock must ask again before discarding unsaved content.
 - **fix(main menu theming):** Windows/Linux custom main-menu triggers and popups now use each theme's sidebar surface, so Claude Light and Monokai Pro Light retain their warm application-chrome tone instead of appearing white.

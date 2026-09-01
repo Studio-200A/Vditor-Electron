@@ -3,9 +3,9 @@
   window.VditorDesktopLocales = {
     en_US: {
       'menu.app': 'Vditor Desktop',
-      'toolbar.toggleSidebar': 'Toggle Sidebar (Ctrl+B)',
+      'toolbar.toggleSidebar': 'Toggle Sidebar (Ctrl/⌘+Alt+B)',
       'toolbar.newFile': 'New File (Ctrl+N)',
-      'toolbar.openFile': 'Open File (Ctrl+O)',
+      'toolbar.openFile': 'Open File (Ctrl/⌘+Alt+O)',
       'toolbar.saveFile': 'Save File (Ctrl+S)',
       'toolbar.settings': 'Settings (Ctrl+,)',
       'sidebar.files': 'Files',
@@ -306,9 +306,9 @@
     },
     zh_Hans: {
       'menu.app': 'Vditor Desktop',
-      'toolbar.toggleSidebar': '切换侧边栏 (Ctrl+B)',
+      'toolbar.toggleSidebar': '切换侧边栏 (Ctrl/⌘+Alt+B)',
       'toolbar.newFile': '新建文件 (Ctrl+N)',
-      'toolbar.openFile': '打开文件 (Ctrl+O)',
+      'toolbar.openFile': '打开文件 (Ctrl/⌘+Alt+O)',
       'toolbar.saveFile': '保存文件 (Ctrl+S)',
       'toolbar.settings': '设置 (Ctrl+,)',
       'sidebar.files': '文件',
@@ -599,9 +599,9 @@
     },
     zh_Hant: {
       'menu.app': 'Vditor Desktop',
-      'toolbar.toggleSidebar': '切換側邊欄 (Ctrl+B)',
+      'toolbar.toggleSidebar': '切換側邊欄 (Ctrl/⌘+Alt+B)',
       'toolbar.newFile': '新增檔案 (Ctrl+N)',
-      'toolbar.openFile': '開啟檔案 (Ctrl+O)',
+      'toolbar.openFile': '開啟檔案 (Ctrl/⌘+Alt+O)',
       'toolbar.saveFile': '儲存檔案 (Ctrl+S)',
       'toolbar.settings': '設定 (Ctrl+,)',
       'sidebar.files': '檔案',

@@ -70,6 +70,45 @@ test('finds, navigates, and replaces text in the active document', async () => {
   }
 });
 
+test('keeps Vditor formatting shortcuts from invoking application commands', async () => {
+  const running = await launchApp({ editMode: 'ir', sidebarVisible: true });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    const modifier =
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+    const editor = page.locator('.editor-host.active .vditor-ir .vditor-reset');
+    const selectEditorText = () =>
+      editor.evaluate((node) => {
+        const text = document.createTreeWalker(node, NodeFilter.SHOW_TEXT).nextNode();
+        if (!text) throw new Error('Expected editor text');
+        const range = document.createRange();
+        range.selectNodeContents(text);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        node.focus({ preventScroll: true });
+      });
+
+    await editor.fill('bold text');
+    await selectEditorText();
+    await page.keyboard.press(`${modifier}+b`);
+    await expect(editor.locator('strong')).toHaveText('bold text');
+    await expect(page.locator('#sidebar')).not.toHaveClass(/collapsed/);
+
+    await editor.fill('ordered item');
+    await selectEditorText();
+    await page.keyboard.press(`${modifier}+o`);
+    await expect(editor.locator('ol')).toContainText('ordered item');
+    await expect(page.locator('#sidebar')).not.toHaveClass(/collapsed/);
+
+    await page.keyboard.press(`${modifier}+Alt+b`);
+    await expect(page.locator('#sidebar')).toHaveClass(/collapsed/);
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('switches among all three modes from the View > Editing Mode submenu', async () => {
   const running = await launchApp({ editMode: 'ir' });
   try {
