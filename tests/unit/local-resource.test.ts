@@ -29,6 +29,12 @@ function fakeFileSystem(entries: Record<string, FakeEntry>) {
 }
 
 describe('local resource policy', () => {
+  it('allows SVG only when the explicit image setting is enabled', () => {
+    expect(localResourceContentType('/workspace/image.svg', path.posix)).toBeNull();
+    expect(localResourceContentType('/workspace/image.svg', path.posix, true)).toBe(
+      'image/svg+xml',
+    );
+  });
   it('keeps native path hierarchy in a fixed-authority URL for POSIX, drive, and UNC paths', () => {
     const posixBase = formatLocalResourceBase('/home/user/project', 'posix');
     const driveBase = formatLocalResourceBase('C:\\Users\\test\\project', 'win32');

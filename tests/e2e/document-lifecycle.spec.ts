@@ -1659,6 +1659,98 @@ test('exports local images without application-only resource URLs', async () => 
   }
 });
 
+test('exports the content snapshot that existed before the save dialog opened', async () => {
+  const running = await launchApp({ editMode: 'sv' }, { 'snapshot.md': '# Before export' });
+  try {
+    const { app, page, testRoot } = running;
+    const htmlPath = path.join(testRoot, 'snapshot.html');
+    await app.evaluate(({ dialog }, output) => {
+      dialog.showSaveDialog = async () => {
+        (
+          globalThis as typeof globalThis & { __exportDialogOpened?: boolean }
+        ).__exportDialogOpened = true;
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        return { canceled: false, filePath: output };
+      };
+    }, htmlPath);
+
+    await page.locator('#appMenuBar [data-menu="main"]').click();
+    await page
+      .locator('.app-menu-popup button')
+      .filter({ hasText: /^Export HTML/ })
+      .click();
+    await expect
+      .poll(() => app.evaluate(() => Boolean(globalThis.__exportDialogOpened)))
+      .toBe(true);
+    await page.locator('.editor-host.active .vditor-sv').fill('# Changed after export started');
+
+    await expect.poll(() => fs.existsSync(htmlPath)).toBe(true);
+    const html = fs.readFileSync(htmlPath, 'utf8');
+    expect(html).toContain('Before export');
+    expect(html).not.toContain('Changed after export started');
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('isolates the PDF export window from navigation, popups, and the business preload', async () => {
+  const running = await launchApp();
+  try {
+    const { app, page, testRoot } = running;
+    const pdfPath = path.join(testRoot, 'isolated.pdf');
+    await app.evaluate(({ app: electronApp, dialog, shell }, output) => {
+      (
+        globalThis as typeof globalThis & {
+          __vditorExportPreferences?: Electron.WebPreferences;
+          __vditorExternalUrls?: string[];
+        }
+      ).__vditorExternalUrls = [];
+      electronApp.on('browser-window-created', (_event, window) => {
+        if (window.webContents.getURL().startsWith('app://app/')) return;
+        (
+          globalThis as typeof globalThis & { __vditorExportPreferences?: Electron.WebPreferences }
+        ).__vditorExportPreferences = window.webContents.getLastWebPreferences();
+      });
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: output });
+      shell.openExternal = async (url) => {
+        (
+          globalThis as typeof globalThis & { __vditorExternalUrls?: string[] }
+        ).__vditorExternalUrls?.push(url);
+        return '';
+      };
+    }, pdfPath);
+
+    await page.evaluate(() =>
+      window.appAPI.exportPDF(`<!doctype html><script>
+        console.log(window.open('https://example.com') ? 'popup-opened' : 'popup-denied');
+        location.href = 'https://example.com';
+      </script><p>Isolated PDF export</p>`),
+    );
+
+    expect(fs.statSync(pdfPath).size).toBeGreaterThan(0);
+    const isolation = await app.evaluate(() => {
+      const state = globalThis as typeof globalThis & {
+        __vditorExportPreferences?: Electron.WebPreferences;
+        __vditorExternalUrls?: string[];
+      };
+      return {
+        preferences: state.__vditorExportPreferences,
+        externalUrls: state.__vditorExternalUrls,
+      };
+    });
+    expect(isolation.preferences).toMatchObject({
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    });
+    expect(isolation.preferences?.preload).toBeUndefined();
+    expect(isolation.externalUrls).toEqual([]);
+    expect(app.windows()).toHaveLength(1);
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('resolves external file conflicts without silently overwriting disk changes', async () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-external-change-'));
   const cleanPath = path.join(workspace, 'clean.md');

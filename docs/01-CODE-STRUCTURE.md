@@ -15,7 +15,7 @@
 
 **核心功能：** 多标签页 Markdown 编辑、三种编辑模式（IR/SV/WYSIWYG）、分栏预览、文件树侧栏、文档大纲、查找替换、图片插入与压缩、HTML/PDF 导出、TOML 配置持久化、三语国际化（英/简/繁）。
 
-**开发阶段：** 0.2.0 阶段开发中。保存、恢复、工作区内外 watcher、外部修改冲突、外部删除/重新出现/不可读状态、工作区读取/监听深度边界、目录级路径一致性、批次 7 本地闭环和批次 8/9/9.1 安全代码、专项验证、Linux 全量回归及手测均已完成。批次 9.1 已确认 Vditor 3.11.3 表格重建丢失横向滚动状态，并在 adapter 内完成局部补偿、滚动条设置统一、专项自动化和全量回归。批次 10 已完成受控 `local-file://root`、资源类型响应边界、Linux 专项自动化和用户手测；批次 11 已完成 CSP 收紧、sanitize 风险交互、手测反馈修正和 Linux 全量闭环；批次 12 已完成窗口级关闭确认与 Linux 全量闭环，macOS Dock 激活验证递延。已有目标的长期 TOCTOU、主窗口 sandbox 的 bundled-preload 迁移、发布门槛和其他 Windows/macOS 实体机验证仍在后续工作。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
+**开发阶段：** 0.2.0 阶段开发中。保存、恢复、工作区内外 watcher、外部修改冲突、外部删除/重新出现/不可读状态、工作区读取/监听深度边界、目录级路径一致性、批次 7 本地闭环和批次 8/9/9.1 安全代码、专项验证、Linux 全量回归及手测均已完成。批次 9.1 已确认 Vditor 3.11.3 表格重建丢失横向滚动状态，并在 adapter 内完成局部补偿、滚动条设置统一、专项自动化和全量回归。批次 10 已完成受控 `local-file://root`、资源类型响应边界、Linux 专项自动化和用户手测；批次 11 已完成 CSP 收紧、sanitize 风险交互与 Linux 全量闭环；批次 12 已完成窗口级关闭确认与 Linux 全量闭环，macOS Dock 激活验证递延；批次 14 已完成可移植 HTML/自包含 PDF 导出、隔离 PDF 窗口，以及默认关闭的本地/远程 SVG 渲染控制，最终手测与发布前全量复核见 Tracker。已有目标的长期 TOCTOU、主窗口 sandbox 的 bundled-preload 迁移、发布门槛和其他 Windows/macOS 实体机验证仍在后续工作。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
 
 ---
 
@@ -80,6 +80,7 @@ Vditor-Electron/
 │   │   ├── ipc-validation.ts      # 高风险 IPC 参数的运行时解析与边界校验
 │   │   ├── protocol.ts            # app:// 与 local-file:// 协议注册
 │   │   ├── local-resource.ts      # local-file URL、受控根和资源 MIME 策略
+│   │   ├── remote-svg-policy.ts   # HTTP(S) 图片 SVG URL/MIME 拒绝策略
 │   │   ├── external-url.ts         # 外部 URL 协议白名单校验
 │   │   ├── menu.ts                # macOS 原生菜单构建（Menu.buildFromTemplate）
 │   │   ├── app-paths.ts           # 平台路径解析（config / chromium / recovery 数据目录）
@@ -142,8 +143,9 @@ Vditor-Electron/
    ├── 失败 → app.quit()
    └── 成功 → queueOpenFiles(extractOpenFilePaths(process.argv))
 2. app.whenReady() 回调：
-   ├── registerAppProtocol(localResourcePolicy) // 注册 app:// 与受控 local-file://
+   ├── registerAppProtocol(localResourcePolicy, allowSvgImages) // 注册 app:// 与受控 local-file://
    ├── new SettingsStore(configDir)       // 加载 TOML 配置
+   ├── registerRemoteSvgImagePolicy()     // 主窗口 HTTP(S) SVG 图片请求策略
    ├── new RecoveryStore(recoveryDir)      // 初始化私有恢复快照存储
    ├── new FileManagerService()           // 初始化文件服务
    ├── new FileWatchService(...)          // 初始化工作区和打开文档的文件监听服务
@@ -651,6 +653,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | -------------------------------------------- | ------------------------- | ------------------ | --------------------------------------------------------------------------------------------------- |
 | `resolveRelativeImageSources(host, baseUrl)` | `host, localResourceBase` | `void`             | 将相对路径图片（包括 Vditor 提前转成的 `app://app/` 路径）替换为 `local-file://` URL，记录原始路径到 `data-vditor-desktop-original-src` |
 | `observeRelativeImageSources(host, baseUrl)` | 同上                      | `MutationObserver` | 安装 MutationObserver 持续监听新插入的图片并执行替换                                                |
+| `reloadImageSources(host)`                | `host`                    | `number`           | 重新请求 host 内所有图片，使 SVG 渲染开关热更新而不重建 Vditor                                      |
 | `withOriginalImageSources(host, callback)`   | `host, () => T`           | `T`                | 临时还原所有图片为原始相对路径后执行 callback（用于 `getValue()` 序列化），完成后重新替换回绝对 URL |
 
 ---
@@ -1258,9 +1261,9 @@ build:assets:
 
 `app://` 协议先校验受信任的 `app://app` host、端口、凭据和 URI 编码，再将解码后的路径限制在固定的资源根目录内（`startsWith(path.resolve(allowedRoot) + sep)`）；`/` 与 `/index.html` 是唯一允许的顶层 renderer 页面，其他 bundled asset 只能作为子资源加载。
 
-`local-file://` 使用固定 `root` authority；POSIX、Windows drive 和 UNC 路径均把完整的绝对路径编码进 pathname，不能把盘符拼进 authority。`src/main/local-resource.ts` 的 `LocalResourcePolicy` 维护当前工作区根和打开文档父目录，打开、关闭、另存、重命名和工作区切换时由 `app.js` 通过 `file:setResourceRoots` 串行同步。主进程先做 URL 词法拒绝，再对注册目录和目标文件分别执行规范化、`realpath`、目录边界与 `stat` 检查；配置、Chromium user data 和 recovery 目录始终是私有边界，符号链接不能逃出受控根。授权后只响应当前预览需要的 PNG/JPEG/GIF/APNG/AVIF/WEBP，使用准确图片 `Content-Type`、`X-Content-Type-Options: nosniff` 和 `Cache-Control: no-store`；SVG、HTML、JavaScript、XML、未知扩展名、缺失和未授权目标统一返回中性的 404。拒绝日志只记录分类，不记录 URL、真实路径或正文。
+`local-file://` 使用固定 `root` authority；POSIX、Windows drive 和 UNC 路径均把完整的绝对路径编码进 pathname，不能把盘符拼进 authority。`src/main/local-resource.ts` 的 `LocalResourcePolicy` 维护当前工作区根和打开文档父目录，打开、关闭、另存、重命名和工作区切换时由 `app.js` 通过 `file:setResourceRoots` 串行同步。主进程先做 URL 词法拒绝，再对注册目录和目标文件分别执行规范化、`realpath`、目录边界与 `stat` 检查；配置、Chromium user data 和 recovery 目录始终是私有边界，符号链接不能逃出受控根。授权后只响应当前预览需要的 PNG/JPEG/GIF/APNG/AVIF/WEBP，使用准确图片 `Content-Type`、`X-Content-Type-Options: nosniff` 和 `Cache-Control: no-store`；SVG 仅在 `allowSvgImages` 开关开启后以 `image/svg+xml` 返回，其他主动/未知扩展名、缺失和未授权目标统一返回中性的 404。拒绝日志只记录分类，不记录 URL、真实路径或正文。
 
-Renderer CSP 只允许 bundled `app:`/`self` 脚本和 Vditor 3.11.3 内置 MathJax `tex-svg-full.js` 的精确 SHA-256 hash，未放行 `unsafe-inline` 或 `unsafe-eval`；MathJax 通过 Vditor 的同步 loader 将该固定文件作为内联脚本插入。图片/媒体与连接策略仍沿用受控本地资源和既有远程图片边界。`style-src` 暂保留 `unsafe-inline`，因为 Vditor 3.11.3 在创建编辑器时生成运行时 style 属性；移除它会破坏编辑器布局。Markdown XSS sanitize 默认开启，用户关闭时须经过本地化风险确认；其余层是纵深防御，不能使不受信任 HTML 变得安全。升级 Vditor 时必须复核该脚本 hash 与 MathJax 渲染回归。
+主窗口的 `session.webRequest` 在 SVG 开关关闭时仅处理 HTTP(S) `image` 请求：URL pathname 以 `.svg` 结尾的请求在发送前取消，无扩展名资源则在响应 `Content-Type: image/svg+xml` 时取消；开启后不改写远程响应。Renderer CSP 只允许 bundled `app:`/`self` 脚本和 Vditor 3.11.3 内置 MathJax `tex-svg-full.js` 的精确 SHA-256 hash，未放行 `unsafe-inline` 或 `unsafe-eval`；MathJax 通过 Vditor 的同步 loader 将该固定文件作为内联脚本插入。`style-src` 暂保留 `unsafe-inline`，因为 Vditor 3.11.3 在创建编辑器时生成运行时 style 属性；移除它会破坏编辑器布局。Markdown XSS sanitize 与 SVG 渲染开关均默认开启安全限制，用户改变时须经过本地化风险确认；其余层是纵深防御，不能使不受信任 HTML 或 SVG 变得安全。升级 Vditor 时必须复核该脚本 hash 与 MathJax 渲染回归。
 
 ---
 
@@ -1568,13 +1571,14 @@ flowchart TB
 | `tests/unit/ipc-guard.test.ts`      | `src/main/ipc-guard.ts`              | 当前主窗口 `webContents`、顶层 sender frame、可信 `app://app` 页面与稳定 `IPC_UNTRUSTED_RENDERER` 错误边界 |
 | `tests/unit/ipc-validation.test.ts` | `src/main/ipc-validation.ts`         | 参数数量、绝对路径、跨平台文件名、枚举、数值、文本/二进制大小、设置对象和 `IPC_INVALID_ARGUMENT` 边界 |
 | `tests/unit/local-resource.test.ts` | `src/main/local-resource.ts`         | 固定 authority 的 POSIX/Windows drive/UNC URL、词法拒绝、路径边界、私有根、canonical 越界、根撤销、MIME allowlist 与安全拒绝分类 |
+| `tests/unit/remote-svg-policy.test.ts` | `src/main/remote-svg-policy.ts` | HTTP(S) 图片 URL 的 `.svg` 路径识别、无扩展名 SVG MIME 响应识别、默认阻止与开启后放行边界 |
 | `tests/unit/file-manager.test.ts`   | `src/main/services/file-manager.ts` 与 `safe-file-writer.ts` | UTF-8 读取、UTF-8 BOM 检测与剥离、GB18030 回退、同目录安全替换、权限保持、无变化跳过、expected content/absence 基线、临时创建/替换失败保留原文件及清理、权限错误映射、文件/目录创建、路径逃逸拒绝（`../`）、目录优先自然排序、目录链接工作区内外分类与深度、普通文件/目录重命名冲突与失败回滚、二进制图片写入 |
 | `tests/unit/file-identity.test.ts` | `src/main/services/file-identity.ts` | 已存在路径 realpath、大小写敏感规则、符号链接别名、缺失文件和缺失祖先路径拼接、跨平台 path 模型 |
 | `tests/unit/file-watch-service.test.ts` | `src/main/services/file-watch-service.ts` | 工作区结构与文档内容 watcher 分工、7–12 读取深度规范化及重建、资源错误一次降级、同路径去重、ready 后 reconciliation、稳定等待、read revision 乱序保护、瞬态 `unlink` 重核、权限不可读事件、工作区内文件重新出现的双 scope 事件、符号链接规范路径、释放后的迟到读取、workspace revision，以及 Linux raw rename 重绑 |
 | `tests/unit/window-close-confirmation.test.ts` | `src/main/services/window-close-confirmation.ts` | 关闭确认仅对原窗口有效，替换窗口不能继承确认，以及关闭窗口时的状态清理 |
 | `tests/unit/settings-store.test.ts` | `src/main/services/settings-store.ts`   | 首次加载返回默认值、TOML 部分深合并与默认值、未知字段丢弃、`set` 持久化（含 TOML 段结构验证）、`update` 多字段快照（含 `workspaceTreeStates` 数组和 `workspaceReadDepth` 边界）、设置对话框尺寸持久化（`window.settingsDialog`）、`getAll` 返回克隆副本、`reset` 重置内存和磁盘                                                                                                                                                                                                                                                               |
 | `tests/unit/recovery-store.test.ts` | `src/main/services/recovery-store.ts` | 私有目录/文件权限、候选元数据不含正文、原子写入与显式清理、损坏/未知 schema/超限快照移除，以及 `unchanged` / `changed` / `unavailable` 三种磁盘状态 |
-| `tests/unit/vditor-adapter.test.ts` | `src/renderer/vditor-adapter.js`        | 冻结的 selectors 对象、`validateHost` 成功（toolbar 通过 `mountedToolbar` 参数提供）、代码主题亮/暗分界点（`ant-design` 前为 dark 组）、DOM 漂移检测（缺少 source 节点时 `valid: false`）、列表 `marker`/`padding` 解析、动态尾部留白写入全部 Vditor 表面、hash anchor 到标题索引（IR 内部链接 + 元素 id + slug）、原生大纲 snapshot、标题间普通块时的准确目标节点及 SV preview 外层滚动容器、跨多 span 文本节点的匹配与选区                                                                                                                                                                                                   |
+| `tests/unit/vditor-adapter.test.ts` | `src/renderer/vditor-adapter.js`        | 冻结的 selectors 对象、`validateHost` 成功（toolbar 通过 `mountedToolbar` 参数提供）、代码主题亮/暗分界点（`ant-design` 前为 dark 组）、DOM 漂移检测（缺少 source 节点时 `valid: false`）、列表 `marker`/`padding` 解析、动态尾部留白写入全部 Vditor 表面、SVG 开关热更新的图片原始来源与缓存隔离、hash anchor 到标题索引（IR 内部链接 + 元素 id + slug）、原生大纲 snapshot、标题间普通块时的准确目标节点及 SV preview 外层滚动容器、跨多 span 文本节点的匹配与选区                                                                                                                                                                                                   |
 | `tests/unit/renderer-shell.test.ts` | 渲染器壳（HTML/CSS/JS/preload）静态结构 | 标题栏 / 菜单 / 窗口控件 DOM；三种编辑模式菜单项；en/zh_Hans/zh_Hant 键完整性对等；Linux 发布脚本；自动隐藏滚动条样式；第二实例文件转发；确认对话框（未保存变更可拖动、无调整尺寸手柄）；设置对话框 8 方向调整手柄；空标签恢复；查找替换控件带 SVG；文件树无 draggable；折叠/展开/中间省略；链接目录斜体下划线与 SVG 资产；设置面板分类；关于面板；UI/编辑器/预览缩放；状态栏三态主题控件与无旧 checkbox；CSP img-src/connect-src；大纲无标题态；Monokai Pro Light / Dark 主题；亮/暗代码主题分离；字体子分组；工作区头部；编辑文本宽度范围；无过时占位符/工具栏设置项；适配器脚本加载顺序；设置路径页脚/重置当前页 |
 
 ### 15.2 E2E 测试（Playwright Electron，按行为域拆分）
@@ -1586,7 +1590,7 @@ flowchart TB
 | `app-shell.spec.ts` | 应用启动与单实例、标题栏/菜单/标签、主题、设置、窗口与本地化壳层 |
 | `editor-modes.spec.ts` | 查找替换、WYSIWYG / IR / SV、工具栏、选择、表格、分栏、滚动与 Vditor DOM 契约 |
 | `document-lifecycle.spec.ts` | 保存、恢复、工作区、文件树、原生打开对话框、导出资源、watcher、外部冲突、删除、重命名与 Save As 路径一致性 |
-| `navigation-and-resources.spec.ts` | Markdown/大纲导航、外部 URL 边界，以及受控根下的本地/HTTPS/上传图片资源 |
+| `navigation-and-resources.spec.ts` | Markdown/大纲导航、外部 URL 边界，以及受控根下的本地/HTTPS/上传图片资源和统一 SVG 渲染开关 |
 
 下列用例按功能域覆盖核心场景；具体数量以 Playwright 测试清单为准：
 
@@ -1632,7 +1636,7 @@ flowchart TB
 - `app:openExternal` 在特权 IPC 边界拒绝 `javascript:` 等非白名单协议
 - `will-navigate` 与 `window.open` 对受信任 `app://app` renderer 页面、外部白名单 URL 和其他目标使用同一套导航分类；不允许通过 `app:` 导航到任意 host 或 bundled asset 页面
 - renderer 阻止未被允许的文档 active scheme（包括注入的 `javascript:` 链接）执行，同时保留 Instant Rendering 链接展开编辑行为
-- `local-file://` 只从当前 workspace/打开文档父目录提供 allowlisted raster images；缺失、越界、私有、主动内容、SVG 和关闭文档后的旧根返回中性 404，Windows drive/UNC URL 使用固定 authority
+- `local-file://` 只从当前 workspace/打开文档父目录提供 allowlisted raster images；SVG 仅在统一渲染开关开启时返回，HTTP(S) SVG 图片在关闭时由主窗口请求策略拒绝；缺失、越界、私有、其他主动内容和关闭文档后的旧根返回中性 404，Windows drive/UNC URL 使用固定 authority
 - 窄窗口工具栏折行时，下拉菜单不改变编辑区几何；隐藏工具栏后标题栏仅在编辑区侧保留投影
 
 #### 工作区与文件树

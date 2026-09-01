@@ -58,6 +58,24 @@ describe('Vditor DOM compatibility adapter', () => {
     expect(adapter.setEditorBottomSpacer(host, Number.NaN)).toBe(false);
   });
 
+  it('reissues every rendered image source when an image policy changes', () => {
+    const host = createHost();
+    host.querySelector('.vditor-preview')!.innerHTML =
+      '<img src="https://example.com/remote.svg"><img src="local-file://root/image.svg">';
+
+    expect(adapter.reloadImageSources(host)).toBe(2);
+    expect(
+      Array.from(host.querySelectorAll('img')).map(
+        (image) => image.dataset.vditorDesktopImagePolicySource,
+      ),
+    ).toEqual(['https://example.com/remote.svg', 'local-file://root/image.svg']);
+    expect(
+      Array.from(host.querySelectorAll('img')).every((image) =>
+        image.src.includes('__vditor_svg_policy='),
+      ),
+    ).toBe(true);
+  });
+
   it('classifies the Vditor 3.11 code-theme menu at its light-theme boundary', () => {
     const themes = adapter.classifyCodeThemeButtons(adapter.editorParts(createHost()).toolbar);
     expect(themes.map(({ name, tone }: any) => [name, tone])).toEqual([

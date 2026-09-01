@@ -32,7 +32,10 @@ function localResourceNotFound(reason?: 'method' | 'path' | 'type' | 'read'): Re
   });
 }
 
-export function registerAppProtocol(localResourcePolicy: LocalResourcePolicy): void {
+export function registerAppProtocol(
+  localResourcePolicy: LocalResourcePolicy,
+  allowSvgImages: () => boolean = () => false,
+): void {
   protocol.handle('app', (request) => {
     if (!isTrustedAppResourceUrl(request.url)) return new Response('Not found', { status: 404 });
 
@@ -76,7 +79,9 @@ export function registerAppProtocol(localResourcePolicy: LocalResourcePolicy): v
   protocol.handle('local-file', async (request) => {
     if (request.method !== 'GET') return localResourceNotFound('method');
     const filePath = await localResourcePolicy.resolveResourcePath(request.url);
-    const contentType = filePath ? localResourceContentType(filePath) : null;
+    const contentType = filePath
+      ? localResourceContentType(filePath, undefined, allowSvgImages())
+      : null;
     if (!filePath) return localResourceNotFound('path');
     if (!contentType) return localResourceNotFound('type');
 

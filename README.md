@@ -70,9 +70,9 @@ Most days you're not managing an editor — you're just writing. Vditor Desktop 
 - Never lose your place in a long document: jump to any H1–H6 heading from a live outline, in any editing mode.
 - Work on several documents at once, each with its own undo history and unsaved-changes indicator, and drag tabs into whatever order makes sense to you.
 - Need more screen for writing? Collapse the explorer and it steps aside — the shortcuts and menu still work exactly the same.
-- Save, Save As, export to HTML or PDF, and pick up your last session automatically the next time you open the app.
+- Save, Save As, export portable HTML or self-contained-image PDF files, and pick up your last session automatically the next time you open the app.
 - Find and replace without a heavyweight dialog — a compact `Ctrl/Cmd + F` panel does the job.
-- Drop images straight into your document; they land in a configurable assets folder and preview correctly in all three editing modes, whether they're local or online.
+- Drop images straight into your document; they land in a configurable assets folder and preview correctly in all three editing modes, whether they're local or online. SVG previews are available when you need them, with an extra confirmation first.
 
 Directory renames/deletes and workspace-level resource limits remain planned work; keep backups of important documents.
 
@@ -81,7 +81,8 @@ Directory renames/deletes and workspace-level resource limits remain planned wor
 Vditor Desktop treats your writing as something to protect, not something to overwrite. Behind the simple Markdown workflow are several safeguards designed to keep an unexpected exit, a second editor, or a changing file system from silently taking your work away:
 
 - **Safer links, by design.** Links in your Markdown only hand clearly supported `http:`, `https:`, and `mailto:` destinations to the system. Scripts, dangerous schemes, and untrusted in-app pages are stopped at the boundary, so one stray link cannot take your editor somewhere it should not go.
-- **Scoped local previews.** Local images are served only from the active workspace or the parent directories of documents you have open. Missing, outside, active, unknown, and currently unsupported SVG resources fail uniformly; the Markdown source keeps its ordinary relative paths.
+- **Scoped local previews.** Local images are served only from the active workspace or the parent directories of documents you have open. Missing, outside, active, and unknown resources fail uniformly; the Markdown source keeps its ordinary relative paths.
+- **SVGs when you need them.** SVG previews start turned off, so opening an unfamiliar document stays calm and predictable. When a document needs them, enable SVG rendering from **Settings → Editor → Security** and confirm the prompt. For an SVG you do not recognize—especially one from the web—check its source before you preview it.
 - **Defensive rendering.** The editor keeps context isolation on and Node integration off. Its policy allows only bundled scripts plus the exact Vditor MathJax loader it needs, and Markdown XSS sanitization is on by default. You can disable sanitization only after an explicit warning for a document you trust; the remaining layers reduce risk but do not make untrusted HTML safe.
 - **Careful saves.** Documents are written through a temporary file in the same directory. Unchanged files are not rewritten, and a failed save leaves both the original file and your unsaved editor content intact.
 - **Recovery after an unexpected exit.** Unsaved work is captured in a private recovery snapshot. When you return, the app checks whether the original file is still the same before offering to save the recovered version; if it is not safe, you can save the recovered content elsewhere.

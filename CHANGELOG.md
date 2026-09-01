@@ -27,6 +27,7 @@
 - **fix(IPC security):** Restricted privileged renderer IPC to the trusted top-level application page and validated high-risk paths, names, enums, sizes, settings, and binary payloads before side effects; malformed or untrusted requests now fail with stable, localized errors, and invalid persisted settings fall back safely per field.
 - **fix(local resources):** Restricted `local-file://` previews to the active workspace and open-document directories, validated POSIX/Windows URL paths through canonical boundaries, blocked private and symlink-escaped paths, and limited responses to allowlisted raster images with accurate MIME headers; unsupported active content and SVG return a neutral 404. Save As now immediately rebinds preview authorization to the destination document directory and revokes the old root; it deliberately does not copy an existing `assets/` directory.
 - **fix(renderer security):** Removed broad `unsafe-eval` and script `unsafe-inline` CSP permissions. Vditor's pinned MathJax loader is allowed through one exact script hash, while Markdown HTML filtering remains on by default. The Editor > Security card now explains the trade-off in all supported languages and requires confirmation before trusted raw HTML filtering can be disabled.
+- **feat(controlled SVG rendering):** Added an off-by-default, localized SVG rendering setting for both local and HTTP(S) images. SVG URL and MIME responses are blocked until the user confirms the risk warning; revoking permission invalidates cached image responses without rebuilding Vditor or changing document sources.
 
 ### Bug Fixes
 
@@ -40,7 +41,7 @@
 - **fix(toolbar layout):** Stabilized the Files/Outline tab boundary when the shared toolbar is hidden or wraps; the sidebar tabs, toolbar, and loading skeleton now own their bottom border and shadow consistently across all six application themes.
 - **fix(context menu):** Disabled Paste and Paste as Plain Text when the system clipboard has no content to insert.
 - **fix(explorer context menu):** Moved New File and New Folder from file and directory item menus to blank explorer space, and now create collision-free `Untitled x.md` files and `Untitled x` folders automatically with independent number sequences.
-- **fix(export resources):** HTML exports now use portable relative local resources, while PDF exports embed local images instead of retaining `local-file://` URLs.
+- **fix(export resources):** HTML/PDF export now freezes its content before the save dialog, normalizes internal sources across `src`, `href`, `poster`, and `srcset`, and keeps HTML portable while embedding local PDF images. The one-shot PDF window has no business preload, keeps isolation and sandboxing enabled, and denies navigation and popups.
 - **fix(open dialogs):** File and folder open dialogs now share the last confirmed selection directory.
 - **fix(accessibility):** Use the active theme accent for keyboard-visible focus rings across application controls.
 - **fix(settings theming):** Align the settings titlebar, navigation, footer, and edge with the active theme's sidebar surface while keeping settings content on the editor surface across all six application themes.

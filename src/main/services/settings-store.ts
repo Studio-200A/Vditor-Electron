@@ -75,6 +75,7 @@ type SettingsDocument = {
     | 'listStyle'
     | 'headingAnchor'
     | 'sanitize'
+    | 'allowSvgImages'
   >;
   files: Pick<
     AppSettings,
@@ -298,6 +299,7 @@ export class SettingsStore {
         'listStyle',
         'headingAnchor',
         'sanitize',
+        'allowSvgImages',
       ]),
       files: pick(settings, [
         'autoSave',

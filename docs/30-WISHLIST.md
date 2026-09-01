@@ -24,6 +24,21 @@ Windows `.lnk` 与 macOS Finder alias 是平台快捷方式文件格式，而不
 
 未来若支持，必须单独定义：平台专用目标解析与失败行为、目标在工作区内外的授权判断、循环与不存在目标处理、链接图标/tooltip/无障碍文案，以及 Windows 与 macOS 实机验证。不得把快捷方式解析结果直接当作已授权的本地资源路径。
 
+## SVG 图片安全性与受控栅格化
+
+SVG 渲染开关默认关闭，并同时约束受控本地资源与主窗口 HTTP(S) 图片：本地 `.svg` 只有开启后才以 `image/svg+xml` 响应；远程 `.svg` URL 在请求前拒绝，无扩展名但响应 `image/svg+xml` 的图片在响应头阶段拒绝。关闭权限时会使已缓存图片重新经过策略。该开关不是对不受信任 SVG 的安全保证：协议仍保持受控根、`X-Content-Type-Options: nosniff` 与 `Cache-Control: no-store`，CSP 仍不向 `local-file:` 开放脚本、连接、`object` 或 `iframe` 能力，导航和弹窗策略也不得放宽，也不会完整解析或过滤 SVG 内容。
+
+### 观察 Loupe 得到的启发
+
+GNOME Loupe 是专门的原生图片浏览器。其源码按 MIME 识别 `image/svg+xml` 与压缩 SVG；SVG 走独立解码路径，通过 glycin/librsvg 按视口分块请求已经栅格化的 frame/texture，而不是将原始 SVG 当网页嵌入 UI。它还具备请求取消、librsvg 尺寸上限和按打印目标尺寸重新渲染 SVG 的处理。Loupe 将可扩展图片解码置于 sandboxed glycin 体系中；这种“将不受信任格式解释与应用 UI 隔离”的方向，比单靠格式黑名单更具长期价值。
+
+### Vditor Desktop 的合理借鉴边界
+
+- 不在当前 Electron renderer 中尝试复刻 Loupe 的 GTK/glycin/librsvg 栈，也不因 SVG 支持引入原生解码子进程或跨平台二进制依赖；这需要独立处理打包、资源限额、取消、错误模型、Windows/macOS 支持与安全审计。
+- 近期继续采用用户显式开关和真实 Electron 回归：普通 SVG 在三种编辑模式及 HTML/PDF 导出中的兼容性；关闭后立即拒绝；包含脚本、事件属性、`foreignObject`、导航、弹窗与外部引用的 SVG 不得取得执行、导航、外连或越界读取能力。
+- 若未来需要“默认安全地预览 SVG”，应单独设计主进程受控栅格化服务：验证文件身份和受控根后，在隔离的受限解码环境中将 SVG 转为 PNG 或等价像素结果，再把结果交给 renderer 和导出流程。renderer 不取得原始 SVG 的可执行文档能力。
+- 该后续专题应按内容/MIME（包括 `image/svg+xml-compressed`）而非单纯扩展名判断，定义 SVG/压缩 SVG 的大小、像素、复杂度与超时上限，并覆盖取消、损坏文件、打印/导出、内嵌和外部资源、三平台打包和实体机验证。
+
 ## Minimap
 
 - 实现类似 VS Code Monaco Editor 的 minimap 小地图导航功能。

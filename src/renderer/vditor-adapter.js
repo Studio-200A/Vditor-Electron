@@ -1161,10 +1161,38 @@
     return observer;
   }
 
+  function reloadImageSource(image, requestVersion) {
+    const source = image.dataset.vditorDesktopImagePolicySource || image.getAttribute('src');
+    if (!source) return;
+    try {
+      const url = new URL(source, window.location.href);
+      if (!['http:', 'https:', 'local-file:'].includes(url.protocol)) return;
+      image.dataset.vditorDesktopImagePolicySource = source;
+      url.searchParams.set('__vditor_svg_policy', requestVersion);
+      image.setAttribute('src', url.href);
+    } catch (_) {}
+  }
+
+  function reloadImageSources(host) {
+    // Vditor 3.11.3 renders Markdown images as img descendants across all three modes.
+    // A distinct request URL makes a changed image policy take effect even when Chromium has
+    // cached the previous image, without rebuilding the editor or losing its undo/selection state.
+    const images = Array.from(host?.querySelectorAll('img[src]') || []);
+    const requestVersion = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    images.forEach((image) => reloadImageSource(image, requestVersion));
+    return images.length;
+  }
+
   function withOriginalImageSources(host, callback) {
     const images = Array.from(
       host?.querySelectorAll('img[data-vditor-desktop-original-src]') || [],
     );
+    const policyImages = Array.from(
+      host?.querySelectorAll('img[data-vditor-desktop-image-policy-source]') || [],
+    );
+    policyImages.forEach((image) => {
+      image.setAttribute('src', image.dataset.vditorDesktopImagePolicySource);
+    });
     images.forEach((image) => {
       image.setAttribute('src', image.dataset.vditorDesktopOriginalSrc);
       delete image.dataset.vditorDesktopOriginalSrc;
@@ -1180,6 +1208,8 @@
           image.setAttribute('src', new URL(source, host.dataset.localResourceBase).href);
         } catch (_) {}
       });
+      const requestVersion = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      policyImages.forEach((image) => reloadImageSource(image, requestVersion));
     }
   }
 
@@ -1269,6 +1299,7 @@
     resolveRelativeImageSources,
     resolveRelativeDocumentLinks,
     observeRelativeImageSources,
+    reloadImageSources,
     withOriginalImageSources,
     validateHost,
   });

@@ -76,6 +76,7 @@ export interface AppSettings {
   listStyle: boolean;
   headingAnchor: boolean;
   sanitize: boolean;
+  allowSvgImages: boolean;
   sidebarWidth: number;
   sidebarVisible: boolean;
   toolbarVisible: boolean;
@@ -175,6 +176,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   listStyle: false,
   headingAnchor: false,
   sanitize: true,
+  allowSvgImages: false,
   sidebarWidth: 260,
   sidebarVisible: false,
   toolbarVisible: true,

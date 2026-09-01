@@ -215,8 +215,11 @@ export function parseLocalResourcePath(
 export function localResourceContentType(
   filePath: string,
   pathApi: LocalResourcePathApi = DEFAULT_PATH_API,
+  allowSvgImages = false,
 ): string | null {
-  return LOCAL_RESOURCE_MIME_TYPES[pathApi.extname(filePath).toLocaleLowerCase()] || null;
+  const extension = pathApi.extname(filePath).toLocaleLowerCase();
+  if (extension === '.svg') return allowSvgImages ? 'image/svg+xml' : null;
+  return LOCAL_RESOURCE_MIME_TYPES[extension] || null;
 }
 
 interface RegisteredLocalResourceRoot {

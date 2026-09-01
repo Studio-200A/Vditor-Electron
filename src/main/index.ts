@@ -7,12 +7,14 @@ import {
   Menu,
   nativeTheme,
   screen,
+  session,
   shell,
 } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'path';
 import { resolveApplicationPaths } from './app-paths';
 import { registerAppProtocol } from './protocol';
+import { shouldBlockRemoteSvgImage } from './remote-svg-policy';
 import { createAppMenu } from './menu';
 import { extractOpenFilePaths } from './open-files';
 import { allowedExternalUrl } from './external-url';
@@ -59,6 +61,7 @@ let windowMaximizedState = false;
 let windowBoundsSaveTimer: NodeJS.Timeout | null = null;
 let rendererReady = false;
 let pendingOpenFiles: string[] = [];
+const exportWebContents = new WeakSet<Electron.WebContents>();
 
 const applicationPaths = resolveApplicationPaths();
 fs.mkdirSync(applicationPaths.chromiumDir, { recursive: true });
@@ -75,6 +78,29 @@ const localResourcePolicy = new LocalResourcePolicy({
 
 function isWindowMaximized(): boolean {
   return windowMaximizedState;
+}
+
+function registerRemoteSvgImagePolicy(): void {
+  const shouldBlock = (
+    details: Pick<
+      Electron.OnHeadersReceivedListenerDetails,
+      'url' | 'resourceType' | 'responseHeaders' | 'webContentsId'
+    >,
+  ) =>
+    details.webContentsId === mainWindow?.webContents.id &&
+    shouldBlockRemoteSvgImage(
+      details.url,
+      details.resourceType,
+      settingsStore.get('allowSvgImages'),
+      details.responseHeaders,
+    );
+
+  session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
+    callback({ cancel: shouldBlock(details) });
+  });
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({ cancel: shouldBlock(details) });
+  });
 }
 
 function persistWindowMaximized(maximized: boolean): void {
@@ -570,10 +596,20 @@ function registerIpcHandlers(): void {
     requireArgumentCount(args, 0);
     return structuredClone(DEFAULT_SETTINGS);
   });
-  handleTrusted(IPC_CHANNELS.appSaveSettings, (_event, ...args) => {
+  handleTrusted(IPC_CHANNELS.appSaveSettings, async (_event, ...args) => {
     requireArgumentCount(args, 1);
     const settings = parseSettingsPatch(args[0]);
     const savedSettings = settingsStore.updateOrThrow(settings);
+    if (Object.hasOwn(settings, 'allowSvgImages') && !savedSettings.allowSvgImages) {
+      // A previously decoded remote SVG may otherwise be reused without a new webRequest
+      // callback after the user revokes rendering permission. This setting changes rarely,
+      // so clearing the shared HTTP cache is preferable to leaving a stale permission window.
+      try {
+        await session.defaultSession.clearCache();
+      } catch (error) {
+        console.warn('[svg] Unable to clear the image cache after rendering was disabled.', error);
+      }
+    }
     if (
       Object.hasOwn(settings, 'locale') ||
       Object.hasOwn(settings, 'editMode') ||
@@ -662,8 +698,18 @@ function registerIpcHandlers(): void {
       { name: 'PDF', extensions: ['pdf'] },
     ]);
     if (!output) return null;
-    const exportWindow = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
+    const exportWindow = new BrowserWindow({
+      show: false,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    });
+    exportWebContents.add(exportWindow.webContents);
     try {
+      exportWindow.webContents.on('will-navigate', (event) => event.preventDefault());
+      exportWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
       await exportWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
       const pdf = await exportWindow.webContents.printToPDF({
         printBackground: true,
@@ -720,8 +766,9 @@ if (!ownsSingleInstanceLock) {
   });
 
   void app.whenReady().then(() => {
-    registerAppProtocol(localResourcePolicy);
+    registerAppProtocol(localResourcePolicy, () => settingsStore.get('allowSvgImages'));
     settingsStore = new SettingsStore(applicationPaths.configDir);
+    registerRemoteSvgImagePolicy();
     recoveryStore = new RecoveryStore(applicationPaths.recoveryDir);
     fileManager = new FileManagerService();
     fileWatchService = new FileWatchService(
@@ -752,6 +799,10 @@ app.on('before-quit', () => {
 });
 app.on('web-contents-created', (_event, contents) => {
   contents.on('will-navigate', (event, navigationUrl) => {
+    if (exportWebContents.has(contents)) {
+      event.preventDefault();
+      return;
+    }
     // Only the canonical renderer page may be a top-level app: navigation;
     // bundled assets remain valid as subresources, not navigable documents.
     const decision = classifyNavigation(navigationUrl);
@@ -760,6 +811,7 @@ app.on('web-contents-created', (_event, contents) => {
     if (decision.kind === 'external') void shell.openExternal(decision.url);
   });
   contents.setWindowOpenHandler(({ url }) => {
+    if (exportWebContents.has(contents)) return { action: 'deny' };
     const decision = classifyNavigation(url);
     if (decision.kind === 'external') void shell.openExternal(decision.url);
     return { action: 'deny' };

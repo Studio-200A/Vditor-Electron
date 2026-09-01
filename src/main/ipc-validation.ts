@@ -276,6 +276,7 @@ const BOOLEAN_SETTINGS = new Set<keyof AppSettings>([
   'listStyle',
   'headingAnchor',
   'sanitize',
+  'allowSvgImages',
   'sidebarVisible',
   'toolbarVisible',
   'windowMaximized',

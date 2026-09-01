@@ -3811,17 +3811,38 @@
     return VDITOR.relativeSourceFromLocalUrl(resolved.href, targetBaseUrl) || null;
   }
 
+  function portableExportSourceSet(sourceSet, sourceBaseUrl, targetBaseUrl) {
+    return sourceSet
+      .split(',')
+      .map((candidate) => {
+        const trimmed = candidate.trim();
+        if (!trimmed) return '';
+        const [source, ...descriptor] = trimmed.split(/\s+/);
+        const portableSource = portableExportSource(source, sourceBaseUrl, targetBaseUrl);
+        return portableSource === null ? '' : [portableSource, ...descriptor].join(' ');
+      })
+      .filter(Boolean)
+      .join(', ');
+  }
+
   function normalizeExportBody(body, tab, outputDirectory = tab.baseDir) {
     const template = document.createElement('template');
     template.innerHTML = body;
     const sourceBaseUrl = localResourceBase(tab.baseDir);
     const targetBaseUrl = localResourceBase(outputDirectory);
-    template.content.querySelectorAll('img[src], a[href]').forEach((element) => {
-      const attribute = element.tagName === 'IMG' ? 'src' : 'href';
-      const source = element.getAttribute(attribute) || '';
-      const portableSource = portableExportSource(source, sourceBaseUrl, targetBaseUrl);
-      if (portableSource === null) element.removeAttribute(attribute);
-      else if (portableSource !== source) element.setAttribute(attribute, portableSource);
+    template.content.querySelectorAll('[src], [href], [poster], [srcset]').forEach((element) => {
+      ['src', 'href', 'poster'].forEach((attribute) => {
+        if (!element.hasAttribute(attribute)) return;
+        const source = element.getAttribute(attribute) || '';
+        const portableSource = portableExportSource(source, sourceBaseUrl, targetBaseUrl);
+        if (portableSource === null) element.removeAttribute(attribute);
+        else if (portableSource !== source) element.setAttribute(attribute, portableSource);
+      });
+      if (!element.hasAttribute('srcset')) return;
+      const sourceSet = element.getAttribute('srcset') || '';
+      const portableSourceSet = portableExportSourceSet(sourceSet, sourceBaseUrl, targetBaseUrl);
+      if (portableSourceSet) element.setAttribute('srcset', portableSourceSet);
+      else element.removeAttribute('srcset');
     });
     return template.innerHTML;
   }
@@ -3882,27 +3903,26 @@
     return template.innerHTML;
   }
 
-  function makeExportHTML(tab, body = exportBodySnapshot(tab), outputDirectory = tab.baseDir) {
+  function makeExportHTML(tab, body, outputDirectory = tab.baseDir) {
     const portableBody = normalizeExportBody(body, tab, outputDirectory);
     return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHTML(stripExtension(tab.title))}</title><style>body{max-width:860px;margin:40px auto;padding:0 24px;font:16px/1.7 system-ui;color:#24292f}pre,code{font-family:ui-monospace,monospace}pre{padding:16px;overflow:auto;background:#f6f8fa}img{max-width:100%}table{border-collapse:collapse}td,th{border:1px solid #d0d7de;padding:6px 12px}</style></head><body>${portableBody}</body></html>`;
   }
   async function exportHTML() {
     const tab = activeTab();
     if (!tab) return;
+    const body = exportBodySnapshot(tab);
     const output = await window.fileAPI.exportDialog('html', `${stripExtension(tab.title)}.html`);
     if (output) {
       const outputDirectory = await window.fileAPI.dirname(output);
-      await window.fileAPI.writeFile(
-        output,
-        makeExportHTML(tab, exportBodySnapshot(tab), outputDirectory),
-      );
+      await window.fileAPI.writeFile(output, makeExportHTML(tab, body, outputDirectory));
       showMessage(`已导出 ${output}`);
     }
   }
   async function exportPDF() {
     const tab = activeTab();
     if (!tab) return;
-    const body = await embedExportImages(normalizeExportBody(exportBodySnapshot(tab), tab), tab);
+    const snapshot = exportBodySnapshot(tab);
+    const body = await embedExportImages(normalizeExportBody(snapshot, tab), tab);
     const output = await window.appAPI.exportPDF(
       makeExportHTML(tab, body),
       `${stripExtension(tab.title)}.pdf`,
@@ -4048,6 +4068,9 @@
     const shouldRebuildEditors = changedSettings.some((key) =>
       VDITOR_INITIALIZATION_SETTINGS.has(key),
     );
+    if (changedSettings.includes('allowSvgImages')) {
+      state.tabs.forEach((tab) => VDITOR.reloadImageSources(tab.host));
+    }
     if (closeAfterSave) await closeSettings({ applyPresentation: false });
     applyLocale(state.settings.locale);
     if (state.workspace && previousWorkspaceReadDepth !== state.settings.workspaceReadDepth)
@@ -4103,6 +4126,28 @@
 
   async function scheduleLiveSettingsSave(event) {
     const input = event.target;
+    if (input.name === 'allowSvgImages' && input.checked && !state.settings.allowSvgImages) {
+      const confirmed =
+        (await showConfirmDialog({
+          title: t('settings.allowSvgImagesWarningTitle'),
+          message: t('settings.allowSvgImagesWarningMessage'),
+          detail: t('settings.allowSvgImagesWarningDetail'),
+          actions: [
+            { id: 'cancel', label: t('settings.keepSvgImagesBlocked') },
+            {
+              id: 'confirm',
+              label: t('settings.allowSvgImagesAnyway'),
+              primary: true,
+              danger: true,
+            },
+          ],
+          draggable: true,
+        })) === 'confirm';
+      if (!confirmed) {
+        input.checked = false;
+        return;
+      }
+    }
     if (input.name === 'sanitize' && !input.checked && state.settings.sanitize) {
       const confirmed =
         (await showConfirmDialog({

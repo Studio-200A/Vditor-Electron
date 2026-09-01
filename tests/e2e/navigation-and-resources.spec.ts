@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import * as fs from 'node:fs';
+import * as http from 'node:http';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { formatLocalResourceBase } from '../../src/main/local-resource';
@@ -7,6 +8,40 @@ import { closeApp, createNewTab, launchApp } from './support/app-harness';
 
 function localResourceBase(directory: string, platform: 'posix' | 'win32'): string {
   return formatLocalResourceBase(directory, platform);
+}
+
+async function startRemoteSvgServer(): Promise<{
+  url: string;
+  requestCounts: Record<string, number>;
+  close: () => Promise<void>;
+}> {
+  const requestCounts: Record<string, number> = {};
+  const body =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="2" height="1"><rect width="2" height="1"/></svg>';
+  const server = http.createServer((request, response) => {
+    const pathname = new URL(request.url || '/', 'http://127.0.0.1').pathname;
+    requestCounts[pathname] = (requestCounts[pathname] || 0) + 1;
+    response.writeHead(200, {
+      'Cache-Control': 'max-age=3600',
+      'Content-Type': 'image/svg+xml; charset=utf-8',
+    });
+    response.end(body);
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => resolve());
+  });
+  const address = server.address();
+  if (!address || typeof address === 'string')
+    throw new Error('Remote SVG test server did not bind.');
+  return {
+    url: `http://127.0.0.1:${address.port}`,
+    requestCounts,
+    close: () =>
+      new Promise((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      ),
+  };
 }
 
 test('opens relative Markdown links from every editor mode and follows their fragments', async () => {
@@ -286,7 +321,7 @@ test('warns before disabling sanitization and CSP still blocks inline HTML handl
     await page.locator('#statusSettings').click();
     await page.locator('.settings-nav button[data-panel="editor"]').click();
     const sanitize = page.locator('#settingsForm [name="sanitize"]');
-    const securityCard = page.locator('.settings-security-card');
+    const securityCard = page.locator('.settings-security-card:has([name="sanitize"])');
     await expect(securityCard).toBeVisible();
     const securityLayout = await securityCard.evaluate((card) => {
       const toggle = card.querySelector('.theme-switch');
@@ -328,6 +363,58 @@ test('warns before disabling sanitization and CSP still blocks inline HTML handl
     await expect(sanitize).toBeChecked();
   } finally {
     await closeApp(running);
+  }
+});
+
+test('keeps local and remote SVG images blocked until the unified setting is confirmed', async () => {
+  const server = await startRemoteSvgServer();
+  const running = await launchApp(
+    { editMode: 'sv' },
+    {
+      'remote-images.md': [
+        `![named SVG](${server.url}/named.svg)`,
+        `![extensionless SVG](${server.url}/extensionless)`,
+      ].join('\n\n'),
+    },
+  );
+  try {
+    const { page } = running;
+    const images = page.locator('.editor-host.active .vditor-preview img');
+    await expect(images).toHaveCount(2);
+    await expect
+      .poll(() => images.evaluateAll((nodes) => nodes.map((node) => node.naturalWidth)))
+      .toEqual([0, 0]);
+    expect(server.requestCounts['/named.svg'] || 0).toBe(0);
+    await expect.poll(() => server.requestCounts['/extensionless'] || 0).toBeGreaterThan(0);
+
+    await page.locator('#statusSettings').click();
+    await page.locator('.settings-nav button[data-panel="editor"]').click();
+    const allowSvgImages = page.locator('#settingsForm [name="allowSvgImages"]');
+    await allowSvgImages.locator('xpath=..').click();
+    await expect(page.locator('#confirmModal')).toBeVisible();
+    await expect(page.locator('#confirmMessage')).toHaveText(
+      'SVG is a programmable image format and can contain scripts, external resources, or malicious constructs. Rendering an untrusted SVG may create security or privacy risks.',
+    );
+    await page.locator('#confirmActions [data-action="confirm"]').click();
+    await expect(allowSvgImages).toBeChecked();
+    await expect
+      .poll(() => images.evaluateAll((nodes) => nodes.map((node) => node.naturalWidth)))
+      .toEqual([2, 2]);
+    await allowSvgImages.locator('xpath=..').click();
+    await expect(allowSvgImages).not.toBeChecked();
+    await expect
+      .poll(() => images.evaluateAll((nodes) => nodes.map((node) => node.naturalWidth)))
+      .toEqual([0, 0]);
+    await page.waitForTimeout(1_500);
+    await expect(
+      images.evaluateAll((nodes) => nodes.map((node) => node.naturalWidth)),
+    ).resolves.toEqual([0, 0]);
+    await expect(page.evaluate(() => window.appAPI.getSettings())).resolves.toMatchObject({
+      allowSvgImages: false,
+    });
+  } finally {
+    await closeApp(running);
+    await server.close();
   }
 });
 
