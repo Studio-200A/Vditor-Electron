@@ -37,8 +37,6 @@ describe('renderer shell', () => {
     expect(document.querySelector('#windowMinimize')).not.toBeNull();
     expect(document.querySelector('#windowMaximize')).not.toBeNull();
     expect(document.querySelector('#windowClose')).not.toBeNull();
-    expect(rendererScript).toContain("app.classList.toggle('sidebar-collapsed', !visible)");
-    expect(rendererScript).toContain("app.classList.add('sidebar-transitioning')");
     expect(css).toContain('.titlebar-file-actions');
     expect(css).toContain('.toolbar-sidebar-tabs');
     expect(document.querySelectorAll('.titlebar-file-actions svg')).toHaveLength(0);
@@ -129,9 +127,6 @@ describe('renderer shell', () => {
     expect(css).toContain(".vditor-toolbar-mount[data-toolbar-pending='true'] .toolbar-skeleton");
     expect(css).toMatch(
       /\.titlebar-sidebar-toggle\s*\{[^}]*display:\s*grid[^}]*place-items:\s*center/s,
-    );
-    expect(css).toMatch(
-      /#app\.sidebar-transitioning \.toolbar-sidebar-tabs\s*\{[^}]*width 0\.16s ease/s,
     );
     expect(css).toMatch(
       /\.app-menu-popup button:disabled:hover,[\s\S]*?color:\s*color-mix\(in srgb, var\(--muted\) 55%, transparent\)/,

@@ -433,6 +433,7 @@ button.primary.danger {
   display: none;
 }
 .workbench {
+  position: relative;
   display: flex;
   min-height: 0;
   flex: 1;
@@ -448,9 +449,6 @@ button.primary.danger {
   z-index: 30;
   width: var(--sidebar-current, 260px);
   box-shadow: none;
-}
-#app.sidebar-transitioning.toolbar-hidden .titlebar {
-  transition: width 0.16s ease;
 }
 #app.toolbar-hidden .window-titlebar {
   box-shadow: none;
@@ -506,8 +504,7 @@ button.primary.danger {
   background: var(--sidebar-surface);
   border-right: 1px solid var(--border);
   transition:
-    width 0.16s ease,
-    min-width 0.16s ease,
+    transform 0.16s ease,
     border-color 0.16s ease;
 }
 .sidebar.collapsed {
@@ -516,6 +513,29 @@ button.primary.danger {
   min-width: 0;
   border-right-width: 0;
   overflow: hidden;
+  pointer-events: none;
+}
+.sidebar.collapsed {
+  transform: translateX(-100%);
+}
+/* Keep a full-size painted sidebar while it slides over the editor on open. */
+.sidebar.sidebar-entering {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 10;
+}
+.sidebar.sidebar-entering.collapsed {
+  width: var(--sidebar-current, 260px) !important;
+  min-width: var(--sidebar-current, 260px);
+  border-right-width: 1px;
+}
+.sidebar.sidebar-opening {
+  transform: translateX(0);
+}
+.sidebar.sidebar-closing {
+  transform: translateX(-100%);
   pointer-events: none;
 }
 .sidebar-tabs {
@@ -2988,10 +3008,6 @@ body.confirm-card-dragging {
   border-left: 1px solid var(--border);
   border-right: 1px solid var(--border);
   -webkit-app-region: no-drag;
-  transition:
-    width 0.16s ease,
-    padding 0.16s ease,
-    opacity 0.12s ease;
 }
 #app {
   --top-controls-width: 370px;
@@ -3009,12 +3025,6 @@ body.confirm-card-dragging {
   border: 0;
   background: transparent;
   color: var(--muted);
-  transition:
-    width 0.16s ease,
-    min-width 0.16s ease,
-    padding 0.16s ease,
-    opacity 0.12s ease,
-    transform 0.16s ease;
 }
 .titlebar-file-actions .icon-btn:hover {
   color: var(--text);
@@ -3211,17 +3221,6 @@ body[data-platform='darwin'] .modal {
   border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   box-shadow: var(--top-surface-shadow);
-  transition:
-    padding 0.16s ease,
-    gap 0.16s ease,
-    border-width 0.16s ease;
-}
-#app.sidebar-transitioning .toolbar-sidebar-tabs {
-  transition:
-    width 0.16s ease,
-    padding 0.16s ease,
-    gap 0.16s ease,
-    border-width 0.16s ease;
 }
 .toolbar-sidebar-tabs.sidebar-tabs {
   grid-template-columns: 1fr 1fr;
@@ -3262,6 +3261,64 @@ body[data-platform='darwin'] .modal {
   overflow: hidden;
   pointer-events: none;
 }
+#app.sidebar-transitioning:not(.sidebar-collapsed):not(.sidebar-hiding) .toolbar-sidebar-tabs {
+  transform-origin: left center;
+  animation: sidebar-tabs-enter 0.16s ease both;
+}
+#app.sidebar-transitioning:not(.sidebar-collapsed):not(.sidebar-hiding)
+  .titlebar-file-actions
+  .icon-btn:not(.titlebar-sidebar-toggle) {
+  animation: sidebar-action-enter 0.16s ease both;
+}
+#app.sidebar-transitioning.sidebar-hiding .toolbar-sidebar-tabs {
+  transform-origin: left center;
+  animation: sidebar-tabs-exit 0.16s ease both;
+}
+#app.sidebar-transitioning.sidebar-hiding
+  .titlebar-file-actions
+  .icon-btn:not(.titlebar-sidebar-toggle) {
+  animation: sidebar-action-exit 0.16s ease both;
+}
+@keyframes sidebar-tabs-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes sidebar-action-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes sidebar-tabs-exit {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+}
+@keyframes sidebar-action-exit {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-7px);
+  }
+}
 .app-menu-popup button:disabled {
   color: color-mix(in srgb, var(--muted) 55%, transparent);
   cursor: default;
@@ -3277,6 +3334,10 @@ body[data-platform='darwin'] .modal {
   .titlebar-file-actions,
   .toolbar-sidebar-tabs {
     transition-duration: 1ms !important;
+  }
+  .toolbar-sidebar-tabs,
+  .titlebar-file-actions .icon-btn:not(.titlebar-sidebar-toggle) {
+    animation-duration: 1ms !important;
   }
 }
 @media (max-width: 800px) {

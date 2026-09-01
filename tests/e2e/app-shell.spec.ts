@@ -215,6 +215,46 @@ test('uses a unified workbench bar and links sidebar visibility to file actions'
   }
 });
 
+test('keeps the editor width stable until a sidebar opens', async () => {
+  const running = await launchApp({ sidebarVisible: false });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    await expect(page.locator('#sidebar')).toHaveClass(/collapsed/);
+    const editorWidth = (await page.locator('#editorArea').boundingBox())?.width;
+    if (!editorWidth) throw new Error('Editor has no measurable width');
+
+    await page.locator('#toggleSidebar').click();
+    await expect(page.locator('#app')).toHaveClass(/sidebar-transitioning/);
+    await page.waitForTimeout(50);
+    expect((await page.locator('#editorArea').boundingBox())?.width).toBeCloseTo(editorWidth, 0);
+
+    await expect(page.locator('#app')).not.toHaveClass(/sidebar-transitioning/);
+    expect((await page.locator('#editorArea').boundingBox())?.width || 0).toBeLessThan(editorWidth);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('reverses an in-progress sidebar transition', async () => {
+  const running = await launchApp({ sidebarVisible: true });
+  try {
+    const { page, testRoot } = running;
+    const toggle = page.locator('#toggleSidebar');
+    await toggle.click();
+    await expect(page.locator('#app')).toHaveClass(/sidebar-transitioning/);
+    await page.waitForTimeout(50);
+    await toggle.click();
+
+    await expect(page.locator('#app')).not.toHaveClass(/sidebar-transitioning/);
+    await expect(page.locator('#sidebar')).not.toHaveClass(/collapsed/);
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    await expect.poll(() => readSetting(testRoot, 'workspace', 'sidebarVisible')).toBe(true);
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('reorders tabs by dragging within the unified workbench bar', async () => {
   const running = await launchApp();
   try {

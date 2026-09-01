@@ -930,7 +930,9 @@
       subtree: true,
       attributeFilter: ['class', 'style'],
     });
-    tab.lineResizeObserver = new ResizeObserver(() => scheduleSplitLineNumbers(tab));
+    tab.lineResizeObserver = new ResizeObserver(() => {
+      if (!$('#app').classList.contains('sidebar-transitioning')) scheduleSplitLineNumbers(tab);
+    });
     tab.lineResizeObserver.observe(sv);
   }
 
@@ -4759,28 +4761,43 @@
     );
   }
 
-  function finishSidebarTransition() {
+  function finishSidebarTransition(refreshEditorLayout = false) {
     const sidebar = $('#sidebar');
+    const wasOpening = sidebar.classList.contains('sidebar-opening');
+    const app = $('#app');
+    const wasHiding = app.classList.contains('sidebar-hiding');
     clearTimeout(sidebarTransitionTimer);
     sidebarTransitionTimer = undefined;
     if (sidebarTransitionEndHandler) {
       sidebar.removeEventListener('transitionend', sidebarTransitionEndHandler);
       sidebarTransitionEndHandler = undefined;
     }
-    $('#app').classList.remove('sidebar-transitioning');
+    if (wasHiding) sidebar.classList.add('collapsed');
+    sidebar.classList.remove('sidebar-entering', 'sidebar-opening', 'sidebar-closing');
+    if (wasOpening) sidebar.classList.remove('collapsed');
+    if (wasHiding) app.classList.add('sidebar-collapsed');
+    app.classList.remove('sidebar-transitioning', 'sidebar-hiding');
     syncTopControlsWidth();
+    if (refreshEditorLayout) scheduleSplitLineNumbers(activeTab());
   }
 
   function toggleSidebar(force) {
-    const visible =
-      typeof force === 'boolean' ? force : $('#sidebar').classList.contains('collapsed');
     const app = $('#app');
     const sidebar = $('#sidebar');
-    const wasVisible = !sidebar.classList.contains('collapsed');
-    if (wasVisible === visible) {
+    const isTransitioning = app.classList.contains('sidebar-transitioning');
+    const visible =
+      typeof force === 'boolean'
+        ? force
+        : isTransitioning
+          ? !state.settings.sidebarVisible
+          : sidebar.classList.contains('collapsed');
+    const currentTargetVisible = isTransitioning
+      ? state.settings.sidebarVisible
+      : !sidebar.classList.contains('collapsed');
+    if (currentTargetVisible === visible) {
       state.settings.sidebarVisible = visible;
       $('#toggleSidebar')?.setAttribute('aria-pressed', String(visible));
-      syncTopControlsWidth();
+      if (!isTransitioning) syncTopControlsWidth();
       return;
     }
     finishSidebarTransition();
@@ -4788,20 +4805,32 @@
     if (visible) {
       const menuWidth = $('#appMenuBar').getBoundingClientRect().width;
       applyTopControlsWidth(state.settings.sidebarWidth, menuWidth);
+      // A collapsed sidebar has zero layout width. Keep an overlay box until
+      // the slide-in ends, so Vditor does not reflow during this animation.
+      sidebar.classList.add('sidebar-entering');
+      void sidebar.offsetWidth;
+      sidebar.classList.add('sidebar-opening');
     } else {
       $('.titlebar-file-actions').style.flexBasis = 'auto';
+      // Keep the sidebar's flex space until it finishes sliding out, so the
+      // Vditor document resizes at the same point as on sidebar open.
+      sidebar.classList.add('sidebar-closing');
     }
-    sidebar.classList.toggle('collapsed', !visible);
-    app.classList.toggle('sidebar-collapsed', !visible);
+    if (!visible) sidebar.classList.remove('collapsed');
+    if (visible) {
+      app.classList.remove('sidebar-collapsed', 'sidebar-hiding');
+    } else {
+      app.classList.add('sidebar-hiding');
+    }
     state.settings.sidebarVisible = visible;
     $('#toggleSidebar')?.setAttribute('aria-pressed', String(visible));
     queueSettingsSave({ sidebarVisible: visible });
     sidebarTransitionEndHandler = (event) => {
-      if (event.target !== sidebar || event.propertyName !== 'width') return;
-      finishSidebarTransition();
+      if (event.target !== sidebar || event.propertyName !== 'transform') return;
+      finishSidebarTransition(true);
     };
     sidebar.addEventListener('transitionend', sidebarTransitionEndHandler);
-    sidebarTransitionTimer = setTimeout(finishSidebarTransition, 220);
+    sidebarTransitionTimer = setTimeout(() => finishSidebarTransition(true), 220);
   }
 
   function setupEvents() {

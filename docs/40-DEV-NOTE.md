@@ -134,7 +134,9 @@ Status bar
 ## 侧边栏与标签
 
 - `sidebarVisible` 是侧边栏、顶部文件操作组和第二行 Files/Outline 切换组的单一状态来源。
-- 收起侧边栏时，`#app.sidebar-collapsed` 让侧边栏宽度、顶部文件操作组和第二行切换组同步收起；菜单和快捷键仍可访问文件操作。
+- 侧栏使用 transform overlay 而不是宽度动画：显示时 sidebar 覆盖仍为全宽的 Vditor 并在结束后才回归 flex；收起时保留原 flex 占位直到滑出结束，随后才释放编辑区宽度。这避免长文档在动画每帧重排；收起途中左侧的短暂空白是该顺序的预期视觉取舍。
+- `#app.sidebar-transitioning` 标识完整过渡，`sidebar-opening` / `sidebar-closing` 标识 sidebar 的方向，`#app.sidebar-hiding` 保留顶部区域供退出动画，稳定隐藏态才使用 `#app.sidebar-collapsed`。动画中再次切换依据 `sidebarVisible` 的目标状态反向；`transitionend` 和 timeout 回退都必须清理这些临时状态。
+- Files/Outline tabs 与 titlebar 文件操作不再过渡尺寸，而以 opacity + transform 显示和隐藏；`prefers-reduced-motion` 同时缩短其 keyframe animation。菜单和快捷键仍可访问文件操作。
 - 标签渲染仍由 `renderTabs()` 负责。每个 `.document-tab` 启用原生 drag-and-drop，拖放时仅重排 `state.tabs`，再调用 `renderTabs()` 和 `persistSession()`；不销毁或重建 Vditor。
 - 每次渲染标签后，活动标签通过 `scrollIntoView()` 保持在横向滚动区可见。
 - 文件树支持工作区内自动编号新建、内联重命名、回收站删除和从空白区右键菜单打开工作区；文件与文件夹分别维护 `Untitled x` 序号，文件序号会避开当前目录和已打开标签中的同名 Markdown 项。

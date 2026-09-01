@@ -373,7 +373,7 @@ webPreferences: {
 3. 加载 `settings` 和 `defaultSettings`
 4. 应用国际化：`applyLocale(locale)`
 5. 绑定所有 DOM 事件：`setupEvents()`
-6. 恢复侧栏宽度和可见性
+6. 恢复侧栏宽度和可见性；侧栏在显示时先作为 transform overlay 滑入，结束后才让 Vditor 缩窄，隐藏时同样在滑出结束后再释放编辑区宽度
 7. 应用演示设置（CSS 变量、缩放）
 8. 解析并应用主题
 9. 恢复工作区（`restoreWorkspace`）
@@ -960,7 +960,8 @@ function rememberRecent(filePath) {
 #### 侧栏（`app.js` 的 `toggleSidebar()`，`index.html:115-139`）
 
 - **职责：** 左侧可折叠面板，包含文件树视图和大纲视图
-- **实现：** `toggleSidebar()` 带 CSS transition、`appendDirectory()` 懒加载子目录
+- **实现：** `toggleSidebar()` 以 `sidebar-opening` / `sidebar-closing` / `sidebar-hiding` 表达过渡目标。显示时保持 `.collapsed` 并以绝对定位的完整宽度 sidebar 从左侧 transform 滑入，结束后才回归 flex 布局；隐藏时保持原 flex 占位并 transform 滑出，结束后才添加 `.collapsed`。因此长 Vditor 文档不会在动画每帧重排。Files/Outline tabs 与 titlebar file actions 使用 opacity + transform 进入/退出，避免动画 width、padding 或 gap。
+- **状态与清理：** 稳定态根据 `.collapsed` 判断可见性，过渡中以 `state.settings.sidebarVisible` 作为目标状态，重复操作可反向而不会重启动画。`transitionend` 仅接受 sidebar 自身的 `transform`，220ms timeout 为事件缺失回退；完成后清理过渡类、同步顶部宽度，并只调度一次 SV 行号/空白标记更新。`prefers-reduced-motion` 同时缩短 transition 和 keyframe animation。
 - **提示：** `setupSidebarTooltips()` 通过事件委托读取 sidebar 内的 `data-tooltip`，与 Markdown 链接共用独立的 `#appTooltip`；文件名、工作区路径和图标操作不再依赖浏览器原生 `title` 提示。
 
 #### 文件树（`app.js` 的 `appendDirectory()` / `showTreeMenu()` / `showWorkspaceTreeMenu()`，`index.html:127-131`）
@@ -1587,7 +1588,7 @@ flowchart TB
 
 | 测试文件 | 主要责任 |
 | --- | --- |
-| `app-shell.spec.ts` | 应用启动与单实例、标题栏/菜单/标签、主题、设置、窗口与本地化壳层 |
+| `app-shell.spec.ts` | 应用启动与单实例、标题栏/菜单/标签、主题、设置、窗口与本地化壳层，以及侧栏过渡期间的编辑器几何与反向切换 |
 | `editor-modes.spec.ts` | 查找替换、WYSIWYG / IR / SV、工具栏、选择、表格、分栏、滚动与 Vditor DOM 契约 |
 | `document-lifecycle.spec.ts` | 保存、恢复、工作区、文件树、原生打开对话框、导出资源、watcher、外部冲突、删除、重命名与 Save As 路径一致性 |
 | `navigation-and-resources.spec.ts` | Markdown/大纲导航、外部 URL 边界，以及受控根下的本地/HTTPS/上传图片资源和统一 SVG 渲染开关 |
@@ -1648,6 +1649,7 @@ flowchart TB
 - 切换工作区后各自保留展开状态，文件监听器拾取新文件
 - 菜单"打开文件夹"后侧栏自动显示并持久化 `sidebarVisible`
 - 侧栏宽度调整，长文件名中间省略（canvas 测量）
+- 侧栏显示动画期间 `#editorArea` 宽度保持不变，结束后才收缩；过渡中再次切换会回到最后请求的可见状态并持久化该状态
 - 文件树使用 Lucide `file`、`folder` 和目录链接专用的 `folder-symlink` 图标；查找替换使用 Lucide `replace` 与 `replace-all` 图标
 - 文件树行无 `draggable` 属性
 
