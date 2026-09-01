@@ -456,12 +456,17 @@ function registerIpcHandlers(): void {
     );
   });
   handleTrusted(IPC_CHANNELS.fileExportDialog, (_event, ...args) => {
-    requireArgumentCount(args, 1, 2);
+    requireArgumentCount(args, 1, 3);
     const type = parseEnum(args[0], ['html', 'pdf']);
     const defaultPath = parseOptionalText(args[1]);
-    return chooseSavePath(`Export ${type.toUpperCase()}`, defaultPath || `document.${type}`, [
-      { name: type.toUpperCase(), extensions: [type] },
-    ]);
+    const defaultDirectory = parseOptionalAbsolutePath(args[2]);
+    return chooseSavePath(
+      `Export ${type.toUpperCase()}`,
+      defaultDirectory
+        ? path.join(defaultDirectory, path.basename(defaultPath || `document.${type}`))
+        : defaultPath || `document.${type}`,
+      [{ name: type.toUpperCase(), extensions: [type] }],
+    );
   });
   handleTrusted(IPC_CHANNELS.fileRead, (_event, ...args) => {
     requireArgumentCount(args, 1);
@@ -706,12 +711,17 @@ function registerIpcHandlers(): void {
     return shell.openPath(parseAbsolutePath(args[0]));
   });
   handleTrusted(IPC_CHANNELS.appExportPdf, async (_event, ...args) => {
-    requireArgumentCount(args, 1, 2);
+    requireArgumentCount(args, 1, 3);
     const html = parseText(args[0]);
     const defaultPath = parseOptionalText(args[1]);
-    const output = await chooseSavePath('Export PDF', defaultPath || 'document.pdf', [
-      { name: 'PDF', extensions: ['pdf'] },
-    ]);
+    const defaultDirectory = parseOptionalAbsolutePath(args[2]);
+    const output = await chooseSavePath(
+      'Export PDF',
+      defaultDirectory
+        ? path.join(defaultDirectory, path.basename(defaultPath || 'document.pdf'))
+        : defaultPath || 'document.pdf',
+      [{ name: 'PDF', extensions: ['pdf'] }],
+    );
     if (!output) return null;
     const exportWindow = new BrowserWindow({
       show: false,

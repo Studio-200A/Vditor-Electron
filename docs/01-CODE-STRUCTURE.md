@@ -243,7 +243,7 @@ if (!ownsSingleInstanceLock) {
 | 打开文件           | `file:openDialog`       | `dialog.showOpenDialog`，多选文件（Markdown + All Files 过滤器）；可接收最近确认目录作为默认位置 |
 | 打开文件夹         | `file:openFolderDialog` | `dialog.showOpenDialog`（openDirectory）；与打开文件共用最近确认目录 |
 | 另存为             | `file:saveDialog`       | `dialog.showSaveDialog`                     |
-| 导出对话框         | `file:exportDialog`     | `dialog.showSaveDialog`（HTML/PDF）         |
+| 导出对话框         | `file:exportDialog`     | `dialog.showSaveDialog`（HTML/PDF）；与打开文件/文件夹共用最近确认目录 |
 | 文件移至回收站     | `file:delete`           | `shell.trashItem()`                         |
 | 在文件管理器中显示 | `app:showItemInFolder`  | `shell.showItemInFolder()`                  |
 | 打开目录           | `app:openDirectory`     | `shell.openPath()`                          |
@@ -776,7 +776,7 @@ openPath(filePath)
     after() 回调 → 挂载工具栏、安装观察者、刷新 UI
 ```
 
-打开文件和打开文件夹共用 `settings.defaultOpenPath` 作为原生对话框的默认目录；用户确认选择文件后，renderer 取第一个文件的父目录持久化，确认选择工作区后则持久化该工作区。取消原生对话框不会改变该目录。
+打开文件、打开文件夹和 HTML/PDF 导出共用 `settings.defaultOpenPath` 作为原生对话框的默认目录；用户确认选择文件后，renderer 取第一个文件的父目录持久化，确认选择工作区或导出位置后则持久化该目录。取消原生对话框不会改变该目录。
 
 Ctrl/Cmd+单击相对 Markdown 链接时，渲染器先调用 `file:resolveMarkdownLink(sourceFile, href)`；主进程拒绝协议、绝对路径、非 Markdown 和不存在目标，仅返回规范化的普通文件路径及可选片段。`openPath()` 复用已有标签或创建新标签，待 Vditor 就绪后将 `#片段` 定位到目标标题。
 
@@ -1666,7 +1666,7 @@ flowchart TB
 - 保存期间继续输入仍保持 dirty/recovery；同一 canonical identity 的并发保存串行化，Save As 目标冲突不会覆盖已有标签或磁盘文件
 - 删除后重建、editor 未 ready 保存、目录重命名的 editor rebuild/settings/watcher 重绑失败注入均保持标签路径、内存正文、session 和 watcher 一致
 - session 与 recovery 同 identity 合并；watcher 重绑后即时 reconciliation、读取乱序、符号链接祖先和工作区切换迟到结果均有回归覆盖
-- 文件和文件夹打开对话框共用并持久化最后确认目录；HTML 导出不保留应用内部资源 URL，PDF 导出将可读取的本地图片嵌入为 `data:` URL
+- 文件/文件夹打开与 HTML/PDF 导出对话框共用并持久化最后确认目录；HTML 导出不保留应用内部资源 URL，PDF 导出将可读取的本地图片嵌入为 `data:` URL
 
 #### 查找替换
 

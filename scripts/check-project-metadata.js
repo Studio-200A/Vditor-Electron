@@ -18,6 +18,7 @@ const failures = [];
 const version = packageMetadata.version;
 const productName = packageMetadata.productName;
 const applicationId = packageMetadata.desktopName;
+const stableApplicationId = 'com.github.studio-200a.vditor-electron';
 const electronVersion = packageMetadata.devDependencies?.electron;
 
 function expectEqual(label, actual, expected) {
@@ -26,6 +27,7 @@ function expectEqual(label, actual, expected) {
 
 expectEqual('package-lock.json version', lockMetadata.version, version);
 expectEqual('package-lock root version', lockRoot?.version, version);
+expectEqual('stable application ID', applicationId, stableApplicationId);
 expectEqual('electron-builder productName', packageMetadata.build?.productName, productName);
 expectEqual('electron-builder appId', packageMetadata.build?.appId, applicationId);
 expectEqual(

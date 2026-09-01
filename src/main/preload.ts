@@ -14,8 +14,8 @@ contextBridge.exposeInMainWorld('fileAPI', {
     ipcRenderer.invoke(IPC_CHANNELS.fileOpenFolderDialog, defaultDirectory),
   saveFileDialog: (defaultPath?: string, defaultDirectory?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.fileSaveDialog, defaultPath, defaultDirectory),
-  exportDialog: (type: 'html' | 'pdf', defaultPath?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.fileExportDialog, type, defaultPath),
+  exportDialog: (type: 'html' | 'pdf', defaultPath?: string, defaultDirectory?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.fileExportDialog, type, defaultPath, defaultDirectory),
   readFile: (filePath: string) => ipcRenderer.invoke(IPC_CHANNELS.fileRead, filePath),
   writeFile: (filePath: string, content: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.fileWrite, filePath, content),
@@ -100,8 +100,8 @@ contextBridge.exposeInMainWorld('appAPI', {
   showItemInFolder: (filePath: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.appShowItemInFolder, filePath),
   openDirectory: (dirPath: string) => ipcRenderer.invoke(IPC_CHANNELS.appOpenDirectory, dirPath),
-  exportPDF: (html: string, defaultPath?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.appExportPdf, html, defaultPath),
+  exportPDF: (html: string, defaultPath?: string, defaultDirectory?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.appExportPdf, html, defaultPath, defaultDirectory),
   toggleFullscreen: () => ipcRenderer.send(IPC_CHANNELS.appToggleFullscreen),
   onMenuAction: (callback: (action: string, value?: string) => void) =>
     on(IPC_CHANNELS.menuAction, callback),

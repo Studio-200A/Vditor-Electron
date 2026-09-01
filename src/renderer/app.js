@@ -2872,7 +2872,7 @@
   async function chooseFiles() {
     const paths = await window.fileAPI.openFileDialog(state.settings.defaultOpenPath || undefined);
     await openPaths(paths);
-    if (paths?.[0]) await rememberOpenDialogDirectory(paths[0]);
+    if (paths?.[0]) await rememberDialogDirectory(paths[0]);
   }
   async function chooseFolder() {
     const folder = await window.fileAPI.openFolderDialog(
@@ -2887,8 +2887,8 @@
   }
 
   // Native dialogs do not expose the directory visited before cancellation.
-  // Remember the last confirmed selection instead.
-  async function rememberOpenDialogDirectory(filePath) {
+  // Remember the last confirmed selection across open, save, and export dialogs instead.
+  async function rememberDialogDirectory(filePath) {
     const directory = await window.fileAPI.dirname(filePath);
     if (!directory || directory === state.settings.defaultOpenPath) return;
     state.settings.defaultOpenPath = directory;
@@ -3911,8 +3911,13 @@
     const tab = activeTab();
     if (!tab) return;
     const body = exportBodySnapshot(tab);
-    const output = await window.fileAPI.exportDialog('html', `${stripExtension(tab.title)}.html`);
+    const output = await window.fileAPI.exportDialog(
+      'html',
+      `${stripExtension(tab.title)}.html`,
+      state.settings.defaultOpenPath || undefined,
+    );
     if (output) {
+      await rememberDialogDirectory(output);
       const outputDirectory = await window.fileAPI.dirname(output);
       await window.fileAPI.writeFile(output, makeExportHTML(tab, body, outputDirectory));
       showMessage(`已导出 ${output}`);
@@ -3926,8 +3931,12 @@
     const output = await window.appAPI.exportPDF(
       makeExportHTML(tab, body),
       `${stripExtension(tab.title)}.pdf`,
+      state.settings.defaultOpenPath || undefined,
     );
-    if (output) showMessage(`已导出 ${output}`);
+    if (output) {
+      await rememberDialogDirectory(output);
+      showMessage(`已导出 ${output}`);
+    }
   }
 
   function rememberRecent(filePath) {

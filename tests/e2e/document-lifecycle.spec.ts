@@ -1576,13 +1576,15 @@ test('uses one remembered directory for file and folder open dialogs', async () 
   }
 });
 
-test('exports local images without application-only resource URLs', async () => {
+test('exports local images from the remembered directory without application-only resource URLs', async () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-export-resources-'));
   const assetsDirectory = path.join(workspace, 'assets');
   const filePath = path.join(workspace, 'export.md');
-  const htmlPath = path.join(workspace, 'exported.html');
-  const pdfPath = path.join(workspace, 'exported.pdf');
+  const exportDirectory = path.join(workspace, 'export-directory');
+  const htmlPath = path.join(exportDirectory, 'exported.html');
+  const pdfPath = path.join(exportDirectory, 'exported.pdf');
   fs.mkdirSync(assetsDirectory);
+  fs.mkdirSync(exportDirectory);
   fs.writeFileSync(
     path.join(assetsDirectory, 'pixel.png'),
     Buffer.from(
@@ -1604,10 +1606,16 @@ test('exports local images without application-only resource URLs', async () => 
     await app.evaluate(
       ({ dialog }, paths) => {
         let invocation = 0;
-        dialog.showSaveDialog = async () => ({
-          canceled: false,
-          filePath: paths[invocation++],
-        });
+        const calls: { defaultPath?: string }[] = [];
+        dialog.showSaveDialog = async (_window, options) => {
+          calls.push({ defaultPath: options.defaultPath });
+          return { canceled: false, filePath: paths[invocation++] };
+        };
+        (
+          globalThis as typeof globalThis & {
+            __vditorExportDialogCalls?: { defaultPath?: string }[];
+          }
+        ).__vditorExportDialogCalls = calls;
       },
       [htmlPath, pdfPath],
     );
@@ -1645,6 +1653,21 @@ test('exports local images without application-only resource URLs', async () => 
     );
     expect(pdfHtml).toContain('data:image/png;base64,');
     expect(pdfHtml).not.toContain('local-file://');
+    const dialogCalls = await app.evaluate(
+      () =>
+        (
+          globalThis as typeof globalThis & {
+            __vditorExportDialogCalls?: { defaultPath?: string }[];
+          }
+        ).__vditorExportDialogCalls,
+    );
+    expect(dialogCalls).toEqual([
+      { defaultPath: path.join(workspace, 'export.html') },
+      { defaultPath: path.join(exportDirectory, 'export.pdf') },
+    ]);
+    await expect
+      .poll(() => readSetting(running.testRoot, 'files', 'defaultOpenPath'))
+      .toBe(exportDirectory);
   } finally {
     await closeApp(running);
     fs.rmSync(workspace, { recursive: true, force: true });

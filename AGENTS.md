@@ -8,6 +8,8 @@ Do not expand it into a knowledge base, a cloud-sync service, an account-based s
 
 The product is a desktop host and experience layer for Vditor. Keep Markdown editing, rendering, and the three editing modes delegated to Vditor; keep desktop windows, files, workspaces, settings, localization, and platform behavior in the application layer.
 
+The stable application identity is `com.github.studio-200a.vditor-electron`. Treat it as an immutable product and data-path contract: keep it identical in `package.json`, Electron `appId`, `src/main/app-paths.ts`, Linux desktop/AppStream metadata, release packaging, tests, and documentation. Do not replace it to satisfy a packaging or metadata validator. If a tool rejects the ID, adjust or replace that validation step while retaining the ID. Changing this identity requires an explicit product decision plus a documented configuration/data-directory migration, release/version strategy, and synchronized cross-platform updates.
+
 ## Architecture Boundaries
 
 - Keep Vditor pinned to 3.11.3 unless a task explicitly authorizes an upgrade.
