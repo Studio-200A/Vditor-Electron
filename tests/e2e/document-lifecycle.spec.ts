@@ -1932,11 +1932,11 @@ test('protects open documents when files are deleted and reappear outside the ap
     const reappearedFileRow = page.locator(`#fileTree .tree-file[data-path="${modifiedPath}"]`);
     await app.evaluate(({ clipboard }) => {
       let copiedText = '';
-      clipboard.writeText = (text) => {
+      clipboard.writeText = async (text) => {
         copiedText = text;
       };
-      clipboard.readText = () => copiedText;
-      clipboard.readHTML = () => '';
+      clipboard.readText = async () => copiedText;
+      clipboard.read = async () => [];
     });
     await expect(editor).toContainText('Clean disk content');
 
@@ -2012,7 +2012,7 @@ test('protects open documents when files are deleted and reappear outside the ap
     fs.rmSync(modifiedPath);
     await expect(banner).toBeVisible();
     await app.evaluate(({ clipboard }) => {
-      clipboard.writeText = () => {
+      clipboard.writeText = async () => {
         throw new Error('clipboard unavailable');
       };
     });
@@ -2049,11 +2049,11 @@ test('copies the last saved content when recreating a deleted file with auto-sav
     const editor = page.locator('.editor-host.active .vditor-sv');
     await app.evaluate(({ clipboard }) => {
       let copiedText = '';
-      clipboard.writeText = (text) => {
+      clipboard.writeText = async (text) => {
         copiedText = text;
       };
-      clipboard.readText = () => copiedText;
-      clipboard.readHTML = () => '';
+      clipboard.readText = async () => copiedText;
+      clipboard.read = async () => [];
     });
     await editor.fill('Unsaved content before deletion');
     fs.rmSync(filePath);

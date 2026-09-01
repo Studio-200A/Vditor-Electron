@@ -599,8 +599,8 @@ test('disables context-menu paste actions when the clipboard is empty', async ()
     const { app, page } = running;
     const setClipboardText = async (text: string) =>
       app.evaluate(({ clipboard }, value) => {
-        clipboard.readText = () => value;
-        clipboard.readHTML = () => '';
+        clipboard.readText = async () => value;
+        clipboard.read = async () => [];
       }, text);
     await setClipboardText('');
     const editor = page.locator('.editor-host.active .vditor-ir .vditor-reset');

@@ -364,6 +364,21 @@ async function chooseSavePath(
   return result.canceled || !result.filePath ? null : result.filePath;
 }
 
+async function readClipboardContents(): Promise<{ text: string; html: string }> {
+  // Electron 44 exposes the clipboard through asynchronous W3C-style methods; rich HTML is
+  // read from a ClipboardItem because the former readHTML() convenience method was removed.
+  const text = await clipboard.readText();
+  let html = '';
+  for (const item of await clipboard.read()) {
+    if (!item.types.includes('text/html')) continue;
+    const htmlPayload = await item.getType('text/html');
+    if (!('text' in htmlPayload)) continue;
+    html = await htmlPayload.text();
+    break;
+  }
+  return { text, html };
+}
+
 type TrustedInvokeHandler = (event: Electron.IpcMainInvokeEvent, ...args: unknown[]) => unknown;
 type TrustedMessageHandler = (event: Electron.IpcMainEvent, ...args: unknown[]) => void;
 
@@ -668,13 +683,13 @@ function registerIpcHandlers(): void {
     mainWindow?.webContents.setZoomFactor(factor);
     return factor;
   });
-  handleTrusted(IPC_CHANNELS.appReadClipboard, (_event, ...args) => {
+  handleTrusted(IPC_CHANNELS.appReadClipboard, async (_event, ...args) => {
     requireArgumentCount(args, 0);
-    return { text: clipboard.readText(), html: clipboard.readHTML() };
+    return readClipboardContents();
   });
-  handleTrusted(IPC_CHANNELS.appWriteClipboard, (_event, ...args) => {
+  handleTrusted(IPC_CHANNELS.appWriteClipboard, async (_event, ...args) => {
     requireArgumentCount(args, 1);
-    clipboard.writeText(parseText(args[0]));
+    await clipboard.writeText(parseText(args[0]));
   });
   handleTrusted(IPC_CHANNELS.appOpenExternal, (_event, ...args) => {
     requireArgumentCount(args, 1);

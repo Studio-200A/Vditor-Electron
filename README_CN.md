@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Studio-200A/Vditor-Electron/releases"><img src="https://img.shields.io/badge/version-0.1.5-blue" alt="Version 0.1.5" /></a>
+  <a href="https://github.com/Studio-200A/Vditor-Electron/releases"><img src="https://img.shields.io/badge/version-0.2.0-blue" alt="Version 0.2.0" /></a>
   <a href="https://github.com/Studio-200A/Vditor-Electron/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License" /></a>
   <a href="https://github.com/Studio-200A/Vditor-Electron"><img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey" alt="Linux, Windows and macOS" /></a>
   <a href="https://github.com/prettier/prettier"><img src="https://img.shields.io/badge/code_style-prettier-ff69b4.svg" alt="code style: prettier" /></a>
@@ -109,7 +109,7 @@ Vditor Desktop 把你的写作当作需要保护的内容，而不是可以随�
 
 ### 从源码运行
 
-需要 Node.js 22 或兼容版本及 npm：
+源码开发需要 Node.js 22.x（22.22.2 及以上）、24.x（24.15.0 及以上）或 26+，以及 npm。当前依赖不支持 Node.js 23 和 25：
 
 ```bash
 git clone https://github.com/Studio-200A/Vditor-Electron.git
@@ -117,6 +117,8 @@ cd Vditor-Electron
 npm ci
 npm start
 ```
+
+首次启动或打包 Electron 的命令可能会把固定版本 Electron 44.1.0 的运行时下载到 Electron 本地缓存；这一步独立于 `npm ci`，不会修改 lockfile。该运行时要求 macOS 13 或更高版本，Electron 44 也不再提供 Windows 32 位或 Linux ARMv7 预构建程序。本仓库的 Linux 发布脚本目前只生成 x86_64；Windows/macOS 打包和实体机验证仍是独立的平台工作。
 
 构建过程会将 Vditor 的资源复制到本地，运行时不依赖 Vditor CDN。
 
@@ -174,6 +176,7 @@ TOML 配置文件可直接阅读，按应用、外观、字体、编辑器、预
 
 ```bash
 npm run format:check
+npm run check:project
 npm run lint
 npm run typecheck
 npm run check:vditor

@@ -18,6 +18,7 @@ The current development and validation platform is Linux. Cross-platform work is
 - Keep renderer behavior independent of path syntax and operating-system names wherever possible.
 - Use `node:path` for native paths and URL APIs for application-protocol paths. Do not infer the platform from a path string.
 - Keep Vditor pinned to 3.11.3 and keep its private DOM access inside `src/renderer/vditor-adapter.js`.
+- The project pins Electron 44.1.0. Electron 44 requires macOS 13 or later and no longer ships prebuilt Windows 32-bit or Linux ARMv7 runtimes; the repository's Linux release script targets x86_64.
 
 ## 3. What Linux can and cannot prove
 
@@ -82,7 +83,7 @@ Node's `path` implementation varies with the host platform, and some `fs` operat
 
 As of 2026-08-28, 0.2.0 development tracker batches 7, 7.1, and 8 are closed for the Linux-local implementation and regression scope. The user-run Linux `npm run check:all` passed its required static and Electron checks; the dated evidence is retained in the relevant Tracker records. Batch 8's dangerous-protocol and normal external-link manual checks also passed. This is local regression evidence only; it does not close any Windows or macOS row below.
 
-Batch 10 has since completed its Linux-local implementation, focused automation, user manual validation, and user-run full-check pass. P12 subsequently added the window-scoped close-confirmation test and also has a passing Linux full-check record. The dated totals, exact reruns, and affected test scope belong to their Tracker records rather than this platform boundary document. Windows drive/UNC and junction verification remains explicitly deferred to sections 12.1–12.3, and macOS remains a separate native-runtime task.
+Batch 10 has since completed its Linux-local implementation, focused automation, user manual validation, and user-run full-check pass. P12 subsequently added the window-scoped close-confirmation test and also has a passing Linux full-check record. P15 now pins Electron 44.1.0 and has updated the asynchronous clipboard boundary; a fresh full check after this runtime change remains pending. The dated totals, exact reruns, and affected test scope belong to their Tracker records rather than this platform boundary document. Windows drive/UNC and junction verification remains explicitly deferred to sections 12.1–12.3, and macOS remains a separate native-runtime task; Electron 44's macOS 13 minimum must be used for that validation.
 
 ### Not yet platform-validated
 

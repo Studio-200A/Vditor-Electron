@@ -181,7 +181,7 @@ function buildPortable() {
 
 function prepareAppDir() {
   const appDir = path.join(stagingDir, 'VditorDesktop.AppDir');
-  const appImageDesktopBaseName = 'com.github.studio200a.VditorDesktop';
+  const appImageDesktopBaseName = packageMetadata.desktopName;
   remove(appDir);
   const payload = path.join(appDir, 'usr', 'lib', 'vditor-desktop');
   const applications = path.join(appDir, 'usr', 'share', 'applications');

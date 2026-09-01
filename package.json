@@ -2,19 +2,23 @@
   "name": "vditor-electron",
   "productName": "Vditor Desktop",
   "desktopName": "com.github.studio-200a.vditor-electron",
-  "version": "0.1.5",
+  "version": "0.2.0",
   "description": "A local-first Markdown desktop editor powered by Electron and Vditor",
   "author": "Studio 200A",
+  "engines": {
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
+  },
   "main": "dist/main/index.js",
   "scripts": {
     "format": "prettier . --write",
     "format:check": "prettier . --check",
+    "check:project": "node scripts/check-project-metadata.js",
     "lint": "eslint src scripts tests *.config.*",
     "typecheck": "tsc -p tsconfig.main.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "npm run build && playwright test",
-    "check": "npm run format:check && npm run lint && npm run typecheck && npm run check:vditor && npm test && npm run build",
+    "check": "npm run format:check && npm run check:project && npm run lint && npm run typecheck && npm run check:vditor && npm test && npm run build",
     "check:all": "npm run check && npm run test:e2e",
     "build:main": "tsc -p tsconfig.main.json",
     "build:assets": "node scripts/copy-vditor-assets.js",
@@ -38,7 +42,7 @@
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.62.1",
     "@types/node": "^22.0.0",
-    "electron": "^43.4.0",
+    "electron": "44.1.0",
     "electron-builder": "^26.15.3",
     "eslint": "^10.8.1",
     "globals": "^17.10.0",
@@ -86,7 +90,7 @@
     ]
   },
   "allowScripts": {
-    "electron@43.4.0": true,
+    "electron@44.1.0": true,
     "electron-winstaller@5.4.0": true
   }
 }

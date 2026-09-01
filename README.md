@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Studio-200A/Vditor-Electron/releases"><img src="https://img.shields.io/badge/version-0.1.5-blue" alt="Version 0.1.5" /></a>
+  <a href="https://github.com/Studio-200A/Vditor-Electron/releases"><img src="https://img.shields.io/badge/version-0.2.0-blue" alt="Version 0.2.0" /></a>
   <a href="https://github.com/Studio-200A/Vditor-Electron/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License" /></a>
   <a href="https://github.com/Studio-200A/Vditor-Electron"><img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey" alt="Linux, Windows and macOS" /></a>
   <a href="https://github.com/prettier/prettier"><img src="https://img.shields.io/badge/code_style-prettier-ff69b4.svg" alt="code style: prettier" /></a>
@@ -110,7 +110,7 @@ The interface is localized in English (`en_US`), Simplified Chinese (`zh_Hans`),
 
 ### From source
 
-Node.js 22 or a compatible version and npm are required:
+Node.js 22.22.2 or later in the 22.x line, Node.js 24.15.0 or later in the 24.x line, or Node.js 26+ and npm are required for source development. Node.js 23 and 25 are not supported by the current dependency set:
 
 ```bash
 git clone https://github.com/Studio-200A/Vditor-Electron.git
@@ -118,6 +118,8 @@ cd Vditor-Electron
 npm ci
 npm start
 ```
+
+The first command that launches or packages Electron may download the pinned Electron 44.1.0 runtime into Electron's local cache; this is separate from `npm ci` and does not change the lockfile. The runtime requires macOS 13 or later, and Electron 44 does not provide prebuilt Windows 32-bit or Linux ARMv7 binaries. This repository's Linux release script currently targets x86_64; Windows/macOS packaging and native validation remain separate platform work.
 
 The build copies Vditor's bundled assets locally; runtime use does not depend on a Vditor CDN.
 
@@ -177,6 +179,7 @@ Crash-recovery snapshots are stored separately in the private application data d
 
 ```bash
 npm run format:check
+npm run check:project
 npm run lint
 npm run typecheck
 npm run check:vditor
