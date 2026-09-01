@@ -15,7 +15,7 @@
 
 **核心功能：** 多标签页 Markdown 编辑、三种编辑模式（IR/SV/WYSIWYG）、分栏预览、文件树侧栏、文档大纲、查找替换、图片插入与压缩、HTML/PDF 导出、TOML 配置持久化、三语国际化（英/简/繁）。
 
-**开发阶段：** 0.2.0 阶段开发中。保存、恢复、工作区内外 watcher、外部修改冲突、外部删除/重新出现/不可读状态、工作区读取/监听深度边界、目录级路径一致性、批次 7 本地闭环和批次 8/9/9.1 安全代码、专项验证、Linux 全量回归及手测均已完成。批次 9.1 已确认 Vditor 3.11.3 表格重建丢失横向滚动状态，并在 adapter 内完成局部补偿、滚动条设置统一、专项自动化和全量回归。批次 10 已完成受控 `local-file://root`、资源类型响应边界、Linux 专项自动化和用户手测；批次 11 已完成 CSP 收紧、sanitize 风险交互与 Linux 全量闭环；批次 12 已完成窗口级关闭确认与 Linux 全量闭环，macOS Dock 激活验证递延；批次 14 已完成可移植 HTML/自包含 PDF 导出、隔离 PDF 窗口，以及默认关闭的本地/远程 SVG 渲染控制；批次 15 已统一 0.2.0 版本号、Electron 44.1.0、Node.js engine、Linux 应用 metadata 和依赖安装检查，用户全量检查及批次 14 最终复验见 Tracker。已有目标的长期 TOCTOU、主窗口 sandbox 的 bundled-preload 迁移、发布门槛和其他 Windows/macOS 实体机验证仍在后续工作。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
+**开发阶段：** 0.2.0 阶段开发中。保存、恢复、工作区内外 watcher、外部修改冲突、外部删除/重新出现/不可读状态、工作区读取/监听深度边界、目录级路径一致性、批次 7 本地闭环和批次 8/9/9.1 安全代码、专项验证、Linux 全量回归及手测均已完成。批次 9.1 已确认 Vditor 3.11.3 表格重建丢失横向滚动状态，并在 adapter 内完成局部补偿、滚动条设置统一、专项自动化和全量回归。批次 10 已完成受控 `local-file://root`、资源类型响应边界、Linux 专项自动化和用户手测；批次 11 已完成 CSP 收紧、sanitize 风险交互与 Linux 全量闭环；批次 12 已完成窗口级关闭确认与 Linux 全量闭环，macOS Dock 激活验证递延；批次 14 已完成可移植 HTML/自包含 PDF 导出、隔离 PDF 窗口，以及默认关闭的本地/远程 SVG 渲染控制；批次 15 已统一 0.2.0 版本号、Electron 44.1.0、Node.js engine、Linux 应用 metadata 和依赖安装检查，并取得 Linux 全量检查通过证据。批次 14 最终复验、已有目标的长期 TOCTOU、主窗口 sandbox 的 bundled-preload 迁移、发布门槛和其他 Windows/macOS 实体机验证仍在后续工作。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
 
 ---
 
