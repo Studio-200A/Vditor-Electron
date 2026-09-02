@@ -1,9 +1,9 @@
 # Vditor-Electron Code Structure World Map
 
-- **生成时间：** 2026-09-01
-- **基于的工作区：** `dev-0.2.0` 当前工作区实现（包含 Lucide 静态图标资源构建链路）
-- **文档版本：** v1.15
-- **对应 package.json 版本号：** 0.2.0
+- **生成时间：** 2026-09-02
+- **基于的工作区：** `dev-0.2.5` 当前工作区实现（批次 1-3 完成）
+- **文档版本：** v1.16
+- **对应 package.json 版本号：** 0.2.0（开发中 0.2.5）
 
 ---
 
@@ -15,7 +15,7 @@
 
 **核心功能：** 多标签页 Markdown 编辑、三种编辑模式（IR/SV/WYSIWYG）、分栏预览、文件树侧栏、文档大纲、查找替换、图片插入与压缩、HTML/PDF 导出、TOML 配置持久化、三语国际化（英/简/繁）。
 
-**开发阶段：** 0.2.0 阶段开发中。保存、恢复、工作区内外 watcher、外部修改冲突、外部删除/重新出现/不可读状态、工作区读取/监听深度边界、目录级路径一致性、批次 7 本地闭环和批次 8/9/9.1 安全代码、专项验证、Linux 全量回归及手测均已完成。批次 9.1 已确认 Vditor 3.11.3 表格重建丢失横向滚动状态，并在 adapter 内完成局部补偿、滚动条设置统一、专项自动化和全量回归。批次 10 已完成受控 `local-file://root`、资源类型响应边界、Linux 专项自动化和用户手测；批次 11 已完成 CSP 收紧、sanitize 风险交互与 Linux 全量闭环；批次 12 已完成窗口级关闭确认与 Linux 全量闭环，macOS Dock 激活验证递延；批次 14 已完成可移植 HTML/自包含 PDF 导出、隔离 PDF 窗口，以及默认关闭的本地/远程 SVG 渲染控制；批次 15 已统一 0.2.0 版本号、Electron 44.1.0、Node.js engine、Linux 应用 metadata 和依赖安装检查，并取得 Linux 全量检查通过证据。批次 14 最终复验、已有目标的长期 TOCTOU、主窗口 sandbox 的 bundled-preload 迁移、发布门槛和其他 Windows/macOS 实体机验证仍在后续工作。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
+**开发阶段：** 0.2.5 渲染层架构重构中。批次 1-3 已完成：TypeScript 构建管线与组合入口、纯函数与基础 UI 域迁移（含 CSS 主题拆分和 notifications/dialogs 模块提取）、AppStore 与文档状态模型（类型定义、受控 store、快照投影、状态所有权表）。批次 4（文档与标签生命周期迁移）待开始。0.2.0 阶段的所有功能（保存、恢复、工作区内外 watcher、外部修改冲突、外部删除/重新出现/不可读状态、工作区读取/监听深度边界、目录级路径一致性、批次 7 本地闭环和批次 8/9/9.1 安全代码、专项验证、Linux 全量回归及手测）均已完成并作为行为基线。批次 10 已完成受控 `local-file://root`、资源类型响应边界、Linux 专项自动化和用户手测；批次 11 已完成 CSP 收紧、sanitize 风险交互与 Linux 全量闭环；批次 12 已完成窗口级关闭确认与 Linux 全量闭环，macOS Dock 激活验证递延；批次 14 已完成可移植 HTML/自包含 PDF 导出、隔离 PDF 窗口，以及默认关闭的本地/远程 SVG 渲染控制；批次 15 已统一 0.2.0 版本号、Electron 44.1.0、Node.js engine、Linux 应用 metadata 和依赖安装检查，并取得 Linux 全量检查通过证据。批次 14 最终复验、已有目标的长期 TOCTOU、主窗口 sandbox 的 bundled-preload 迁移、发布门槛和其他 Windows/macOS 实体机验证仍在后续工作。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
 
 ---
 
@@ -117,9 +117,20 @@ Vditor-Electron/
 │   ├── ui/                        # UI 域纯函数与控制器
 │   │   ├── theme.ts               # 主题常量与判定（isDarkTheme、DARK_THEMES 等）
 │   │   ├── localization.ts        # 本地化纯函数（resolveLocale、translate、formatIpcErrorMessage）
-│   │   └── theme-controller.ts    # 主题控制器纯函数层（resolveEffectiveTheme、resolveThemeMode 等）
+│   │   ├── theme-controller.ts    # 主题控制器纯函数层（resolveEffectiveTheme、resolveThemeMode 等）
+│   │   └── notifications.ts       # NotificationsController 类（消息提示、临时通知、确认对话框、未保存对话框）
+│   ├── state/                     # 应用状态管理（批次 3 建立）
+│   │   ├── types.ts               # 核心状态类型（EditMode、DocumentIdentity、DocumentState、EditorRuntime、DocumentTab、AppState 等）
+│   │   ├── store.ts               # AppStore 类（受控修改 API、订阅机制、文档/设置/locale/工作区操作）
+│   │   └── snapshots.ts           # 快照投影函数（toSessionSnapshot、toRecoverySnapshot、restoreDocumentState、restoreRecoveryState）
 │   ├── styles/
-│   │   └── app.css                # 单一应用样式文件（含主题变量、Vditor 覆盖）
+│   │   ├── app.css                # 应用样式文件（布局、通用组件、共享语义变量；:root 默认主题变量）
+│   │   └── themes/                # 主题样式文件（批次 2 剩余拆分）
+│   │       ├── dark.css           # Dark 主题变量与专属覆盖
+│   │       ├── claude-light.css   # Claude Light 主题变量与专属覆盖
+│   │       ├── claude-dark.css    # Claude Dark 主题变量与专属覆盖
+│   │       ├── monokai-pro-light.css # Monokai Pro Light 主题变量与历史专属覆盖
+│   │       └── monokai-pro-dark.css  # Monokai Pro Dark 主题变量与历史专属覆盖
 │   └── assets/                    # 项目自有静态资源
 │       ├── app-icon/              # 应用标识
 │       └── notification/          # 持久告警与短暂通知图标

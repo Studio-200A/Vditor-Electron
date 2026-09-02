@@ -18,6 +18,12 @@
   const validateDarkThemeImpl = PURE.validateDarkTheme;
   const validateLightThemeImpl = PURE.validateLightTheme;
   const getPreferredCodeThemeImpl = PURE.getPreferredCodeTheme;
+  // 批次 4 将创建 store 实例并迁移 state 对象
+  // const AppStore = PURE.AppStore;
+  // const store = new AppStore();
+
+  // 过渡期：保留 state 对象，但在批次 4 中将迁移到 store
+  // 删除阶段：批次 4 完成后删除 state 对象，改用 store.getState()
   const state = {
     tabs: [],
     activeId: null,
@@ -38,6 +44,7 @@
   let resourceRootsQueue = Promise.resolve();
   let settingsSaveQueue = Promise.resolve();
   const LOCALES = window.VditorDesktopLocales || {};
+  const notifications = new PURE.NotificationsController(translateImpl, LOCALES, 'en_US');
   const DEFAULT_TOOLBAR = [
     'emoji',
     'headings',
@@ -102,8 +109,6 @@
     'listStyle',
     'sanitize',
   ]);
-  let messageTimer;
-  let temporaryDocumentNoticeTimer;
   let appMenuCloseHandler;
   let closeAppMenu = () => {};
   let appMenuBlurHandler;
@@ -112,7 +117,6 @@
   let sidebarTransitionTimer;
   let sidebarTransitionEndHandler;
   let sidebarLayoutAnimations = [];
-  let confirmResolver;
   let findMatches = [];
   let findIndex = -1;
   let findQuery = '';
@@ -158,74 +162,24 @@
   }
 
   function closeConfirmDialog(action = 'cancel') {
-    if (!confirmResolver) return;
-    const resolve = confirmResolver;
-    confirmResolver = null;
-    setConfirmDialogDraggable(false);
-    $('#confirmModal').classList.add('hidden');
-    $('#confirmActions').replaceChildren();
-    resolve(action);
+    return notifications.closeConfirmDialog(action);
   }
 
-  function setConfirmDialogDraggable(draggable) {
-    const card = $('#confirmModal .confirm-card');
-    card.classList.toggle('confirm-card-draggable', draggable);
-    card.style.removeProperty('position');
-    card.style.removeProperty('left');
-    card.style.removeProperty('top');
-  }
-
-  function showConfirmDialog({ title, message, detail = '', actions, draggable = false } = {}) {
-    if (confirmResolver) closeConfirmDialog('cancel');
-    const modal = $('#confirmModal');
-    setConfirmDialogDraggable(draggable);
-    $('#confirmTitle').textContent = title || t('dialog.confirmTitle');
-    $('#confirmMessage').textContent = message || '';
-    $('#confirmDetail').textContent = detail;
-    const availableActions = actions || [
-      { id: 'cancel', label: t('dialog.cancel') },
-      { id: 'confirm', label: t('dialog.continue'), primary: true },
-    ];
-    const actionHost = $('#confirmActions');
-    availableActions.forEach((action) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.textContent = action.label;
-      button.dataset.action = action.id;
-      if (action.primary) button.classList.add('primary');
-      if (action.danger) button.classList.add('danger');
-      button.onclick = () => closeConfirmDialog(action.id);
-      actionHost.append(button);
-    });
-    modal.classList.remove('hidden');
-    requestAnimationFrame(() =>
-      (actionHost.querySelector('.primary') || actionHost.querySelector('button'))?.focus(),
-    );
-    return new Promise((resolve) => {
-      confirmResolver = resolve;
-    });
+  function showConfirmDialog(options) {
+    return notifications.showConfirmDialog(options);
   }
 
   async function confirmDialog(options) {
-    return (await showConfirmDialog(options)) === 'confirm';
+    return notifications.confirmDialog(options);
   }
 
   function showUnsavedDialog(message, detail = '') {
-    return showConfirmDialog({
-      title: t('dialog.unsavedTitle'),
-      message,
-      detail,
-      draggable: true,
-      actions: [
-        { id: 'cancel', label: t('dialog.cancel') },
-        { id: 'discard', label: t('dialog.dontSave') },
-        { id: 'save', label: t('dialog.save'), primary: true },
-      ],
-    });
+    return notifications.showUnsavedDialog(message, detail);
   }
 
   function applyLocale(locale) {
     state.locale = resolveLocale(locale);
+    notifications.setLocale(state.locale);
     document.documentElement.lang =
       state.locale === 'zh_Hans' ? 'zh-Hans' : state.locale === 'zh_Hant' ? 'zh-Hant' : 'en-US';
     $$('[data-i18n]').forEach((node) => {
@@ -541,26 +495,11 @@
   }
 
   function showMessage(message, error = false) {
-    const target = $('#statusMessage');
-    target.textContent = message;
-    target.classList.toggle('error', error);
-    clearTimeout(messageTimer);
-    messageTimer = setTimeout(() => {
-      target.textContent = '';
-      target.classList.remove('error');
-    }, 4500);
+    notifications.showMessage(message, error);
   }
 
   function showTemporaryDocumentNotice(message, error = false) {
-    const notice = $('#temporaryDocumentNotice');
-    $('#temporaryDocumentNoticeMessage').textContent = message;
-    notice.classList.toggle('error', error);
-    notice.classList.remove('hidden');
-    clearTimeout(temporaryDocumentNoticeTimer);
-    temporaryDocumentNoticeTimer = setTimeout(() => {
-      notice.classList.add('hidden');
-      notice.classList.remove('error');
-    }, 5000);
+    notifications.showTemporaryDocumentNotice(message, error);
   }
 
   function findWidgetVisible() {
@@ -760,6 +699,9 @@
 
   async function applyTheme(theme) {
     document.documentElement.dataset.theme = theme;
+    document.querySelectorAll('link[id^="theme-"]').forEach((link) => {
+      link.disabled = link.id !== `theme-${theme}`;
+    });
     const dark = isDarkTheme(theme);
     syncThemeModeControl();
     const linkedContentTheme = ['light', 'dark'].includes(state.settings.contentTheme);
@@ -4280,49 +4222,6 @@
     });
   }
 
-  function setupConfirmDialogDrag() {
-    const modal = $('#confirmModal');
-    const card = $('.confirm-card', modal);
-    const header = card.querySelector(':scope > header');
-    const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value));
-    const setPosition = (left, top) => {
-      const maximumLeft = Math.max(0, modal.clientWidth - card.offsetWidth);
-      const maximumTop = Math.max(0, modal.clientHeight - card.offsetHeight);
-      card.style.left = `${Math.round(clamp(left, 0, maximumLeft))}px`;
-      card.style.top = `${Math.round(clamp(top, 0, maximumTop))}px`;
-    };
-
-    header.addEventListener('mousedown', (event) => {
-      if (event.button !== 0 || !card.classList.contains('confirm-card-draggable')) return;
-      event.preventDefault();
-      const modalBounds = modal.getBoundingClientRect();
-      const cardBounds = card.getBoundingClientRect();
-      card.style.position = 'absolute';
-      setPosition(cardBounds.left - modalBounds.left, cardBounds.top - modalBounds.top);
-      const offsetX = event.clientX - cardBounds.left;
-      const offsetY = event.clientY - cardBounds.top;
-      document.body.classList.add('confirm-card-dragging');
-      const move = (moveEvent) => {
-        setPosition(
-          moveEvent.clientX - modalBounds.left - offsetX,
-          moveEvent.clientY - modalBounds.top - offsetY,
-        );
-      };
-      const up = () => {
-        document.body.classList.remove('confirm-card-dragging');
-        window.removeEventListener('mousemove', move);
-        window.removeEventListener('mouseup', up);
-      };
-      window.addEventListener('mousemove', move);
-      window.addEventListener('mouseup', up);
-    });
-
-    window.addEventListener('resize', () => {
-      if (card.style.position !== 'absolute') return;
-      setPosition(Number.parseFloat(card.style.left) || 0, Number.parseFloat(card.style.top) || 0);
-    });
-  }
-
   async function handleExternalChange(change) {
     if (
       !['add', 'change', 'unlink', 'addDir', 'unlinkDir', 'unreadable', 'watch-error'].includes(
@@ -5019,7 +4918,7 @@
       }
     };
     setupSettingsDrag();
-    setupConfirmDialogDrag();
+    notifications.init();
     $('#openSettingsFolder').onclick = async () =>
       window.appAPI.showItemInFolder(await window.appAPI.getSettingsPath());
     $$('[data-external]').forEach((button) => {

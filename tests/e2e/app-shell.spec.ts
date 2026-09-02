@@ -584,7 +584,11 @@ test('keeps the sidebar tab boundary stable while toggling a wrapped toolbar acr
       for (const theme of themes) {
         await page.evaluate((value) => {
           document.documentElement.dataset.theme = value;
+          document.querySelectorAll<HTMLLinkElement>('link[id^="theme-"]').forEach((link) => {
+            link.disabled = link.id !== `theme-${value}`;
+          });
         }, theme);
+        await page.waitForTimeout(50);
         const visible = await readBoundary();
 
         await toggleToolbar();

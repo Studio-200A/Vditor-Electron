@@ -6,6 +6,11 @@ import { beforeAll, describe, expect, it } from 'vitest';
 describe('renderer shell', () => {
   let document: Document;
   let css: string;
+  let darkThemeCss: string;
+  let claudeLightCss: string;
+  let claudeDarkCss: string;
+  let monokaiDarkCss: string;
+  let monokaiLightCss: string;
   let rendererScript: string;
   let mainScript: string;
   let preloadScript: string;
@@ -17,6 +22,23 @@ describe('renderer shell', () => {
     const html = fs.readFileSync(path.resolve('src/renderer/index.html'), 'utf8');
     document = new JSDOM(html).window.document;
     css = fs.readFileSync(path.resolve('src/renderer/styles/app.css'), 'utf8');
+    darkThemeCss = fs.readFileSync(path.resolve('src/renderer/styles/themes/dark.css'), 'utf8');
+    claudeLightCss = fs.readFileSync(
+      path.resolve('src/renderer/styles/themes/claude-light.css'),
+      'utf8',
+    );
+    claudeDarkCss = fs.readFileSync(
+      path.resolve('src/renderer/styles/themes/claude-dark.css'),
+      'utf8',
+    );
+    monokaiDarkCss = fs.readFileSync(
+      path.resolve('src/renderer/styles/themes/monokai-pro-dark.css'),
+      'utf8',
+    );
+    monokaiLightCss = fs.readFileSync(
+      path.resolve('src/renderer/styles/themes/monokai-pro-light.css'),
+      'utf8',
+    );
     rendererScript = fs.readFileSync(path.resolve('src/renderer/app.js'), 'utf8');
     mainScript = fs.readFileSync(path.resolve('src/main/index.ts'), 'utf8');
     preloadScript = fs.readFileSync(path.resolve('src/main/preload.ts'), 'utf8');
@@ -232,7 +254,7 @@ describe('renderer shell', () => {
     expect(document.querySelector('#confirmActions')).not.toBeNull();
     expect(css).toMatch(/\.confirm-card\s*\{/);
     expect(document.querySelectorAll('.confirm-card [data-settings-resize]')).toHaveLength(0);
-    expect(rendererScript).toContain('setupConfirmDialogDrag()');
+    expect(rendererScript).toContain('notifications.init()');
     expect(css).toMatch(/\.confirm-card\.confirm-card-draggable > header\s*\{[^}]*cursor:\s*move/s);
     expect(css).toMatch(/\.confirm-content\s*\{[^}]*user-select:\s*none/s);
     expect(css).toMatch(/\.modal\s*\{[^}]*inset:\s*14px 20px 28px/s);
@@ -508,10 +530,10 @@ describe('renderer shell', () => {
     expect(css).toMatch(
       /:root\s*\{[^}]*--sidebar-surface:\s*#f0f1f3[^}]*--editor-surface:\s*#fff/s,
     );
-    expect(css).toMatch(
+    expect(darkThemeCss).toMatch(
       /:root\[data-theme='dark'\]\s*\{[^}]*--sidebar-surface:\s*#202124[^}]*--editor-surface:\s*#18191c/s,
     );
-    expect(css).toMatch(
+    expect(claudeLightCss).toMatch(
       /:root\[data-theme='claude-light'\]\s*\{[^}]*--sidebar-surface:\s*#f5f4ed[^}]*--editor-surface:\s*#faf9f5[^}]*--border:\s*rgb\(31 30 29 \/ 11%\)[^}]*--accent:\s*#d97757[^}]*--brand-accent:\s*#d97757/s,
     );
     expect(css).toMatch(/\.settings-content\s*\{[^}]*background:\s*var\(--editor-surface\)/s);
@@ -521,19 +543,19 @@ describe('renderer shell', () => {
     expect(css).toMatch(
       /:root\s*\{[^}]*--editor-surface:\s*#fff[^}]*--settings-control-surface:\s*#f7f7f8/s,
     );
-    expect(css).toMatch(
+    expect(darkThemeCss).toMatch(
       /:root\[data-theme='dark'\]\s*\{[^}]*--editor-surface:\s*#18191c[^}]*--settings-control-surface:\s*#202124/s,
     );
-    expect(css).toMatch(
+    expect(claudeLightCss).toMatch(
       /:root\[data-theme='claude-light'\]\s*\{[^}]*--editor-surface:\s*#faf9f5[^}]*--settings-control-surface:\s*#fff/s,
     );
-    expect(css).toMatch(
+    expect(claudeDarkCss).toMatch(
       /:root\[data-theme='claude-dark'\]\s*\{[^}]*--editor-surface:\s*#262624[^}]*--settings-control-surface:\s*#30302e/s,
     );
-    expect(css).toMatch(
+    expect(claudeLightCss).toMatch(
       /:root\[data-theme='claude-light'\] \.modal-close:hover\s*\{[^}]*background:\s*#e8e6dc[^}]*color:\s*var\(--text\)/s,
     );
-    expect(css).toMatch(
+    expect(claudeDarkCss).toMatch(
       /:root\[data-theme='claude-dark'\]\s*\{[^}]*--bg:\s*#141413[^}]*--sidebar-surface:\s*#30302e[^}]*--editor-surface:\s*#262624[^}]*--accent:\s*#d97757[^}]*--brand-accent:\s*#d97757/s,
     );
     expect(css).toMatch(/\.sidebar\s*\{[^}]*background:\s*var\(--sidebar-surface\)/s);
@@ -563,16 +585,16 @@ describe('renderer shell', () => {
       /\.editor-host,[\s\S]*\.vditor-reset\s*\{[^}]*background-color:\s*var\(--editor-surface\)/,
     );
     expect(css).not.toMatch(/data-theme='claude-(?:light|dark)'[^}]*--ui-font/s);
-    expect(css).toMatch(
+    expect(monokaiDarkCss).toMatch(
       /:root\[data-theme='monokai-pro-dark'\]\s*\{[^}]*--bg:\s*#2d2a2e[^}]*--editor-surface:\s*#272428[^}]*--settings-control-surface:\s*#2d2a2e[^}]*--accent:\s*#ffd866/s,
     );
-    expect(css).toMatch(
+    expect(monokaiLightCss).toMatch(
       /:root\[data-theme='monokai-pro-light'\]\s*\{[^}]*--bg:\s*#faf4f2[^}]*--settings-control-surface:\s*#fefaf9[^}]*--border:\s*#d8d3d1[^}]*--accent:\s*#e14775/s,
     );
-    expect(css).toContain('--monokai-h1: #ff6188');
-    expect(css).toContain('--monokai-h6: #fc9867');
-    expect(css).toContain('--monokai-h1: #d40045');
-    expect(css).toContain('--monokai-h6: #373530');
+    expect(monokaiDarkCss).toContain('--monokai-h1: #ff6188');
+    expect(monokaiDarkCss).toContain('--monokai-h6: #fc9867');
+    expect(monokaiLightCss).toContain('--monokai-h1: #d40045');
+    expect(monokaiLightCss).toContain('--monokai-h6: #373530');
     expect(css).toMatch(
       /\.theme-option-input:checked \+ \.theme-preview\s*\{[^}]*border-color:\s*var\(--accent\)/s,
     );

@@ -1,0 +1,29 @@
+:root[data-theme='claude-light'] {
+  --bg: #faf9f5;
+  --panel: #fff;
+  --sidebar-surface: #f5f4ed;
+  --editor-surface: #faf9f5;
+  --settings-control-surface: #fff;
+  --panel-2: #f5f4ed;
+  --hover: #e8e6dc;
+  --text: #141413;
+  --muted: #73726c;
+  --border: rgb(31 30 29 / 11%);
+  --accent: #d97757;
+  --on-accent: #141413;
+  --brand-accent: #d97757;
+  --danger: #7f2c28;
+  --top-surface-shadow: 0 5px 12px -8px rgb(20 20 19 / 0.28), 0 2px 5px -4px rgb(20 20 19 / 0.14);
+  color-scheme: light;
+}
+
+/* Claude Light: sidebar hover/active states */
+:root[data-theme='claude-light'] .sidebar :is(button:hover, .tree-row:hover, .tree-file.active) {
+  background: #e8e6dc;
+}
+
+/* Claude Light: modal close hover */
+:root[data-theme='claude-light'] .modal-close:hover {
+  background: #e8e6dc;
+  color: var(--text);
+}

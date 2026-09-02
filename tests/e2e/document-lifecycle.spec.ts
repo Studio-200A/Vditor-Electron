@@ -2003,8 +2003,17 @@ test('resolves external file conflicts without silently overwriting disk changes
       ['monokai-pro-light', 'rgb(255, 255, 255)'],
     ]) {
       await page.evaluate((nextTheme) => {
-        if (nextTheme) document.documentElement.dataset.theme = nextTheme;
-        else delete document.documentElement.dataset.theme;
+        if (nextTheme) {
+          document.documentElement.dataset.theme = nextTheme;
+          document.querySelectorAll<HTMLLinkElement>('link[id^="theme-"]').forEach((link) => {
+            link.disabled = link.id !== `theme-${nextTheme}`;
+          });
+        } else {
+          delete document.documentElement.dataset.theme;
+          document.querySelectorAll<HTMLLinkElement>('link[id^="theme-"]').forEach((link) => {
+            link.disabled = true;
+          });
+        }
       }, theme);
       await expect(overwriteButton).toHaveCSS('color', color);
       await expect(overwriteButton).toHaveCSS(

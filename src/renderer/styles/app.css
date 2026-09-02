@@ -30,129 +30,12 @@
   --top-surface-shadow: 0 5px 12px -8px rgb(0 0 0 / 0.52), 0 2px 5px -4px rgb(0 0 0 / 0.28);
   color-scheme: light;
 }
-:root[data-theme='dark'] {
-  --bg: #17181a;
-  --panel: #202124;
-  --sidebar-surface: #202124;
-  --editor-surface: #18191c;
-  --settings-control-surface: #202124;
-  --panel-2: #292b2f;
-  --hover: #34373c;
-  --text: #e3e5e8;
-  --muted: #9ba0a8;
-  --border: #3b3e44;
-  --accent: #69a2ff;
-  --on-accent: #fff;
-  --brand-accent: #69a2ff;
-  --danger: #ff7777;
-  --top-surface-shadow: 0 5px 13px -7px rgb(0 0 0 / 0.82), 0 2px 6px -4px rgb(0 0 0 / 0.5);
-  color-scheme: dark;
-}
-:root[data-theme='monokai-pro-dark'] {
-  --bg: #2d2a2e;
-  --panel: #2d2a2e;
-  --sidebar-surface: #2d2a2e;
-  --editor-surface: #272428;
-  --settings-control-surface: #2d2a2e;
-  --panel-2: #272428;
-  --hover: #403e41;
-  --text: #fcfcfa;
-  --muted: rgb(252 252 250 / 0.6);
-  --border: #403e41;
-  --accent: #ffd866;
-  --on-accent: #2d2a2e;
-  --brand-accent: #ffd866;
-  --danger: #ff6188;
-  --monokai-code-bg: #403e41;
-  --monokai-input-bg: #221f22;
-  --monokai-h1: #ff6188;
-  --monokai-h2: #ffd866;
-  --monokai-h3: #a9dc76;
-  --monokai-h4: #78dce8;
-  --monokai-h5: #ab9df2;
-  --monokai-h6: #fc9867;
-  --top-surface-shadow: 0 5px 13px -7px rgb(0 0 0 / 0.9), 0 2px 6px -4px rgb(0 0 0 / 0.58);
-  color-scheme: dark;
-}
-:root[data-theme='monokai-pro-light'] {
-  /* Palette from the official Monokai Pro Light VS Code theme (not Filter Sun). */
-  --bg: #faf4f2;
-  --panel: #fefaf9;
-  --sidebar-surface: #ede7e5;
-  --editor-surface: #faf4f2;
-  --settings-control-surface: #fefaf9;
-  --panel-2: #e0dad9;
-  --hover: #d3cdcc;
-  --text: #29242a;
-  /* Muted is ~111 RGB units below sidebar/surface to keep toolbar icons readable,
-     matching classic/claude light contrast. */
-  --muted: #706b6e;
-  --border: #d8d3d1;
-  --accent: #e14775;
-  --on-accent: #faf4f2;
-  --brand-accent: #e14775;
-  --danger: #e14775;
-  --monokai-code-bg: #ede7e5;
-  --monokai-input-bg: #fefaf9;
-  /* Heading colors come from the user's monokai-light-heading.css scheme. */
-  --monokai-h1: #d40045;
-  --monokai-h2: #ff7f00;
-  --monokai-h3: #66b82b;
-  --monokai-h4: #093f86;
-  --monokai-h5: #340c81;
-  --monokai-h6: #373530;
-  --top-surface-shadow: 0 5px 12px -8px rgb(41 36 42 / 0.46), 0 2px 5px -4px rgb(41 36 42 / 0.24);
-  color-scheme: light;
-}
-:root[data-theme='monokai-pro-light'] .modal-close:hover {
-  background: var(--hover);
-  color: var(--text);
-}
-:root[data-theme='claude-light'] {
-  --bg: #faf9f5;
-  --panel: #fff;
-  --sidebar-surface: #f5f4ed;
-  --editor-surface: #faf9f5;
-  --settings-control-surface: #fff;
-  --panel-2: #f5f4ed;
-  --hover: #e8e6dc;
-  --text: #141413;
-  --muted: #73726c;
-  --border: rgb(31 30 29 / 11%);
-  --accent: #d97757;
-  --on-accent: #141413;
-  --brand-accent: #d97757;
-  --danger: #7f2c28;
-  --top-surface-shadow: 0 5px 12px -8px rgb(20 20 19 / 0.28), 0 2px 5px -4px rgb(20 20 19 / 0.14);
-  color-scheme: light;
-}
-:root[data-theme='claude-light'] .sidebar :is(button:hover, .tree-row:hover, .tree-file.active) {
-  background: #e8e6dc;
-}
-:root[data-theme='claude-light'] .modal-close:hover {
-  background: #e8e6dc;
-  color: var(--text);
-}
+/* Theme variables and theme-specific component overrides are in
+   styles/themes/*.css and loaded via <link> tags in index.html.
+   Shared cross-theme overrides (e.g. dark content-theme adaptation)
+   remain at the end of this file. */
 :root:is([data-theme='claude-light'], [data-theme='claude-dark']) button.primary {
   color: #fff;
-}
-:root[data-theme='claude-dark'] {
-  --bg: #141413;
-  --panel: #30302e;
-  --sidebar-surface: #30302e;
-  --editor-surface: #262624;
-  --settings-control-surface: #30302e;
-  --panel-2: #262624;
-  --hover: #3d3d3a;
-  --text: #faf9f5;
-  --muted: #c2c0b6;
-  --border: rgb(222 220 209 / 12%);
-  --accent: #d97757;
-  --on-accent: #141413;
-  --brand-accent: #d97757;
-  --danger: #ee8884;
-  --top-surface-shadow: 0 5px 13px -7px rgb(0 0 0 / 0.82), 0 2px 6px -4px rgb(0 0 0 / 0.5);
-  color-scheme: dark;
 }
 * {
   box-sizing: border-box;
@@ -232,9 +115,6 @@ button.primary {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-:root[data-theme='monokai-pro-dark'] button.primary {
-  color: #2d2a2e;
-}
 button.danger {
   color: var(--danger);
 }
@@ -242,9 +122,6 @@ button.primary.danger {
   color: white;
   background: var(--danger);
   border-color: var(--danger);
-}
-:root[data-theme='monokai-pro-dark'] button.primary.danger {
-  color: white;
 }
 .icon-btn {
   min-width: 30px;
@@ -1145,9 +1022,6 @@ button.primary.danger {
   background: var(--accent);
   color: white;
 }
-:root[data-theme='monokai-pro-dark']::highlight(vditor-desktop-find-active) {
-  color: #2d2a2e;
-}
 .find-row {
   display: flex;
   align-items: center;
@@ -1533,159 +1407,6 @@ html[data-scrollbar-mode='hidden'] .editor-host .vditor-reset table::-webkit-scr
 .editor-host .vditor-preview,
 .editor-host .vditor-reset {
   background-color: var(--editor-surface);
-}
-:root[data-theme='monokai-pro-dark'] .editor-host,
-:root[data-theme='monokai-pro-dark'] .editor-host .vditor-content,
-:root[data-theme='monokai-pro-dark'] .editor-host .vditor-sv,
-:root[data-theme='monokai-pro-dark'] .editor-host .vditor-ir,
-:root[data-theme='monokai-pro-dark'] .editor-host .vditor-wysiwyg,
-:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview,
-:root[data-theme='monokai-pro-dark'] .editor-host .vditor-reset {
-  color: #fcfcfa;
-}
-:root[data-theme='monokai-pro-dark'] input:not([type='checkbox']):not([type='radio']),
-:root[data-theme='monokai-pro-dark'] select,
-:root[data-theme='monokai-pro-dark'] textarea {
-  background-color: var(--monokai-input-bg) !important;
-}
-:root[data-theme='monokai-pro-dark']
-  .editor-host
-  :is(.vditor-ir, .vditor-wysiwyg)
-  [data-type='code-block']
-  pre,
-:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview pre,
-:root[data-theme='monokai-pro-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) code,
-:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview code {
-  background-color: var(--monokai-code-bg);
-}
-:root[data-theme='monokai-pro-dark']
-  .editor-host
-  :is(.vditor-ir, .vditor-wysiwyg)
-  :is(a, .vditor-ir__link),
-:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview a {
-  color: #78dce8;
-}
-:root[data-theme='monokai-pro-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) blockquote,
-:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview blockquote {
-  color: rgb(252 252 250 / 0.6);
-  border-color: #727072;
-}
-:root[data-theme='monokai-pro-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) mark,
-:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview mark {
-  background-color: rgb(255 216 102 / 0.6);
-}
-:root[data-theme='monokai-pro-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) hr,
-:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview hr {
-  border-color: #5b595c;
-}
-:root[data-theme='monokai-pro-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h1, .h1),
-:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview h1 {
-  color: var(--monokai-h1) !important;
-}
-:root[data-theme='monokai-pro-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h2, .h2),
-:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview h2 {
-  color: var(--monokai-h2) !important;
-}
-:root[data-theme='monokai-pro-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h3, .h3),
-:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview h3 {
-  color: var(--monokai-h3) !important;
-}
-:root[data-theme='monokai-pro-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h4, .h4),
-:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview h4 {
-  color: var(--monokai-h4) !important;
-}
-:root[data-theme='monokai-pro-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h5, .h5),
-:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview h5 {
-  color: var(--monokai-h5) !important;
-}
-:root[data-theme='monokai-pro-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h6, .h6),
-:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview h6 {
-  color: var(--monokai-h6) !important;
-}
-:root[data-theme='monokai-pro-dark']
-  .editor-host
-  :is(.vditor-ir, .vditor-wysiwyg)
-  :is(h1, .h1, h2, .h2, h3, .h3, h4, .h4, h5, .h5, h6, .h6)
-  *,
-:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview :is(h1, h2, h3, h4, h5, h6) * {
-  color: inherit !important;
-}
-
-:root[data-theme='monokai-pro-light'] .editor-host,
-:root[data-theme='monokai-pro-light'] .editor-host .vditor-content,
-:root[data-theme='monokai-pro-light'] .editor-host .vditor-sv,
-:root[data-theme='monokai-pro-light'] .editor-host .vditor-ir,
-:root[data-theme='monokai-pro-light'] .editor-host .vditor-wysiwyg,
-:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview,
-:root[data-theme='monokai-pro-light'] .editor-host .vditor-reset {
-  color: #29242a;
-}
-:root[data-theme='monokai-pro-light'] input:not([type='checkbox']):not([type='radio']),
-:root[data-theme='monokai-pro-light'] select,
-:root[data-theme='monokai-pro-light'] textarea {
-  background-color: var(--monokai-input-bg) !important;
-}
-:root[data-theme='monokai-pro-light']
-  .editor-host
-  :is(.vditor-ir, .vditor-wysiwyg)
-  [data-type='code-block']
-  pre,
-:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview pre,
-:root[data-theme='monokai-pro-light'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) code,
-:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview code {
-  background-color: var(--monokai-code-bg);
-}
-:root[data-theme='monokai-pro-light']
-  .editor-host
-  :is(.vditor-ir, .vditor-wysiwyg)
-  :is(a, .vditor-ir__link),
-:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview a {
-  color: #1c8ca8;
-}
-:root[data-theme='monokai-pro-light'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) blockquote,
-:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview blockquote {
-  color: #918c8e;
-  border-color: #bfb9ba;
-}
-:root[data-theme='monokai-pro-light'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) mark,
-:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview mark {
-  background-color: rgb(204 122 10 / 0.35);
-}
-:root[data-theme='monokai-pro-light'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) hr,
-:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview hr {
-  border-color: #d3cdcc;
-}
-:root[data-theme='monokai-pro-light'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h1, .h1),
-:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview h1 {
-  color: var(--monokai-h1) !important;
-}
-:root[data-theme='monokai-pro-light'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h2, .h2),
-:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview h2 {
-  color: var(--monokai-h2) !important;
-}
-:root[data-theme='monokai-pro-light'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h3, .h3),
-:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview h3 {
-  color: var(--monokai-h3) !important;
-}
-:root[data-theme='monokai-pro-light'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h4, .h4),
-:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview h4 {
-  color: var(--monokai-h4) !important;
-}
-:root[data-theme='monokai-pro-light'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h5, .h5),
-:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview h5 {
-  color: var(--monokai-h5) !important;
-}
-:root[data-theme='monokai-pro-light'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h6, .h6),
-:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview h6 {
-  color: var(--monokai-h6) !important;
-}
-:root[data-theme='monokai-pro-light']
-  .editor-host
-  :is(.vditor-ir, .vditor-wysiwyg)
-  :is(h1, .h1, h2, .h2, h3, .h3, h4, .h4, h5, .h5, h6, .h6)
-  *,
-:root[data-theme='monokai-pro-light'] .editor-host .vditor-preview :is(h1, h2, h3, h4, h5, h6) * {
-  color: inherit !important;
 }
 
 /* Ant Design and WeChat content themes are authored for light documents.

@@ -29,11 +29,12 @@ Monokai Pro Dark 和 Monokai Pro Light 是历史实现中的例外：应用 CSS 
 | 主题纯函数 | `src/renderer/ui/theme.ts` | 主题常量（`DARK_THEMES`、`LIGHT_THEMES`、`ALL_THEMES`、`THEME_MODES`）和判定函数（`isDarkTheme`） |
 | 主题控制器纯函数 | `src/renderer/ui/theme-controller.ts` | 主题解析与校验：`resolveEffectiveTheme`、`resolveThemeMode`、`validateDarkTheme`、`validateLightTheme`、`getPreferredCodeTheme`、`resolveContentTheme` |
 | 主题 DOM 操作 | `src/renderer/app.js` | 应用 `data-theme`、切换 Vditor 内容/代码主题、同步状态栏三态主题菜单（调用 `window.__vditorDesktopPureFunctions` 中的纯函数） |
-| 应用视觉变量 | `src/renderer/styles/app.css` | 为六套壳层主题提供 CSS 变量和必要的组件覆盖 |
+| 应用视觉变量 | `src/renderer/styles/app.css` | 布局、通用组件、共享语义变量；`:root` 默认主题变量（classic） |
+| 主题样式文件 | `src/renderer/styles/themes/*.css` | 各主题独立 CSS 文件（dark、claude-light、claude-dark、monokai-pro-light、monokai-pro-dark） |
 | Vditor 边界 | `src/renderer/vditor-adapter.js` | 集中处理 Vditor toolbar、主题菜单和私有 DOM 结构访问 |
 | 行为测试 | `tests/unit/*`、`tests/e2e/*.spec.ts` | 覆盖配置、主题控件、颜色契约、主题切换和真实 Electron 行为 |
 
-应用主题通过 `document.documentElement.dataset.theme` 生效。CSS 使用 `:root[data-theme='...']` 切换变量组；Vditor 实例继续通过 `setTheme(editorTheme, contentTheme, codeTheme, cssPath)` 接收编辑器、内容和代码主题参数。
+应用主题通过 `document.documentElement.dataset.theme` 生效。`index.html` 中为每个非默认主题提供独立的 `<link>` 标签（`disabled` 属性控制启用/禁用），`applyTheme()` 通过切换 `disabled` 属性来启用/禁用主题样式表。Classic 主题变量保留在 `app.css` 的 `:root` 中作为默认值。Vditor 实例继续通过 `setTheme(editorTheme, contentTheme, codeTheme, cssPath)` 接收编辑器、内容和代码主题参数。
 
 ## 3. 当前状态模型
 
@@ -84,7 +85,7 @@ Vditor 内容和代码主题仍各自保存亮暗偏好：`lightCodeTheme` / `da
 
 ### 4.1 基础变量
 
-`src/renderer/styles/app.css` 以 CSS 变量作为应用主题的单一颜色入口：
+`src/renderer/styles/app.css` 的 `:root` 定义 Classic（默认亮色）主题的 CSS 变量，其他主题通过 `src/renderer/styles/themes/*.css` 文件覆盖：
 
 - `--bg`：应用整体背景；
 - `--panel` / `--panel-2`：卡片、输入控件和次级面板；
@@ -96,6 +97,8 @@ Vditor 内容和代码主题仍各自保存亮暗偏好：`lightCodeTheme` / `da
 - `--on-accent`：accent 背景上的默认前景色；
 - `--brand-accent`：品牌或主题强调场景使用的 accent；
 - `--danger`：危险操作颜色。
+
+Monokai Pro 主题额外定义了 `--monokai-code-bg`、`--monokai-input-bg` 和 `--monokai-h1` 至 `--monokai-h6` 等变量，用于编辑器内容可读性修正和标题色。
 
 按钮、焦点环和状态提示应引用语义变量，不应在组件规则中重复写主题专属颜色。
 
