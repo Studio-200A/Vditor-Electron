@@ -382,7 +382,7 @@ webPreferences: {
 3. 加载 `settings` 和 `defaultSettings`
 4. 应用国际化：`applyLocale(locale)`
 5. 绑定所有 DOM 事件：`setupEvents()`
-6. 恢复侧栏宽度和可见性；侧栏在显示时先作为 transform overlay 滑入，结束后才让 Vditor 缩窄，隐藏时同样在滑出结束后再释放编辑区宽度
+6. 恢复侧栏宽度和可见性；侧栏在显示时先作为 transform overlay 滑入，结束后才让 Vditor 缩窄，隐藏时同样在滑出结束后再释放编辑区宽度；拖动右缘时仅实时更新侧栏和应用 chrome，活动 Vditor host 宽度冻结到 mouseup 后再统一落位
 7. 应用演示设置（CSS 变量、缩放）
 8. 解析并应用主题
 9. 恢复工作区（`restoreWorkspace`）
@@ -564,7 +564,7 @@ function mountEditorToolbar(tab) {
 
 | Vditor 事件/回调 | 处理逻辑                                                                     |
 | ---------------- | ---------------------------------------------------------------------------- |
-| `after`          | 验证 DOM 契约、安装资源观察者、绑定 toolbar 事件、挂载工具栏、初始化行号增强 |
+| `after`          | 验证 DOM 契约、安装资源观察者、绑定 toolbar 事件、挂载工具栏、初始化行号增强；长文档仍在构建时不读取 host 高度或 toolbar 几何，交由 ResizeObserver/后续帧完成 |
 | `input(value)`   | `onEditorInput` → 更新脏标记、触发自动保存、刷新查找高亮                     |
 | `blur(value)`    | 更新 `tab.content`                                                           |
 
@@ -969,14 +969,15 @@ function rememberRecent(filePath) {
 #### 侧栏（`app.js` 的 `toggleSidebar()`，`index.html:115-139`）
 
 - **职责：** 左侧可折叠面板，包含文件树视图和大纲视图
-- **实现：** `toggleSidebar()` 以 `sidebar-opening` / `sidebar-closing` / `sidebar-hiding` 表达过渡目标。显示时保持 `.collapsed` 并以绝对定位的完整宽度 sidebar 从左侧 transform 滑入，结束后才回归 flex 布局；隐藏时保持原 flex 占位并 transform 滑出，结束后才添加 `.collapsed`。因此长 Vditor 文档不会在动画每帧重排。Files/Outline tabs 与 titlebar file actions 使用 opacity + transform 进入/退出，避免动画 width、padding 或 gap。
-- **状态与清理：** 稳定态根据 `.collapsed` 判断可见性，过渡中以 `state.settings.sidebarVisible` 作为目标状态，重复操作可反向而不会重启动画。`transitionend` 仅接受 sidebar 自身的 `transform`，220ms timeout 为事件缺失回退；完成后清理过渡类、同步顶部宽度，并只调度一次 SV 行号/空白标记更新。`prefers-reduced-motion` 同时缩短 transition 和 keyframe animation。
+- **实现：** `toggleSidebar()` 以 `sidebar-opening` / `sidebar-closing` / `sidebar-hiding` 表达过渡目标。显示时保持 `.collapsed` 并以绝对定位的完整宽度 sidebar 从左侧 transform 滑入，结束后才回归 flex 布局；隐藏时保持原 flex 占位并 transform 滑出，结束后才添加 `.collapsed`。因此长 Vditor 文档不会在动画每帧重排。`#tabBar`、共享 Vditor toolbar mount 和编辑区（含 Vditor host）在这段时间以 FLIP transform 平滑跟随最终位置，最终 flex 落位时移除 transform；编辑区只用已知 sidebar 宽度计算位移，绝不为测量目标而临时展开 sidebar。Files/Outline tabs 的容器保持静态阴影，使用 clip-path 使可见空间与顶部布局平滑收放，而其按钮使用 opacity + transform 进入/退出；titlebar file actions 采用同样的内容动画，避免动画 width、padding 或 gap。空状态过渡中 `.main-area` 临时使用编辑背景；`#vditorToolbarMount::before` 绘制不参与布局、随 mount FLIP 移动且覆盖 toolbar 与暴露区域的连续表面，真实 toolbar/skeleton 在其上层保留原始边界。隐藏工具栏时 `#windowTitlebar::after` 绘制等价的 2px 阴影边并位于所有 titlebar 子项之下。最终 flex 宽度提交后直接稳定呈现；不缩放文字，也不为渐变复制长文档 DOM。减少动态效果时直接安全落位。
+- **拖动性能：** `setupEvents()` 在 sidebar resize handle 的 mousedown 阻止默认 blur，鼠标移动以 `requestAnimationFrame` 合并宽度写入。只把 `--sidebar-current`、`--top-controls-width` 等变量写到消费它们的 chrome 子树；拖动中以保存的 inline `inset`/`left`/`width`/`transform` 冻结活动 Vditor host，mouseup 恢复后才允许一次实际 editor resize，并重新调度 SV 行号。文件树名称使用原生 CSS 末尾省略，无拖动期间的逐项 canvas 测量。
+- **状态与清理：** 稳定态根据 `.collapsed` 判断可见性，过渡中以 `state.settings.sidebarVisible` 作为目标状态，重复操作可反向而不会重启动画。`transitionend` 仅接受 sidebar 自身的 `transform`，220ms timeout 为事件缺失回退；完成后清理过渡类、取消 Web Animations、同步顶部宽度，并只调度一次 SV 行号/空白标记更新。`prefers-reduced-motion` 同时缩短 transition 和 keyframe animation。
 - **提示：** `setupSidebarTooltips()` 通过事件委托读取 sidebar 内的 `data-tooltip`，与 Markdown 链接共用独立的 `#appTooltip`；文件名、工作区路径和图标操作不再依赖浏览器原生 `title` 提示。
 
 #### 文件树（`app.js` 的 `appendDirectory()` / `showTreeMenu()` / `showWorkspaceTreeMenu()`，`index.html:127-131`）
 
-- **职责：** 懒加载工作区目录树、文件展开状态持久化、文件名省略（canvas 测量）；文件/目录条目右键菜单提供重命名、回收站和在管理器中显示，空白树区域菜单提供切换工作区、新建与打开工作区。
-- **实现：** `appendDirectory()`、`showTreeMenu()`、`showWorkspaceTreeMenu()`、`createExplorerItem()`、`nextUntitledNumber()`、`renameExplorerItem()`、`middleEllipsis()`；新建文件自动创建并打开 `Untitled x.md`，新建目录自动创建 `Untitled x`。文件和目录分别编号；文件还避开当前目录已有 Markdown 文件和已打开标签，目录只避开当前目录已有目录。首次保存或另存为后直接调用 `refreshTree()`，避免自身保存事件被抑制时遗漏新文件。
+- **职责：** 懒加载工作区目录树、文件展开状态持久化、文件名原生末尾省略；文件/目录条目右键菜单提供重命名、回收站和在管理器中显示，空白树区域菜单提供切换工作区、新建与打开工作区。
+- **实现：** `appendDirectory()`、`showTreeMenu()`、`showWorkspaceTreeMenu()`、`createExplorerItem()`、`nextUntitledNumber()`、`renameExplorerItem()`；`.tree-name` 使用 `overflow: hidden`、`text-overflow: ellipsis` 和 `white-space: nowrap`，保持完整名称作为 DOM 文本及 `data-tooltip`，不在 resize 或树刷新时执行脚本测宽。新建文件自动创建并打开 `Untitled x.md`，新建目录自动创建 `Untitled x`。文件和目录分别编号；文件还避开当前目录已有 Markdown 文件和已打开标签，目录只避开当前目录已有目录。首次保存或另存为后直接调用 `refreshTree()`，避免自身保存事件被抑制时遗漏新文件。
 - **过滤：** 仅显示 `fileExplorer.visibleExtensions` 中的扩展名，隐藏以 `.` 开头的文件
 - **资源边界：** `workspaceReadDepth` 在 Files & Session 中以 7–12 滑块持久化（默认 7）。根目录深度为 0，`appendDirectory()` 不读取超过该边界的后代，恢复展开状态同样受限；边界目录显示不可选中的本地化提示，语言切换时文件树会重建。可由 `realpath` 解析的目录链接会携带目标、相对工作区深度与工作区内外状态：内部目标可展开、外部目标灰色不可展开、循环目标被阻止；链接名称使用斜体和下划线，目录图标切换为 Lucide `folder-symlink`。工作区 watcher 使用相同深度且不跟随链接，资源错误只发送一次降级事件并关闭失效 watcher，手动浏览和刷新仍可用。`FileManagerService.listDir()` 会跳过读取过程中消失、失效或无权限的单个条目，不让一个损坏链接阻断整棵树。
 

@@ -136,10 +136,13 @@ Status bar
 - `sidebarVisible` 是侧边栏、顶部文件操作组和第二行 Files/Outline 切换组的单一状态来源。
 - 侧栏使用 transform overlay 而不是宽度动画：显示时 sidebar 覆盖仍为全宽的 Vditor 并在结束后才回归 flex；收起时保留原 flex 占位直到滑出结束，随后才释放编辑区宽度。这避免长文档在动画每帧重排；收起途中左侧的短暂空白是该顺序的预期视觉取舍。
 - `#app.sidebar-transitioning` 标识完整过渡，`sidebar-opening` / `sidebar-closing` 标识 sidebar 的方向，`#app.sidebar-hiding` 保留顶部区域供退出动画，稳定隐藏态才使用 `#app.sidebar-collapsed`。动画中再次切换依据 `sidebarVisible` 的目标状态反向；`transitionend` 和 timeout 回退都必须清理这些临时状态。
+- 过渡前后以 Web Animations API 的 transform 补间 `#tabBar`、`#vditorToolbarMount` 和 `#editorArea` 的视觉位置。编辑区只根据持久化的 sidebar 宽度计算目标位移，不会为了测量而临时展开 sidebar；编辑区和 Vditor host 不会在动画逐帧 resize，结束后才落入最终 flex 宽度并取消补间。Files/Outline tabs 的容器阴影不参与 opacity 动画，容器以 clip-path 收放可见空间；其按钮单独执行 opacity/transform 动画，因此保留显隐反馈而不会在结束时出现阴影透明度、大小或占位跳变。无标签状态在过渡中为 `.main-area` 补与 `#editorArea` 相同的背景；`#vditorToolbarMount::before` 绘制随 FLIP 移动、覆盖 toolbar 与暴露区域的连续底层表面，真实 toolbar/skeleton 位于其上层并保留原始边界。隐藏工具栏时，`#windowTitlebar::after` 用相同方向的 transform 保持标题栏 2px 阴影边与编辑区同步，所有 titlebar 子项保持在该阴影层之上。最终 flex 宽度提交后直接稳定呈现；不缩放文字，也不为渐变复制长文档 DOM。空状态提示及其操作按钮必须 `user-select: none`。
+- 拖动 sidebar 右缘时，mousedown 必须阻止默认 blur；mousemove 仅用 rAF 合并 sidebar/chrome 宽度写入，并把动态 CSS 变量限制到其消费 chrome。活动 Vditor host 暂存并冻结 inline `inset`、`left`、`width`、`transform`，mouseup 才恢复，使长文档最多发生一次最终 reflow；不要将 drag state 或每帧 CSS variable 写到 `#app`，也不要在 drag 期间计算文件名长度。
 - Files/Outline tabs 与 titlebar 文件操作不再过渡尺寸，而以 opacity + transform 显示和隐藏；`prefers-reduced-motion` 同时缩短其 keyframe animation。菜单和快捷键仍可访问文件操作。
 - 标签渲染仍由 `renderTabs()` 负责。每个 `.document-tab` 启用原生 drag-and-drop，拖放时仅重排 `state.tabs`，再调用 `renderTabs()` 和 `persistSession()`；不销毁或重建 Vditor。
-- 每次渲染标签后，活动标签通过 `scrollIntoView()` 保持在横向滚动区可见。
-- 文件树支持工作区内自动编号新建、内联重命名、回收站删除和从空白区右键菜单打开工作区；文件与文件夹分别维护 `Untitled x` 序号，文件序号会避开当前目录和已打开标签中的同名 Markdown 项。
+- 每次渲染标签后，活动标签通过合并后的双 `requestAnimationFrame` 再调用 `scrollIntoView()`，让长文档初始化的样式工作先完成而仍保持横向滚动区可见。
+- Vditor `after` 不同步读取底部 spacer 或工具栏高度；`ResizeObserver`/延后帧负责最终测量，避免在长文档 DOM 初始化回调中制造应用侧全量样式计算。
+- 文件树支持工作区内自动编号新建、内联重命名、回收站删除和从空白区右键菜单打开工作区；文件与文件夹分别维护 `Untitled x` 序号，文件序号会避开当前目录和已打开标签中的同名 Markdown 项。文件名与大纲标题同样使用浏览器原生末尾省略，完整文本保留在 DOM 和 `data-tooltip`，不做 canvas 测宽或中间截断。
 - 工作区 watcher 对干净标签自动重载，对有本地修改的标签显示持久冲突横幅并暂停自动保存；当前机制不是完整的文件一致性或恢复系统。
 
 ## 菜单与平台

@@ -40,8 +40,12 @@ test('creates numbered tabs and shows the empty state after closing all tabs', a
     const { page } = running;
     await expect(page.locator('.document-tab')).toHaveCount(0);
     await expect(page.locator('#noTabs')).toBeVisible();
-    await expect(page.locator('#app')).not.toHaveClass(/toolbar-unavailable/);
     await expect(page.locator('#vditorToolbarMount > .vditor-toolbar')).toBeVisible();
+    await expect(page.locator('#vditorToolbarMount')).toHaveAttribute(
+      'data-toolbar-pending',
+      'false',
+    );
+    await expect(page.locator('#vditorToolbarMount')).toHaveAttribute('aria-busy', 'false');
     await expect
       .poll(() =>
         page
@@ -97,8 +101,11 @@ test('creates numbered tabs and shows the empty state after closing all tabs', a
 
     await page.locator('#addTab').click();
     await expect(page.locator('.document-tab span')).toHaveText(['Untitled 1']);
-    await expect(page.locator('#app')).not.toHaveClass(/toolbar-unavailable/);
     await expect(page.locator('#vditorToolbarMount')).toBeVisible();
+    await expect(page.locator('#vditorToolbarMount')).toHaveAttribute(
+      'data-toolbar-pending',
+      'false',
+    );
     await page.locator('[data-menu="main"]').click();
     await expect(page.locator('.app-menu-popup button', { hasText: 'Close Tab' })).toBeVisible();
     await page.locator('[data-menu="main"]').click();
@@ -223,14 +230,106 @@ test('keeps the editor width stable until a sidebar opens', async () => {
     await expect(page.locator('#sidebar')).toHaveClass(/collapsed/);
     const editorWidth = (await page.locator('#editorArea').boundingBox())?.width;
     if (!editorWidth) throw new Error('Editor has no measurable width');
+    const before = await page.evaluate(() => {
+      const left = (selector: string) =>
+        document.querySelector(selector)?.getBoundingClientRect().left;
+      return {
+        tabBar: left('#tabBar'),
+        toolbar: left('#vditorToolbarMount'),
+        editor: left('#editorArea'),
+      };
+    });
 
     await page.locator('#toggleSidebar').click();
     await expect(page.locator('#app')).toHaveClass(/sidebar-transitioning/);
     await page.waitForTimeout(50);
     expect((await page.locator('#editorArea').boundingBox())?.width).toBeCloseTo(editorWidth, 0);
+    await expect(page.locator('.toolbar-sidebar-tabs')).toHaveCSS('opacity', '1');
+    await expect(page.locator('.toolbar-sidebar-tabs')).not.toHaveCSS('clip-path', 'none');
+    await expect
+      .poll(() =>
+        page
+          .locator('.toolbar-sidebar-tabs button')
+          .first()
+          .evaluate((node) => Number(getComputedStyle(node).opacity)),
+      )
+      .toBeLessThan(1);
+    const during = await page.evaluate(() => {
+      const left = (selector: string) =>
+        document.querySelector(selector)?.getBoundingClientRect().left;
+      return {
+        tabBar: left('#tabBar'),
+        toolbar: left('#vditorToolbarMount'),
+        editor: left('#editorArea'),
+      };
+    });
 
     await expect(page.locator('#app')).not.toHaveClass(/sidebar-transitioning/);
+    await expect(page.locator('.toolbar-sidebar-tabs')).toHaveCSS('clip-path', 'none');
     expect((await page.locator('#editorArea').boundingBox())?.width || 0).toBeLessThan(editorWidth);
+    const after = await page.evaluate(() => {
+      const left = (selector: string) =>
+        document.querySelector(selector)?.getBoundingClientRect().left;
+      return {
+        tabBar: left('#tabBar'),
+        toolbar: left('#vditorToolbarMount'),
+        editor: left('#editorArea'),
+      };
+    });
+    for (const area of ['tabBar', 'toolbar', 'editor'] as const) {
+      if (before[area] === undefined || during[area] === undefined || after[area] === undefined) {
+        throw new Error(`${area} has no measurable position`);
+      }
+      expect(during[area]).toBeGreaterThan(before[area]);
+      // DOM reads can occur on the terminal compositor frame; reaching the
+      // final coordinate still proves the element moved from its start.
+      expect(during[area]).toBeLessThanOrEqual(after[area] + 1);
+    }
+
+    await page.locator('#toggleSidebar').click();
+    await expect(page.locator('#app')).toHaveClass(/sidebar-transitioning/);
+    await page.waitForTimeout(50);
+    await expect(page.locator('.toolbar-sidebar-tabs')).toHaveCSS('opacity', '1');
+    await expect(page.locator('.toolbar-sidebar-tabs')).not.toHaveCSS('clip-path', 'none');
+    await expect
+      .poll(() =>
+        page
+          .locator('.toolbar-sidebar-tabs button')
+          .first()
+          .evaluate((node) => Number(getComputedStyle(node).opacity)),
+      )
+      .toBeLessThan(1);
+    const duringClose = await page.evaluate(() => {
+      const left = (selector: string) =>
+        document.querySelector(selector)?.getBoundingClientRect().left;
+      return {
+        tabBar: left('#tabBar'),
+        toolbar: left('#vditorToolbarMount'),
+        editor: left('#editorArea'),
+      };
+    });
+    await expect(page.locator('#app')).toHaveClass(/sidebar-collapsed/);
+    await expect(page.locator('.toolbar-sidebar-tabs')).toHaveCSS('clip-path', 'none');
+    const closed = await page.evaluate(() => {
+      const left = (selector: string) =>
+        document.querySelector(selector)?.getBoundingClientRect().left;
+      return {
+        tabBar: left('#tabBar'),
+        toolbar: left('#vditorToolbarMount'),
+        editor: left('#editorArea'),
+      };
+    });
+    for (const area of ['tabBar', 'toolbar', 'editor'] as const) {
+      if (
+        after[area] === undefined ||
+        duringClose[area] === undefined ||
+        closed[area] === undefined
+      ) {
+        throw new Error(`${area} has no measurable position`);
+      }
+      expect(duringClose[area]).toBeLessThanOrEqual(after[area] + 1);
+      expect(duringClose[area]).toBeGreaterThanOrEqual(closed[area] - 1);
+    }
   } finally {
     await closeApp(running);
   }
@@ -250,6 +349,33 @@ test('reverses an in-progress sidebar transition', async () => {
     await expect(page.locator('#sidebar')).not.toHaveClass(/collapsed/);
     await expect(toggle).toHaveAttribute('aria-pressed', 'true');
     await expect.poll(() => readSetting(testRoot, 'workspace', 'sidebarVisible')).toBe(true);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps the empty editor surface filled while the sidebar closes', async () => {
+  const running = await launchApp({ sidebarVisible: true });
+  try {
+    const { page } = running;
+    await expect(page.locator('#noTabs')).toBeVisible();
+    await page.locator('#toggleSidebar').click();
+    await expect(page.locator('#app')).toHaveClass(/sidebar-transitioning/);
+    await page.waitForTimeout(50);
+    expect(
+      await page.evaluate(() => {
+        const main = document.querySelector('.main-area');
+        const sidebar = document.querySelector('#sidebar');
+        return (
+          main &&
+          sidebar &&
+          getComputedStyle(main).backgroundColor === getComputedStyle(sidebar).backgroundColor
+        );
+      }),
+    ).toBe(true);
+    await expect(page.locator('#noTabs')).toHaveCSS('user-select', 'none');
+    await expect(page.locator('#emptyNewFile')).toHaveCSS('user-select', 'none');
+    await expect(page.locator('#app')).toHaveClass(/sidebar-collapsed/);
   } finally {
     await closeApp(running);
   }
@@ -321,6 +447,8 @@ test('opens the View > Layout submenu and toggles the unified toolbar', async ()
     await expect(page.locator('#app')).toHaveClass(/toolbar-hidden/);
     await expect(page.locator('header.titlebar .toolbar-sidebar-tabs')).toBeVisible();
     await expect(page.locator('#vditorToolbarMount')).toBeHidden();
+    await page.locator('#newFile').click();
+    await expect(page.locator('.document-tab')).toHaveCount(2);
     const titlebarBox = await page.locator('#windowTitlebar').boundingBox();
     const editorBox = await page.locator('#editorArea').boundingBox();
     expect(editorBox?.y || 0).toBeCloseTo((titlebarBox?.y || 0) + (titlebarBox?.height || 0), 0);
@@ -332,31 +460,11 @@ test('opens the View > Layout submenu and toggles the unified toolbar', async ()
   }
 });
 
-test('keeps wrapped toolbar menus out of editor geometry and retains the hidden-toolbar shadow', async () => {
+test('animates the hidden-toolbar titlebar shadow without blocking titlebar controls', async () => {
   const running = await launchApp({ sidebarVisible: true });
   try {
-    const { app, page } = running;
+    const { page } = running;
     await createNewTab(page);
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(760, 700));
-    await expect(page.locator('#app')).toHaveClass(/toolbar-wrapped/);
-    const codeTheme = page.locator('#vditorToolbarMount button[data-type="code-theme"]');
-    const geometry = () =>
-      page.evaluate(() => {
-        const toolbar = document.querySelector('#vditorToolbarMount > .vditor-toolbar');
-        const main = document.querySelector('.main-area');
-        if (!toolbar || !main) throw new Error('Toolbar layout is unavailable');
-        return {
-          toolbarHeight: toolbar.getBoundingClientRect().height,
-          mainTop: main.getBoundingClientRect().top,
-          mainPaddingTop: getComputedStyle(main).paddingTop,
-        };
-      });
-    const beforeMenu = await geometry();
-
-    await codeTheme.click();
-    await expect(page.locator('#vditorToolbarMount .vditor-hint:visible')).toHaveCount(1);
-    expect(await geometry()).toEqual(beforeMenu);
-
     const layoutMenu = () =>
       page.locator('.app-menu-popup:not(.submenu) button.has-submenu', { hasText: 'Layout' });
     await page.locator('[data-menu="main"]').click();
@@ -370,12 +478,16 @@ test('keeps wrapped toolbar menus out of editor geometry and retains the hidden-
           height: Number.parseFloat(style.height),
           left: Number.parseFloat(style.left),
           shadow: style.boxShadow,
+          animation: style.animationName,
+          background: style.backgroundColor,
+          borderBottomWidth: Number.parseFloat(style.borderBottomWidth),
+          pointerEvents: style.pointerEvents,
         };
       });
     await expect
       .poll(async () => {
         const shadow = await titlebarShadow();
-        return shadow.shadow !== 'none' && shadow.shadow !== '' && shadow.height > 30;
+        return shadow.shadow !== 'none' && shadow.shadow !== '' && shadow.height === 2;
       })
       .toBe(true);
     const visibleSidebarShadow = await titlebarShadow();
@@ -383,11 +495,44 @@ test('keeps wrapped toolbar menus out of editor geometry and retains the hidden-
       .locator('#sidebar')
       .evaluate((node) => node.getBoundingClientRect().width);
     expect(visibleSidebarShadow.left).toBeCloseTo(sidebarWidth, 0);
+    expect(visibleSidebarShadow.borderBottomWidth).toBeGreaterThan(0);
+    expect(visibleSidebarShadow.pointerEvents).toBe('none');
+    expect(visibleSidebarShadow.background).toBe(
+      await page
+        .locator('#windowTitlebar')
+        .evaluate((node) => getComputedStyle(node).backgroundColor),
+    );
+
+    await page.locator('#toggleSidebar').click();
+    await expect(page.locator('#app')).toHaveClass(/sidebar-transitioning/);
+    await page.waitForTimeout(50);
+    expect((await titlebarShadow()).animation).toBe('sidebar-titlebar-shadow-exit');
+    await expect(page.locator('#app')).toHaveClass(/sidebar-collapsed/);
+    await expect.poll(async () => (await titlebarShadow()).left).toBe(0);
+    expect((await titlebarShadow()).height).toBe(2);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps window controls operable after hiding the toolbar in an empty workspace', async () => {
+  const running = await launchApp({ sidebarVisible: true });
+  try {
+    const { page } = running;
+    await expect(page.locator('#noTabs')).toBeVisible();
+    const layoutMenu = () =>
+      page.locator('.app-menu-popup:not(.submenu) button.has-submenu', { hasText: 'Layout' });
+    await page.locator('[data-menu="main"]').click();
+    await layoutMenu().click();
+    await page.locator('.app-menu-popup.submenu button', { hasText: 'Show Toolbar' }).click();
+    await expect(page.locator('#app')).toHaveClass(/toolbar-hidden/);
 
     await page.locator('#toggleSidebar').click();
     await expect(page.locator('#app')).toHaveClass(/sidebar-collapsed/);
-    await expect.poll(async () => (await titlebarShadow()).left).toBe(0);
-    expect((await titlebarShadow()).height).toBeGreaterThan(30);
+    await page.locator('#windowMaximize').click();
+    await expect(page.locator('body')).toHaveClass(/window-maximized/);
+    await page.locator('#windowMaximize').click();
+    await expect(page.locator('body')).not.toHaveClass(/window-maximized/);
   } finally {
     await closeApp(running);
   }
@@ -444,11 +589,7 @@ test('keeps the sidebar tab boundary stable while toggling a wrapped toolbar acr
 
         await toggleToolbar();
         await expect(page.locator('#app')).toHaveClass(/toolbar-hidden/);
-        await expect
-          .poll(() =>
-            page.locator('#app').evaluate((node) => node.classList.contains('toolbar-wrapped')),
-          )
-          .toBe(false);
+        await expect(page.locator('.main-area')).toHaveCSS('padding-top', '0px');
         expect(await readBoundary()).toEqual(visible);
 
         await toggleToolbar();
@@ -457,12 +598,29 @@ test('keeps the sidebar tab boundary stable while toggling a wrapped toolbar acr
     };
 
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1200, 700));
-    await expect(page.locator('#app')).not.toHaveClass(/toolbar-wrapped/);
+    await expect(page.locator('.main-area')).toHaveCSS('padding-top', '0px');
     await assertStableBoundaryAcrossThemes();
 
     await page.locator('[data-menu="main"]').click();
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(760, 700));
-    await expect(page.locator('#app')).toHaveClass(/toolbar-wrapped/);
+    await expect
+      .poll(() =>
+        page
+          .locator('.main-area')
+          .evaluate((node) => Number.parseFloat(getComputedStyle(node).paddingTop)),
+      )
+      .toBeGreaterThan(0);
+    await expect
+      .poll(() =>
+        page.locator('#vditorToolbarMount').evaluate((node) => {
+          const main = document.querySelector('.main-area');
+          return (
+            main instanceof HTMLElement &&
+            node.style.getPropertyValue('--toolbar-wrap-height') === main.style.paddingTop
+          );
+        }),
+      )
+      .toBe(true);
     await assertStableBoundaryAcrossThemes();
   } finally {
     await closeApp(running);
@@ -1355,7 +1513,10 @@ test('filters and remembers code-block themes separately for light and dark mode
   try {
     const { page, testRoot } = running;
     await createNewTab(page);
-    await expect(page.locator('.editor-host.active')).toHaveAttribute('data-editor-ready', 'true');
+    await expect(page.locator('#vditorToolbarMount')).toHaveAttribute(
+      'data-toolbar-pending',
+      'false',
+    );
     const codeThemeButton = (name: RegExp) =>
       page
         .locator('#vditorToolbarMount button[data-type="code-theme"]')

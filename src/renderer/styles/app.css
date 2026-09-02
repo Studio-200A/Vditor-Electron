@@ -313,6 +313,31 @@ button.primary.danger {
   display: flex;
   align-items: flex-start;
   overflow: visible;
+  position: relative;
+}
+#app.sidebar-transitioning .vditor-toolbar-mount::before {
+  /* Draw one surface beneath the toolbar and exposed strip. Keeping the
+     toolbar's own shadow would leave its right-side shadow edge visible at
+     the join; 37px matches Vditor's real toolbar baseline height. */
+  content: '';
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  left: 0;
+  width: calc(100% + var(--sidebar-current, 260px));
+  height: calc(37px + var(--toolbar-wrap-height, 0px));
+  pointer-events: none;
+  background: var(--sidebar-surface);
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--top-surface-shadow);
+}
+#app.sidebar-transitioning .vditor-toolbar-mount > .vditor-toolbar,
+#app.sidebar-transitioning .vditor-toolbar-mount .toolbar-skeleton {
+  position: relative;
+  z-index: 1;
+  background-clip: padding-box;
+  border-bottom-color: transparent;
+  box-shadow: none;
 }
 .toolbar-skeleton {
   width: 100%;
@@ -454,15 +479,40 @@ button.primary.danger {
   box-shadow: none;
 }
 #app.toolbar-hidden .window-titlebar::after {
+  /* Keep this visual-only shadow outside the interactive titlebar surface.
+     The real titlebar retains its background, border, buttons, and drag area. */
   content: '';
   position: absolute;
-  top: 0;
+  top: 36px;
   right: 0;
-  bottom: 0;
   left: var(--sidebar-current, 260px);
   z-index: 1;
-  box-shadow: var(--top-surface-shadow);
+  height: 2px;
+  background: var(--sidebar-surface);
+  border-bottom: 1px solid var(--border);
+  box-shadow:
+    var(--top-surface-shadow),
+    0 8px 16px -10px rgb(0 0 0 / 0.22);
+  clip-path: inset(-20px 0 -20px 0);
+  -webkit-app-region: no-drag;
   pointer-events: none;
+}
+#app.toolbar-hidden .window-titlebar > * {
+  position: relative;
+  z-index: 2;
+}
+#app.toolbar-hidden
+  .window-titlebar
+  :is(.app-menu-bar, .titlebar-file-actions, .tabbar, .window-controls) {
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+}
+#app.sidebar-transitioning:not(.sidebar-collapsed):not(.sidebar-hiding).toolbar-hidden
+  .window-titlebar::after {
+  animation: sidebar-titlebar-shadow-enter 0.16s ease both;
+}
+#app.sidebar-transitioning.sidebar-hiding.toolbar-hidden .window-titlebar::after {
+  animation: sidebar-titlebar-shadow-exit 0.16s ease both;
 }
 #app.sidebar-collapsed.toolbar-hidden .window-titlebar::after {
   left: 0;
@@ -647,6 +697,8 @@ button.primary.danger {
   min-width: 0;
   flex: 1 1 auto;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .tree-rename-input {
   min-width: 0;
@@ -808,22 +860,21 @@ button.primary.danger {
   cursor: col-resize;
   z-index: 5;
 }
-.resizing {
-  cursor: col-resize;
-  user-select: none;
-}
-.resizing .sidebar,
-.resizing .titlebar,
-.resizing .titlebar-file-actions,
-.resizing .toolbar-sidebar-tabs {
+.sidebar-resizing {
   transition: none;
 }
 .main-area {
+  position: relative;
   min-width: 0;
-  padding-top: var(--toolbar-wrap-height, 0px);
+  padding-top: 0;
   flex: 1;
   display: flex;
   flex-direction: column;
+}
+#app.sidebar-transitioning .main-area:has(#noTabs:not(.hidden)) {
+  /* The empty editor is translated while its flex width is held stable.
+     Match the exposed main-area strip until the final width is applied. */
+  background: var(--sidebar-surface);
 }
 .tabbar {
   height: 38px;
@@ -1211,6 +1262,12 @@ button.primary.danger {
   gap: 18px;
   color: var(--muted);
   font-size: 18px;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.no-tabs button {
+  -webkit-user-select: none;
+  user-select: none;
 }
 .no-tabs-actions {
   display: flex;
@@ -1453,16 +1510,16 @@ html[data-scrollbar-mode='hidden'] .editor-host .vditor-reset table::-webkit-scr
   opacity: 0;
   pointer-events: none;
 }
-#app.toolbar-preview-active .vditor-toolbar__item {
+#vditorToolbarMount.toolbar-preview-active .vditor-toolbar__item {
   pointer-events: none;
 }
-#app.toolbar-preview-active .vditor-toolbar__item .vditor-tooltipped,
-#app.toolbar-preview-active .vditor-toolbar__item .vditor-tooltipped:hover,
-#app.toolbar-preview-active .vditor-toolbar__item .vditor-tooltipped:focus,
-#app.toolbar-preview-active .vditor-toolbar__item .vditor-menu--current,
-#app.toolbar-preview-active .vditor-toolbar__item button,
-#app.toolbar-preview-active .vditor-toolbar__item button:hover,
-#app.toolbar-preview-active .vditor-toolbar__item button:focus {
+#vditorToolbarMount.toolbar-preview-active .vditor-toolbar__item .vditor-tooltipped,
+#vditorToolbarMount.toolbar-preview-active .vditor-toolbar__item .vditor-tooltipped:hover,
+#vditorToolbarMount.toolbar-preview-active .vditor-toolbar__item .vditor-tooltipped:focus,
+#vditorToolbarMount.toolbar-preview-active .vditor-toolbar__item .vditor-menu--current,
+#vditorToolbarMount.toolbar-preview-active .vditor-toolbar__item button,
+#vditorToolbarMount.toolbar-preview-active .vditor-toolbar__item button:hover,
+#vditorToolbarMount.toolbar-preview-active .vditor-toolbar__item button:focus {
   color: var(--disabled-control-color) !important;
   cursor: default !important;
   background-color: transparent !important;
@@ -3009,7 +3066,7 @@ body.confirm-card-dragging {
   border-right: 1px solid var(--border);
   -webkit-app-region: no-drag;
 }
-#app {
+.toolbar-sidebar-tabs {
   --top-controls-width: 370px;
 }
 .titlebar-file-actions .titlebar-sidebar-toggle {
@@ -3262,8 +3319,12 @@ body[data-platform='darwin'] .modal {
   pointer-events: none;
 }
 #app.sidebar-transitioning:not(.sidebar-collapsed):not(.sidebar-hiding) .toolbar-sidebar-tabs {
-  transform-origin: left center;
-  animation: sidebar-tabs-enter 0.16s ease both;
+  animation: sidebar-tabs-space-enter 0.16s ease both;
+}
+#app.sidebar-transitioning:not(.sidebar-collapsed):not(.sidebar-hiding)
+  .toolbar-sidebar-tabs
+  button {
+  animation: sidebar-tab-content-enter 0.16s ease both;
 }
 #app.sidebar-transitioning:not(.sidebar-collapsed):not(.sidebar-hiding)
   .titlebar-file-actions
@@ -3271,15 +3332,33 @@ body[data-platform='darwin'] .modal {
   animation: sidebar-action-enter 0.16s ease both;
 }
 #app.sidebar-transitioning.sidebar-hiding .toolbar-sidebar-tabs {
-  transform-origin: left center;
-  animation: sidebar-tabs-exit 0.16s ease both;
+  animation: sidebar-tabs-space-exit 0.16s ease both;
+}
+#app.sidebar-transitioning.sidebar-hiding .toolbar-sidebar-tabs button {
+  animation: sidebar-tab-content-exit 0.16s ease both;
 }
 #app.sidebar-transitioning.sidebar-hiding
   .titlebar-file-actions
   .icon-btn:not(.titlebar-sidebar-toggle) {
   animation: sidebar-action-exit 0.16s ease both;
 }
-@keyframes sidebar-tabs-enter {
+@keyframes sidebar-tabs-space-enter {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+@keyframes sidebar-tabs-space-exit {
+  from {
+    clip-path: inset(0 0 0 0);
+  }
+  to {
+    clip-path: inset(0 100% 0 0);
+  }
+}
+@keyframes sidebar-tab-content-enter {
   from {
     opacity: 0;
     transform: translateX(-12px);
@@ -3299,7 +3378,7 @@ body[data-platform='darwin'] .modal {
     transform: translateX(0);
   }
 }
-@keyframes sidebar-tabs-exit {
+@keyframes sidebar-tab-content-exit {
   from {
     opacity: 1;
     transform: translateX(0);
@@ -3319,6 +3398,22 @@ body[data-platform='darwin'] .modal {
     transform: translateX(-7px);
   }
 }
+@keyframes sidebar-titlebar-shadow-enter {
+  from {
+    transform: translateX(calc(0px - var(--sidebar-current, 260px)));
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes sidebar-titlebar-shadow-exit {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(calc(0px - var(--sidebar-current, 260px)));
+  }
+}
 .app-menu-popup button:disabled {
   color: color-mix(in srgb, var(--muted) 55%, transparent);
   cursor: default;
@@ -3335,8 +3430,16 @@ body[data-platform='darwin'] .modal {
   .toolbar-sidebar-tabs {
     transition-duration: 1ms !important;
   }
-  .toolbar-sidebar-tabs,
   .titlebar-file-actions .icon-btn:not(.titlebar-sidebar-toggle) {
+    animation-duration: 1ms !important;
+  }
+  .toolbar-sidebar-tabs button {
+    animation-duration: 1ms !important;
+  }
+  .toolbar-sidebar-tabs {
+    animation-duration: 1ms !important;
+  }
+  #app.toolbar-hidden .window-titlebar::after {
     animation-duration: 1ms !important;
   }
 }

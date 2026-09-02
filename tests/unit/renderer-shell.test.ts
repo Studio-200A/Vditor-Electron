@@ -372,13 +372,14 @@ describe('renderer shell', () => {
     expect(css).toMatch(/\.tree-row\.expanded \+ \.tree-children\s*\{[^}]*display:\s*block/s);
   });
 
-  it('keeps explorer controls fixed and shortens names in the middle', () => {
+  it('keeps explorer controls fixed and shortens names at the available width', () => {
     expect(css).toMatch(/\.tree\s*\{[^}]*overflow-x:\s*hidden/s);
     expect(css).toMatch(/\.chevron\s*\{[^}]*flex:\s*0 0 12px/s);
-    expect(css).toMatch(/\.tree-name\s*\{[^}]*flex:\s*1 1 auto/s);
-    expect(rendererScript).toContain('function middleEllipsis');
-    expect(rendererScript).toContain("const ellipsis = '...'");
-    expect(rendererScript).toContain('name.dataset.fullName');
+    expect(css).toMatch(
+      /\.tree-name\s*\{[^}]*flex:\s*1 1 auto[^}]*text-overflow:\s*ellipsis[^}]*white-space:\s*nowrap/s,
+    );
+    expect(rendererScript).not.toContain('function middleEllipsis');
+    expect(rendererScript).not.toContain('data-full-name');
   });
 
   it('labels settings navigation with localized text and category icons', () => {
@@ -690,7 +691,9 @@ describe('renderer shell', () => {
     expect(css).toMatch(
       /\.toolbar-skeleton\s*\{[^}]*border-bottom:\s*1px solid var\(--border\)[^}]*box-shadow:\s*var\(--top-surface-shadow\)/s,
     );
-    expect(css).not.toContain('#app.toolbar-wrapped .toolbar-sidebar-tabs');
+    expect(css).toMatch(
+      /#app\.sidebar-transitioning \.vditor-toolbar-mount::before\s*\{[^}]*box-shadow:\s*var\(--top-surface-shadow\)/s,
+    );
   });
 
   it('prevents accidental text selection in settings while keeping fields selectable', () => {

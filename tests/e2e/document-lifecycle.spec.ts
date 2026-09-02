@@ -372,9 +372,12 @@ test('shows only the workspace name and refresh action in the explorer header', 
     await topFile.locator('.tree-name').hover();
     await expect(running.page.locator('#appTooltip')).toBeVisible();
     await expect(running.page.locator('#appTooltip')).toHaveText(longFileName);
-    await expect
-      .poll(() => topFile.locator('.tree-name').textContent())
-      .toMatch(/^abc.+\.\.\..+\.md$/);
+    await expect(topFile.locator('.tree-name')).toHaveText(longFileName);
+    await expect(topFile.locator('.tree-name')).toHaveCSS('text-overflow', 'ellipsis');
+    await expect(topFile.locator('.tree-name')).toHaveCSS('white-space', 'nowrap');
+    expect(
+      await topFile.locator('.tree-name').evaluate((node) => node.scrollWidth > node.clientWidth),
+    ).toBe(true);
     expect(
       await treeRows.evaluateAll((rows) =>
         rows.every((row) => !row.draggable && !row.hasAttribute('draggable')),
@@ -626,9 +629,13 @@ test('saves trusted tab content while the rebuilt editor is not ready', async ()
       .poll(() => fs.readFileSync(filePath, 'utf8').trimEnd())
       .toBe('Trusted content before rebuild');
     await expect(page.locator('.document-tab.active .dirty')).toBeHidden();
-    await expect(page.locator('.editor-host.active')).toHaveAttribute('data-editor-ready', 'true', {
-      timeout: 3000,
-    });
+    await expect(page.locator('#vditorToolbarMount')).toHaveAttribute(
+      'data-toolbar-pending',
+      'false',
+      {
+        timeout: 3000,
+      },
+    );
     await expect(page.locator('.editor-host.active .vditor-wysiwyg')).toBeVisible();
   } finally {
     await closeApp(running);
@@ -671,8 +678,11 @@ test('keeps the shared toolbar out of the editor while a rebuilt editor is not r
     await expect(pendingToolbar).toBeHidden();
     await expect(pendingToolbar).toHaveCSS('pointer-events', 'none');
     await expect(page.locator('#vditorToolbarMount > .vditor-toolbar')).toHaveCount(0);
-    await expect(page.locator('#app')).toHaveClass(/toolbar-unavailable/);
     await expect(page.locator('#vditorToolbarMount')).toBeVisible();
+    await expect(page.locator('#vditorToolbarMount')).toHaveAttribute(
+      'data-toolbar-pending',
+      'true',
+    );
     await expect(page.locator('#vditorToolbarMount')).toHaveAttribute('aria-busy', 'true');
     await expect(page.locator('#toolbarSkeleton')).toBeVisible();
     await expect(page.locator('#toolbarSkeleton button, #toolbarSkeleton [tabindex]')).toHaveCount(
@@ -687,7 +697,10 @@ test('keeps the shared toolbar out of the editor while a rebuilt editor is not r
 
     const sharedToolbar = page.locator('#vditorToolbarMount > .vditor-toolbar');
     await expect(sharedToolbar).toBeVisible({ timeout: 3000 });
-    await expect(page.locator('#app')).not.toHaveClass(/toolbar-unavailable/);
+    await expect(page.locator('#vditorToolbarMount')).toHaveAttribute(
+      'data-toolbar-pending',
+      'false',
+    );
     await expect(page.locator('#vditorToolbarMount')).toHaveAttribute('aria-busy', 'false');
     await expect(page.locator('#vditorToolbarMount')).toBeVisible();
     await expect(page.locator('#toolbarSkeleton')).toBeHidden();

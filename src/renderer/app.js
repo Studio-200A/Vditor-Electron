@@ -97,9 +97,8 @@
   let settingsCloseTimer;
   let sidebarTransitionTimer;
   let sidebarTransitionEndHandler;
+  let sidebarLayoutAnimations = [];
   let confirmResolver;
-  let treeNameFrame;
-  let treeNameMeasureContext;
   let findMatches = [];
   let findIndex = -1;
   let findQuery = '';
@@ -108,6 +107,8 @@
   let tabDragPointerId = null;
   let tabDragGhost = null;
   let tabDragMoved = false;
+  let activeTabScrollFrame = null;
+  let toolbarWrapHeightFrame = null;
   let hoveredDocumentLink = null;
   let hoveredSidebarTooltip = null;
   let editorSelectionActive = false;
@@ -282,10 +283,9 @@
     return state.tabs.find((tab) => tab.id === state.activeId) || null;
   }
 
-  function syncToolbarAvailability() {
-    const app = $('#app');
+  function syncToolbarAvailability(shouldSyncWrapHeight = true) {
     const mount = $('#vditorToolbarMount');
-    if (!app || !mount) return;
+    if (!mount) return;
     const owner = activeTab() || state.toolbarPreview;
     const available = Boolean(
       owner?.ready && owner.toolbar && owner.toolbar.parentElement === mount,
@@ -293,10 +293,9 @@
     // Vditor inserts its toolbar into the editor host before invoking after().
     // Keep a non-interactive Desktop skeleton in the shared row until Desktop
     // owns that node, so the editor geometry never jumps during the hand-off.
-    app.classList.toggle('toolbar-unavailable', !available);
     mount.dataset.toolbarPending = String(!available);
     mount.setAttribute('aria-busy', String(!available));
-    syncToolbarWrapHeight();
+    if (shouldSyncWrapHeight) syncToolbarWrapHeight();
   }
 
   function destroyToolbarPreview() {
@@ -560,42 +559,6 @@
   function treeIcon(entry) {
     const icon = entry.type === 'directory' ? (entry.link ? 'folder-symlink' : 'folder') : 'file';
     return `<span class="tree-entry-icon tree-entry-icon-${icon}" aria-hidden="true"></span>`;
-  }
-
-  function middleEllipsis(value, availableWidth, style) {
-    if (!treeNameMeasureContext) {
-      treeNameMeasureContext = document.createElement('canvas').getContext('2d');
-    }
-    if (!treeNameMeasureContext || availableWidth <= 0) return value;
-    treeNameMeasureContext.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-    const measure = (text) => treeNameMeasureContext.measureText(text).width;
-    if (measure(value) <= availableWidth) return value;
-    const characters = Array.from(value);
-    const ellipsis = '...';
-    for (let kept = characters.length - 1; kept > 1; kept -= 1) {
-      const leading = Math.ceil(kept / 2);
-      const trailing = Math.floor(kept / 2);
-      const candidate = `${characters.slice(0, leading).join('')}${ellipsis}${characters
-        .slice(characters.length - trailing)
-        .join('')}`;
-      if (measure(candidate) <= availableWidth) return candidate;
-    }
-    return ellipsis;
-  }
-
-  function updateTreeNameEllipses() {
-    treeNameFrame = null;
-    $$('.tree-name', $('#fileTree')).forEach((name) => {
-      const fullName = name.dataset.fullName || '';
-      name.textContent = fullName;
-      if (!name.clientWidth) return;
-      name.textContent = middleEllipsis(fullName, name.clientWidth, getComputedStyle(name));
-    });
-  }
-
-  function scheduleTreeNameEllipses() {
-    if (treeNameFrame) return;
-    treeNameFrame = requestAnimationFrame(updateTreeNameEllipses);
   }
 
   function showMessage(message, error = false) {
@@ -958,8 +921,12 @@
 
   function observeEditorBottomSpacer(tab) {
     tab.bottomSpacerObserver?.disconnect();
-    updateEditorBottomSpacer(tab);
-    if (typeof ResizeObserver !== 'function') return;
+    if (typeof ResizeObserver !== 'function') {
+      updateEditorBottomSpacer(tab);
+      return;
+    }
+    // ResizeObserver delivers the initial host size after layout. Avoid reading
+    // clientHeight while Vditor is still completing its long-document setup.
     tab.bottomSpacerObserver = new ResizeObserver(() => updateEditorBottomSpacer(tab));
     tab.bottomSpacerObserver.observe(tab.host);
   }
@@ -1416,18 +1383,17 @@
         const currentAppTheme = document.documentElement.dataset.theme || state.settings.theme;
         syncCodeThemeControls(isDarkTheme(currentAppTheme), state.settings.codeTheme);
         if (tab.id === state.activeId || tab.toolbarPreview) mountEditorToolbar(tab);
-        // Keep the host toolbar hidden until it has been handed to the shared
-        // application toolbar. This closes the transient state where Vditor
-        // has finished its DOM work but Desktop has not finished taking over.
-        tab.host.dataset.editorReady = 'true';
-        syncToolbarAvailability();
+        // Vditor may still be mutating the new document here. Its toolbar move
+        // is observed below, so defer measuring it until layout settles instead
+        // of forcing a full-document style calculation in this callback.
+        syncToolbarAvailability(false);
         if (tab.toolbarPreview) {
           disableToolbarPreview(tab);
           syncToolbarWrapHeight();
           return;
         }
         renderTabs();
-        updateActiveUI();
+        updateActiveUI(false, false);
         observeSplitLineNumbers(tab);
         observeEditorBottomSpacer(tab);
         ensureSplitResizer(tab);
@@ -2052,9 +2018,17 @@
       });
       $('#tabBar').insertBefore(button, add);
     });
-    requestAnimationFrame(() =>
-      $('#tabBar .document-tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }),
-    );
+    if (activeTabScrollFrame !== null) cancelAnimationFrame(activeTabScrollFrame);
+    // Vditor can still be invalidating a long document while its `after`
+    // callback renders the tab. Wait for one normal paint before asking
+    // scrollIntoView() to read tab geometry, avoiding a forced full-document
+    // style calculation on that callback's frame.
+    activeTabScrollFrame = requestAnimationFrame(() => {
+      activeTabScrollFrame = requestAnimationFrame(() => {
+        activeTabScrollFrame = null;
+        $('#tabBar .document-tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      });
+    });
   }
 
   function onEditorInput(tab, value) {
@@ -2485,12 +2459,12 @@
     }
   }
 
-  function updateActiveUI() {
+  function updateActiveUI(shouldSyncToolbarAvailability = true, shouldSyncTopControlsWidth = true) {
     updateEmptyState();
     const tab = activeTab();
-    syncToolbarAvailability();
-    $('#app').classList.toggle('toolbar-preview-active', !tab);
-    syncTopControlsWidth();
+    if (shouldSyncToolbarAvailability) syncToolbarAvailability();
+    $('#vditorToolbarMount').classList.toggle('toolbar-preview-active', !tab);
+    if (shouldSyncTopControlsWidth) syncTopControlsWidth();
     if (!tab) {
       updateExternalChangeBanner(null);
       updateExternalFileStateBanner(null);
@@ -2939,7 +2913,6 @@
     if (state.workspace !== workspace || revision !== state.workspaceRevision) return;
     root.replaceChildren(content);
     updateActiveTreeSelection();
-    scheduleTreeNameEllipses();
   }
 
   function expandedWorkspacePaths() {
@@ -2987,7 +2960,7 @@
       const row = document.createElement('div');
       row.className = `tree-row tree-${entry.type === 'directory' ? 'dir' : 'file'}`;
       row.dataset.path = entry.path;
-      row.innerHTML = `<span class="chevron">${entry.type === 'directory' ? '›' : ''}</span><span class="file-icon">${treeIcon(entry)}</span><span class="tree-name" data-full-name="${escapeHTML(entry.name)}" data-tooltip="${escapeHTML(entry.name)}">${escapeHTML(entry.name)}</span>`;
+      row.innerHTML = `<span class="chevron">${entry.type === 'directory' ? '›' : ''}</span><span class="file-icon">${treeIcon(entry)}</span><span class="tree-name" data-tooltip="${escapeHTML(entry.name)}">${escapeHTML(entry.name)}</span>`;
       if (entry.link) {
         row.classList.add('tree-link');
         row.dataset.linkStatus = entry.link.status;
@@ -3048,7 +3021,6 @@
               new Set([...ancestorPaths, entry.link?.targetPath || entry.path]),
             );
           }
-          scheduleTreeNameEllipses();
         });
         row.setAttribute('aria-expanded', 'false');
         if (expandedWorkspacePaths().has(entry.path)) {
@@ -3065,7 +3037,6 @@
         }
       }
     }
-    scheduleTreeNameEllipses();
   }
 
   function closeContextMenu() {
@@ -4725,6 +4696,7 @@
   function syncToolbarWrapHeight() {
     const app = $('#app');
     const mount = $('#vditorToolbarMount');
+    const mainArea = $('.main-area');
     const toolbar = activeTab()?.toolbar || state.toolbarPreview?.toolbar;
     const hidden = app.classList.contains('toolbar-hidden');
     // Vditor menus are absolutely positioned but contribute to scrollHeight.
@@ -4732,20 +4704,42 @@
     const toolbarHeight =
       !hidden && toolbar?.parentElement === mount ? toolbar.getBoundingClientRect().height : 0;
     if (toolbarHeight) state.toolbarWrapHeight = Math.max(0, Math.ceil(toolbarHeight - 38));
-    const extraHeight = app.classList.contains('toolbar-unavailable')
-      ? state.toolbarWrapHeight
-      : hidden
-        ? 0
-        : Math.max(0, Math.ceil(toolbarHeight - 38));
-    app.classList.toggle('toolbar-wrapped', extraHeight > 0);
-    app.style.setProperty('--toolbar-wrap-height', `${extraHeight}px`);
+    const extraHeight =
+      mount.dataset.toolbarPending === 'true'
+        ? state.toolbarWrapHeight
+        : hidden
+          ? 0
+          : Math.max(0, Math.ceil(toolbarHeight - 38));
+    const wrapHeight = `${extraHeight}px`;
+    // The editor lives below .main-area. Do not put this changing value on an
+    // ancestor, where CSS-variable inheritance would invalidate its full DOM tree.
+    if (mainArea.style.paddingTop !== wrapHeight) mainArea.style.paddingTop = wrapHeight;
+    if (mount.style.getPropertyValue('--toolbar-wrap-height') !== wrapHeight)
+      mount.style.setProperty('--toolbar-wrap-height', wrapHeight);
+  }
+
+  function scheduleToolbarWrapHeight() {
+    if (toolbarWrapHeightFrame !== null) cancelAnimationFrame(toolbarWrapHeightFrame);
+    // Toolbar mutations can be delivered while Vditor is still constructing a
+    // long document. Let its pending style work reach a normal paint before
+    // getBoundingClientRect() measures the shared toolbar.
+    toolbarWrapHeightFrame = requestAnimationFrame(() => {
+      toolbarWrapHeightFrame = requestAnimationFrame(() => {
+        toolbarWrapHeightFrame = null;
+        syncToolbarWrapHeight();
+      });
+    });
   }
 
   function applyTopControlsWidth(sidebarWidth, menuWidth) {
-    const app = $('#app');
     const actions = $('.titlebar-file-actions');
-    app.style.setProperty('--top-controls-width', `${sidebarWidth}px`);
-    app.style.setProperty('--sidebar-current', `${sidebarWidth}px`);
+    // These values change on every sidebar-drag frame. Keep them on the small
+    // chrome subtrees that consume them instead of #app, so CSS-variable
+    // inheritance cannot invalidate Vditor's full document tree.
+    $('.toolbar-sidebar-tabs').style.setProperty('--top-controls-width', `${sidebarWidth}px`);
+    ['#sidebar', '#windowTitlebar', '.titlebar', '#vditorToolbarMount'].forEach((selector) =>
+      $(selector).style.setProperty('--sidebar-current', `${sidebarWidth}px`),
+    );
     actions.style.flexBasis = `${Math.max(0, sidebarWidth - menuWidth)}px`;
   }
 
@@ -4761,23 +4755,82 @@
     );
   }
 
+  function sidebarTransitionDuration() {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 1 : 160;
+  }
+
+  function sidebarLayoutPositions() {
+    return ['#tabBar', '#vditorToolbarMount', '#editorArea'].flatMap((selector) => {
+      const element = $(selector);
+      return element ? [[element, element.getBoundingClientRect().left]] : [];
+    });
+  }
+
+  function measureCollapsedSidebarChrome() {
+    const app = $('#app');
+    const wasAppCollapsed = app.classList.contains('sidebar-collapsed');
+    app.classList.add('sidebar-collapsed');
+    const positions = ['#tabBar', '#vditorToolbarMount'].flatMap((selector) => {
+      const element = $(selector);
+      return element ? [[element, element.getBoundingClientRect().left]] : [];
+    });
+    app.classList.toggle('sidebar-collapsed', wasAppCollapsed);
+    return positions;
+  }
+
+  function cancelSidebarLayoutAnimations() {
+    sidebarLayoutAnimations.forEach((animation) => animation.cancel());
+    sidebarLayoutAnimations = [];
+  }
+
+  function animateSidebarLayout(initialPositions, visible, targetChromePositions) {
+    cancelSidebarLayoutAnimations();
+    const initialByElement = new Map(initialPositions);
+    const targetChromeByElement = new Map(targetChromePositions);
+    const duration = sidebarTransitionDuration();
+    const sidebarWidth = Number(state.settings.sidebarWidth);
+    sidebarLayoutAnimations = sidebarLayoutPositions().flatMap(([element, currentLeft]) => {
+      const initialLeft = initialByElement.get(element);
+      if (initialLeft === undefined) return [];
+      const from = initialLeft - currentLeft;
+      const to =
+        element.id === 'editorArea'
+          ? visible
+            ? sidebarWidth
+            : -sidebarWidth
+          : visible
+            ? 0
+            : (targetChromeByElement.get(element) ?? currentLeft) - currentLeft;
+      if (Math.abs(from - to) < 0.5) return [];
+      return [
+        element.animate(
+          [{ transform: `translateX(${from}px)` }, { transform: `translateX(${to}px)` }],
+          { duration, easing: 'ease', fill: 'forwards' },
+        ),
+      ];
+    });
+  }
+
   function finishSidebarTransition(refreshEditorLayout = false) {
     const sidebar = $('#sidebar');
-    const wasOpening = sidebar.classList.contains('sidebar-opening');
-    const app = $('#app');
-    const wasHiding = app.classList.contains('sidebar-hiding');
     clearTimeout(sidebarTransitionTimer);
     sidebarTransitionTimer = undefined;
     if (sidebarTransitionEndHandler) {
       sidebar.removeEventListener('transitionend', sidebarTransitionEndHandler);
       sidebarTransitionEndHandler = undefined;
     }
+    const wasOpening = sidebar.classList.contains('sidebar-opening');
+    const app = $('#app');
+    const wasHiding = app.classList.contains('sidebar-hiding');
     if (wasHiding) sidebar.classList.add('collapsed');
     sidebar.classList.remove('sidebar-entering', 'sidebar-opening', 'sidebar-closing');
     if (wasOpening) sidebar.classList.remove('collapsed');
     if (wasHiding) app.classList.add('sidebar-collapsed');
     app.classList.remove('sidebar-transitioning', 'sidebar-hiding');
     syncTopControlsWidth();
+    // The layout now has its final flex geometry, so dropping the composited
+    // FLIP transforms cannot visibly move the toolbar, tabs, or Vditor host.
+    cancelSidebarLayoutAnimations();
     if (refreshEditorLayout) scheduleSplitLineNumbers(activeTab());
   }
 
@@ -4801,6 +4854,7 @@
       return;
     }
     finishSidebarTransition();
+    const initialLayout = sidebarLayoutPositions();
     app.classList.add('sidebar-transitioning');
     if (visible) {
       const menuWidth = $('#appMenuBar').getBoundingClientRect().width;
@@ -4825,6 +4879,10 @@
     state.settings.sidebarVisible = visible;
     $('#toggleSidebar')?.setAttribute('aria-pressed', String(visible));
     queueSettingsSave({ sidebarVisible: visible });
+    const targetChromeLayout = visible ? [] : measureCollapsedSidebarChrome();
+    // Keep Vditor's width fixed for the slide, while the surrounding chrome
+    // follows its eventual flex position on compositor-only transforms.
+    animateSidebarLayout(initialLayout, visible, targetChromeLayout);
     sidebarTransitionEndHandler = (event) => {
       if (event.target !== sidebar || event.propertyName !== 'transform') return;
       finishSidebarTransition(true);
@@ -4954,7 +5012,6 @@
             view.classList.toggle('active', view.id === `${button.dataset.view}View`),
           );
           if (button.dataset.view === 'outline') renderOutline();
-          else scheduleTreeNameEllipses();
         }),
     );
     $$('.settings-nav button').forEach(
@@ -5140,36 +5197,91 @@
     let resizeMinimum = 0;
     let resizeMenuWidth = 0;
     let resizeAppLeft = 0;
+    let resizeFrame = null;
+    let pendingSidebarWidth = null;
+    let frozenEditorHost = null;
+    let frozenEditorHostStyle = null;
+    const resizeChrome = [
+      $('#sidebar'),
+      $('.titlebar'),
+      $('.titlebar-file-actions'),
+      $('.toolbar-sidebar-tabs'),
+    ];
+    const restoreFrozenEditorHost = () => {
+      if (!frozenEditorHost || !frozenEditorHostStyle) return;
+      ['inset', 'left', 'width', 'transform'].forEach((property) => {
+        const saved = frozenEditorHostStyle[property];
+        if (saved.value) frozenEditorHost.style.setProperty(property, saved.value, saved.priority);
+        else frozenEditorHost.style.removeProperty(property);
+      });
+      frozenEditorHostStyle = null;
+    };
+    const applySidebarResize = () => {
+      resizeFrame = null;
+      if (!resizing || pendingSidebarWidth === null) return;
+      const width = pendingSidebarWidth;
+      $('#sidebar').style.width = `${width}px`;
+      applyTopControlsWidth(width, resizeMenuWidth);
+      state.settings.sidebarWidth = width;
+    };
     const startSidebarResize = () => {
       resizing = true;
       resizeMinimum = sidebarMinimumWidth();
       resizeMenuWidth = $('#appMenuBar').getBoundingClientRect().width;
       resizeAppLeft = $('#app').getBoundingClientRect().left;
-      $('#app').style.setProperty('--sidebar-min-width', `${resizeMinimum}px`);
-      document.body.classList.add('resizing');
+      $('#sidebar').style.setProperty('--sidebar-min-width', `${resizeMinimum}px`);
+      // Keep Vditor's layout viewport stable while its parent is clipped and
+      // moved by the resize. A long document therefore reflows once on mouseup
+      // instead of for every pointer update.
+      frozenEditorHost = activeTab()?.host || null;
+      if (frozenEditorHost?.classList.contains('vditor')) {
+        const editorWidth = frozenEditorHost.getBoundingClientRect().width;
+        frozenEditorHostStyle = Object.fromEntries(
+          ['inset', 'left', 'width', 'transform'].map((property) => [
+            property,
+            {
+              value: frozenEditorHost.style.getPropertyValue(property),
+              priority: frozenEditorHost.style.getPropertyPriority(property),
+            },
+          ]),
+        );
+        frozenEditorHost.style.setProperty('inset', '0 auto', 'important');
+        frozenEditorHost.style.setProperty('left', '50%', 'important');
+        frozenEditorHost.style.setProperty('width', `${editorWidth}px`, 'important');
+        frozenEditorHost.style.setProperty('transform', 'translateX(-50%)');
+      }
+      // Keeping the editor focused avoids Vditor 3.11.3's expensive blur
+      // serialization path for a long document. Limit the resize state to
+      // application chrome so it cannot invalidate the editor's DOM tree.
+      resizeChrome.forEach((element) => element.classList.add('sidebar-resizing'));
     };
-    resize.onmousedown = startSidebarResize;
+    resize.onmousedown = (event) => {
+      event.preventDefault();
+      startSidebarResize();
+    };
     window.addEventListener('mousemove', (event) => {
       if (resizing) {
-        const width = Math.max(resizeMinimum, Math.min(500, event.clientX - resizeAppLeft));
-        $('#sidebar').style.width = `${width}px`;
-        applyTopControlsWidth(width, resizeMenuWidth);
-        state.settings.sidebarWidth = width;
+        pendingSidebarWidth = Math.max(resizeMinimum, Math.min(500, event.clientX - resizeAppLeft));
+        if (resizeFrame === null) resizeFrame = requestAnimationFrame(applySidebarResize);
       }
     });
     window.addEventListener('mouseup', () => {
       if (resizing) {
+        if (resizeFrame !== null) {
+          cancelAnimationFrame(resizeFrame);
+          resizeFrame = null;
+          applySidebarResize();
+        }
         resizing = false;
-        document.body.classList.remove('resizing');
-        scheduleTreeNameEllipses();
+        pendingSidebarWidth = null;
+        restoreFrozenEditorHost();
+        frozenEditorHost = null;
+        resizeChrome.forEach((element) => element.classList.remove('sidebar-resizing'));
         syncTopControlsWidth();
+        requestAnimationFrame(() => scheduleSplitLineNumbers(activeTab()));
         queueSettingsSave({ sidebarWidth: state.settings.sidebarWidth });
       }
     });
-    new ResizeObserver(() => {
-      if (!resizing) scheduleTreeNameEllipses();
-    }).observe($('#sidebar'));
-    new ResizeObserver(scheduleTreeNameEllipses).observe($('#fileTree'));
     const topControlsObserver = new ResizeObserver(() => {
       if (!resizing) syncTopControlsWidth();
     });
@@ -5177,7 +5289,7 @@
     topControlsObserver.observe($('#appMenuBar'));
     const toolbarMount = $('#vditorToolbarMount');
     new ResizeObserver(syncToolbarWrapHeight).observe(toolbarMount);
-    new MutationObserver(() => requestAnimationFrame(syncToolbarWrapHeight)).observe(toolbarMount, {
+    new MutationObserver(scheduleToolbarWrapHeight).observe(toolbarMount, {
       attributes: true,
       childList: true,
       subtree: true,
@@ -5260,9 +5372,12 @@
       minimumSidebarWidth,
       Number(state.settings.sidebarWidth) || minimumSidebarWidth,
     );
-    $('#app').style.setProperty('--sidebar-min-width', `${minimumSidebarWidth}px`);
+    $('#sidebar').style.setProperty('--sidebar-min-width', `${minimumSidebarWidth}px`);
     $('#sidebar').style.width = `${state.settings.sidebarWidth}px`;
-    $('#app').style.setProperty('--sidebar-current', `${state.settings.sidebarWidth}px`);
+    applyTopControlsWidth(
+      state.settings.sidebarWidth,
+      $('#appMenuBar').getBoundingClientRect().width,
+    );
     toggleSidebar(state.settings.sidebarVisible);
     $('#app').classList.toggle('fullscreen', await window.appAPI.isFullscreen());
     updateMaximizedState(await window.appAPI.isMaximized());
