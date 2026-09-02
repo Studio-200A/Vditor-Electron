@@ -35,7 +35,6 @@ Vditor Desktop takes the writing experience of [Vditor](https://github.com/Vanes
 - [Everyday shortcuts](#everyday-shortcuts)
 - [Configuration and data](#configuration-and-data)
 - [Build and test](#build-and-test)
-- [Contributing](#contributing)
 - [Open-source software](#open-source-software)
 - [Disclaimer](#disclaimer)
 - [License](#license)
@@ -194,17 +193,6 @@ npm run check:all
 ```
 
 The Vditor dependency is intentionally pinned to 3.11.3. Before upgrading it, read [the Vditor upgrade notes](docs/20-VDITOR-UPGRADE.md) and validate the adapter boundary and Electron regression tests.
-
-## Contributing
-
-Development happens on version- or feature-specific `dev-*` / `feat-*` branches and is merged into `main` through pull requests. Useful contributions include:
-
-- reproducible bug reports with OS, desktop environment, display protocol, version, and steps;
-- fixes and tests for editor, file, workspace, and platform behavior;
-- documentation, translations, accessibility, and visual polish;
-- reviews of the planned work in [`docs/`](docs/README.md).
-
-Please keep the project local-first and preserve the security boundaries described in the repository instructions.
 
 ## Open-source software
 
