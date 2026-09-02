@@ -26,6 +26,15 @@ export default tseslint.config(
     },
   },
   {
+    files: ['src/renderer/**/*.ts'],
+    languageOptions: {
+      globals: globals.browser,
+    },
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'warn',
+    },
+  },
+  {
     files: ['src/main/**/*.ts', 'scripts/**/*.js', 'tests/**/*.ts', '*.config.ts'],
     languageOptions: {
       globals: globals.node,

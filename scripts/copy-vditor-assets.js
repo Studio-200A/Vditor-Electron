@@ -104,6 +104,23 @@ if (fs.existsSync(path.join(VditorSrc, 'images'))) {
 
 console.log('\nVditor assets copied successfully.');
 console.log('Copying renderer assets...');
-copyDir(RendererSrc, RendererDest);
+
+function copyRendererAssets(src, dest) {
+  if (!fs.existsSync(src)) return;
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyRendererAssets(srcPath, destPath);
+    } else if (entry.isFile()) {
+      if (entry.name.endsWith('.ts')) continue;
+      ensureDir(path.dirname(destPath));
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
+copyRendererAssets(RendererSrc, RendererDest);
 copyLucideIconAssets();
 console.log('Renderer assets copied successfully.');

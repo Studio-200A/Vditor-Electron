@@ -1,0 +1,87 @@
+export interface EditorParts {
+  toolbar: HTMLElement | null;
+  content: HTMLElement | null;
+  source: HTMLElement | null;
+  instantRendering: HTMLElement | null;
+  wysiwyg: HTMLElement | null;
+  preview: HTMLElement | null;
+}
+
+export interface ToolbarContext {
+  button: HTMLButtonElement | null;
+  item: HTMLElement | null;
+  trigger: HTMLElement | null;
+  type: string;
+}
+
+export interface VditorDesktopAdapter {
+  readonly selectors: Readonly<Record<string, string>>;
+  editorParts(host: HTMLElement): EditorParts;
+  toolbarContext(target: EventTarget | null): ToolbarContext;
+  toolbarButton(toolbar: HTMLElement | null, type: string): HTMLButtonElement | null;
+  hideNativeOutlineControl(toolbar: HTMLElement | null): void;
+  keepSplitToolbarActionsAvailable(toolbar: HTMLElement | null): void;
+  toolbarHint(toolbar: HTMLElement | null, type: string): HTMLElement | null;
+  selectEditMode(host: HTMLElement, mode: 'wysiwyg' | 'ir' | 'sv'): void;
+  editModeShortcut(host: HTMLElement): 'wysiwyg' | 'ir' | 'sv' | null;
+  toolbarHints(toolbar: HTMLElement | null): HTMLElement[];
+  hoverTooltips(root?: Document | HTMLElement): HTMLElement[];
+  openSubmenus(root?: Document | HTMLElement): HTMLElement[];
+  codeThemeButtons(root?: Document | HTMLElement): HTMLElement[];
+  classifyCodeThemeButtons(buttons: HTMLElement[]): { valid: boolean; missing: string[] };
+  sourceNewlines(host: HTMLElement): HTMLElement[];
+  sourceLineRanges(host: HTMLElement): HTMLElement[];
+  listContext(host: HTMLElement): unknown;
+  headingTargets(host: HTMLElement): HTMLElement[];
+  outlineContentElement(host: HTMLElement): HTMLElement | null;
+  outlineSnapshot(host: HTMLElement): unknown;
+  outlineScrollContainer(host: HTMLElement): HTMLElement | null;
+  outlineHeadingTargets(host: HTMLElement): HTMLElement[];
+  observeOutlineChanges(host: HTMLElement, callback: () => void): { disconnect(): void };
+  innerScroller(host: HTMLElement): HTMLElement | null;
+  scrollContainers(host: HTMLElement): HTMLElement[];
+  activeEditor(host: HTMLElement): HTMLElement | null;
+  editorScrollContainer(host: HTMLElement): HTMLElement | null;
+  preserveTableScrollDuringInput(host: HTMLElement): void;
+  isEditableTarget(target: EventTarget | null): boolean;
+  captureEditorSelection(host: HTMLElement): Range | null;
+  restoreEditorSelection(host: HTMLElement, range: Range | null): boolean;
+  selectCurrentContextOrAll(host: HTMLElement): void;
+  tableContext(host: HTMLElement): unknown;
+  performTableAction(host: HTMLElement, action: string): void;
+  executeEditorCommand(host: HTMLElement, command: string): void;
+  selectedTableCell(host: HTMLElement): HTMLElement | null;
+  selectTableCellContents(host: HTMLElement, cell: HTMLElement): void;
+  setEditorBottomSpacer(host: HTMLElement, height: number): void;
+  textMatches(host: HTMLElement, query: string, options?: unknown): unknown[];
+  clearFindHighlights(host: HTMLElement): void;
+  highlightTextMatches(host: HTMLElement, matches: unknown[]): void;
+  animateDocumentNavigationScroll(host: HTMLElement, target: HTMLElement): void;
+  scrollRangeIntoView(host: HTMLElement, range: Range): void;
+  revealTextMatch(host: HTMLElement, match: unknown): void;
+  selectTextMatch(host: HTMLElement, match: unknown): void;
+  documentAnchor(host: HTMLElement): HTMLElement | null;
+  documentLink(host: HTMLElement): HTMLElement | null;
+  setDocumentLinkHint(host: HTMLElement, element: HTMLElement): void;
+  clearDocumentLinkHint(host: HTMLElement): void;
+  focusDocumentLink(host: HTMLElement): void;
+  expandInstantLinkForEditing(host: HTMLElement): void;
+  headingIndexForAnchor(host: HTMLElement, anchor: string): number;
+  relativeSourceFromLocalUrl(url: string): string | null;
+  resolveRelativeImageSources(host: HTMLElement, baseDir: string): { restore(): void };
+  resolveRelativeDocumentLinks(host: HTMLElement, baseDir: string): { restore(): void };
+  observeRelativeImageSources(
+    host: HTMLElement,
+    baseDir: string,
+    callback: () => void,
+  ): { disconnect(): void };
+  reloadImageSources(host: HTMLElement): void;
+  withOriginalImageSources(host: HTMLElement): { restore(): void };
+  validateHost(host: HTMLElement): boolean;
+}
+
+declare global {
+  interface Window {
+    VditorDesktopAdapter: VditorDesktopAdapter;
+  }
+}

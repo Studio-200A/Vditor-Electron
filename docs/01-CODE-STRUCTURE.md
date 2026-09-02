@@ -30,7 +30,7 @@
 
 ### 前端框架
 
-**无框架，原生 DOM。** 渲染进程不引入 React、Vue 或任何 UI 框架；所有 UI 逻辑集中在单一 IIFE 控制器（`src/renderer/app.js`）中。
+**无框架，原生 DOM。** 渲染进程不引入 React、Vue 或任何 UI 框架；0.2.0 阶段所有 UI 逻辑集中在单一 IIFE 控制器（`src/renderer/app.js`）中。0.2.5 开始引入 TypeScript 组合入口（`src/renderer/main.ts`），逐步将职责从 `app.js` 迁移到类型安全的模块。
 
 ### 编辑器引擎
 
@@ -43,7 +43,7 @@
 
 ### 构建工具
 
-**无 Vite / Webpack。** 主进程使用 TypeScript 直接编译（`tsc -p tsconfig.main.json`），渲染进程为纯 JavaScript + CSS 静态文件复制（`scripts/copy-vditor-assets.js`）。
+主进程使用 TypeScript 直接编译（`tsc -p tsconfig.main.json`），渲染进程使用 esbuild 打包（`scripts/build-renderer.js`），静态资源由 `scripts/copy-vditor-assets.js` 复制。
 
 ### 图标资源
 
@@ -94,16 +94,30 @@ Vditor-Electron/
 │   │       ├── recovery-store.ts  # 私有恢复快照的校验、原子写入、读取与清理
 │   │       ├── settings-store.ts  # TOML 配置读写、加载校验、深合并、原子保存
 │   │       └── app-state.ts       # AppSettings 接口与默认值定义
-├── src/renderer/                  # 渲染进程（纯 JavaScript + HTML + CSS）
+├── src/renderer/                  # 渲染进程（TypeScript 入口 + legacy JavaScript + HTML + CSS）
+│   ├── main.ts                    # 应用组合入口（esbuild bundle → dist/renderer/main.js）
 │   ├── index.html                 # 应用壳 HTML（标题栏、侧栏、编辑区、对话框）
-│   ├── app.js                     # 集中式应用控制器（标签、工作区、设置、编辑器生命周期等）
+│   ├── app.js                     # [legacy] 集中式应用控制器，由 main.ts 通过 bootstrap 调用
 │   ├── vditor-adapter.js          # Vditor 私有 DOM 适配层（集中选择器与结构假设）
 │   ├── locales.js                 # 三语字典（en_US / zh_Hans / zh_Hant）
+│   ├── types/                     # renderer TypeScript 类型声明
+│   │   ├── bridges.d.ts           # window.appAPI / window.fileAPI 类型
+│   │   ├── vditor.d.ts            # Vditor 构造器与选项最小类型
+│   │   ├── adapter.d.ts           # window.VditorDesktopAdapter 接口
+│   │   └── locales.d.ts           # window.VditorDesktopLocales 类型
+│   ├── core/                      # renderer 基础模块
+│   │   ├── controller.ts          # Controller 接口（init / dispose）
+│   │   ├── disposables.ts         # DisposableBag（listener/timer/observer 统一清理）
+│   │   ├── dom.ts                 # requiredElement / optionalElement DOM 辅助
+│   │   └── lifecycle.ts           # LifecycleManager（按依赖顺序 init / 反序 dispose）
 │   ├── styles/
 │   │   └── app.css                # 单一应用样式文件（含主题变量、Vditor 覆盖）
 │   └── assets/                    # 项目自有静态资源
 │       ├── app-icon/              # 应用标识
 │       └── notification/          # 持久告警与短暂通知图标
+├── src/shared/                    # 主进程、preload、renderer 共享类型
+│   └── contracts/                 # 可序列化 DTO（无运行时依赖）
+│       └── index.ts               # ResultCode、WriteResult、DocumentIdentity 等骨架类型
 ├── static/
 │   └── dist/                      # [自动生成] 离线 Vditor 构建产物（由 build:assets 复制）
 ├── dist/                          # [自动生成] 主进程编译输出（tsc）
@@ -111,7 +125,8 @@ Vditor-Electron/
 │   ├── unit/                      # Vitest 单元测试
 │   └── e2e/                       # Playwright Electron E2E 测试
 ├── scripts/                       # 构建辅助脚本
-│   ├── copy-vditor-assets.js      # 复制 Vditor、renderer，并生成 Lucide 图标到 dist/
+│   ├── build-renderer.js          # esbuild renderer bundle（main.ts → dist/renderer/main.js）
+│   ├── copy-vditor-assets.js      # 复制 Vditor、renderer（跳过 .ts），并生成 Lucide 图标到 dist/
 │   ├── check-vditor-version.js    # Vditor 版本一致性校验
 │   └── release-linux.js           # Linux x64 portable / AppImage 发布脚本
 ├── resources/
@@ -119,7 +134,8 @@ Vditor-Electron/
 ├── docs/                          # 项目规划与文档
 ├── assets/                        # README 截图等静态资源
 ├── package.json
-├── tsconfig.main.json
+├── tsconfig.main.json             # main/preload TypeScript 编译配置
+├── tsconfig.renderer.json         # renderer TypeScript 类型检查配置（strict，noEmit）
 ├── eslint.config.mjs
 ├── vitest.config.mts
 ├── playwright.config.ts

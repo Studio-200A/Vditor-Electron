@@ -769,8 +769,9 @@ describe('renderer shell', () => {
 
   it('loads the Vditor compatibility adapter before the application renderer', () => {
     const scripts = Array.from(document.querySelectorAll('script')).map((script) => script.src);
-    expect(scripts.at(-2)).toContain('vditor-adapter.js');
-    expect(scripts.at(-1)).toContain('app.js');
+    expect(scripts.at(-3)).toContain('vditor-adapter.js');
+    expect(scripts.at(-2)).toContain('app.js');
+    expect(scripts.at(-1)).toContain('main.js');
     expect(rendererScript).toContain('window.VditorDesktopAdapter');
   });
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.5 - Modularized Refactor
+
+### Internal
+
+- **refactor(renderer build):** Introduced a TypeScript build pipeline for the renderer process using esbuild. Added `tsconfig.renderer.json` (strict mode), `build:renderer` script, and `typecheck:renderer` for independent renderer type checking. The renderer entry point is now `src/renderer/main.ts`, which orchestrates controller initialization and disposal in dependency order.
+- **refactor(composition entry):** Established `src/renderer/main.ts` as the application composition entry with a lifecycle manager that initializes controllers in dependency order and disposes them in reverse order on shutdown or failure. Legacy `app.js` is loaded as a controlled bootstrap module via `window.__vditorDesktopLegacyBootstrap`.
+- **refactor(type declarations):** Added TypeScript type declarations for `window.appAPI`, `window.fileAPI`, `window.VditorDesktopAdapter`, `window.VditorDesktopLocales`, and minimal Vditor types in `src/renderer/types/`.
+- **refactor(core utilities):** Established `src/renderer/core/` with type-safe DOM helpers (`requiredElement`, `optionalElement`), a `DisposableBag` for listener/timer/observer cleanup, and a `LifecycleManager` for ordered controller initialization and disposal.
+- **refactor(shared contracts):** Created `src/shared/contracts/` skeleton for cross-process serializable DTOs shared between main, preload, and renderer processes.
+
 ## 0.2.0 - Under-the-Hood Robustness Improvement
 
 ### New Features

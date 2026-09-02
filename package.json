@@ -15,15 +15,17 @@
     "check:project": "node scripts/check-project-metadata.js",
     "lint": "eslint src scripts tests *.config.*",
     "typecheck": "tsc -p tsconfig.main.json --noEmit",
+    "typecheck:renderer": "tsc -p tsconfig.renderer.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "npm run build && node scripts/run-electron-e2e.js",
-    "check": "npm run format:check && npm run check:project && npm run lint && npm run typecheck && npm run check:vditor && npm test && npm run build",
+    "check": "npm run format:check && npm run check:project && npm run lint && npm run typecheck && npm run typecheck:renderer && npm run check:vditor && npm test && npm run build",
     "check:all": "npm run check && npm run test:e2e",
     "build:main": "tsc -p tsconfig.main.json",
+    "build:renderer": "node scripts/build-renderer.js",
     "build:assets": "node scripts/copy-vditor-assets.js",
     "check:vditor": "node scripts/check-vditor-version.js",
-    "build": "npm run build:main && npm run build:assets",
+    "build": "npm run build:main && npm run build:renderer && npm run build:assets",
     "start": "npm run build && electron .",
     "dev": "npm run build && electron .",
     "pack": "npm run build && electron-builder --dir",
@@ -44,6 +46,7 @@
     "@types/node": "^22.0.0",
     "electron": "44.1.0",
     "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
     "eslint": "^10.8.1",
     "globals": "^17.10.0",
     "jsdom": "^30.0.1",
@@ -91,6 +94,7 @@
   },
   "allowScripts": {
     "electron@44.1.0": true,
-    "electron-winstaller@5.4.0": true
+    "electron-winstaller@5.4.0": true,
+    "esbuild@0.28.2": true
   }
 }
