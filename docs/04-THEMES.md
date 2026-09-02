@@ -26,7 +26,9 @@ Monokai Pro Dark 和 Monokai Pro Light 是历史实现中的例外：应用 CSS 
 | 配置模型 | `src/main/services/app-state.ts` | 定义当前主题、亮色偏好、暗色偏好和内容/代码主题字段 |
 | 配置存储 | `src/main/services/settings-store.ts` | 校验并持久化主题枚举和主题偏好 |
 | 设置界面 | `src/renderer/index.html` | 渲染亮色/暗色独立 radio 组和主题预览 SVG；系统匹配模式由状态栏菜单控制，不在设置页重复提供 |
-| 主题控制器 | `src/renderer/app.js` | 解析当前主题、应用 `data-theme`、切换 Vditor 内容/代码主题、同步状态栏三态主题菜单 |
+| 主题纯函数 | `src/renderer/ui/theme.ts` | 主题常量（`DARK_THEMES`、`LIGHT_THEMES`、`ALL_THEMES`、`THEME_MODES`）和判定函数（`isDarkTheme`） |
+| 主题控制器纯函数 | `src/renderer/ui/theme-controller.ts` | 主题解析与校验：`resolveEffectiveTheme`、`resolveThemeMode`、`validateDarkTheme`、`validateLightTheme`、`getPreferredCodeTheme`、`resolveContentTheme` |
+| 主题 DOM 操作 | `src/renderer/app.js` | 应用 `data-theme`、切换 Vditor 内容/代码主题、同步状态栏三态主题菜单（调用 `window.__vditorDesktopPureFunctions` 中的纯函数） |
 | 应用视觉变量 | `src/renderer/styles/app.css` | 为六套壳层主题提供 CSS 变量和必要的组件覆盖 |
 | Vditor 边界 | `src/renderer/vditor-adapter.js` | 集中处理 Vditor toolbar、主题菜单和私有 DOM 结构访问 |
 | 行为测试 | `tests/unit/*`、`tests/e2e/*.spec.ts` | 覆盖配置、主题控件、颜色契约、主题切换和真实 Electron 行为 |

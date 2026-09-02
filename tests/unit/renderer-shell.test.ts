@@ -496,9 +496,8 @@ describe('renderer shell', () => {
     expect(document.querySelectorAll('.theme-preview svg')).toHaveLength(6);
     expect(document.querySelector('[name="systemTheme"]')).toBeNull();
     expect(document.querySelector('.settings-right-edge')).not.toBeNull();
-    expect(rendererScript).toContain(
-      "theme === 'dark' || theme === 'claude-dark' || theme === 'monokai-pro-dark'",
-    );
+    expect(rendererScript).toContain('validateDarkThemeImpl(state.settings.darkTheme)');
+    expect(rendererScript).toContain('validateLightThemeImpl(state.settings.lightTheme)');
     expect(rendererScript).toContain('darkThemePreference()');
     expect(rendererScript).toContain('lightThemePreference()');
     expect(rendererScript).toContain('function themeModeFromSettings()');
@@ -769,7 +768,8 @@ describe('renderer shell', () => {
 
   it('loads the Vditor compatibility adapter before the application renderer', () => {
     const scripts = Array.from(document.querySelectorAll('script')).map((script) => script.src);
-    expect(scripts.at(-3)).toContain('vditor-adapter.js');
+    expect(scripts.at(-4)).toContain('vditor-adapter.js');
+    expect(scripts.at(-3)).toContain('pure-functions.js');
     expect(scripts.at(-2)).toContain('app.js');
     expect(scripts.at(-1)).toContain('main.js');
     expect(rendererScript).toContain('window.VditorDesktopAdapter');

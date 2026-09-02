@@ -4,6 +4,20 @@
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
   const VDITOR = window.VditorDesktopAdapter;
+  const PURE = window.__vditorDesktopPureFunctions;
+  const escapeHTML = PURE.escapeHTML;
+  const fileName = PURE.fileName;
+  const stripExtension = PURE.stripExtension;
+  const detectLineEnding = PURE.detectLineEnding;
+  const isDarkTheme = PURE.isDarkTheme;
+  const THEME_MODES = PURE.THEME_MODES;
+  const resolveLocaleImpl = PURE.resolveLocale;
+  const translateImpl = PURE.translate;
+  const formatIpcErrorMessageImpl = PURE.formatIpcErrorMessage;
+  const resolveThemeModeImpl = PURE.resolveThemeMode;
+  const validateDarkThemeImpl = PURE.validateDarkTheme;
+  const validateLightThemeImpl = PURE.validateLightTheme;
+  const getPreferredCodeThemeImpl = PURE.getPreferredCodeTheme;
   const state = {
     tabs: [],
     activeId: null,
@@ -114,38 +128,17 @@
   let editorSelectionActive = false;
   let pendingTableCellSelection = null;
   let contextMenuState = null;
-  const THEME_MODES = ['light', 'dark', 'system'];
-  const IPC_ERROR_MESSAGE_KEYS = {
-    IPC_INVALID_ARGUMENT: 'message.ipcInvalidRequest',
-    IPC_PERMISSION_DENIED: 'message.ipcPermissionDenied',
-    IPC_ALREADY_EXISTS: 'message.ipcAlreadyExists',
-    IPC_NOT_FOUND: 'message.ipcNotFound',
-    IPC_INVALID_NAME: 'message.ipcInvalidName',
-    IPC_SETTINGS_PERSIST_FAILED: 'message.ipcSettingsSaveFailed',
-    IPC_OPERATION_FAILED: 'message.ipcOperationFailed',
-  };
 
   function resolveLocale(locale) {
-    if (locale && locale !== 'system' && LOCALES[locale]) return locale;
-    const language = navigator.language.replace('_', '-').toLowerCase();
-    if (!language.startsWith('zh')) return 'en_US';
-    return /(?:^|-)hant(?:-|$)|(?:^|-)(?:tw|hk|mo)(?:-|$)/.test(language) ? 'zh_Hant' : 'zh_Hans';
+    return resolveLocaleImpl(locale, navigator.language, LOCALES);
   }
 
   function t(key, params = {}) {
-    const table = LOCALES[state.locale] || LOCALES.en_US || {};
-    const english = LOCALES.en_US || {};
-    const fallback = Object.prototype.hasOwnProperty.call(english, key) ? english[key] : key;
-    const value = Object.prototype.hasOwnProperty.call(table, key) ? table[key] : fallback;
-    return String(value).replace(/\{(\w+)\}/g, (_match, name) => params[name] ?? `{${name}}`);
+    return translateImpl(LOCALES, state.locale, key, params);
   }
 
   function ipcErrorMessage(error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const code = Object.keys(IPC_ERROR_MESSAGE_KEYS).find((candidate) =>
-      message.includes(candidate),
-    );
-    return code ? t(IPC_ERROR_MESSAGE_KEYS[code]) : message;
+    return formatIpcErrorMessageImpl(error, LOCALES, state.locale);
   }
 
   function updateMainMenuGlow(event) {
@@ -403,14 +396,6 @@
     return Boolean(element.closest('input,textarea,select') || element.isContentEditable);
   }
 
-  function escapeHTML(value) {
-    const node = document.createElement('div');
-    node.textContent = String(value);
-    return node.innerHTML;
-  }
-  function fileName(filePath) {
-    return filePath ? filePath.replace(/\\/g, '/').split('/').pop() : '';
-  }
   function normalizedFilePath(filePath) {
     const normalized = String(filePath || '').replace(/\\/g, '/');
     return window.appAPI.platform === 'win32' ? normalized.toLocaleLowerCase() : normalized;
@@ -517,12 +502,6 @@
       });
     }
     return { recentFiles, workspaceTreeStates };
-  }
-  function stripExtension(name) {
-    return name.replace(/\.(md|markdown)$/i, '');
-  }
-  function detectLineEnding(content) {
-    return /\r\n/.test(content) ? 'CRLF' : 'LF';
   }
   function collectLocalResourceRoots(extraRoots = []) {
     const roots = new Set();
@@ -713,20 +692,12 @@
     refreshFind({ preserveIndex: false, content: nextContent });
   }
 
-  function isDarkTheme(theme) {
-    return theme === 'dark' || theme === 'claude-dark' || theme === 'monokai-pro-dark';
-  }
-
   function darkThemePreference() {
-    return ['dark', 'claude-dark', 'monokai-pro-dark'].includes(state.settings.darkTheme)
-      ? state.settings.darkTheme
-      : 'dark';
+    return validateDarkThemeImpl(state.settings.darkTheme);
   }
 
   function lightThemePreference() {
-    return ['classic', 'claude-light', 'monokai-pro-light'].includes(state.settings.lightTheme)
-      ? state.settings.lightTheme
-      : 'classic';
+    return validateLightThemeImpl(state.settings.lightTheme);
   }
 
   function mapSystemTheme(theme) {
@@ -734,7 +705,7 @@
   }
 
   function preferredCodeTheme(dark) {
-    return dark ? state.settings.darkCodeTheme : state.settings.lightCodeTheme;
+    return getPreferredCodeThemeImpl(state.settings, dark);
   }
 
   function ensureCodeThemeOption(codeTheme, dark) {
@@ -2526,8 +2497,7 @@
   }
 
   function themeModeFromSettings() {
-    if (state.settings?.systemTheme) return 'system';
-    return isDarkTheme(state.settings?.theme) ? 'dark' : 'light';
+    return resolveThemeModeImpl(state.settings);
   }
 
   function syncThemeModeControl() {

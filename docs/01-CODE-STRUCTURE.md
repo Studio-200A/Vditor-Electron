@@ -96,6 +96,7 @@ Vditor-Electron/
 │   │       └── app-state.ts       # AppSettings 接口与默认值定义
 ├── src/renderer/                  # 渲染进程（TypeScript 入口 + legacy JavaScript + HTML + CSS）
 │   ├── main.ts                    # 应用组合入口（esbuild bundle → dist/renderer/main.js）
+│   ├── pure-functions.ts          # 纯函数入口（esbuild bundle → dist/renderer/pure-functions.js）
 │   ├── index.html                 # 应用壳 HTML（标题栏、侧栏、编辑区、对话框）
 │   ├── app.js                     # [legacy] 集中式应用控制器，由 main.ts 通过 bootstrap 调用
 │   ├── vditor-adapter.js          # Vditor 私有 DOM 适配层（集中选择器与结构假设）
@@ -110,6 +111,13 @@ Vditor-Electron/
 │   │   ├── disposables.ts         # DisposableBag（listener/timer/observer 统一清理）
 │   │   ├── dom.ts                 # requiredElement / optionalElement DOM 辅助
 │   │   └── lifecycle.ts           # LifecycleManager（按依赖顺序 init / 反序 dispose）
+│   ├── utils/                     # 纯函数工具层（无 DOM 依赖）
+│   │   ├── strings.ts             # escapeHTML、fileName、stripExtension
+│   │   └── line-ending.ts         # detectLineEnding（CRLF/LF 判定）
+│   ├── ui/                        # UI 域纯函数与控制器
+│   │   ├── theme.ts               # 主题常量与判定（isDarkTheme、DARK_THEMES 等）
+│   │   ├── localization.ts        # 本地化纯函数（resolveLocale、translate、formatIpcErrorMessage）
+│   │   └── theme-controller.ts    # 主题控制器纯函数层（resolveEffectiveTheme、resolveThemeMode 等）
 │   ├── styles/
 │   │   └── app.css                # 单一应用样式文件（含主题变量、Vditor 覆盖）
 │   └── assets/                    # 项目自有静态资源
@@ -125,7 +133,7 @@ Vditor-Electron/
 │   ├── unit/                      # Vitest 单元测试
 │   └── e2e/                       # Playwright Electron E2E 测试
 ├── scripts/                       # 构建辅助脚本
-│   ├── build-renderer.js          # esbuild renderer bundle（main.ts → dist/renderer/main.js）
+│   ├── build-renderer.js          # esbuild renderer bundle（main.ts → dist/renderer/main.js，pure-functions.ts → dist/renderer/pure-functions.js）
 │   ├── copy-vditor-assets.js      # 复制 Vditor、renderer（跳过 .ts），并生成 Lucide 图标到 dist/
 │   ├── check-vditor-version.js    # Vditor 版本一致性校验
 │   └── release-linux.js           # Linux x64 portable / AppImage 发布脚本
@@ -386,25 +394,33 @@ webPreferences: {
 1. Vditor 全局构建（通过 <script src="app://app/vditor/dist/index.min.js">）
 2. locales.js（window.VditorDesktopLocales）
 3. vditor-adapter.js（window.VditorDesktopAdapter）
-4. app.js（IIFE，DOMContentLoaded 时执行 init()）
+4. pure-functions.js（window.__vditorDesktopPureFunctions）
+5. app.js（IIFE，暴露 window.__vditorDesktopLegacyBootstrap = init）
+6. main.js（esbuild bundle，调用 legacy bootstrap 完成初始化）
 ```
 
 `index.html` 的 CSP 允许 `self`、`app:` 和 Vditor 3.11.3 MathJax 同步 loader 所需的精确 SHA-256 hash；不允许脚本 `unsafe-inline` 或 `unsafe-eval`。`style-src 'unsafe-inline'` 是 Vditor 初始化时写入运行时 style 属性的兼容例外。升级 Vditor 或变更 MathJax 时，必须同时复核该 hash 和真实 MathJax 渲染。
 
-`init()` 函数（`src/renderer/app.js`）：
+`main.js`（`src/renderer/main.ts`）：
 
 1. 校验 `Vditor`、`VditorDesktopAdapter`、`fileAPI`、`appAPI` 均可用
-2. 设置 `body.dataset.platform`
-3. 加载 `settings` 和 `defaultSettings`
-4. 应用国际化：`applyLocale(locale)`
-5. 绑定所有 DOM 事件：`setupEvents()`
-6. 恢复侧栏宽度和可见性；侧栏在显示时先作为 transform overlay 滑入，结束后才让 Vditor 缩窄，隐藏时同样在滑出结束后再释放编辑区宽度；拖动右缘时仅实时更新侧栏和应用 chrome，活动 Vditor host 宽度冻结到 mouseup 后再统一落位
-7. 应用演示设置（CSS 变量、缩放）
-8. 解析并应用主题
-9. 恢复工作区（`restoreWorkspace`）
-10. 恢复正常标签页（`restoreTabs`）
-11. 读取并直接打开恢复快照；恢复标签显示文档级警示横幅
-12. 发送 `rendererReady()`，触发主进程 `flushPendingOpenFiles()`
+2. 创建 `LifecycleManager` 实例
+3. 注册并初始化 `LegacyAppController`（调用 `window.__vditorDesktopLegacyBootstrap`）
+4. 注册 `beforeunload` 事件，触发 `lifecycle.dispose()`
+
+`init()` 函数（`src/renderer/app.js`，由 `LegacyAppController` 调用）：
+
+1. 设置 `body.dataset.platform`
+2. 加载 `settings` 和 `defaultSettings`
+3. 应用国际化：`applyLocale(locale)`
+4. 绑定所有 DOM 事件：`setupEvents()`
+5. 恢复侧栏宽度和可见性；侧栏在显示时先作为 transform overlay 滑入，结束后才让 Vditor 缩窄，隐藏时同样在滑出结束后再释放编辑区宽度；拖动右缘时仅实时更新侧栏和应用 chrome，活动 Vditor host 宽度冻结到 mouseup 后再统一落位
+6. 应用演示设置（CSS 变量、缩放）
+7. 解析并应用主题
+8. 恢复工作区（`restoreWorkspace`）
+9. 恢复正常标签页（`restoreTabs`）
+10. 读取并直接打开恢复快照；恢复标签显示文档级警示横幅
+11. 发送 `rendererReady()`，触发主进程 `flushPendingOpenFiles()`
 
 ### 6.2 路由结构
 
