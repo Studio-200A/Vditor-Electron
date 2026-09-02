@@ -211,6 +211,73 @@ test('synchronizes status and preserves document position for Vditor mode shortc
   }
 });
 
+test('preserves the Vditor instance when switching modes with Vditor shortcuts', async () => {
+  const running = await launchApp(
+    { editMode: 'wysiwyg' },
+    { 'undo-modes.md': '# Heading\n\nBody' },
+  );
+  try {
+    const { page } = running;
+    const modifier =
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+    await expect(page.locator('.editor-host.active .vditor-wysiwyg')).toBeVisible();
+    await page.evaluate(() => {
+      const content = document.querySelector('.editor-host.active .vditor-content');
+      if (!content) throw new Error('Expected .vditor-content element');
+      content.setAttribute('data-baseline-instance', 'original');
+    });
+
+    await page.keyboard.press(`${modifier}+Alt+9`);
+    await expect(page.locator('.editor-host.active .vditor-sv')).toBeVisible();
+    await page.keyboard.press(`${modifier}+Alt+8`);
+    await expect(page.locator('.editor-host.active .vditor-ir')).toBeVisible();
+    await page.keyboard.press(`${modifier}+Alt+7`);
+    await expect(page.locator('.editor-host.active .vditor-wysiwyg')).toBeVisible();
+
+    await expect(
+      page.locator('.editor-host.active .vditor-content[data-baseline-instance="original"]'),
+    ).toBeVisible();
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('returns the inactive toolbar to its owner host when switching tabs', async () => {
+  const running = await launchApp({ editMode: 'ir' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    await page.waitForSelector('#vditorToolbarMount[data-toolbar-pending="false"]');
+    await page.evaluate(() => {
+      const toolbar = document.querySelector('#vditorToolbarMount .vditor-toolbar');
+      if (!toolbar) throw new Error('Expected the mounted toolbar');
+      toolbar.setAttribute('data-owner-test', 'first-tab');
+    });
+
+    await createNewTab(page);
+    await page.waitForSelector('#vditorToolbarMount[data-toolbar-pending="false"]');
+    await expect(page.locator('#vditorToolbarMount .vditor-toolbar')).not.toHaveAttribute(
+      'data-owner-test',
+      'first-tab',
+    );
+    await expect(
+      page.locator('.editor-host:not(.active) .vditor-toolbar[data-owner-test="first-tab"]'),
+    ).toHaveCount(1);
+
+    await page.locator('.document-tab').first().click();
+    await page.waitForSelector('#vditorToolbarMount[data-toolbar-pending="false"]');
+    await expect(page.locator('#vditorToolbarMount .vditor-toolbar')).toHaveAttribute(
+      'data-owner-test',
+      'first-tab',
+    );
+    await expect(
+      page.locator('.editor-host:not(.active) .vditor-toolbar:not([data-owner-test])'),
+    ).toHaveCount(1);
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('applies a changed default editor mode only to later tabs', async () => {
   const running = await launchApp({ editMode: 'sv' });
   try {

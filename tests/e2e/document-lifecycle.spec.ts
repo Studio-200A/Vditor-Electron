@@ -302,6 +302,76 @@ test('prevents direct overwrite when a recovered document conflicts with disk', 
   }
 });
 
+test('restores an unavailable recovery snapshot as a save-as-only recovery tab', async () => {
+  const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-recovery-unavailable-e2e-'));
+  const configDir = path.join(testRoot, 'config');
+  const filePath = path.join(testRoot, 'gone.md');
+  fs.mkdirSync(configDir);
+  new SettingsStore(configDir).update({
+    locale: 'en_US',
+    systemTheme: false,
+    editMode: 'sv',
+    autoSave: false,
+    restoreTabs: false,
+    restoreWorkspace: false,
+  });
+  const recoveryDir = path.join(testRoot, 'recovery');
+  await new RecoveryStore(recoveryDir).save({
+    schemaVersion: RECOVERY_SCHEMA_VERSION,
+    id: '4d2c0f6a-9b3e-4c1d-8a2f-6e5d4c3b2a10',
+    filePath,
+    title: 'gone.md',
+    content: 'Recovered after crash',
+    savedContent: 'Original content',
+    encoding: 'utf-8',
+    lineEnding: 'LF',
+    mode: 'sv',
+    updatedAt: Date.now(),
+  });
+  let restored: ElectronApplication | null = null;
+  try {
+    restored = await electron.launch({
+      args: ['.'],
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        ELECTRON_DISABLE_SECURITY_WARNINGS: 'true',
+        VDITOR_DESKTOP_CONFIG_DIR: configDir,
+        VDITOR_DESKTOP_DATA_DIR: path.join(testRoot, 'chromium'),
+      },
+    });
+    const restoredPage = await restored.firstWindow();
+    await restoredPage.waitForSelector('#appMenuBar[data-ready="true"]');
+    await expect(restoredPage.locator('.editor-host.active .vditor-sv')).toContainText(
+      'Recovered after crash',
+    );
+    await expect(restoredPage.locator('.document-tab.active > span')).toHaveText(
+      'Recovered gone.md',
+    );
+    await expect(restoredPage.locator('#recoveryBanner')).toBeVisible();
+    await expect(restoredPage.locator('#recoveryMessage')).toHaveText(
+      'Recovered unsaved changes, but the original file no longer exists or cannot be read.',
+    );
+    await expect(restoredPage.locator('#recoveryDetail')).toHaveText(
+      'Save the recovered content to another location.',
+    );
+    await expect(restoredPage.locator('#recoverySave')).toBeHidden();
+    await expect(restoredPage.locator('#recoverySaveAs')).toBeVisible();
+    await expect(restoredPage.locator('#recoveryDiscard')).toBeVisible();
+    expect(fs.existsSync(filePath)).toBe(false);
+
+    await restoredPage.locator('#recoveryDiscard').click();
+    await expect(restoredPage.locator('.document-tab')).toHaveCount(0);
+    await expect(restoredPage.locator('#recoveryBanner')).toBeHidden();
+    await expect.poll(() => fs.readdirSync(recoveryDir)).toEqual([]);
+  } finally {
+    if (restored) {
+      restored.process().kill('SIGKILL');
+    }
+    fs.rmSync(testRoot, { recursive: true, force: true });
+  }
+});
+
 test('shows only the workspace name and refresh action in the explorer header', async () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-workspace-'));
   fs.mkdirSync(path.join(workspace, 'docs'));
