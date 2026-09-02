@@ -12,7 +12,14 @@ const releaseDir = path.join(projectRoot, 'release');
 const unpackedDir = path.join(releaseDir, 'linux-unpacked');
 const stagingDir = path.join(releaseDir, '.linux-release-staging');
 const resourcesDir = path.join(projectRoot, 'resources', 'linux');
-const iconSource = path.join(projectRoot, 'src', 'renderer', 'assets', 'vditor-desktop.svg');
+const iconSource = path.join(
+  projectRoot,
+  'src',
+  'renderer',
+  'assets',
+  'app-icon',
+  'vditor-desktop.svg',
+);
 const appImageToolVersion = '1.9.1';
 const appImageToolChecksum = 'ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0';
 const appImageToolUrl = `https://github.com/AppImage/appimagetool/releases/download/${appImageToolVersion}/appimagetool-x86_64.AppImage`;
@@ -174,7 +181,7 @@ function buildPortable() {
 
 function prepareAppDir() {
   const appDir = path.join(stagingDir, 'VditorDesktop.AppDir');
-  const appImageDesktopBaseName = 'com.github.studio200a.VditorDesktop';
+  const appImageDesktopBaseName = packageMetadata.desktopName;
   remove(appDir);
   const payload = path.join(appDir, 'usr', 'lib', 'vditor-desktop');
   const applications = path.join(appDir, 'usr', 'share', 'applications');
@@ -214,9 +221,16 @@ async function buildAppImage() {
   const artifact = path.join(releaseDir, `vditor-desktop-x86_64-${version}-portable.AppImage`);
   const [tool, runtime] = await Promise.all([ensureAppImageTool(), ensureAppImageRuntime()]);
   remove(artifact);
-  run(tool, ['--appimage-extract-and-run', '--runtime-file', runtime, appDir, artifact], {
-    env: { ...process.env, ARCH: 'x86_64' },
-  });
+  // appimagetool's bundled AppStream policy rejects the stable reverse-domain ID because it
+  // contains hyphens. check-project-metadata validates our exact ID and metadata references;
+  // skip only that stricter advisory validator so the AppImage can retain the product ID.
+  run(
+    tool,
+    ['--appimage-extract-and-run', '--no-appstream', '--runtime-file', runtime, appDir, artifact],
+    {
+      env: { ...process.env, ARCH: 'x86_64' },
+    },
+  );
   fs.chmodSync(artifact, 0o755);
   console.log(`AppImage artifact: ${artifact}`);
 }
@@ -228,6 +242,7 @@ async function main() {
   if (!['portable', 'appimage', 'all'].includes(mode)) {
     fail('usage: node scripts/release-linux.js [portable|appimage|all]');
   }
+  run(process.execPath, [path.join(projectRoot, 'scripts', 'check-project-metadata.js')]);
   fs.mkdirSync(stagingDir, { recursive: true });
   buildUnpackedApplication();
   if (mode === 'portable' || mode === 'all') buildPortable();

@@ -1,7 +1,8 @@
 import { BrowserWindow, Menu, MenuItemConstructorOptions } from 'electron';
+import { IPC_CHANNELS } from './ipc-contract';
 
 function emit(win: Electron.BaseWindow | undefined, action: string, value?: string): void {
-  if (win instanceof BrowserWindow) win.webContents.send('menu:action', action, value);
+  if (win instanceof BrowserWindow) win.webContents.send(IPC_CHANNELS.menuAction, action, value);
 }
 
 type EditMode = 'wysiwyg' | 'ir' | 'sv';
@@ -23,12 +24,12 @@ export function createAppMenu(locale: string = 'en_US', editMode: EditMode = 'ir
         },
         {
           label: tr('Open File…', '打开文件…', '開啟檔案…'),
-          accelerator: 'CmdOrCtrl+O',
+          accelerator: 'CmdOrCtrl+Alt+O',
           click: (_i, w) => emit(w, 'open'),
         },
         {
           label: tr('Open Folder…', '打开文件夹…', '開啟資料夾…'),
-          accelerator: 'CmdOrCtrl+K',
+          accelerator: 'CmdOrCtrl+Alt+K',
           click: (_i, w) => emit(w, 'open-folder'),
         },
         { type: 'separator' },
@@ -92,7 +93,7 @@ export function createAppMenu(locale: string = 'en_US', editMode: EditMode = 'ir
         { type: 'separator' },
         {
           label: tr('Toggle Sidebar', '切换侧边栏', '切換側邊欄'),
-          accelerator: 'CmdOrCtrl+B',
+          accelerator: 'CmdOrCtrl+Alt+B',
           click: (_i, w) => emit(w, 'toggle-sidebar'),
         },
         {
@@ -102,9 +103,6 @@ export function createAppMenu(locale: string = 'en_US', editMode: EditMode = 'ir
         },
         { type: 'separator' },
         { role: 'togglefullscreen', accelerator: 'F11' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
-        { role: 'resetZoom' },
       ],
     },
   ];

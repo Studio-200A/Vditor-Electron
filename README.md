@@ -3,22 +3,22 @@
 [简体中文](README_CN.md) · English
 
 <p align="center">
-  <img src="src/renderer/assets/vditor-desktop.svg" alt="Vditor Desktop" width="128" />
+  <img src="src/renderer/assets/app-icon/vditor-desktop.svg" alt="Vditor Desktop" width="128" />
 </p>
 
 <p align="center">
-  A calm, local-first Markdown editor for people who want the power of Vditor in a focused desktop workspace.
+  Your Markdown files, on your own machine, in a desktop editor built for focus — not a browser tab, not another cloud account, just Vditor's full editing power in a calm workspace.
 </p>
 
 <p align="center">
-  <a href="https://github.com/Studio-200A/Vditor-Electron/releases"><img src="https://img.shields.io/badge/version-0.1.5-blue" alt="Version 0.1.5" /></a>
+  <a href="https://github.com/Studio-200A/Vditor-Electron/releases"><img src="https://img.shields.io/badge/version-0.2.0-blue" alt="Version 0.2.0" /></a>
   <a href="https://github.com/Studio-200A/Vditor-Electron/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License" /></a>
   <a href="https://github.com/Studio-200A/Vditor-Electron"><img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey" alt="Linux, Windows and macOS" /></a>
   <a href="https://github.com/prettier/prettier"><img src="https://img.shields.io/badge/code_style-prettier-ff69b4.svg" alt="code style: prettier" /></a>
 
 </p>
 
-Vditor Desktop is a local Markdown writing app built with [Electron](https://github.com/electron/electron) and [Vditor](https://github.com/Vanessa219/vditor). Your files remain ordinary Markdown files on your computer, while the app adds the details that make a desktop editor feel complete: tabs, workspaces, a file explorer, document outline, themes, session recovery, and native file associations.
+Vditor Desktop takes the writing experience of [Vditor](https://github.com/Vanessa219/vditor) — **one of the most capable Markdown editors around** — and gives it the desktop app it deserves. There's no proprietary format and no lock-in: what you write is exactly what sits on disk, an ordinary `.md` file, at all times. Around that, the app fills in everything a real desktop tool needs but a browser-based editor can't offer on its own: tabs, workspaces, a file explorer, Vditor's built-in outline, themes, session recovery, and native file associations.
 
 ![Vditor Desktop light theme](assets/screenshot-light.webp)
 
@@ -29,6 +29,7 @@ Vditor Desktop is a local Markdown writing app built with [Electron](https://git
 - [Why Vditor Desktop](#why-vditor-desktop)
 - [Editing modes](#editing-modes)
 - [A workspace that stays out of the way](#a-workspace-that-stays-out-of-the-way)
+- [Protecting You and Your Content, Thoughtfully](#protecting-you-and-your-content-thoughtfully)
 - [Themes and languages](#themes-and-languages)
 - [Install and run](#install-and-run)
 - [Everyday shortcuts](#everyday-shortcuts)
@@ -41,16 +42,17 @@ Vditor Desktop is a local Markdown writing app built with [Electron](https://git
 
 ## Why Vditor Desktop
 
-- **Markdown without lock-in.** Open and save regular `.md` files directly. There is no account, cloud sync, proprietary document format, or required service.
-- **Three ways to write.** Move between WYSIWYG, instant rendering, and split preview mode without leaving the document.
-- **Desktop-grade file handling.** Open files from the command line or a file manager, work with a folder as a workspace, and recover tabs and window state between sessions.
-- **Workspace-aware file operations.** Create numbered untitled documents, create and rename files inline, open a workspace from the explorer context menu, and move files to the trash without leaving the editor.
-- **Editing context menu.** Right-click in any editable mode for clipboard, deletion, and context selection actions; rendered table cells also offer row and column actions.
-- **A focused interface.** A compact workbench bar keeps menus, file actions, tabs, and window controls together, while the editor toolbar appears only when needed.
-- **Rich Markdown.** Keep Vditor's support for formulas, diagrams, charts, footnotes, syntax highlighting, tables of contents, and media previews.
-- **Local-first by design.** Configuration and Chromium data are stored locally in platform-appropriate directories. The application does not upload your documents.
+- **Your files stay yours.** No account, no cloud sync, no proprietary format. What you write is a plain `.md` file on your disk, readable and portable with any other editor, forever.
+- **Write however your brain works that day.** WYSIWYG when you want to see the finished page, instant rendering when you want syntax and style at once, split preview when you want source and output side by side — switch anytime, mid-document.
+- **A real desktop citizen, not a wrapped webpage.** Open files straight from the terminal or your file manager, treat any folder as a project, and pick up right where you left off — tabs, layout, and all — the next time you launch it.
+- **The file tree is part of the editor, not an afterthought.** Create, rename, and organize files without leaving your document; open new workspaces or send files to the trash straight from the explorer's right-click menu.
+- **Small conveniences that add up.** Right-click for clipboard and selection actions wherever you're writing, get row/column controls on rendered tables, and never fight a stray menu that forgot to close itself when you opened another one.
+- **An interface that gets out of the way.** A single, compact bar holds your menus, file actions, tabs, and window controls; the editing toolbar only shows up when you actually need it.
+- **All the Markdown power you'd expect from Vditor.** Math, diagrams, charts, footnotes, syntax highlighting, a table of contents, and inline media preview — kept faithful to upstream and presented in full.
+- **Local-first.** Configuration and app data live in the standard local directory for your platform. There's nothing to upload, because there's nowhere for it to go.
 
 ## Editing modes
+
 
 | Mode                  | Best for                                                                                |
 | --------------------- | --------------------------------------------------------------------------------------- |
@@ -62,18 +64,33 @@ Switch modes from the unified toolbar or **View → Editing Mode**. Split Previe
 
 ## A workspace that stays out of the way
 
-- Open a folder as a workspace and browse its Markdown files in the explorer.
-- Expand and collapse directories, filter by extension, create and rename files, move items to the trash, or reveal them in the system file manager.
-- Read an H1–H6 document outline and jump to headings from any editing mode.
-- Keep multiple documents open in numbered untitled tabs, with independent undo history and modified state.
-- Drag tabs to arrange them in the order that fits your work.
-- Collapse the explorer to give the editor more room; its file actions fold away with it while menus and shortcuts remain available.
-- Save, Save As, export HTML or PDF, and recover the last workspace and window state.
-- Find and replace text in the active document with a compact `Ctrl/Cmd + F` panel.
-- Detect changes to files in the active workspace. Clean documents reload automatically; documents with local edits show a persistent conflict banner and pause autosave until you choose how to proceed.
-- Paste or upload images to a configurable relative assets directory. Relative local images and online images can be previewed in all three modes.
+Most days you're not managing an editor — you're just writing. Vditor Desktop tries to keep the surrounding tools quiet until you actually reach for them.
 
-External file monitoring currently covers files in the active workspace and Untitled documents whose expected workspace path appears. Files opened outside the workspace, file deletion recovery, directory moves, atomic saves, and conflict recovery across application restarts remain planned reliability work; keep backups of important documents.
+- Point it at a folder and it becomes your project: browse its Markdown files right in the explorer, no separate import step.
+- Navigate the way you would in any file manager — expand, collapse, filter by extension, rename, trash, or jump straight to the system file manager — all without leaving the editor.
+- Never lose your place in a long document: jump to any H1–H6 heading from a live outline, in any editing mode.
+- Work on several documents at once, each with its own undo history and unsaved-changes indicator, and drag tabs into whatever order makes sense to you.
+- Need more screen for writing? Collapse the explorer and it steps aside — the shortcuts and menu still work exactly the same.
+- Save, Save As, export portable HTML or self-contained-image PDF files, and pick up your last session automatically the next time you open the app.
+- Find and replace without a heavyweight dialog — a compact `Ctrl/Cmd + F` panel does the job.
+- Drop images straight into your document; they land in a configurable assets folder and preview correctly in all three editing modes, whether they're local or online. SVG previews are available when you need them, with an extra confirmation first.
+
+Directory renames/deletes and workspace-level resource limits remain planned work; keep backups of important documents.
+
+## Protecting You and Your Content, Thoughtfully
+
+Vditor Desktop treats your writing as something to protect, not something to overwrite. Behind the simple Markdown workflow are several safeguards designed to keep an unexpected exit, a second editor, or a changing file system from silently taking your work away:
+
+- **Safer links, by design.** Links in your Markdown only hand clearly supported `http:`, `https:`, and `mailto:` destinations to the system. Scripts, dangerous schemes, and untrusted in-app pages are stopped at the boundary, so one stray link cannot take your editor somewhere it should not go.
+- **Scoped local previews.** Local images are served only from the active workspace or the parent directories of documents you have open. Missing, outside, active, and unknown resources fail uniformly; the Markdown source keeps its ordinary relative paths.
+- **SVGs when you need them.** SVG previews start turned off, so opening an unfamiliar document stays calm and predictable. When a document needs them, enable SVG rendering from **Settings → Editor → Security** and confirm the prompt. For an SVG you do not recognize—especially one from the web—check its source before you preview it.
+- **Defensive rendering.** The editor keeps context isolation on and Node integration off. Its policy allows only bundled scripts plus the exact Vditor MathJax loader it needs, and Markdown XSS sanitization is on by default. You can disable sanitization only after an explicit warning for a document you trust; the remaining layers reduce risk but do not make untrusted HTML safe.
+- **Careful saves.** Documents are written through a temporary file in the same directory. Unchanged files are not rewritten, and a failed save leaves both the original file and your unsaved editor content intact.
+- **Recovery after an unexpected exit.** Unsaved work is captured in a private recovery snapshot. When you return, the app checks whether the original file is still the same before offering to save the recovered version; if it is not safe, you can save the recovered content elsewhere.
+- **Awareness of outside changes.** Every open file is monitored, including files opened outside the active workspace. Clean documents can reload automatically, while documents with local edits pause autosave and keep a persistent notice until you decide what should happen.
+- **Guided conflict resolution.** You can reload the stable disk version, save your current writing elsewhere, keep it as an untitled document, ignore the external change, or explicitly confirm an overwrite. If the disk changes again, the old overwrite confirmation is discarded.
+- **Protection from missing or unreadable files.** If a file is deleted or loses read/write access, the editor keeps its in-memory content and pauses autosave instead of recreating or overwriting the file silently. When access returns, the disk version is never inserted into the editor without your decision.
+- **A recoverable recreation.** If you explicitly recreate a missing file, the app copies the content captured when the file became unavailable to the system clipboard and shows a five-second confirmation notice. Edits made afterward remain separate, so the backup represents the protected version you may need.
 
 ## Themes and languages
 
@@ -81,9 +98,12 @@ Built-in application themes:
 
 - Light
 - Dark
+- Claude Light
+- Claude Dark
+- Monokai Pro Light, including a dedicated H1–H6 heading palette
 - Monokai Pro Dark, including a dedicated H1–H6 heading palette
 
-The theme switch remembers the last dark theme. Content and code-block preview themes follow the light/dark application context while preserving the user's last selection in each context. Optional multi-platform typography previews can be enabled when needed.
+Choose light and dark application themes independently in Settings. The status-bar theme-mode menu then offers fixed light, fixed dark, and follow-system modes, with its resident icon showing the current mode. Application themes only change application colors. Content and code-block preview themes remain controlled by Vditor and preserve the user's last selection in each light/dark context. Optional multi-platform typography previews can be enabled when needed.
 
 The interface is localized in English (`en_US`), Simplified Chinese (`zh_Hans`), Traditional Chinese (`zh_Hant`), and system language mode.
 
@@ -91,7 +111,7 @@ The interface is localized in English (`en_US`), Simplified Chinese (`zh_Hans`),
 
 ### From source
 
-Node.js 22 or a compatible version and npm are required:
+Node.js 22.22.2 or later in the 22.x line, Node.js 24.15.0 or later in the 24.x line, or Node.js 26+ and npm are required for source development. Node.js 23 and 25 are not supported by the current dependency set:
 
 ```bash
 git clone https://github.com/Studio-200A/Vditor-Electron.git
@@ -99,6 +119,8 @@ cd Vditor-Electron
 npm ci
 npm start
 ```
+
+On Linux, `npm run test:e2e` reuses an already unpacked `node_modules/electron/dist` runtime before requesting a download. Other first commands that launch or package Electron may download the pinned Electron 44.1.0 runtime into Electron's local cache; this is separate from `npm ci` and does not change the lockfile. The runtime requires macOS 13 or later, and Electron 44 does not provide prebuilt Windows 32-bit or Linux ARMv7 binaries. This repository's Linux release script currently targets x86_64; Windows/macOS packaging and native validation remain separate platform work.
 
 The build copies Vditor's bundled assets locally; runtime use does not depend on a Vditor CDN.
 
@@ -120,40 +142,50 @@ release/vditor-desktop-x86_64-<version>-portable.AppImage
 
 The portable desktop entry uses `/path/to/vditor-desktop` as an installation-path placeholder. Replace it with the actual extraction path before installing the entry into your desktop environment. The AppImage can be run after making it executable.
 
-Linux is the primary development and validation platform at present. Windows and macOS-specific window and data-directory adaptations are included for future platform builds.
+The release script verifies the project metadata and the pinned AppImage tool/runtime checksums before packaging. It passes `--no-appstream` to appimagetool because its bundled advisory validator rejects this project's stable hyphenated reverse-domain ID; the project's own metadata check still requires the exact ID in the AppStream and desktop references.
+
+Linux is the primary development and validation platform at present. Windows and macOS-specific window and data-directory adaptations are included, but physical-device watcher, permission, path-case, packaging, and release validation are still pending.
 
 ## Everyday shortcuts
 
-| Action            | Shortcut               |
-| ----------------- | ---------------------- |
-| New file          | `Ctrl/Cmd + N`         |
-| Open file         | `Ctrl/Cmd + O`         |
-| Save              | `Ctrl/Cmd + S`         |
-| Save As           | `Ctrl/Cmd + Shift + S` |
-| Find and replace  | `Ctrl/Cmd + F`         |
-| Select context / all | `Ctrl/Cmd + A`      |
-| Close tab         | `Ctrl/Cmd + W`         |
-| Toggle explorer   | `Ctrl/Cmd + B`         |
-| Open settings     | `Ctrl/Cmd + ,`         |
-| Toggle Chrome DevTools (when enabled) | `Ctrl/Cmd + Shift + I` |
-| Toggle fullscreen | `F11`                  |
+
+| Action                                | Shortcut               |
+| ------------------------------------- | ---------------------- |
+| New file                              | `Ctrl/Cmd + N`         |
+| Open file                             | `Ctrl/Cmd + Alt + O`   |
+| Open folder                           | `Ctrl/Cmd + Alt + K`   |
+| Save                                  | `Ctrl/Cmd + S`         |
+| Save As                               | `Ctrl/Cmd + Shift + S` |
+| Find and replace                      | `Ctrl/Cmd + F`         |
+| Select context / all                  | `Ctrl/Cmd + A`         |
+| Close tab                             | `Ctrl/Cmd + W`         |
+| Toggle explorer                       | `Ctrl/Cmd + Alt + B`   |
+| Open settings                         | `Ctrl/Cmd + ,`         |
+| Toggle Chrome DevTools (when enabled) | `F12`                  |
+| Toggle fullscreen                     | `F11`                  |
 
 ## Configuration and data
 
 Application configuration and Chromium user data are kept separate:
 
-| Platform | Configuration                                                                             | Chromium data                                                                    |
-| -------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Linux    | `${XDG_CONFIG_HOME:-~/.config}/vditor-desktop/config.toml`                                | `${XDG_DATA_HOME:-~/.local/share}/vditor-desktop/chromium/`                      |
-| Windows  | `%APPDATA%\\vditor-desktop\\config.toml`                                                  | `%LOCALAPPDATA%\\vditor-desktop\\chromium\\`                                     |
-| macOS    | `~/Library/Application Support/com.github.studio-200a.vditor-electron/Config/config.toml` | `~/Library/Application Support/com.github.studio-200a.vditor-electron/Chromium/` |
 
-The TOML file is human-readable and grouped by application, appearance, typography, editor, preview, files, workspace, window, and session settings.
+| Platform | Configuration                                                                             | Chromium data                                                                    | Recovery data                                                                    |
+| -------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Linux    | `${XDG_CONFIG_HOME:-~/.config}/vditor-desktop/config.toml`                                | `${XDG_DATA_HOME:-~/.local/share}/vditor-desktop/chromium/`                      | `${XDG_DATA_HOME:-~/.local/share}/vditor-desktop/recovery/`                      |
+| Windows  | `%APPDATA%\\vditor-desktop\\config.toml`                                                  | `%LOCALAPPDATA%\\vditor-desktop\\chromium\\`                                     | `%LOCALAPPDATA%\\vditor-desktop\\recovery\\`                                     |
+| macOS    | `~/Library/Application Support/com.github.studio-200a.vditor-electron/Config/config.toml` | `~/Library/Application Support/com.github.studio-200a.vditor-electron/Chromium/` | `~/Library/Application Support/com.github.studio-200a.vditor-electron/recovery/` |
+
+The TOML file is human-readable and grouped by application, appearance, fonts, editor, preview, files, workspace, window, and session settings.
+
+The appearance section stores the independently selected `lightTheme` and `darkTheme` values. The status-bar theme-mode menu offers fixed light, fixed dark, and follow-system modes; `systemTheme` records the third choice and resolves the active theme from those two preferences. Claude application themes only define application colors and do not replace Vditor's content or code-block theme settings.
+
+Crash-recovery snapshots are stored separately in the private application data directory shown above. They are removed after saving or discarding the recovered document and are never served as local document resources.
 
 ## Build and test
 
 ```bash
 npm run format:check
+npm run check:project
 npm run lint
 npm run typecheck
 npm run check:vditor
@@ -180,6 +212,7 @@ Vditor Desktop is made possible by the following open-source projects. Their aut
 
 <details>
 <summary>Runtime and direct dependencies</summary>
+
 
 | Project                                                        | Role                               | License                 |
 | -------------------------------------------------------------- | ---------------------------------- | ----------------------- |
@@ -210,6 +243,7 @@ Vditor Desktop is made possible by the following open-source projects. Their aut
 - [TypeScript](https://github.com/microsoft/TypeScript) · [ESLint](https://github.com/eslint/eslint) · [typescript-eslint](https://github.com/typescript-eslint/typescript-eslint)
 - [Prettier](https://github.com/prettier/prettier) · [Vitest](https://github.com/vitest-dev/vitest) · [jsdom](https://github.com/jsdom/jsdom)
 - [Playwright](https://github.com/microsoft/playwright) · [electron-builder](https://github.com/electron-userland/electron-builder) · [DefinitelyTyped](https://github.com/DefinitelyTyped/DefinitelyTyped)
+- [Lucide](https://lucide.dev) · [lucide-static](https://www.npmjs.com/package/lucide-static) (ISC): provides the SVG icons used by the application chrome, find-and-replace controls, and file tree; `lucide-static` is used only at build time and does not introduce React.
 
 </details>
 

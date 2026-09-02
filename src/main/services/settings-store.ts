@@ -1,8 +1,9 @@
-import * as fs from 'fs';
+import * as fs from 'node:fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as TOML from '@iarna/toml';
-import { AppSettings, DEFAULT_SETTINGS } from './app-state';
+import { parseSettingsPatch } from '../ipc-validation';
+import { AppSettings, DEFAULT_SETTINGS, normalizeWorkspaceReadDepth } from './app-state';
 
 type SettingsDocument = {
   application: Pick<AppSettings, 'restoreTabs' | 'restoreWorkspace' | 'devToolsEnabled' | 'locale'>;
@@ -10,7 +11,8 @@ type SettingsDocument = {
     AppSettings,
     | 'systemTheme'
     | 'theme'
-    | 'lastDarkTheme'
+    | 'lightTheme'
+    | 'darkTheme'
     | 'contentTheme'
     | 'codeTheme'
     | 'lightCodeTheme'
@@ -73,6 +75,7 @@ type SettingsDocument = {
     | 'listStyle'
     | 'headingAnchor'
     | 'sanitize'
+    | 'allowSvgImages'
   >;
   files: Pick<
     AppSettings,
@@ -81,6 +84,7 @@ type SettingsDocument = {
     | 'pasteImagesDir'
     | 'imageMaxWidth'
     | 'imageQuality'
+    | 'workspaceReadDepth'
     | 'defaultOpenPath'
     | 'recentPaths'
     | 'recentFiles'
@@ -96,6 +100,20 @@ type SettingsDocument = {
   session: AppSettings['session'];
 };
 
+type SettingsFileSystem = Pick<
+  typeof fs,
+  'existsSync' | 'mkdirSync' | 'readFileSync' | 'writeFileSync' | 'renameSync' | 'unlinkSync'
+>;
+
+export class SettingsPersistenceError extends Error {
+  readonly code = 'SETTINGS_PERSIST_FAILED' as const;
+
+  constructor() {
+    super('Unable to persist settings.');
+    this.name = 'SettingsPersistenceError';
+  }
+}
+
 const pick = <K extends keyof AppSettings>(
   settings: AppSettings,
   keys: readonly K[],
@@ -107,12 +125,15 @@ export class SettingsStore {
   private configPath: string;
   private data: AppSettings;
 
-  constructor(configDir?: string) {
+  constructor(
+    configDir?: string,
+    private readonly fileSystem: SettingsFileSystem = fs,
+  ) {
     this.configDir = configDir || path.join(os.homedir(), '.vditor-desktop');
     this.configPath = path.join(this.configDir, 'config.toml');
 
-    if (!fs.existsSync(this.configDir)) {
-      fs.mkdirSync(this.configDir, { recursive: true });
+    if (!this.fileSystem.existsSync(this.configDir)) {
+      this.fileSystem.mkdirSync(this.configDir, { recursive: true });
     }
 
     this.data = this.load();
@@ -120,10 +141,15 @@ export class SettingsStore {
 
   private load(): AppSettings {
     try {
-      if (fs.existsSync(this.configPath)) {
-        const raw = fs.readFileSync(this.configPath, 'utf-8');
+      if (this.fileSystem.existsSync(this.configPath)) {
+        const raw = this.fileSystem.readFileSync(this.configPath, 'utf-8');
         const parsed = TOML.parse(raw) as unknown as Partial<SettingsDocument>;
-        return this.deepMerge(DEFAULT_SETTINGS, this.fromDocument(parsed));
+        const merged = this.deepMerge(DEFAULT_SETTINGS, this.fromDocument(parsed));
+        const settings = this.validateLoadedSettings(merged);
+        return {
+          ...settings,
+          workspaceReadDepth: normalizeWorkspaceReadDepth(settings.workspaceReadDepth),
+        };
       }
     } catch {
       console.error('Failed to load settings, using defaults');
@@ -131,23 +157,43 @@ export class SettingsStore {
     return { ...DEFAULT_SETTINGS };
   }
 
-  private save(): void {
+  private validateLoadedSettings(settings: AppSettings): AppSettings {
+    const validSettings: Partial<AppSettings> = {};
+    for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof AppSettings)[]) {
+      try {
+        Object.assign(validSettings, parseSettingsPatch({ [key]: settings[key] }));
+      } catch {
+        console.error(`Invalid persisted setting "${String(key)}", using its default`);
+      }
+    }
+    return this.deepMerge(DEFAULT_SETTINGS, validSettings);
+  }
+
+  private save(data: AppSettings): boolean {
     const temporaryPath = `${this.configPath}.tmp`;
     try {
-      fs.writeFileSync(
+      this.fileSystem.writeFileSync(
         temporaryPath,
-        TOML.stringify(this.withoutUndefined(this.toDocument(this.data)) as TOML.JsonMap),
+        TOML.stringify(this.withoutUndefined(this.toDocument(data)) as TOML.JsonMap),
         'utf-8',
       );
-      fs.renameSync(temporaryPath, this.configPath);
+      this.fileSystem.renameSync(temporaryPath, this.configPath);
+      return true;
     } catch (err) {
       console.error('Failed to save settings:', err);
       try {
-        if (fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath);
+        if (this.fileSystem.existsSync(temporaryPath)) this.fileSystem.unlinkSync(temporaryPath);
       } catch {
         // Preserve the original error and leave the previous settings file intact.
       }
+      return false;
     }
+  }
+
+  private commit(nextData: AppSettings, throwOnFailure: boolean): AppSettings {
+    if (this.save(nextData)) this.data = nextData;
+    else if (throwOnFailure) throw new SettingsPersistenceError();
+    return this.getAll();
   }
 
   get<K extends keyof AppSettings>(key: K): AppSettings[K] {
@@ -163,20 +209,27 @@ export class SettingsStore {
   }
 
   reset(): AppSettings {
-    this.data = structuredClone(DEFAULT_SETTINGS);
-    this.save();
-    return this.getAll();
+    return this.commit(structuredClone(DEFAULT_SETTINGS), false);
   }
 
   set<K extends keyof AppSettings>(key: K, value: AppSettings[K]): void {
-    this.data[key] = value;
-    this.save();
+    this.commit({ ...this.data, [key]: value }, false);
   }
 
   update(settings: Partial<AppSettings>): AppSettings {
-    this.data = this.deepMerge(this.data, settings);
-    this.save();
-    return this.getAll();
+    return this.commit(this.nextData(settings), false);
+  }
+
+  updateOrThrow(settings: Partial<AppSettings>): AppSettings {
+    return this.commit(this.nextData(settings), true);
+  }
+
+  private nextData(settings: Partial<AppSettings>): AppSettings {
+    const updated = this.deepMerge(this.data, settings);
+    return {
+      ...updated,
+      workspaceReadDepth: normalizeWorkspaceReadDepth(updated.workspaceReadDepth),
+    };
   }
 
   private toDocument(settings: AppSettings): SettingsDocument {
@@ -185,7 +238,8 @@ export class SettingsStore {
       appearance: pick(settings, [
         'systemTheme',
         'theme',
-        'lastDarkTheme',
+        'lightTheme',
+        'darkTheme',
         'contentTheme',
         'codeTheme',
         'lightCodeTheme',
@@ -245,6 +299,7 @@ export class SettingsStore {
         'listStyle',
         'headingAnchor',
         'sanitize',
+        'allowSvgImages',
       ]),
       files: pick(settings, [
         'autoSave',
@@ -252,6 +307,7 @@ export class SettingsStore {
         'pasteImagesDir',
         'imageMaxWidth',
         'imageQuality',
+        'workspaceReadDepth',
         'defaultOpenPath',
         'recentPaths',
         'recentFiles',

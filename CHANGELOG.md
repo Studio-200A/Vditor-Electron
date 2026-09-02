@@ -1,5 +1,90 @@
 # Changelog
 
+## 0.2.0 - Under-the-Hood Robustness Improvement
+
+### New Features
+
+#### Themes and symbolic icons
+
+- **feat(themes):** Added Monokai Pro Light, Claude Light and Claude Dark application themes based on official public UI colors. Light and dark application themes are selected independently. They change application chrome only; Vditor continues to own editor typography, content themes, and code-block highlighting.
+- **feat(theme mode):** Replaced the status-bar light/dark switch and Appearance-page system-theme checkbox with an icon-only three-way picker for fixed light, fixed dark, and follow-system modes. The resident icon shows the selected mode while the light/dark theme choices remain independently configurable.
+- **feat(symbolic icons):** Replaced the supplied desktop chrome, explorer refresh, theme-mode, settings, settings-navigation, file-tree, and find-and-replace icons with the corresponding Lucide assets, including `file`, `folder`, `folder-symlink`, `replace`, and `replace-all`, while keeping existing UI identifiers and accessible labels stable. The selected SVGs are now sourced from the `lucide-static` build dependency; application logos and notification artwork remain project-owned assets.
+
+#### Workspace and file operations
+
+- **feat(workspace links):** The explorer now distinguishes real-path-resolvable directory links with an italic, underlined name and the Lucide `folder-symlink` icon. Links into the workspace follow the workspace depth limit; external and cyclic targets remain visible but cannot be expanded.
+- **feat(workspace):** Added a persisted 7–12 workspace directory read-depth control (default 7). The explorer, restored folder expansion, and workspace monitoring share the same boundary, and the explorer explains when a deeper directory is intentionally not read.
+
+#### Recovery and unavailable files
+
+- **feat(recovery):** After an unexpected exit, unsaved documents now open directly with a persistent warning banner. The banner clearly distinguishes an unchanged original file from a changed or unavailable one, and only allows direct saving when it is safe; other recovery states can be saved elsewhere or discarded.
+- **feat(external file state):** Open documents now distinguish external deletion, reappearance, and unreadable/permission states. Autosave pauses while a target is unavailable, and the editor keeps its in-memory content until the user chooses an explicit resolution.
+- **feat(recreate backup):** Recreating an unavailable file copies the content captured before the unavailable state to the system clipboard and shows a five-second localized confirmation notice. The clipboard backup is not contaminated by edits made while the persistent notice is visible.
+
+### Security Improvements
+
+- **fix(navigation):** Unified URL validation and navigation decisions for `will-navigate`, `window.open`, and external-link handling; only `http:`, `https:`, and `mailto:` leave through the system handler, untrusted `app:` pages and bundled-asset navigations are blocked, and unsupported active schemes in rendered document links cannot execute in the renderer.
+- **fix(IPC security):** Restricted privileged renderer IPC to the trusted top-level application page and validated high-risk paths, names, enums, sizes, settings, and binary payloads before side effects; malformed or untrusted requests now fail with stable, localized errors, and invalid persisted settings fall back safely per field.
+- **fix(local resources):** Restricted `local-file://` previews to the active workspace and open-document directories, validated POSIX/Windows URL paths through canonical boundaries, blocked private and symlink-escaped paths, and limited responses to allowlisted raster images with accurate MIME headers; unsupported active content and SVG return a neutral 404. Save As now immediately rebinds preview authorization to the destination document directory and revokes the old root; it deliberately does not copy an existing `assets/` directory.
+- **fix(renderer security):** Removed broad `unsafe-eval` and script `unsafe-inline` CSP permissions. Vditor's pinned MathJax loader is allowed through one exact script hash, while Markdown HTML filtering remains on by default. The Editor > Security card now explains the trade-off in all supported languages and requires confirmation before trusted raw HTML filtering can be disabled.
+- **feat(controlled SVG rendering):** Added an off-by-default, localized SVG rendering setting for both local and HTTP(S) images. SVG URL and MIME responses are blocked until the user confirms the risk warning; revoking permission invalidates cached image responses without rebuilding Vditor or changing document sources.
+
+### Bug Fixes
+
+#### Workbench, toolbar, and menus
+
+- **fix(shortcuts):** Moved Open File, Open Folder, and Toggle Sidebar to `Ctrl/Cmd+Alt+O`, `Ctrl/Cmd+Alt+K`, and `Ctrl/Cmd+Alt+B`, so Vditor's ordered-list, link, and bold shortcuts remain editor-owned. Application keyboard handling now also defers to a Vditor shortcut that has already consumed the event; Chrome DevTools uses `F12` only when enabled in Settings > About, and Electron's menu no longer registers zoom shortcuts that conflict with Vditor table editing.
+- **fix(settings updates):** Appearance, typography, zoom, scrollbar, toolbar and sidebar layout, and other application-only settings now update open documents without recreating Vditor, preserving the current undo history. Options that Vditor 3.11.3 can only apply at initialization still rebuild while retaining the active mode and scroll position.
+- **fix(macOS window close):** Scoped an approved unsaved-changes close to its originating application window, so a window recreated from the Dock must ask again before discarding unsaved content.
+- **fix(main menu theming):** Windows/Linux custom main-menu triggers and popups now use each theme's sidebar surface, so Claude Light and Monokai Pro Light retain their warm application-chrome tone instead of appearing white.
+- **fix(sidebar tooltips):** Replaced browser-native sidebar tooltips with the shared application tooltip used by document links, so workspace, file-tree, link-directory, refresh, and outline controls now follow the active theme consistently.
+- **fix(sidebar animation):** Reworked long-document sidebar transitions to use a transform-based overlay instead of per-frame editor-width changes. The Vditor surface changes width only after the sidebar slide completes; the tab bar, shared Vditor toolbar, editor area, and Vditor host now smoothly follow their final positions without that resize. The transition no longer temporarily expands a long-document editor to measure its target layout; Files/Outline tabs now clip their visible space in step with the motion while retaining a consistent shadow. A non-layout toolbar-surface extension now carries the same background, border, and shadow through the exposed strip for documents and empty states; hidden-toolbar titlebar shadows follow the same motion. The final editor reflow now settles directly rather than scaling text or copying the long-document DOM. Title-bar file actions use compositor-friendly opacity and transform animations in both directions. Mid-transition toggles now reverse to the latest target state, reduced-motion preferences shorten every related animation, and Split View refreshes its line-number layout once after the transition.
+- **fix(sidebar resize and document opening performance):** Sidebar-edge dragging now coalesces pointer updates, changes CSS variables only on the small chrome subtrees that consume them, and freezes the active Vditor host width until mouseup, so a long document reflows once rather than on every drag frame. Opening a long document no longer synchronously measures its bottom spacer, toolbar wrapping, or active tab while Vditor is constructing its DOM; those measurements use observers or a later animation frame, preserving the final layout without adding avoidable full-document style work.
+- **fix(explorer filename truncation):** Replaced canvas-measured middle ellipses with the same native end ellipsis used by Outline headings. Long names remain intact in the DOM and themed application tooltip, resize without per-item script measurements, and truncate consistently at the available row width.
+- **fix(persistent notices):** Unified recovery and external-conflict banners around the persistent warning style, including the warning SVG, two-row narrow-layout behavior, larger 15px copy and action text, draggable overwrite confirmation, and readable red-and-white danger actions across light, dark, and Monokai themes.
+- **fix(toolbar layout):** Stabilized the Files/Outline tab boundary when the shared toolbar is hidden or wraps; the sidebar tabs, toolbar, and loading skeleton now own their bottom border and shadow consistently across all six application themes.
+- **fix(context menu):** Disabled Paste and Paste as Plain Text when the system clipboard has no content to insert.
+- **fix(explorer context menu):** Moved New File and New Folder from file and directory item menus to blank explorer space, and now create collision-free `Untitled x.md` files and `Untitled x` folders automatically with independent number sequences.
+- **fix(export resources):** HTML/PDF export now freezes its content before the save dialog, normalizes internal sources across `src`, `href`, `poster`, and `srcset`, and keeps HTML portable while embedding local PDF images. The one-shot PDF window has no business preload, keeps isolation and sandboxing enabled, and denies navigation and popups.
+- **fix(open dialogs):** File/folder open and HTML/PDF export dialogs now share the last confirmed selection directory.
+- **fix(accessibility):** Use the active theme accent for keyboard-visible focus rings across application controls.
+- **fix(settings theming):** Align the settings titlebar, navigation, footer, and edge with the active theme's sidebar surface while keeping settings content on the editor surface across all six application themes.
+- **fix(settings chrome):** Removed the short header/footer divider segments at the settings dialog's right-edge strip so that the sidebar-surface chrome reads as one continuous area.
+- **fix(light theme borders):** Reduced Claude Light and Monokai Pro Light structural-border contrast to match Classic's low-emphasis separators while preserving each theme's warm color temperature.
+- **fix(asset layout):** Organized application icons, symbolic UI icons, and notification icons under dedicated renderer asset directories; the offline asset build and Linux release script now follow the same paths.
+
+#### Editor interaction
+
+- **fix(table scrolling):** Kept WYSIWYG and Instant Rendering table cells horizontally positioned while Vditor rebuilds them after multi-character input or paste. When the caret would otherwise leave the visible part of a long table, Desktop now scrolls only far enough to keep it visible; table scrollbars also follow the configured always, automatic, or hidden visibility setting.
+- **fix(mode shortcuts):** Vditor's `Ctrl/Cmd+Alt+7/8/9` mode shortcuts now update the status-bar mode indicator and preserve the current document position, matching the application menu and status-bar mode picker.
+
+#### Workspace, files, and saving
+
+- **fix(save reliability):** Serialized saves by canonical file identity, kept newer edits dirty and recoverable when an earlier save finishes late, and rechecked the expected disk baseline before replacement so stale saves surface an explicit external-change result.
+- **fix(file identity):** Unified file identity across the renderer, preload, and main process so case-sensitive Linux paths, symlink aliases, missing-path ancestors, and watcher cleanup resolve consistently without merging distinct files.
+- **fix(file operations):** Prevented Rename and Save As from replacing existing or already-open targets, including targets that appear during the operation; directory renames now converge tab paths, session state, editor rebuilds, the file tree, and watchers after partial failures.
+- **fix(save):** Save documents through a synced same-directory temporary file before replacement, preserving existing permissions and keeping the original file intact on write or replacement failure.
+- **fix(autosave):** Prevented an application's own atomic-save events from refreshing the workspace explorer or clearing the active file selection.
+- **fix(file explorer):** Refresh the active workspace tree immediately after a first save or Save As, without reintroducing save-event flicker for ordinary saves.
+- **fix(save baseline):** Recovery-save validation now compares the disk against the recovery snapshot's last saved baseline, allowing a safe recovered version to be written when the original file is unchanged.
+
+#### External changes, watchers, and recovery
+
+- **fix(workspace monitoring):** Workspace watcher resource failures now degrade to one clear in-app notice instead of producing an error storm; manual file browsing and refresh remain available.
+- **fix(external conflicts):** Completed the external-change conflict workflow: stable disk snapshots now drive reloads, autosave pauses while a conflict is unresolved, and users can reload, save the current content elsewhere, ignore the change, or explicitly confirm an overwrite. Repeated disk changes invalidate stale overwrite confirmations, and saving after “ignore” still requires an explicit confirmation.
+- **fix(watcher consistency):** Discarded out-of-order document reads and reconciled the current disk state after watcher rebinds and workspace transitions, reducing missed external changes during file operations.
+- **fix(recovery consistency):** Merged session and recovery tabs for the same file identity, compared recovery baselines through the shared decoding rules for line endings and supported encodings, and preserved trusted tab content while Vditor is still initializing.
+- **fix(external file state):** A file that reappears in the active workspace now refreshes the sidebar without rebuilding it for ordinary document content events; reappearance does not silently replace the editor content.
+
+### Project Maintenance
+
+- **chore(runtime):** Bumped the desktop runtime to the exact Electron 44.1.0 stable release and migrated the privileged clipboard bridge to Electron 44's asynchronous ClipboardItem API.
+- **chore(project metadata):** Released the project metadata as 0.2.0, declared the supported Node.js engine range, enforced strict engine checks, unified Linux application identifiers, and added a reproducible project metadata check.
+- **fix(Linux packaging):** Preserved the stable `com.github.studio-200a.vditor-electron` application ID in AppImages while validating project metadata separately from appimagetool's stricter hyphen policy.
+- **docs(0.2.0):** Synchronized README/README_CN, the architecture map, file-safety contract, development plan, execution tracker, theme notes, and cross-platform handoff with the final 0.2.0 worktree. 
+- **chore(icons):** Added `lucide-static` as the build-time source for selected SVG assets and removed the manually downloaded symbolic icon copies from the renderer source tree.
+- **test(e2e):** split Electron coverage by behavior domain
+
 ## 0.1.5 - Editing Experience Improvement
 
 ### New Features
@@ -19,6 +104,7 @@
 - **fix(workbench chrome):** Kept the sidebar controls aligned while resizing the explorer, including when no document is open or the editor toolbar is hidden.
 - **fix(title bar):** Kept the sidebar toggle fixed in place as related file actions fold away, and limited title-bar shadows to the visible editor-toolbar boundary.
 - **fix(menus):** Kept unavailable layout commands visually disabled when hovered or focused.
+- **fix(menus):** Automatically close the application menu before showing a sidebar or editor context menu.
 - **fix(empty workbench):** Kept the editing-mode menu disabled without a document, while showing a default-mode Vditor toolbar preview; the preview is now fully disabled and gray like other unavailable controls, while its visibility remains configurable from View > Layout.
 - **fix(tabs):** Improved light-theme tab hover feedback and made close controls use an accent-only hover state.
 - **fix(toolbar layout):** Let the editor toolbar expand vertically when its controls wrap in narrower windows, without adding empty space above the sidebar or shifting the editor when a toolbar menu opens; kept toolbar, sidebar-tab, and hidden-toolbar shadows aligned with their visible boundaries.
@@ -83,7 +169,10 @@
 ### Bug Fixes
 
 - **fix(dark content themes):** Corrected Ant Design and WeChat rendering colors in Dark and Monokai Pro Dark themes, including inline code, tables, links, blockquotes, and heading text across all three editing modes.
-- **fix(external changes):** Added workspace file-change handling that reloads clean open documents, marks locally modified documents with a persistent conflict indicator and banner, and pauses autosave until the conflict is addressed.
+- **fix(external changes):** Added independent document monitoring for every open file, including files outside the active workspace. Clean documents reload automatically; locally modified documents retain a persistent conflict indicator and banner, and autosave pauses until the conflict is addressed.
+   - Separated workspace structural events from per-document content watchers, so external content updates no longer rebuild the sidebar or lose its active selection.
+   - Wait for stable document content, compare it with the expected saved content, and rebind Linux document watches after atomic replacement writes.
+   - Keep monitoring an open external file after switching workspaces or closing and reopening it from the file explorer.
    - “Reload” discards the local tab content and reads the current disk version.
    - “Ignore” keeps the tab content and requires an explicit manual save to overwrite the file; autosave remains paused.
    - Untitled tabs whose expected workspace path is created now enter the same conflict flow instead of being blocked by explorer naming rules.
@@ -91,8 +180,8 @@
 
 ### Known Limitations
 
-- External monitoring currently follows the active workspace; files opened outside it are not yet watched.
-- Deletion, directory moves, atomic replacement writes, and conflict state recovery across application restarts remain planned work.
+- Deletion, directory moves, and conflict state recovery across application restarts remain planned work.
+- Windows and macOS watcher behavior, path-case semantics, and atomic replacement events still require physical-device verification.
 
 ## 0.1.2
 

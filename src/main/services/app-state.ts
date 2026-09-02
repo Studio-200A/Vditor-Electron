@@ -1,10 +1,21 @@
+export const WORKSPACE_READ_DEPTH_MIN = 7;
+export const WORKSPACE_READ_DEPTH_MAX = 12;
+
+export function normalizeWorkspaceReadDepth(value: unknown): number {
+  const depth =
+    typeof value === 'number' && Number.isInteger(value) ? value : WORKSPACE_READ_DEPTH_MIN;
+  return Math.min(WORKSPACE_READ_DEPTH_MAX, Math.max(WORKSPACE_READ_DEPTH_MIN, depth));
+}
+
 export interface AppSettings {
   restoreTabs: boolean;
   restoreWorkspace: boolean;
   devToolsEnabled: boolean;
   systemTheme: boolean;
-  theme: 'classic' | 'dark' | 'monokai-pro-dark';
-  lastDarkTheme: 'dark' | 'monokai-pro-dark';
+  theme:
+    'classic' | 'dark' | 'claude-light' | 'claude-dark' | 'monokai-pro-dark' | 'monokai-pro-light';
+  lightTheme: 'classic' | 'claude-light' | 'monokai-pro-light';
+  darkTheme: 'dark' | 'claude-dark' | 'monokai-pro-dark';
   contentTheme: string;
   codeTheme: string;
   lightCodeTheme: string;
@@ -57,6 +68,7 @@ export interface AppSettings {
   pasteImagesDir: string;
   imageMaxWidth: number;
   imageQuality: number;
+  workspaceReadDepth: number;
   paragraphBeginningSpace: boolean;
   fixTermTypo: boolean;
   gfmAutoLink: boolean;
@@ -64,6 +76,7 @@ export interface AppSettings {
   listStyle: boolean;
   headingAnchor: boolean;
   sanitize: boolean;
+  allowSvgImages: boolean;
   sidebarWidth: number;
   sidebarVisible: boolean;
   toolbarVisible: boolean;
@@ -101,7 +114,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   devToolsEnabled: false,
   systemTheme: true,
   theme: 'classic',
-  lastDarkTheme: 'dark',
+  lightTheme: 'classic',
+  darkTheme: 'dark',
   contentTheme: 'light',
   codeTheme: 'github',
   lightCodeTheme: 'github',
@@ -154,6 +168,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   pasteImagesDir: './assets',
   imageMaxWidth: 1024,
   imageQuality: 0.85,
+  workspaceReadDepth: WORKSPACE_READ_DEPTH_MIN,
   paragraphBeginningSpace: false,
   fixTermTypo: false,
   gfmAutoLink: true,
@@ -161,6 +176,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   listStyle: false,
   headingAnchor: false,
   sanitize: true,
+  allowSvgImages: false,
   sidebarWidth: 260,
   sidebarVisible: false,
   toolbarVisible: true,

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.github.studio200a.VditorDesktop</id>
+  <id>com.github.studio-200a.vditor-electron</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
   <name>Vditor Desktop</name>
@@ -10,7 +10,7 @@
     <p>Vditor Desktop is an offline Markdown editor with WYSIWYG, instant-rendering, and split-view editing modes.</p>
     <p xml:lang="zh-CN">Vditor Desktop 是一款支持所见即所得、即时渲染和分栏编辑模式的离线 Markdown 编辑器。</p>
   </description>
-  <launchable type="desktop-id">com.github.studio200a.VditorDesktop.desktop</launchable>
+  <launchable type="desktop-id">com.github.studio-200a.vditor-electron.desktop</launchable>
   <provides>
     <mediatype>text/markdown</mediatype>
   </provides>

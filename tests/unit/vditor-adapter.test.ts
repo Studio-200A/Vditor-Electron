@@ -58,12 +58,49 @@ describe('Vditor DOM compatibility adapter', () => {
     expect(adapter.setEditorBottomSpacer(host, Number.NaN)).toBe(false);
   });
 
+  it('reissues every rendered image source when an image policy changes', () => {
+    const host = createHost();
+    host.querySelector('.vditor-preview')!.innerHTML =
+      '<img src="https://example.com/remote.svg"><img src="local-file://root/image.svg">';
+
+    expect(adapter.reloadImageSources(host)).toBe(2);
+    expect(
+      Array.from(host.querySelectorAll('img')).map(
+        (image) => image.dataset.vditorDesktopImagePolicySource,
+      ),
+    ).toEqual(['https://example.com/remote.svg', 'local-file://root/image.svg']);
+    expect(
+      Array.from(host.querySelectorAll('img')).every((image) =>
+        image.src.includes('__vditor_svg_policy='),
+      ),
+    ).toBe(true);
+  });
+
   it('classifies the Vditor 3.11 code-theme menu at its light-theme boundary', () => {
     const themes = adapter.classifyCodeThemeButtons(adapter.editorParts(createHost()).toolbar);
     expect(themes.map(({ name, tone }: any) => [name, tone])).toEqual([
       ['monokai', 'dark'],
       ['ant-design', 'light'],
     ]);
+  });
+
+  it('maps Vditor mode shortcuts using its platform modifier contract', () => {
+    const shortcut = (code: string, modifiers: KeyboardEventInit = {}) =>
+      new window.KeyboardEvent('keydown', { code, altKey: true, ctrlKey: true, ...modifiers });
+
+    expect(adapter.editModeShortcut(shortcut('Digit7'))).toBe('wysiwyg');
+    expect(adapter.editModeShortcut(shortcut('Digit8'))).toBe('ir');
+    expect(adapter.editModeShortcut(shortcut('Digit9'))).toBe('sv');
+    expect(adapter.editModeShortcut(shortcut('Digit8', { shiftKey: true }))).toBeNull();
+    expect(adapter.editModeShortcut(shortcut('Key8'))).toBeNull();
+
+    Object.defineProperty(window.navigator, 'platform', { configurable: true, value: 'MacIntel' });
+    expect(
+      adapter.editModeShortcut(
+        new window.KeyboardEvent('keydown', { code: 'Digit7', altKey: true, metaKey: true }),
+      ),
+    ).toBe('wysiwyg');
+    expect(adapter.editModeShortcut(shortcut('Digit7'))).toBeNull();
   });
 
   it('keeps Vditor native outline internals available while hiding their control', () => {
@@ -82,6 +119,85 @@ describe('Vditor DOM compatibility adapter', () => {
       const item = adapter.toolbarButton(toolbar, type)?.closest('.vditor-toolbar__item');
       expect(item?.dataset.vditorDesktopSplitToolbarAction).toBe('true');
     });
+  });
+
+  it('restores a replaced rendered-table scroll position after multi-character input', async () => {
+    const host = createHost();
+    const editor = adapter.editorParts(host).instantRendering.querySelector('.vditor-reset');
+    editor.innerHTML = '<table><tbody><tr><td>long content</td></tr></tbody></table>';
+    window.document.body.appendChild(host);
+    const table = editor.querySelector('table') as HTMLTableElement;
+    Object.defineProperties(table, {
+      clientWidth: { configurable: true, value: 100 },
+      scrollWidth: { configurable: true, value: 500 },
+    });
+    table.scrollLeft = 160;
+    const text = table.querySelector('td')!.firstChild!;
+    const range = window.document.createRange();
+    range.setStart(text, text.textContent!.length);
+    range.collapse(true);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    window.requestAnimationFrame = (callback) => window.setTimeout(callback, 0);
+    const cleanup = adapter.preserveTableScrollDuringInput(host, () => 'ir');
+
+    table.dispatchEvent(new window.CompositionEvent('compositionstart', { bubbles: true }));
+    table.outerHTML = '<table><tbody><tr><td>long content Chinese</td></tr></tbody></table>';
+    const replacement = editor.querySelector('table') as HTMLTableElement;
+    Object.defineProperties(replacement, {
+      clientWidth: { configurable: true, value: 100 },
+      scrollWidth: { configurable: true, value: 500 },
+    });
+    replacement.dispatchEvent(new window.CompositionEvent('compositionend', { bubbles: true }));
+    await new Promise((resolve) => window.setTimeout(resolve, 20));
+
+    expect(replacement.scrollLeft).toBe(160);
+    replacement.scrollLeft = 0;
+    const replacementText = replacement.querySelector('td')!.firstChild!;
+    const replacementRange = window.document.createRange();
+    replacementRange.setStart(replacementText, replacementText.textContent!.length);
+    replacementRange.collapse(true);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(replacementRange);
+    replacement.dispatchEvent(
+      new window.InputEvent('input', { bubbles: true, inputType: 'insertFromComposition' }),
+    );
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    expect(replacement.scrollLeft).toBe(160);
+    cleanup();
+  });
+
+  it('captures table scroll before Vditor handles a paste', async () => {
+    const host = createHost();
+    const editor = adapter.editorParts(host).instantRendering.querySelector('.vditor-reset');
+    editor.innerHTML = '<table><tbody><tr><td>long content</td></tr></tbody></table>';
+    window.document.body.appendChild(host);
+    const table = editor.querySelector('table') as HTMLTableElement;
+    Object.defineProperties(table, {
+      clientWidth: { configurable: true, value: 100 },
+      scrollWidth: { configurable: true, value: 500 },
+    });
+    table.scrollLeft = 160;
+    const text = table.querySelector('td')!.firstChild!;
+    const range = window.document.createRange();
+    range.setStart(text, text.textContent!.length);
+    range.collapse(true);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    window.requestAnimationFrame = (callback) => window.setTimeout(callback, 0);
+    const cleanup = adapter.preserveTableScrollDuringInput(host, () => 'ir');
+
+    table.dispatchEvent(new window.Event('paste', { bubbles: true }));
+    table.outerHTML = '<table><tbody><tr><td>long content pasted text</td></tr></tbody></table>';
+    const replacement = editor.querySelector('table') as HTMLTableElement;
+    Object.defineProperties(replacement, {
+      clientWidth: { configurable: true, value: 100 },
+      scrollWidth: { configurable: true, value: 500 },
+    });
+    await new Promise((resolve) => window.setTimeout(resolve, 20));
+
+    expect(replacement.scrollLeft).toBe(160);
+    cleanup();
   });
 
   it('reports private DOM drift instead of failing silently', () => {
@@ -283,27 +399,27 @@ describe('Vditor DOM compatibility adapter', () => {
     image.src = 'app://app/assets/screenshot-light.webp';
     host.append(image);
 
-    adapter.resolveRelativeImageSources(host, 'local-file://root/home/project/');
+    adapter.resolveRelativeImageSources(host, 'local-file://root//home/project/');
 
     expect(image.dataset.vditorDesktopOriginalSrc).toBe('assets/screenshot-light.webp');
     expect(image.getAttribute('src')).toBe(
-      'local-file://root/home/project/assets/screenshot-light.webp',
+      'local-file://root//home/project/assets/screenshot-light.webp',
     );
   });
 
   it('restores link-base URLs to relative document paths', () => {
     const host = createHost();
     const link = window.document.createElement('a');
-    link.href = 'local-file://root/home/project/docs/target.md#section';
+    link.href = 'local-file://root//home/project/docs/target.md#section';
     host.append(link);
 
-    adapter.resolveRelativeDocumentLinks(host, 'local-file://root/home/project/docs/');
+    adapter.resolveRelativeDocumentLinks(host, 'local-file://root//home/project/docs/');
 
     expect(link.getAttribute('href')).toBe('target.md#section');
     expect(
       adapter.relativeSourceFromLocalUrl(
-        'local-file://root/home/project/assets/pixel.png',
-        'local-file://root/home/project/docs/',
+        'local-file://root//home/project/assets/pixel.png',
+        'local-file://root//home/project/docs/',
       ),
     ).toBe('../assets/pixel.png');
   });

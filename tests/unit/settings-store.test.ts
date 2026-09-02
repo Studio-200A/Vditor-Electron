@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as TOML from '@iarna/toml';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../../src/main/services/app-state';
 import { SettingsStore } from '../../src/main/services/settings-store';
 
@@ -38,12 +38,41 @@ describe('SettingsStore', () => {
     expect(settings.uiZoom).toBe(DEFAULT_SETTINGS.uiZoom);
   });
 
+  it('falls back per field when persisted settings are invalid', () => {
+    fs.writeFileSync(
+      path.join(configDir, 'config.toml'),
+      TOML.stringify({
+        application: { locale: 'zh_Hans' },
+        appearance: { uiZoom: 201, contentTheme: 'untrusted/theme' },
+        editor: { splitRatio: 81 },
+        files: { defaultOpenPath: 'relative.md', pasteImagesDir: '../outside', imageQuality: 2 },
+        session: { workspacePath: 'relative', activeFilePath: null, openFiles: [] },
+      }),
+    );
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    try {
+      const settings = new SettingsStore(configDir).getAll();
+      expect(settings.locale).toBe('zh_Hans');
+      expect(settings.uiZoom).toBe(DEFAULT_SETTINGS.uiZoom);
+      expect(settings.contentTheme).toBe(DEFAULT_SETTINGS.contentTheme);
+      expect(settings.splitRatio).toBe(DEFAULT_SETTINGS.splitRatio);
+      expect(settings.defaultOpenPath).toBe(DEFAULT_SETTINGS.defaultOpenPath);
+      expect(settings.pasteImagesDir).toBe(DEFAULT_SETTINGS.pasteImagesDir);
+      expect(settings.imageQuality).toBe(DEFAULT_SETTINGS.imageQuality);
+      expect(settings.session).toEqual(DEFAULT_SETTINGS.session);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it('drops fields that are not part of the current settings schema', () => {
     fs.writeFileSync(
       path.join(configDir, 'config.toml'),
       TOML.stringify({
         theme: 'dark',
         application: { sessionRestore: false, unknownSetting: true },
+        appearance: { lastLightTheme: 'claude-light', lastDarkTheme: 'claude-dark' },
         unknownSection: { theme: 'dark' },
       }),
     );
@@ -51,7 +80,11 @@ describe('SettingsStore', () => {
     const settings = new SettingsStore(configDir).getAll() as Record<string, unknown>;
     expect(settings).not.toHaveProperty('sessionRestore');
     expect(settings).not.toHaveProperty('unknownSetting');
+    expect(settings).not.toHaveProperty('lastLightTheme');
+    expect(settings).not.toHaveProperty('lastDarkTheme');
     expect(settings.theme).toBe(DEFAULT_SETTINGS.theme);
+    expect(settings.lightTheme).toBe(DEFAULT_SETTINGS.lightTheme);
+    expect(settings.darkTheme).toBe(DEFAULT_SETTINGS.darkTheme);
   });
 
   it('persists changed values', () => {
@@ -70,11 +103,45 @@ describe('SettingsStore', () => {
     expect(fs.existsSync(path.join(configDir, 'settings.json'))).toBe(false);
   });
 
+  it('reports strict persistence failures without changing in-memory settings', () => {
+    const fileSystem = {
+      ...fs,
+      renameSync: vi.fn<typeof fs.renameSync>(() => {
+        throw new Error('settings replacement failed');
+      }),
+    };
+    const store = new SettingsStore(configDir, fileSystem);
+
+    try {
+      store.updateOrThrow({ locale: 'zh_Hans' });
+      throw new Error('Expected settings persistence to fail.');
+    } catch (error) {
+      expect(error).toMatchObject({
+        code: 'SETTINGS_PERSIST_FAILED',
+        message: 'Unable to persist settings.',
+      });
+    }
+    expect(store.get('locale')).toBe(DEFAULT_SETTINGS.locale);
+    expect(fs.existsSync(path.join(configDir, 'config.toml'))).toBe(false);
+    expect(fs.readdirSync(configDir)).toEqual([]);
+  });
+
+  it('persists workspace directory read depth within its supported bounds', () => {
+    const store = new SettingsStore(configDir);
+    store.update({ workspaceReadDepth: 12 });
+
+    expect(new SettingsStore(configDir).get('workspaceReadDepth')).toBe(12);
+
+    store.update({ workspaceReadDepth: 100 });
+    expect(new SettingsStore(configDir).get('workspaceReadDepth')).toBe(12);
+    expect(fs.readFileSync(store.getPath(), 'utf8')).toContain('workspaceReadDepth = 12');
+  });
+
   it('updates multiple values in a single settings snapshot', () => {
     const store = new SettingsStore(configDir);
     const settings = store.update({
       theme: 'monokai-pro-dark',
-      lastDarkTheme: 'monokai-pro-dark',
+      darkTheme: 'monokai-pro-dark',
       devToolsEnabled: true,
       lightCodeTheme: 'atom-one-light',
       darkCodeTheme: 'monokai-sublime',
@@ -86,7 +153,7 @@ describe('SettingsStore', () => {
     });
 
     expect(settings.theme).toBe('monokai-pro-dark');
-    expect(settings.lastDarkTheme).toBe('monokai-pro-dark');
+    expect(settings.darkTheme).toBe('monokai-pro-dark');
     expect(settings.devToolsEnabled).toBe(true);
     expect(settings.lightCodeTheme).toBe('atom-one-light');
     expect(settings.darkCodeTheme).toBe('monokai-sublime');
@@ -96,6 +163,22 @@ describe('SettingsStore', () => {
       { workspacePath: '/notes', expandedPaths: ['/notes/docs', '/notes/assets'] },
     ]);
     expect(new SettingsStore(configDir).getAll()).toEqual(settings);
+  });
+
+  it('persists separately selected light and dark theme preferences', () => {
+    const store = new SettingsStore(configDir);
+    const settings = store.update({
+      theme: 'claude-dark',
+      lightTheme: 'claude-light',
+      darkTheme: 'claude-dark',
+    });
+
+    expect(settings).toMatchObject({
+      theme: 'claude-dark',
+      lightTheme: 'claude-light',
+      darkTheme: 'claude-dark',
+    });
+    expect(new SettingsStore(configDir).getAll()).toMatchObject(settings);
   });
 
   it('persists the settings dialog size in the window section', () => {

@@ -12,10 +12,17 @@
     settings: null,
     defaultSettings: null,
     locale: 'en_US',
-    untitledCounter: 0,
+    untitledCounters: {
+      file: 0,
+      directory: 0,
+    },
     treeTimer: null,
-    ignoredChanges: new Map(),
+    workspaceRevision: 0,
+    toolbarWrapHeight: 0,
   };
+  const saveOperationsByIdentity = new Map();
+  let resourceRootsQueue = Promise.resolve();
+  let settingsSaveQueue = Promise.resolve();
   const LOCALES = window.VditorDesktopLocales || {};
   const DEFAULT_TOOLBAR = [
     'emoji',
@@ -49,16 +56,49 @@
     'code-theme',
     'content-theme',
   ];
+  // Vditor 3.11.3 exposes public setters only for themes and preview mode.
+  // Keep this list limited to settings that are passed to its constructor and
+  // have no safe runtime setter; rebuilding clears Vditor's undo stack.
+  const VDITOR_INITIALIZATION_SETTINGS = new Set([
+    'iconSet',
+    'locale',
+    'placeholder',
+    'typewriterMode',
+    'tabInsertSpaces',
+    'tabSize',
+    'rtl',
+    'toolbarItems',
+    'previewDelay',
+    'previewMaxWidth',
+    'multiPlatformPreview',
+    'mathEngine',
+    'enableHighlight',
+    'lineNumbers',
+    'enableAutoSpace',
+    'enableCallout',
+    'enableFootnotes',
+    'enableImageCaption',
+    'enableMark',
+    'enableSub',
+    'enableSup',
+    'paragraphBeginningSpace',
+    'fixTermTypo',
+    'gfmAutoLink',
+    'toc',
+    'listStyle',
+    'sanitize',
+  ]);
   let messageTimer;
+  let temporaryDocumentNoticeTimer;
   let appMenuCloseHandler;
+  let closeAppMenu = () => {};
   let appMenuBlurHandler;
   let settingsSaveTimer;
   let settingsCloseTimer;
   let sidebarTransitionTimer;
   let sidebarTransitionEndHandler;
+  let sidebarLayoutAnimations = [];
   let confirmResolver;
-  let treeNameFrame;
-  let treeNameMeasureContext;
   let findMatches = [];
   let findIndex = -1;
   let findQuery = '';
@@ -67,10 +107,23 @@
   let tabDragPointerId = null;
   let tabDragGhost = null;
   let tabDragMoved = false;
+  let activeTabScrollFrame = null;
+  let toolbarWrapHeightFrame = null;
   let hoveredDocumentLink = null;
+  let hoveredSidebarTooltip = null;
   let editorSelectionActive = false;
   let pendingTableCellSelection = null;
   let contextMenuState = null;
+  const THEME_MODES = ['light', 'dark', 'system'];
+  const IPC_ERROR_MESSAGE_KEYS = {
+    IPC_INVALID_ARGUMENT: 'message.ipcInvalidRequest',
+    IPC_PERMISSION_DENIED: 'message.ipcPermissionDenied',
+    IPC_ALREADY_EXISTS: 'message.ipcAlreadyExists',
+    IPC_NOT_FOUND: 'message.ipcNotFound',
+    IPC_INVALID_NAME: 'message.ipcInvalidName',
+    IPC_SETTINGS_PERSIST_FAILED: 'message.ipcSettingsSaveFailed',
+    IPC_OPERATION_FAILED: 'message.ipcOperationFailed',
+  };
 
   function resolveLocale(locale) {
     if (locale && locale !== 'system' && LOCALES[locale]) return locale;
@@ -85,6 +138,14 @@
     const fallback = Object.prototype.hasOwnProperty.call(english, key) ? english[key] : key;
     const value = Object.prototype.hasOwnProperty.call(table, key) ? table[key] : fallback;
     return String(value).replace(/\{(\w+)\}/g, (_match, name) => params[name] ?? `{${name}}`);
+  }
+
+  function ipcErrorMessage(error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const code = Object.keys(IPC_ERROR_MESSAGE_KEYS).find((candidate) =>
+      message.includes(candidate),
+    );
+    return code ? t(IPC_ERROR_MESSAGE_KEYS[code]) : message;
   }
 
   function updateMainMenuGlow(event) {
@@ -182,6 +243,11 @@
       node.title = value;
       node.setAttribute('aria-label', value);
     });
+    $$('[data-i18n-tooltip]').forEach((node) => {
+      const value = t(node.dataset.i18nTooltip);
+      node.dataset.tooltip = value;
+      node.setAttribute('aria-label', value);
+    });
     $$('[data-i18n-placeholder]').forEach((node) => {
       node.placeholder = t(node.dataset.i18nPlaceholder);
     });
@@ -199,7 +265,7 @@
     });
     if (state.workspace) {
       $('#workspaceName').textContent = fileName(state.workspace);
-      $('#workspaceHeading').title = state.workspace;
+      $('#workspaceHeading').dataset.tooltip = state.workspace;
     }
     if ($('#appMenuBar')?.dataset.ready === 'true') setupAppMenus();
     renderTabs();
@@ -210,8 +276,26 @@
   function uid() {
     return `tab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
   }
+  function recoveryId() {
+    return globalThis.crypto?.randomUUID?.() || uid();
+  }
   function activeTab() {
     return state.tabs.find((tab) => tab.id === state.activeId) || null;
+  }
+
+  function syncToolbarAvailability(shouldSyncWrapHeight = true) {
+    const mount = $('#vditorToolbarMount');
+    if (!mount) return;
+    const owner = activeTab() || state.toolbarPreview;
+    const available = Boolean(
+      owner?.ready && owner.toolbar && owner.toolbar.parentElement === mount,
+    );
+    // Vditor inserts its toolbar into the editor host before invoking after().
+    // Keep a non-interactive Desktop skeleton in the shared row until Desktop
+    // owns that node, so the editor geometry never jumps during the hand-off.
+    mount.dataset.toolbarPending = String(!available);
+    mount.setAttribute('aria-busy', String(!available));
+    if (shouldSyncWrapHeight) syncToolbarWrapHeight();
   }
 
   function destroyToolbarPreview() {
@@ -223,6 +307,7 @@
     } catch (_) {}
     preview.host.remove();
     state.toolbarPreview = null;
+    syncToolbarAvailability();
   }
 
   function createToolbarPreview() {
@@ -239,6 +324,7 @@
       lineEnding: 'LF',
       baseDir: '',
       modified: false,
+      expectedSavedContent: '',
       mode: state.settings.editMode,
       vditor: null,
       ready: false,
@@ -326,13 +412,111 @@
     return filePath ? filePath.replace(/\\/g, '/').split('/').pop() : '';
   }
   function normalizedFilePath(filePath) {
-    return String(filePath || '')
-      .replace(/\\/g, '/')
-      .toLocaleLowerCase();
+    const normalized = String(filePath || '').replace(/\\/g, '/');
+    return window.appAPI.platform === 'win32' ? normalized.toLocaleLowerCase() : normalized;
   }
   function tabTargetPath(tab) {
     if (tab.filePath) return tab.filePath;
     return state.workspace ? `${state.workspace.replace(/[\\/]$/, '')}/${tab.title}.md` : '';
+  }
+  function tabFileIdentity(tab) {
+    return tab?.fileIdentity || normalizedFilePath(tab?.filePath);
+  }
+  async function watchTabDocument(tab) {
+    if (!tab?.filePath) return;
+    tab.fileIdentity = await window.fileAPI.fileIdentity(tab.filePath);
+    await window.fileAPI.watchDocument(tab.filePath, true);
+  }
+  async function releaseDocumentWatch(filePath, identity) {
+    if (!filePath) return;
+    const fileIdentity = identity || (await window.fileAPI.fileIdentity(filePath));
+    const stillOpen = state.tabs.some((tab) => tabFileIdentity(tab) === fileIdentity);
+    if (!stillOpen) await window.fileAPI.unwatchDocument(filePath, fileIdentity);
+  }
+  async function suspendDocumentWatches(tabs) {
+    const affectedPaths = new Set(
+      tabs.filter((tab) => tab.filePath).map((tab) => tabFileIdentity(tab)),
+    );
+    const paths = new Map();
+    for (const tab of tabs) {
+      if (tab.filePath) paths.set(tabFileIdentity(tab), tab.filePath);
+    }
+    for (const [identity, filePath] of paths) {
+      const openOutsideAffected = state.tabs.some(
+        (tab) => !tabs.includes(tab) && tabFileIdentity(tab) === identity,
+      );
+      if (!openOutsideAffected && affectedPaths.has(identity))
+        await window.fileAPI.unwatchDocument(filePath, identity);
+    }
+  }
+  async function rebindDocumentWatches(tabs) {
+    const tabsByIdentity = new Map();
+    for (const tab of tabs) {
+      if (tab.filePath) tabsByIdentity.set(tabFileIdentity(tab), tab);
+    }
+    let pending = [...tabsByIdentity.values()];
+    let failures = [];
+    for (let attempt = 0; attempt < 2 && pending.length; attempt++) {
+      failures = [];
+      for (const tab of pending) {
+        try {
+          await watchTabDocument(tab);
+        } catch (error) {
+          failures.push({ tab, error });
+        }
+      }
+      pending = failures.map(({ tab }) => tab);
+    }
+    if (failures.length)
+      throw new AggregateError(
+        failures.map(({ error }) => error),
+        `Unable to restore ${failures.length} document watcher(s).`,
+      );
+  }
+
+  function rebuildRenamedEditors(pendingTabs) {
+    const failures = [];
+    for (const tab of [...pendingTabs]) {
+      try {
+        const failure = rebuildEditor(tab);
+        if (failure) throw failure;
+        pendingTabs.delete(tab);
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    return failures;
+  }
+  async function rebaseOpenTabs(oldRoot, newRoot) {
+    const updates = [];
+    for (const tab of state.tabs) {
+      if (!tab.filePath) continue;
+      const nextPath = await window.fileAPI.rebasePath(oldRoot, newRoot, tab.filePath);
+      if (nextPath) updates.push({ tab, nextPath });
+    }
+    return updates;
+  }
+  async function rebasePathState(oldRoot, newRoot) {
+    const recentFiles = [];
+    for (const item of state.settings.recentFiles || []) {
+      const nextPath = await window.fileAPI.rebasePath(oldRoot, newRoot, item.path);
+      recentFiles.push(nextPath ? { ...item, path: nextPath, title: fileName(nextPath) } : item);
+    }
+    const workspaceTreeStates = [];
+    for (const item of state.settings.workspaceTreeStates || []) {
+      const workspacePath = await window.fileAPI.rebasePath(oldRoot, newRoot, item.workspacePath);
+      const expandedPaths = [];
+      for (const expandedPath of item.expandedPaths || []) {
+        const nextPath = await window.fileAPI.rebasePath(oldRoot, newRoot, expandedPath);
+        expandedPaths.push(nextPath || expandedPath);
+      }
+      workspaceTreeStates.push({
+        ...item,
+        workspacePath: workspacePath || item.workspacePath,
+        expandedPaths,
+      });
+    }
+    return { recentFiles, workspaceTreeStates };
   }
   function stripExtension(name) {
     return name.replace(/\.(md|markdown)$/i, '');
@@ -340,55 +524,41 @@
   function detectLineEnding(content) {
     return /\r\n/.test(content) ? 'CRLF' : 'LF';
   }
+  function collectLocalResourceRoots(extraRoots = []) {
+    const roots = new Set();
+    if (state.workspace) roots.add(state.workspace);
+    state.tabs.forEach((tab) => {
+      if (tab.baseDir) roots.add(tab.baseDir);
+    });
+    extraRoots.forEach((root) => {
+      if (root) roots.add(root);
+    });
+    return [...roots];
+  }
+  function syncLocalResourceRoots(extraRoots = []) {
+    // Compute roots when the queued IPC operation runs so overlapping lifecycle events
+    // cannot restore a stale tab/workspace snapshot after a newer state transition.
+    const operation = resourceRootsQueue
+      .catch(() => undefined)
+      .then(() => window.fileAPI.setResourceRoots(collectLocalResourceRoots(extraRoots)));
+    resourceRootsQueue = operation.catch((error) => {
+      console.error('Unable to synchronize local resource roots.', error);
+    });
+    return operation;
+  }
   function localResourceBase(baseDir) {
     if (!baseDir) return '';
-    const encodedPath = baseDir
-      .replace(/\\/g, '/')
+    const nativePath = window.appAPI.platform === 'win32' ? baseDir.replace(/\\/g, '/') : baseDir;
+    if (window.appAPI.platform !== 'win32' && nativePath.includes('\\')) return '';
+    const encodedPath = nativePath
       .split('/')
       .map((segment) => encodeURIComponent(segment))
       .join('/');
-    return `local-file://root${encodedPath.endsWith('/') ? encodedPath : `${encodedPath}/`}`;
+    return `local-file://root/${encodedPath.endsWith('/') ? encodedPath : `${encodedPath}/`}`;
   }
-  function treeIcon(type) {
-    return type === 'directory'
-      ? '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2.5 5.5h5l1.6 2h8.4v8.5h-15z"/><path d="M2.5 7.5v-3h5l1.6 2h8.4v1"/></svg>'
-      : '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.5h6l4 4v11H5z"/><path d="M11 2.5v4h4"/></svg>';
-  }
-
-  function middleEllipsis(value, availableWidth, style) {
-    if (!treeNameMeasureContext) {
-      treeNameMeasureContext = document.createElement('canvas').getContext('2d');
-    }
-    if (!treeNameMeasureContext || availableWidth <= 0) return value;
-    treeNameMeasureContext.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-    const measure = (text) => treeNameMeasureContext.measureText(text).width;
-    if (measure(value) <= availableWidth) return value;
-    const characters = Array.from(value);
-    const ellipsis = '...';
-    for (let kept = characters.length - 1; kept > 1; kept -= 1) {
-      const leading = Math.ceil(kept / 2);
-      const trailing = Math.floor(kept / 2);
-      const candidate = `${characters.slice(0, leading).join('')}${ellipsis}${characters
-        .slice(characters.length - trailing)
-        .join('')}`;
-      if (measure(candidate) <= availableWidth) return candidate;
-    }
-    return ellipsis;
-  }
-
-  function updateTreeNameEllipses() {
-    treeNameFrame = null;
-    $$('.tree-name', $('#fileTree')).forEach((name) => {
-      const fullName = name.dataset.fullName || '';
-      name.textContent = fullName;
-      if (!name.clientWidth) return;
-      name.textContent = middleEllipsis(fullName, name.clientWidth, getComputedStyle(name));
-    });
-  }
-
-  function scheduleTreeNameEllipses() {
-    if (treeNameFrame) return;
-    treeNameFrame = requestAnimationFrame(updateTreeNameEllipses);
+  function treeIcon(entry) {
+    const icon = entry.type === 'directory' ? (entry.link ? 'folder-symlink' : 'folder') : 'file';
+    return `<span class="tree-entry-icon tree-entry-icon-${icon}" aria-hidden="true"></span>`;
   }
 
   function showMessage(message, error = false) {
@@ -400,6 +570,18 @@
       target.textContent = '';
       target.classList.remove('error');
     }, 4500);
+  }
+
+  function showTemporaryDocumentNotice(message, error = false) {
+    const notice = $('#temporaryDocumentNotice');
+    $('#temporaryDocumentNoticeMessage').textContent = message;
+    notice.classList.toggle('error', error);
+    notice.classList.remove('hidden');
+    clearTimeout(temporaryDocumentNoticeTimer);
+    temporaryDocumentNoticeTimer = setTimeout(() => {
+      notice.classList.add('hidden');
+      notice.classList.remove('error');
+    }, 5000);
   }
 
   function findWidgetVisible() {
@@ -532,15 +714,23 @@
   }
 
   function isDarkTheme(theme) {
-    return theme === 'dark' || theme === 'monokai-pro-dark';
+    return theme === 'dark' || theme === 'claude-dark' || theme === 'monokai-pro-dark';
   }
 
   function darkThemePreference() {
-    return state.settings.lastDarkTheme === 'monokai-pro-dark' ? 'monokai-pro-dark' : 'dark';
+    return ['dark', 'claude-dark', 'monokai-pro-dark'].includes(state.settings.darkTheme)
+      ? state.settings.darkTheme
+      : 'dark';
+  }
+
+  function lightThemePreference() {
+    return ['classic', 'claude-light', 'monokai-pro-light'].includes(state.settings.lightTheme)
+      ? state.settings.lightTheme
+      : 'classic';
   }
 
   function mapSystemTheme(theme) {
-    return theme === 'dark' ? darkThemePreference() : 'classic';
+    return theme === 'dark' ? darkThemePreference() : lightThemePreference();
   }
 
   function preferredCodeTheme(dark) {
@@ -600,7 +790,7 @@
   async function applyTheme(theme) {
     document.documentElement.dataset.theme = theme;
     const dark = isDarkTheme(theme);
-    if ($('#statusThemeToggle')) $('#statusThemeToggle').checked = dark;
+    syncThemeModeControl();
     const linkedContentTheme = ['light', 'dark'].includes(state.settings.contentTheme);
     const contentTheme = linkedContentTheme
       ? dark
@@ -621,7 +811,7 @@
       settingsPatch.codeTheme = codeTheme;
     }
     syncCodeThemeControls(dark, codeTheme);
-    if (Object.keys(settingsPatch).length) await window.appAPI.saveSettings(settingsPatch);
+    if (Object.keys(settingsPatch).length) await queueSettingsSave(settingsPatch);
     state.tabs.forEach((tab) => {
       if (tab.vditor) {
         try {
@@ -665,6 +855,14 @@
     window.appAPI.setZoomFactor(uiZoom);
   }
 
+  function applyLiveVditorSettings(changedSettings) {
+    if (!changedSettings.includes('previewMode')) return;
+    state.tabs.forEach((tab) => {
+      if (!tab.vditor || !tab.ready) return;
+      tab.vditor.setPreviewMode(state.settings.previewMode);
+    });
+  }
+
   function scheduleSplitLineNumbers(tab) {
     if (!tab) return;
     if (tab.lineNumberFrame) cancelAnimationFrame(tab.lineNumberFrame);
@@ -695,7 +893,9 @@
       subtree: true,
       attributeFilter: ['class', 'style'],
     });
-    tab.lineResizeObserver = new ResizeObserver(() => scheduleSplitLineNumbers(tab));
+    tab.lineResizeObserver = new ResizeObserver(() => {
+      if (!$('#app').classList.contains('sidebar-transitioning')) scheduleSplitLineNumbers(tab);
+    });
     tab.lineResizeObserver.observe(sv);
   }
 
@@ -721,8 +921,12 @@
 
   function observeEditorBottomSpacer(tab) {
     tab.bottomSpacerObserver?.disconnect();
-    updateEditorBottomSpacer(tab);
-    if (typeof ResizeObserver !== 'function') return;
+    if (typeof ResizeObserver !== 'function') {
+      updateEditorBottomSpacer(tab);
+      return;
+    }
+    // ResizeObserver delivers the initial host size after layout. Avoid reading
+    // clientHeight while Vditor is still completing its long-document setup.
     tab.bottomSpacerObserver = new ResizeObserver(() => updateEditorBottomSpacer(tab));
     tab.bottomSpacerObserver.observe(tab.host);
   }
@@ -845,7 +1049,7 @@
           resizer.classList.remove('dragging');
           window.removeEventListener('mousemove', move);
           window.removeEventListener('mouseup', up);
-          window.appAPI.saveSettings({ splitRatio: state.settings.splitRatio });
+          queueSettingsSave({ splitRatio: state.settings.splitRatio });
         };
         window.addEventListener('mousemove', move);
         window.addEventListener('mouseup', up);
@@ -1060,7 +1264,6 @@
   function editorOptions(tab) {
     const s = state.settings;
     const wasModified = tab.modified;
-    const savedBefore = tab.savedContent;
     const lang =
       state.locale === 'zh_Hans' ? 'zh_CN' : state.locale === 'zh_Hant' ? 'zh_TW' : 'en_US';
     const appTheme = document.documentElement.dataset.theme || s.theme;
@@ -1125,6 +1328,7 @@
         const contract = VDITOR.validateHost(tab.host);
         if (!contract.valid) {
           tab.ready = false;
+          tab.host.dataset.editorReady = 'false';
           console.error('Unsupported Vditor DOM contract:', contract.missing);
           showMessage(`Vditor integration mismatch: ${contract.missing.join(', ')}`, true);
           return;
@@ -1142,10 +1346,24 @@
         });
         setupDocumentAnchorNavigation(tab);
         VDITOR.scrollContainers(tab.host).forEach(setupAutoHideScrollbar);
+        tab.tableCompositionScrollCleanup?.();
+        tab.tableCompositionScrollCleanup = VDITOR.preserveTableScrollDuringInput(
+          tab.host,
+          () => tab.vditor?.getCurrentMode() || tab.mode,
+        );
+        const pendingEditorContent = tab.pendingEditorContent;
+        const pendingSavedContent = tab.savedContent;
+        const pendingModified = tab.modified;
+        if (pendingEditorContent) {
+          tab.vditor.setValue(tab.content, true);
+          tab.pendingEditorContent = false;
+        }
         const normalized = currentContent(tab);
         tab.content = normalized;
-        tab.savedContent = wasModified ? savedBefore : normalized;
-        tab.modified = wasModified || normalized !== tab.savedContent;
+        tab.savedContent =
+          wasModified || pendingEditorContent || pendingModified ? pendingSavedContent : normalized;
+        tab.modified =
+          wasModified || pendingModified || pendingEditorContent || normalized !== tab.savedContent;
         tab.ready = true;
         tab.toolbar = VDITOR.editorParts(tab.host).toolbar;
         VDITOR.hideNativeOutlineControl(tab.toolbar);
@@ -1160,15 +1378,22 @@
           (event) => preserveSplitToolbarSelection(tab, event),
           true,
         );
-        syncCodeThemeControls(isDarkTheme(appTheme), state.settings.codeTheme);
+        // Vditor initialization may finish after the user changes the application theme.
+        // Read the current theme here so the late callback cannot restore stale menu filters.
+        const currentAppTheme = document.documentElement.dataset.theme || state.settings.theme;
+        syncCodeThemeControls(isDarkTheme(currentAppTheme), state.settings.codeTheme);
         if (tab.id === state.activeId || tab.toolbarPreview) mountEditorToolbar(tab);
+        // Vditor may still be mutating the new document here. Its toolbar move
+        // is observed below, so defer measuring it until layout settles instead
+        // of forcing a full-document style calculation in this callback.
+        syncToolbarAvailability(false);
         if (tab.toolbarPreview) {
           disableToolbarPreview(tab);
           syncToolbarWrapHeight();
           return;
         }
         renderTabs();
-        updateActiveUI();
+        updateActiveUI(false, false);
         observeSplitLineNumbers(tab);
         observeEditorBottomSpacer(tab);
         ensureSplitResizer(tab);
@@ -1255,20 +1480,7 @@
       return;
     }
     if (type === 'edit-mode' && ['wysiwyg', 'ir', 'sv'].includes(button.dataset.mode)) {
-      if (button.dataset.mode !== tab.vditor?.getCurrentMode()) {
-        closeContextMenu();
-        tab.pendingScroll = captureEditorScroll(tab);
-        // Vditor rebuilds the target mode synchronously during this click.
-        // Restore before the next paint so the newly visible editor never
-        // presents its default top position for a frame.
-        requestAnimationFrame(() => restoreEditorScroll(tab));
-      }
-      setTimeout(() => {
-        if (!tab.vditor) return;
-        tab.mode = tab.vditor.getCurrentMode();
-        updateActiveUI();
-        scheduleSplitLineNumbers(tab);
-      }, 50);
+      prepareVditorModeTransition(tab, button.dataset.mode);
     } else if (type === 'code-theme') {
       const codeTheme = button.textContent.trim();
       if (!codeTheme) return;
@@ -1278,11 +1490,11 @@
       state.settings.codeTheme = codeTheme;
       state.settings[preferenceKey] = codeTheme;
       syncCodeThemeSelect(dark, codeTheme);
-      window.appAPI.saveSettings({ codeTheme, [preferenceKey]: codeTheme });
+      queueSettingsSave({ codeTheme, [preferenceKey]: codeTheme });
     } else if (type === 'content-theme' && button.dataset.type) {
       state.settings.contentTheme = button.dataset.type;
       syncContentThemeHosts(button.dataset.type);
-      window.appAPI.saveSettings({ contentTheme: button.dataset.type });
+      queueSettingsSave({ contentTheme: button.dataset.type });
       if (button.dataset.type === 'light' || button.dataset.type === 'dark') {
         setTimeout(
           () => applyTheme(document.documentElement.dataset.theme || state.settings.theme),
@@ -1304,13 +1516,18 @@
   }
 
   function ensureEditor(tab) {
-    if (tab.vditor) return;
+    if (tab.vditor) return true;
     tab.ready = false;
+    tab.host.dataset.editorReady = 'false';
+    if (tab.id === state.activeId || tab.toolbarPreview) syncToolbarAvailability();
     try {
       tab.vditor = new Vditor(tab.host, editorOptions(tab));
+      return true;
     } catch (error) {
+      tab.vditor = null;
       tab.host.innerHTML = `<div class="fatal"><h2>编辑器初始化失败</h2><p>${escapeHTML(error.message)}</p></div>`;
       showMessage(error.message, true);
+      return false;
     }
   }
 
@@ -1366,6 +1583,36 @@
     restoreUntilStable();
   }
 
+  function synchronizeVditorMode(tab) {
+    if (!tab?.vditor) return;
+    tab.mode = tab.vditor.getCurrentMode();
+    if (tab.id === state.activeId) updateActiveUI();
+    scheduleSplitLineNumbers(tab);
+  }
+
+  function prepareVditorModeTransition(tab, targetMode) {
+    if (!tab?.vditor || !tab.ready || targetMode === tab.vditor.getCurrentMode()) return false;
+    closeContextMenu();
+    tab.pendingScroll = captureEditorScroll(tab);
+    // Vditor changes its internal mode synchronously for toolbar clicks and
+    // Ctrl/Cmd+Alt+7/8/9. Run after that handler, before the next paint.
+    requestAnimationFrame(() => {
+      if (!tab.vditor) return;
+      synchronizeVditorMode(tab);
+      restoreEditorScroll(tab);
+    });
+    setTimeout(() => synchronizeVditorMode(tab), 50);
+    return true;
+  }
+
+  function handleVditorModeShortcut(tab, event) {
+    const targetMode = VDITOR.editModeShortcut(event);
+    if (!targetMode || !tab?.vditor || !tab.ready) return;
+    const currentMode = tab.vditor.getCurrentMode();
+    if (!VDITOR.isEditableTarget(tab.host, currentMode, event.target)) return;
+    prepareVditorModeTransition(tab, targetMode);
+  }
+
   function restoreEditorToolbar(tab) {
     if (tab && tab.toolbar && tab.toolbar.parentElement === $('#vditorToolbarMount')) {
       tab.host.insertBefore(tab.toolbar, tab.host.firstChild);
@@ -1384,6 +1631,10 @@
   }
 
   function rebuildEditor(tab, mode) {
+    let rebuildError = null;
+    tab.ready = false;
+    tab.host.dataset.editorReady = 'false';
+    if (tab.id === state.activeId || tab.toolbarPreview) syncToolbarAvailability();
     if (contextMenuState?.tab === tab) closeContextMenu();
     tab.pendingScroll = captureEditorScroll(tab);
     disconnectSplitLineNumbers(tab);
@@ -1397,43 +1648,61 @@
       try {
         tab.content = VDITOR.withOriginalImageSources(tab.host, () => tab.vditor.getValue());
         tab.vditor.destroy();
-      } catch (_) {}
+      } catch (error) {
+        rebuildError = error;
+      }
       tab.vditor = null;
       tab.toolbar = null;
     }
     tab.host.innerHTML = '';
     if (mode) tab.mode = mode;
-    if (tab.id === state.activeId) ensureEditor(tab);
+    if (tab.id === state.activeId && !ensureEditor(tab) && !rebuildError)
+      rebuildError = new Error('The editor could not be initialized after the document changed.');
+    return rebuildError;
   }
 
   function createTab({
     filePath = null,
     content = '',
+    savedContent = content,
     encoding = 'utf-8',
     baseDir = '',
     activate = true,
     untitledNumber = null,
     pendingAnchor = '',
+    title: providedTitle = '',
+    mode = state.settings.editMode,
+    recoverySnapshotId = null,
+    recoveryState = null,
+    expectedSavedContent = savedContent,
+    fileIdentity = null,
   } = {}) {
     destroyToolbarPreview();
     if (state.tabs.length >= 20) {
       showMessage(t('message.maxTabs'), true);
       return null;
     }
-    const title = filePath
-      ? fileName(filePath)
-      : t('tab.untitled', { number: untitledNumber ?? ++state.untitledCounter });
+    const title =
+      providedTitle ||
+      (filePath
+        ? fileName(filePath)
+        : t('tab.untitled', { number: untitledNumber ?? ++state.untitledCounters.file }));
     const tab = {
       id: uid(),
       filePath,
       title,
       content,
-      savedContent: content,
+      savedContent,
       encoding,
       lineEnding: detectLineEnding(content),
       baseDir,
-      modified: false,
-      mode: state.settings.editMode,
+      modified: content !== savedContent,
+      expectedSavedContent,
+      fileIdentity,
+      contentRevision: 0,
+      pendingEditorContent: false,
+      saveOperation: null,
+      mode,
       vditor: null,
       ready: false,
       saveTimer: null,
@@ -1446,9 +1715,16 @@
       outlineCollapsed: new Set(),
       outlineObserver: null,
       resourceObserver: null,
+      modeShortcutCleanup: null,
       splitResizer: null,
       externalConflict: null,
       externalChangeIgnored: false,
+      externalFileState: null,
+      recoverySnapshotId,
+      recoveryState,
+      recoveryTimer: null,
+      recoveryRevision: 0,
+      recoveryOperation: Promise.resolve(),
       pendingAnchor,
       host: document.createElement('section'),
     };
@@ -1460,14 +1736,14 @@
         const modeButton = event.target.closest && event.target.closest('[data-mode]');
         if (!modeButton || !['wysiwyg', 'ir', 'sv'].includes(modeButton.dataset.mode)) return;
         setTimeout(() => {
-          if (!tab.vditor) return;
-          tab.mode = tab.vditor.getCurrentMode();
-          if (tab.id === state.activeId) updateActiveUI();
-          scheduleSplitLineNumbers(tab);
+          synchronizeVditorMode(tab);
         }, 50);
       },
       true,
     );
+    const onModeShortcut = (event) => handleVditorModeShortcut(tab, event);
+    tab.host.addEventListener('keydown', onModeShortcut, true);
+    tab.modeShortcutCleanup = () => tab.host.removeEventListener('keydown', onModeShortcut, true);
     tab.host.addEventListener('contextmenu', (event) => showEditorContextMenu(tab, event), true);
     $('#editorArea').appendChild(tab.host);
     state.tabs.push(tab);
@@ -1493,27 +1769,37 @@
   }
 
   async function openPath(filePath, activate = true, pendingAnchor = '') {
-    const normalizedPath = normalizedFilePath(filePath);
-    const existing = state.tabs.find(
-      (tab) => normalizedFilePath(tabTargetPath(tab)) === normalizedPath,
-    );
-    if (existing) {
-      if (!existing.filePath) {
-        clearTimeout(existing.saveTimer);
-        existing.externalConflict = { kind: 'modified', path: filePath };
-        existing.externalChangeIgnored = false;
-        renderTabs();
-      }
-      if (activate) switchTab(existing.id);
-      if (pendingAnchor) {
-        existing.pendingAnchor = pendingAnchor;
-        requestAnimationFrame(() => scrollToPendingAnchor(existing));
-      }
-      return existing;
-    }
     try {
+      const fileIdentity = await window.fileAPI.fileIdentity(filePath);
+      const normalizedPath = normalizedFilePath(filePath);
+      const existing = state.tabs.find(
+        (tab) =>
+          tab.fileIdentity === fileIdentity ||
+          normalizedFilePath(tabTargetPath(tab)) === normalizedPath,
+      );
+      if (existing) {
+        if (!existing.filePath) {
+          clearTimeout(existing.saveTimer);
+          existing.externalConflict = {
+            kind: 'modified',
+            path: filePath,
+            identity: fileIdentity,
+            detectedAt: Date.now(),
+            version: (existing.externalConflict?.version || 0) + 1,
+          };
+          existing.externalChangeIgnored = false;
+          renderTabs();
+        }
+        if (activate) switchTab(existing.id);
+        if (pendingAnchor) {
+          existing.pendingAnchor = pendingAnchor;
+          requestAnimationFrame(() => scrollToPendingAnchor(existing));
+        }
+        return existing;
+      }
       const result = await window.fileAPI.readFile(filePath);
       const baseDir = await window.fileAPI.dirname(filePath);
+      await syncLocalResourceRoots([baseDir]);
       const tab = createTab({
         filePath,
         content: result.content,
@@ -1521,32 +1807,55 @@
         baseDir,
         activate,
         pendingAnchor,
+        fileIdentity,
       });
+      if (!tab) {
+        await syncLocalResourceRoots();
+        return null;
+      }
+      await watchTabDocument(tab);
       rememberRecent(filePath);
       return tab;
     } catch (error) {
-      showMessage(t('message.openFailed', { error: error.message }), true);
+      showMessage(t('message.openFailed', { error: ipcErrorMessage(error) }), true);
       return null;
     }
   }
 
-  async function newTab() {
+  function untitledCollisionKey(name) {
+    return name.replace(/\.(?:md|markdown|mdown|mkd|mkdn)$/i, '').toLocaleLowerCase();
+  }
+
+  function untitledItemName(number, type) {
+    const title = t('tab.untitled', { number });
+    return type === 'file' ? `${title}.md` : title;
+  }
+
+  async function nextUntitledNumber(parent, type) {
     let entries = [];
-    if (state.workspace) {
+    if (parent) {
       try {
-        entries = await window.fileAPI.listDir(state.workspace);
+        entries = await window.fileAPI.listDir(parent, state.workspace || undefined);
       } catch (_) {}
     }
-    let number = state.untitledCounter + 1;
-    while (
-      entries.some(
-        (entry) =>
-          entry.name.toLocaleLowerCase() ===
-          `${t('tab.untitled', { number })}.md`.toLocaleLowerCase(),
-      )
-    )
-      number++;
-    state.untitledCounter = number;
+    const occupiedNames = new Set();
+    entries.forEach((entry) => {
+      if (entry?.type === type && entry.name) occupiedNames.add(untitledCollisionKey(entry.name));
+    });
+    if (type === 'file') {
+      state.tabs.forEach((tab) => {
+        if (tab.title) occupiedNames.add(untitledCollisionKey(tab.title));
+        if (tab.filePath) occupiedNames.add(untitledCollisionKey(fileName(tab.filePath)));
+      });
+    }
+    let number = state.untitledCounters[type] + 1;
+    while (occupiedNames.has(untitledCollisionKey(untitledItemName(number, type)))) number++;
+    state.untitledCounters[type] = number;
+    return number;
+  }
+
+  async function newTab() {
+    const number = await nextUntitledNumber(state.workspace, 'file');
     createTab({ untitledNumber: number });
   }
 
@@ -1556,6 +1865,7 @@
     closeContextMenu();
     restoreEditorToolbar(activeTab());
     state.activeId = id;
+    syncToolbarAvailability();
     state.tabs.forEach((item) => item.host.classList.toggle('active', item.id === id));
     ensureEditor(tab);
     requestAnimationFrame(() => updateEditorBottomSpacer(tab));
@@ -1573,7 +1883,19 @@
     const tab = state.tabs.find((item) => item.id === id);
     if (!tab) return;
     if (contextMenuState?.tab === tab) closeContextMenu();
-    if (tab.modified && !discard) {
+    if (tab.externalFileState && !tab.modified && !discard) {
+      const action = await showConfirmDialog({
+        title: t('external.closeTitle'),
+        message: t('external.closeMessage', { name: tab.title }),
+        detail: t('external.closeDetail'),
+        actions: [
+          { id: 'cancel', label: t('dialog.cancel') },
+          { id: 'confirm', label: t('external.close'), primary: true, danger: true },
+        ],
+        draggable: true,
+      });
+      if (action !== 'confirm') return;
+    } else if (tab.modified && !discard) {
       const action = await showUnsavedDialog(
         t('confirm.closeDirty', { title: tab.title }),
         t('confirm.closeDirtyDetail'),
@@ -1581,12 +1903,17 @@
       if (action === 'cancel' || (action === 'save' && !(await saveTab(tab)))) return;
     }
     clearTimeout(tab.saveTimer);
+    await discardRecoverySnapshot(tab);
     disconnectSplitLineNumbers(tab);
     disconnectEditorBottomSpacer(tab);
     tab.resourceObserver?.disconnect();
     tab.resourceObserver = null;
     tab.outlineObserver?.disconnect();
     tab.outlineObserver = null;
+    tab.tableCompositionScrollCleanup?.();
+    tab.tableCompositionScrollCleanup = null;
+    tab.modeShortcutCleanup?.();
+    tab.modeShortcutCleanup = null;
     restoreEditorToolbar(tab);
     if (tab.vditor) {
       try {
@@ -1596,6 +1923,9 @@
     tab.host.remove();
     const index = state.tabs.indexOf(tab);
     state.tabs.splice(index, 1);
+    syncToolbarAvailability();
+    await releaseDocumentWatch(tab.filePath, tab.fileIdentity);
+    await syncLocalResourceRoots();
     if (!state.tabs.length) {
       state.activeId = null;
       $('#vditorToolbarMount').innerHTML = '';
@@ -1620,7 +1950,7 @@
       button.className = `document-tab${tab.id === state.activeId ? ' active' : ''}`;
       button.dataset.id = tab.id;
       button.title = tab.filePath || tab.title;
-      button.innerHTML = `<span>${escapeHTML(tab.title)}</span>${tab.externalConflict ? `<i class="conflict" title="${escapeHTML(t('external.changed', { name: tab.title }))}">!</i>` : ''}<i class="dirty">${tab.modified ? '●' : ''}</i><b title="${escapeHTML(t('tab.close'))}">×</b>`;
+      button.innerHTML = `<span>${escapeHTML(tab.title)}</span>${tab.externalConflict || tab.externalFileState ? `<i class="conflict" title="${escapeHTML(t('external.needsAttention', { name: tab.title }))}">!</i>` : ''}<i class="dirty">${tab.modified ? '●' : ''}</i><b title="${escapeHTML(t('tab.close'))}">×</b>`;
       button.addEventListener('click', (event) => {
         if (tabDragMoved) return;
         if (event.target.tagName === 'B') closeTab(tab.id);
@@ -1688,15 +2018,27 @@
       });
       $('#tabBar').insertBefore(button, add);
     });
-    requestAnimationFrame(() =>
-      $('#tabBar .document-tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }),
-    );
+    if (activeTabScrollFrame !== null) cancelAnimationFrame(activeTabScrollFrame);
+    // Vditor can still be invalidating a long document while its `after`
+    // callback renders the tab. Wait for one normal paint before asking
+    // scrollIntoView() to read tab geometry, avoiding a forced full-document
+    // style calculation on that callback's frame.
+    activeTabScrollFrame = requestAnimationFrame(() => {
+      activeTabScrollFrame = requestAnimationFrame(() => {
+        activeTabScrollFrame = null;
+        $('#tabBar .document-tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      });
+    });
   }
 
   function onEditorInput(tab, value) {
-    if (value !== tab.content) tab.pendingEditorContent = false;
+    if (value !== tab.content) {
+      tab.pendingEditorContent = false;
+      tab.contentRevision++;
+    }
     tab.content = value;
     tab.modified = value !== tab.savedContent;
+    scheduleRecoverySnapshot(tab);
     renderTabs();
     if (tab.id === state.activeId) updateActiveUI();
     scheduleSplitLineNumbers(tab);
@@ -1705,7 +2047,8 @@
       tab.filePath &&
       tab.modified &&
       !tab.externalConflict &&
-      !tab.externalChangeIgnored
+      !tab.externalChangeIgnored &&
+      !tab.externalFileState
     ) {
       clearTimeout(tab.saveTimer);
       tab.saveTimer = setTimeout(() => saveTab(tab), state.settings.autoSaveDelay);
@@ -1715,7 +2058,7 @@
   function currentContent(tab) {
     if (!tab) return '';
     try {
-      return tab.vditor
+      return tab.vditor && tab.ready
         ? VDITOR.withOriginalImageSources(tab.host, () => tab.vditor.getValue())
         : tab.content;
     } catch (_) {
@@ -1723,54 +2066,409 @@
     }
   }
 
-  async function saveTab(tab = activeTab(), saveAs = false) {
+  function recreateClipboardSnapshot(tab) {
+    return state.settings.autoSave ? currentContent(tab) : tab.savedContent;
+  }
+
+  function saveTab(
+    tab = activeTab(),
+    saveAs = false,
+    overwriteConflict = null,
+    recreateFileState = null,
+  ) {
+    if (!tab) return Promise.resolve(false);
+    const previous = tab.saveOperation || Promise.resolve(false);
+    const operation = previous
+      .catch(() => false)
+      .then(() => performSaveTab(tab, saveAs, overwriteConflict, recreateFileState));
+    tab.saveOperation = operation.catch(() => false);
+    return operation;
+  }
+
+  function queueSaveForIdentity(identity, operation) {
+    const previous = saveOperationsByIdentity.get(identity) || Promise.resolve();
+    const queued = previous.catch(() => undefined).then(operation);
+    saveOperationsByIdentity.set(identity, queued);
+    const release = () => {
+      if (saveOperationsByIdentity.get(identity) === queued)
+        saveOperationsByIdentity.delete(identity);
+    };
+    void queued.then(release, release);
+    return queued;
+  }
+
+  function queueSettingsSave(settings, { throwOnFailure = false } = {}) {
+    const previous = settingsSaveQueue;
+    const queued = previous.catch(() => undefined).then(() => window.appAPI.saveSettings(settings));
+    settingsSaveQueue = queued.catch(() => undefined);
+    if (throwOnFailure) return queued;
+    return queued.catch((error) => {
+      console.error('Unable to persist settings.', error);
+      return state.settings;
+    });
+  }
+
+  async function performSaveTab(
+    tab = activeTab(),
+    saveAs = false,
+    overwriteConflict = null,
+    recreateFileState = null,
+    queuedIdentity = null,
+    selectedDestination = null,
+  ) {
     if (!tab) return false;
-    let destination = tab.filePath;
-    if (!destination || saveAs)
+    const previousPath = tab.filePath;
+    const previousIdentity = tab.fileIdentity;
+    let destination = selectedDestination || tab.filePath;
+    if (!destination || (saveAs && !selectedDestination))
       destination = await window.fileAPI.saveFileDialog(
         destination || `${tab.title}.md`,
         destination ? undefined : state.workspace || undefined,
       );
     if (!destination) return false;
+    const destinationIdentity = await window.fileAPI.fileIdentity(destination);
+    if (queuedIdentity !== destinationIdentity) {
+      return queueSaveForIdentity(destinationIdentity, () =>
+        performSaveTab(
+          tab,
+          saveAs,
+          overwriteConflict,
+          recreateFileState,
+          destinationIdentity,
+          destination,
+        ),
+      );
+    }
+    const occupiedTab = state.tabs.find(
+      (item) => item !== tab && tabFileIdentity(item) === destinationIdentity,
+    );
+    if (occupiedTab) {
+      showMessage(t('message.savePathAlreadyOpen', { title: occupiedTab.title }), true);
+      return false;
+    }
+    const conflict = tab.externalConflict;
+    const writesConflictedPath = Boolean(conflict && conflict.identity === destinationIdentity);
+    const fileState = tab.externalFileState;
+    const writesUnavailablePath = Boolean(fileState && fileState.identity === destinationIdentity);
+    if (writesUnavailablePath && recreateFileState !== fileState.version) {
+      showMessage(t('external.resolveFileStateBeforeSave'), true);
+      return false;
+    }
+    if (writesConflictedPath && !overwriteConflict) {
+      if (tab.externalChangeIgnored)
+        return confirmExternalOverwrite(tab, destinationIdentity, destination);
+      showMessage(t('external.resolveBeforeSave'), true);
+      return false;
+    }
+    if (writesConflictedPath && overwriteConflict !== conflict.version) {
+      showMessage(t('external.changedAgain', { name: tab.title }), true);
+      return false;
+    }
+    if (tab.filePath && tab.fileIdentity === destinationIdentity && !fileState && !conflict) {
+      const exists = await window.fileAPI.exists(destination);
+      if (!exists) {
+        await preserveUnavailableTab(tab, 'deleted', destination);
+        renderTabs();
+        if (tab.id === state.activeId) updateActiveUI();
+        return false;
+      }
+      try {
+        const diskVersion = await window.fileAPI.readFile(destination);
+        if (diskVersion.content !== tab.expectedSavedContent) {
+          clearTimeout(tab.saveTimer);
+          tab.externalConflict = {
+            kind: 'modified',
+            path: destination,
+            identity: destinationIdentity,
+            content: diskVersion.content,
+            encoding: diskVersion.encoding || tab.encoding,
+            detectedAt: Date.now(),
+            version: (tab.externalConflict?.version || 0) + 1,
+          };
+          tab.externalChangeIgnored = false;
+          renderTabs();
+          if (tab.id === state.activeId) updateActiveUI();
+          return false;
+        }
+      } catch (_) {
+        await preserveUnavailableTab(tab, 'unreadable', destination);
+        renderTabs();
+        if (tab.id === state.activeId) updateActiveUI();
+        return false;
+      }
+    }
+    const destinationChanged = Boolean(previousPath) && previousIdentity !== destinationIdentity;
+    let previousWatchSuspended = false;
+    if (destinationChanged) {
+      await suspendDocumentWatches([tab]);
+      previousWatchSuspended = true;
+    }
     try {
       const content = tab.pendingEditorContent ? tab.content : currentContent(tab);
       const diskContent =
         tab.lineEnding === 'CRLF'
           ? content.replace(/\r?\n/g, '\r\n')
           : content.replace(/\r\n/g, '\n');
-      state.ignoredChanges.set(destination, Date.now() + 1500);
-      await window.fileAPI.writeFile(destination, diskContent);
+      const savedRevision = tab.contentRevision;
+      let expectedContent;
+      let expectedAbsent = false;
+      if (tab.filePath && tab.fileIdentity === destinationIdentity && !fileState && !conflict) {
+        expectedContent = tab.expectedSavedContent;
+      } else if (writesUnavailablePath) {
+        expectedAbsent = true;
+      } else if (await window.fileAPI.exists(destination)) {
+        expectedContent = (await window.fileAPI.readFile(destination)).content;
+      } else {
+        expectedAbsent = true;
+      }
+      const result = await window.fileAPI.writeDocument(
+        destination,
+        diskContent,
+        expectedContent,
+        expectedAbsent,
+      );
+      if (result.error) {
+        if (result.error === 'external-change') {
+          clearTimeout(tab.saveTimer);
+          tab.externalConflict = {
+            kind: 'modified',
+            path: destination,
+            identity: destinationIdentity,
+            content: result.content,
+            encoding: result.encoding || tab.encoding,
+            detectedAt: Date.now(),
+            version: (tab.externalConflict?.version || 0) + 1,
+          };
+          tab.externalChangeIgnored = false;
+          renderTabs();
+          if (tab.id === state.activeId) updateActiveUI();
+          return false;
+        }
+        showMessage(
+          t(
+            result.error === 'permission-denied'
+              ? 'message.savePermissionDenied'
+              : 'message.saveFailedGeneric',
+          ),
+          true,
+        );
+        if (previousWatchSuspended) await rebindDocumentWatches([tab]);
+        return false;
+      }
       const previousBaseDir = tab.baseDir;
       tab.filePath = destination;
+      tab.fileIdentity = destinationIdentity;
       tab.title = fileName(destination);
-      tab.content = content;
       tab.savedContent = content;
-      tab.modified = false;
+      tab.expectedSavedContent = result.expectedContent;
+      tab.modified = tab.content !== tab.savedContent;
       tab.externalConflict = null;
       tab.externalChangeIgnored = false;
+      tab.externalFileState = null;
       tab.encoding = 'utf-8';
       tab.baseDir = await window.fileAPI.dirname(destination);
+      await releaseDocumentWatch(previousPath, previousIdentity);
+      await syncLocalResourceRoots();
+      await watchTabDocument(tab);
+      if (tab.contentRevision === savedRevision) {
+        await discardRecoverySnapshot(tab);
+        tab.recoveryState = null;
+      } else {
+        scheduleRecoverySnapshot(tab);
+      }
       if (previousBaseDir !== tab.baseDir) rebuildEditor(tab);
       rememberRecent(destination);
+      if (state.workspace && (!previousPath || saveAs || previousPath !== destination)) {
+        await refreshTree();
+      }
       renderTabs();
       updateActiveUI();
       persistSession();
       showMessage(t('message.saved', { title: tab.title }));
       return true;
     } catch (error) {
-      showMessage(t('message.saveFailed', { error: error.message }), true);
+      if (previousWatchSuspended) await rebindDocumentWatches([tab]);
+      showMessage(t('message.saveFailed', { error: ipcErrorMessage(error) }), true);
       return false;
     }
   }
 
-  function updateActiveUI() {
+  function recoverySnapshotFor(tab) {
+    return {
+      schemaVersion: 2,
+      id: tab.recoverySnapshotId || recoveryId(),
+      filePath: tab.filePath,
+      title: tab.title,
+      content: tab.content,
+      savedContent: tab.savedContent,
+      expectedSavedContent: tab.expectedSavedContent,
+      encoding: tab.encoding,
+      lineEnding: tab.lineEnding,
+      mode: tab.mode,
+      updatedAt: Date.now(),
+    };
+  }
+
+  function queueRecoveryOperation(tab, operation) {
+    const previous = tab.recoveryOperation || Promise.resolve();
+    tab.recoveryOperation = previous.catch(() => undefined).then(operation);
+    return tab.recoveryOperation;
+  }
+
+  function scheduleRecoverySnapshot(tab) {
+    clearTimeout(tab.recoveryTimer);
+    if (!tab.modified && !tab.externalFileState) {
+      void discardRecoverySnapshot(tab);
+      return;
+    }
+    if (!tab.modified) return;
+    const id = tab.recoverySnapshotId || recoveryId();
+    tab.recoverySnapshotId = id;
+    const revision = ++tab.recoveryRevision;
+    tab.recoveryTimer = setTimeout(() => {
+      tab.recoveryTimer = null;
+      void queueRecoveryOperation(tab, async () => {
+        if (tab.recoverySnapshotId !== id || tab.recoveryRevision !== revision || !tab.modified)
+          return;
+        try {
+          await window.appAPI.saveRecovery(recoverySnapshotFor(tab));
+        } catch (_) {
+          console.error('Unable to save a recovery snapshot.');
+        }
+      });
+    }, 500);
+  }
+
+  async function discardRecoverySnapshot(tab) {
+    clearTimeout(tab.recoveryTimer);
+    tab.recoveryTimer = null;
+    const id = tab.recoverySnapshotId;
+    tab.recoverySnapshotId = null;
+    tab.recoveryRevision++;
+    if (!id) return;
+    await queueRecoveryOperation(tab, async () => {
+      try {
+        await window.appAPI.discardRecovery(id);
+      } catch (_) {
+        console.error('Unable to remove a recovery snapshot.');
+      }
+    });
+  }
+
+  async function preserveUnavailableTab(tab, kind, filePath, error) {
+    const fileIdentity = tab.fileIdentity || (await window.fileAPI.fileIdentity(filePath));
+    if (
+      tab.externalFileState?.kind === kind &&
+      tab.externalFileState.identity === fileIdentity &&
+      tab.recoverySnapshotId
+    )
+      return;
+    clearTimeout(tab.saveTimer);
+    clearTimeout(tab.recoveryTimer);
+    tab.recoveryTimer = null;
+    const editorContent = currentContent(tab);
+    if (editorContent.trim() || tab.modified || (!tab.content && !tab.savedContent))
+      tab.content = editorContent;
+    else if (!tab.content.trim()) tab.content = tab.savedContent;
+    tab.externalConflict = null;
+    tab.externalChangeIgnored = false;
+    tab.externalFileState = {
+      kind,
+      path: filePath,
+      identity: fileIdentity,
+      ...(error ? { error } : {}),
+      clipboardContent: tab.externalFileState?.clipboardContent ?? recreateClipboardSnapshot(tab),
+      detectedAt: Date.now(),
+      version: (tab.externalFileState?.version || 0) + 1,
+    };
+    const id = tab.recoverySnapshotId || recoveryId();
+    tab.recoverySnapshotId = id;
+    const revision = ++tab.recoveryRevision;
+    await queueRecoveryOperation(tab, async () => {
+      if (tab.recoverySnapshotId !== id || tab.recoveryRevision !== revision) return;
+      try {
+        await window.appAPI.saveRecovery(recoverySnapshotFor(tab));
+      } catch (_) {
+        console.error('Unable to preserve an unavailable document for recovery.');
+      }
+    });
+  }
+
+  async function restoreRecoverySnapshots() {
+    let candidates;
+    try {
+      candidates = await window.appAPI.getRecoveryCandidates();
+    } catch (_) {
+      return;
+    }
+    for (const candidate of candidates) {
+      const snapshot = await window.appAPI.restoreRecovery(candidate.id);
+      if (!snapshot) continue;
+      if (snapshot.diskState !== 'unchanged') {
+        const baseDir = snapshot.filePath ? await window.fileAPI.dirname(snapshot.filePath) : '';
+        await syncLocalResourceRoots(baseDir ? [baseDir] : []);
+        const tab = createTab({
+          title: t('recovery.conflictTitle', { title: snapshot.title }),
+          content: snapshot.content,
+          savedContent: '',
+          encoding: snapshot.encoding,
+          baseDir,
+          mode: snapshot.mode,
+          recoverySnapshotId: snapshot.id,
+          recoveryState: snapshot.diskState,
+        });
+        if (tab) await watchTabDocument(tab);
+      } else {
+        const fileIdentity = snapshot.filePath
+          ? await window.fileAPI.fileIdentity(snapshot.filePath)
+          : null;
+        const existing = fileIdentity
+          ? state.tabs.find((tab) => tab.fileIdentity === fileIdentity)
+          : null;
+        if (existing) {
+          existing.content = snapshot.content;
+          existing.savedContent = snapshot.savedContent;
+          existing.expectedSavedContent = snapshot.expectedSavedContent;
+          existing.modified = existing.content !== existing.savedContent;
+          existing.encoding = snapshot.encoding;
+          existing.lineEnding = snapshot.lineEnding;
+          existing.mode = snapshot.mode;
+          existing.recoverySnapshotId = snapshot.id;
+          existing.recoveryState = 'unchanged';
+          existing.contentRevision++;
+          if (existing.vditor && existing.ready) existing.vditor.setValue(snapshot.content, true);
+          else existing.pendingEditorContent = true;
+          continue;
+        }
+        const baseDir = snapshot.filePath ? await window.fileAPI.dirname(snapshot.filePath) : '';
+        await syncLocalResourceRoots(baseDir ? [baseDir] : []);
+        const tab = createTab({
+          filePath: snapshot.filePath,
+          content: snapshot.content,
+          savedContent: snapshot.savedContent,
+          encoding: snapshot.encoding,
+          baseDir,
+          mode: snapshot.mode,
+          recoverySnapshotId: snapshot.id,
+          recoveryState: 'unchanged',
+          expectedSavedContent: snapshot.expectedSavedContent,
+          fileIdentity,
+        });
+        if (tab) await watchTabDocument(tab);
+      }
+    }
+  }
+
+  function updateActiveUI(shouldSyncToolbarAvailability = true, shouldSyncTopControlsWidth = true) {
     updateEmptyState();
     const tab = activeTab();
-    $('#app').classList.remove('toolbar-unavailable');
-    $('#app').classList.toggle('toolbar-preview-active', !tab);
-    syncTopControlsWidth();
+    if (shouldSyncToolbarAvailability) syncToolbarAvailability();
+    $('#vditorToolbarMount').classList.toggle('toolbar-preview-active', !tab);
+    if (shouldSyncTopControlsWidth) syncTopControlsWidth();
     if (!tab) {
       updateExternalChangeBanner(null);
+      updateExternalFileStateBanner(null);
+      updateRecoveryBanner(null);
       $('#saveFile').disabled = true;
       document.title = 'Vditor Desktop';
       $('#windowTitle').textContent = 'Vditor Desktop';
@@ -1786,6 +2484,8 @@
       return;
     }
     updateExternalChangeBanner(tab);
+    updateExternalFileStateBanner(tab);
+    updateRecoveryBanner(tab);
     $('#saveFile').disabled = false;
     const content = currentContent(tab);
     tab.content = content;
@@ -1806,8 +2506,12 @@
     $('#statusLines').textContent = t('status.lines', { count: content.split(/\r?\n/).length });
     $('#statusEncoding').textContent = tab.encoding.toUpperCase();
     $('#statusLineEnding').textContent = tab.lineEnding;
+    updateActiveTreeSelection(tab);
+  }
+
+  function updateActiveTreeSelection(tab = activeTab()) {
     $$('.tree-file.active').forEach((node) => node.classList.remove('active'));
-    if (tab.filePath) {
+    if (tab?.filePath) {
       const node = $(`.tree-file[data-path="${CSS.escape(tab.filePath)}"]`);
       if (node) node.classList.add('active');
     }
@@ -1821,9 +2525,37 @@
     });
   }
 
+  function themeModeFromSettings() {
+    if (state.settings?.systemTheme) return 'system';
+    return isDarkTheme(state.settings?.theme) ? 'dark' : 'light';
+  }
+
+  function syncThemeModeControl() {
+    const trigger = $('#statusThemeMode');
+    const icon = $('#statusThemeIcon');
+    const menu = $('#statusThemeMenu');
+    if (!trigger || !icon || !menu || !state.settings) return;
+    const mode = themeModeFromSettings();
+    const labelKey = `themeMode.${mode}`;
+    const label = t(labelKey);
+    icon.className = `theme-mode-icon theme-mode-icon-${mode}`;
+    trigger.dataset.themeMode = mode;
+    trigger.dataset.i18nTitle = labelKey;
+    trigger.title = label;
+    trigger.setAttribute('aria-label', label);
+    $$('#statusThemeMenu [data-theme-mode]').forEach((button) => {
+      button.setAttribute('aria-checked', String(button.dataset.themeMode === mode));
+    });
+  }
+
   function closeStatusModeMenu() {
     $('#statusModeMenu').classList.add('hidden');
     $('#statusMode').setAttribute('aria-expanded', 'false');
+  }
+
+  function closeStatusThemeMenu() {
+    $('#statusThemeMenu').classList.add('hidden');
+    $('#statusThemeMode').setAttribute('aria-expanded', 'false');
   }
 
   function toggleStatusModeMenu() {
@@ -1835,6 +2567,7 @@
       closeStatusModeMenu();
       return;
     }
+    closeStatusThemeMenu();
     syncStatusModeMenu(tab.vditor.getCurrentMode());
     menu.classList.remove('hidden');
     $('#statusMode').setAttribute('aria-expanded', 'true');
@@ -1847,6 +2580,33 @@
     VDITOR.selectEditMode(tab.toolbar, mode);
   }
 
+  function toggleStatusThemeMenu() {
+    const menu = $('#statusThemeMenu');
+    const willOpen = menu.classList.contains('hidden');
+    if (!willOpen) {
+      closeStatusThemeMenu();
+      return;
+    }
+    closeStatusModeMenu();
+    syncThemeModeControl();
+    menu.classList.remove('hidden');
+    $('#statusThemeMode').setAttribute('aria-expanded', 'true');
+  }
+
+  async function selectStatusThemeMode(mode) {
+    closeStatusThemeMenu();
+    if (!THEME_MODES.includes(mode) || mode === themeModeFromSettings()) return;
+    const patch =
+      mode === 'system'
+        ? { systemTheme: true }
+        : {
+            systemTheme: false,
+            theme: mode === 'dark' ? darkThemePreference() : lightThemePreference(),
+          };
+    state.settings = await queueSettingsSave(patch);
+    await applyTheme(await resolveTheme());
+  }
+
   function updateEmptyState() {
     const empty = $('#noTabs');
     const hasTabs = state.tabs.length > 0;
@@ -1857,47 +2617,228 @@
   function updateExternalChangeBanner(tab) {
     const banner = $('#externalChangeBanner');
     const conflict = tab?.externalConflict;
-    banner.classList.toggle('hidden', !conflict);
-    if (!conflict) return;
+    banner.classList.toggle('hidden', !conflict || tab.externalChangeIgnored);
+    if (!conflict || tab.externalChangeIgnored) return;
     $('#externalChangeMessage').textContent = t('external.changed', {
       name: fileName(conflict.path),
     });
   }
 
+  function updateExternalFileStateBanner(tab) {
+    const banner = $('#externalFileStateBanner');
+    const fileState = tab?.externalFileState;
+    banner.classList.toggle('hidden', !fileState);
+    if (!fileState) return;
+    const name = fileName(fileState.path);
+    const messageKey =
+      fileState.kind === 'deleted'
+        ? 'external.deleted'
+        : fileState.kind === 'reappeared'
+          ? 'external.reappeared'
+          : 'external.unreadable';
+    const detailKey =
+      fileState.kind === 'deleted'
+        ? 'external.deletedDetail'
+        : fileState.kind === 'reappeared'
+          ? 'external.reappearedDetail'
+          : 'external.unreadableDetail';
+    $('#externalFileStateMessage').textContent = t(messageKey, { name });
+    $('#externalFileStateDetail').textContent = t(detailKey);
+    $('#externalFileReload').classList.toggle('hidden', fileState.kind !== 'reappeared');
+    $('#externalFileRecreate').classList.toggle('hidden', fileState.kind === 'unreadable');
+  }
+
+  function updateRecoveryBanner(tab) {
+    const banner = $('#recoveryBanner');
+    const recoveryState = tab?.recoveryState;
+    banner.classList.toggle('hidden', !recoveryState);
+    if (!recoveryState) return;
+
+    const changed = recoveryState === 'changed';
+    const unavailable = recoveryState === 'unavailable';
+    $('#recoveryMessage').textContent = t(
+      changed ? 'recovery.changed' : unavailable ? 'recovery.unavailable' : 'recovery.restored',
+    );
+    $('#recoveryDetail').textContent = t(
+      changed
+        ? 'recovery.changedDetail'
+        : unavailable
+          ? 'recovery.unavailableDetail'
+          : 'recovery.restoredDetail',
+    );
+    $('#recoverySave').classList.toggle('hidden', recoveryState !== 'unchanged');
+  }
+
+  async function saveRecoveredVersion(tab) {
+    if (!tab?.recoveryState) return;
+    await saveTab(tab);
+  }
+
+  async function saveRecoveredAs(tab) {
+    if (!tab?.recoveryState) return;
+    await saveTab(tab, true);
+  }
+
+  async function discardRecoveredVersion(tab) {
+    if (!tab?.recoveryState) return;
+    await closeTab(tab.id, { discard: true });
+  }
+
   async function reloadExternalChange(tab) {
     const conflict = tab?.externalConflict;
-    if (!conflict) return;
-    try {
-      const result = await window.fileAPI.readFile(conflict.path);
-      clearTimeout(tab.saveTimer);
-      const previousBaseDir = tab.baseDir;
-      tab.filePath = conflict.path;
-      tab.title = fileName(conflict.path);
-      tab.content = result.content;
-      tab.savedContent = result.content;
-      tab.modified = false;
-      tab.encoding = result.encoding;
-      tab.lineEnding = detectLineEnding(result.content);
-      tab.baseDir = await window.fileAPI.dirname(conflict.path);
-      tab.externalConflict = null;
-      tab.externalChangeIgnored = false;
-      if (tab.vditor) tab.vditor.setValue(result.content, true);
-      if (previousBaseDir !== tab.baseDir) rebuildEditor(tab);
-      renderTabs();
-      if (tab.id === state.activeId) {
-        updateActiveUI();
-        renderOutline();
-      }
-      persistSession();
-      showMessage(t('external.reloaded', { name: tab.title }));
-    } catch (error) {
-      showMessage(t('message.openFailed', { error: error.message }), true);
+    if (!conflict || typeof conflict.content !== 'string') return;
+    const conflictIdentity = conflict.identity || tabFileIdentity(tab);
+    const relatedTabs = state.tabs.filter(
+      (item) => item === tab || (conflictIdentity && tabFileIdentity(item) === conflictIdentity),
+    );
+    for (const item of relatedTabs) {
+      clearTimeout(item.saveTimer);
+      item.content = conflict.content;
+      item.savedContent = conflict.content;
+      item.expectedSavedContent = conflict.content;
+      item.modified = false;
+      item.encoding = conflict.encoding || item.encoding;
+      item.lineEnding = detectLineEnding(conflict.content);
+      item.externalConflict = null;
+      item.externalChangeIgnored = false;
+      if (item.vditor) item.vditor.setValue(conflict.content, true);
     }
+    renderTabs();
+    updateActiveUI();
+    renderOutline();
+    persistSession();
+    showMessage(t('external.reloaded', { name: tab.title }));
+  }
+
+  async function confirmExternalOverwrite(tab, queuedIdentity = null, selectedDestination = null) {
+    const conflict = tab?.externalConflict;
+    if (!conflict) return false;
+    const action = await showConfirmDialog({
+      title: t('external.overwriteTitle'),
+      message: t('external.overwriteMessage', { name: tab.title }),
+      detail: t('external.overwriteDetail'),
+      actions: [
+        { id: 'cancel', label: t('dialog.cancel') },
+        { id: 'confirm', label: t('external.overwrite'), primary: true, danger: true },
+      ],
+      draggable: true,
+    });
+    if (action !== 'confirm') return false;
+    if (tab.externalConflict?.version !== conflict.version) {
+      showMessage(t('external.changedAgain', { name: tab.title }), true);
+      return false;
+    }
+    return performSaveTab(tab, false, conflict.version, null, queuedIdentity, selectedDestination);
+  }
+
+  async function reloadReappearedFile(tab) {
+    const fileState = tab?.externalFileState;
+    if (fileState?.kind !== 'reappeared' || typeof fileState.content !== 'string') return;
+    const fileStateIdentity = fileState.identity || tabFileIdentity(tab);
+    const relatedTabs = state.tabs.filter(
+      (item) => item === tab || (fileStateIdentity && tabFileIdentity(item) === fileStateIdentity),
+    );
+    for (const item of relatedTabs) {
+      clearTimeout(item.saveTimer);
+      item.content = fileState.content;
+      item.savedContent = fileState.content;
+      item.expectedSavedContent = fileState.content;
+      item.modified = false;
+      item.encoding = fileState.encoding || item.encoding;
+      item.lineEnding = detectLineEnding(fileState.content);
+      item.externalConflict = null;
+      item.externalChangeIgnored = false;
+      item.externalFileState = null;
+      if (item.vditor) item.vditor.setValue(fileState.content, true);
+      await discardRecoverySnapshot(item);
+    }
+    renderTabs();
+    updateActiveUI();
+    renderOutline();
+    persistSession();
+    showMessage(t('external.reloaded', { name: tab.title }));
+  }
+
+  async function keepExternalFileAsUntitled(tab) {
+    if (!tab?.externalFileState) return;
+    const previousPath = tab.filePath;
+    const previousIdentity = tab.fileIdentity;
+    clearTimeout(tab.saveTimer);
+    tab.filePath = null;
+    tab.fileIdentity = null;
+    tab.baseDir = '';
+    tab.title = t('tab.untitled', { number: ++state.untitledCounters.file });
+    tab.savedContent = '';
+    tab.expectedSavedContent = '';
+    tab.modified = tab.content !== '';
+    tab.externalConflict = null;
+    tab.externalChangeIgnored = false;
+    tab.externalFileState = null;
+    await releaseDocumentWatch(previousPath, previousIdentity);
+    await syncLocalResourceRoots();
+    scheduleRecoverySnapshot(tab);
+    renderTabs();
+    updateActiveUI();
+    persistSession();
+  }
+
+  async function confirmExternalFileRecreate(tab) {
+    const fileState = tab?.externalFileState;
+    if (!fileState || fileState.kind === 'unreadable') return false;
+    const action = await showConfirmDialog({
+      title: t('external.recreateTitle'),
+      message: t('external.recreateMessage', { name: fileName(fileState.path) }),
+      detail: t('external.recreateDetail'),
+      actions: [
+        { id: 'cancel', label: t('dialog.cancel') },
+        { id: 'confirm', label: t('external.recreate'), primary: true, danger: true },
+      ],
+      draggable: true,
+    });
+    if (action !== 'confirm') return false;
+    if (tab.externalFileState?.version !== fileState.version) {
+      showMessage(t('external.changedAgain', { name: tab.title }), true);
+      return false;
+    }
+    const previousContent = fileState.clipboardContent || '';
+    const recreated = await saveTab(tab, false, null, fileState.version);
+    if (!recreated) return false;
+    if (!previousContent) {
+      const message = t('external.recreated');
+      showMessage(message);
+      showTemporaryDocumentNotice(message);
+      return true;
+    }
+    try {
+      await window.appAPI.writeClipboard(previousContent);
+      const message = t('external.recreatedCopied');
+      showMessage(message);
+      showTemporaryDocumentNotice(message);
+    } catch (_) {
+      const message = t('external.recreatedClipboardFailed');
+      showMessage(message, true);
+      showTemporaryDocumentNotice(message, true);
+    }
+    return true;
+  }
+
+  async function confirmExternalFileClose(tab) {
+    if (!tab?.externalFileState) return;
+    const action = await showConfirmDialog({
+      title: t('external.closeTitle'),
+      message: t('external.closeMessage', { name: tab.title }),
+      detail: t('external.closeDetail'),
+      actions: [
+        { id: 'cancel', label: t('dialog.cancel') },
+        { id: 'confirm', label: t('external.close'), primary: true, danger: true },
+      ],
+      draggable: true,
+    });
+    if (action === 'confirm') await closeTab(tab.id, { discard: true });
   }
 
   function ignoreExternalChange(tab) {
     if (!tab?.externalConflict) return;
-    tab.externalConflict = null;
     tab.externalChangeIgnored = true;
     renderTabs();
     if (tab.id === state.activeId) updateExternalChangeBanner(tab);
@@ -1905,11 +2846,14 @@
   }
 
   async function chooseFiles() {
-    const paths = await window.fileAPI.openFileDialog();
+    const paths = await window.fileAPI.openFileDialog(state.settings.defaultOpenPath || undefined);
     await openPaths(paths);
+    if (paths?.[0]) await rememberDialogDirectory(paths[0]);
   }
   async function chooseFolder() {
-    const folder = await window.fileAPI.openFolderDialog();
+    const folder = await window.fileAPI.openFolderDialog(
+      state.settings.defaultOpenPath || undefined,
+    );
     if (folder) {
       await setWorkspace(folder);
       toggleSidebar(true);
@@ -1918,12 +2862,25 @@
     }
   }
 
+  // Native dialogs do not expose the directory visited before cancellation.
+  // Remember the last confirmed selection across open, save, and export dialogs instead.
+  async function rememberDialogDirectory(filePath) {
+    const directory = await window.fileAPI.dirname(filePath);
+    if (!directory || directory === state.settings.defaultOpenPath) return;
+    state.settings.defaultOpenPath = directory;
+    await queueSettingsSave({ defaultOpenPath: directory });
+  }
+
   async function setWorkspace(folder) {
+    const revision = ++state.workspaceRevision;
     state.workspace = folder || '';
     $('#workspaceName').textContent = folder ? fileName(folder) : t('sidebar.noWorkspace');
-    $('#workspaceHeading').title = folder || t('sidebar.openFolder');
-    await window.fileAPI.watch(folder || undefined);
-    await refreshTree();
+    $('#workspaceHeading').dataset.tooltip = folder || t('sidebar.openFolder');
+    await syncLocalResourceRoots();
+    await window.fileAPI.setWorkspaceWatch(folder || undefined, state.settings.workspaceReadDepth);
+    if (revision !== state.workspaceRevision) return;
+    await refreshTree(revision);
+    if (revision !== state.workspaceRevision) return;
     if (folder) {
       const recent = [
         folder,
@@ -1931,20 +2888,31 @@
       ].slice(0, 10);
       state.settings.recentPaths = recent;
       state.settings.defaultOpenPath = folder;
-      await window.appAPI.saveSettings({ recentPaths: recent, defaultOpenPath: folder });
+      await queueSettingsSave({ recentPaths: recent, defaultOpenPath: folder });
+    } else {
+      state.settings.defaultOpenPath = '';
+      await queueSettingsSave({ defaultOpenPath: '' });
     }
     persistSession();
   }
 
-  async function refreshTree() {
+  async function refreshTree(revision = state.workspaceRevision) {
     const root = $('#fileTree');
-    root.innerHTML = '';
-    if (!state.workspace) {
-      root.innerHTML = `<button id="openFolderEmpty" class="empty-action">${escapeHTML(t('sidebar.openFolder'))}</button>`;
-      $('#openFolderEmpty').onclick = chooseFolder;
+    const workspace = state.workspace;
+    if (!workspace) {
+      const button = document.createElement('button');
+      button.id = 'openFolderEmpty';
+      button.className = 'empty-action';
+      button.textContent = t('sidebar.openFolder');
+      button.onclick = chooseFolder;
+      root.replaceChildren(button);
       return;
     }
-    await appendDirectory(root, state.workspace);
+    const content = document.createDocumentFragment();
+    await appendDirectory(content, workspace, 0, new Set([workspace]));
+    if (state.workspace !== workspace || revision !== state.workspaceRevision) return;
+    root.replaceChildren(content);
+    updateActiveTreeSelection();
   }
 
   function expandedWorkspacePaths() {
@@ -1971,15 +2939,15 @@
       ...previous.filter((item) => item.workspacePath !== state.workspace),
     ].slice(0, 20);
     state.settings.workspaceTreeStates = workspaceTreeStates;
-    void window.appAPI.saveSettings({ workspaceTreeStates });
+    void queueSettingsSave({ workspaceTreeStates });
   }
 
-  async function appendDirectory(container, dirPath) {
+  async function appendDirectory(container, dirPath, depth, ancestorPaths) {
     let entries;
     try {
-      entries = await window.fileAPI.listDir(dirPath);
+      entries = await window.fileAPI.listDir(dirPath, state.workspace);
     } catch (error) {
-      showMessage(error.message, true);
+      showMessage(ipcErrorMessage(error), true);
       return;
     }
     const extensions = (state.settings.fileExplorer.visibleExtensions || ['md']).map((ext) =>
@@ -1992,14 +2960,53 @@
       const row = document.createElement('div');
       row.className = `tree-row tree-${entry.type === 'directory' ? 'dir' : 'file'}`;
       row.dataset.path = entry.path;
-      row.innerHTML = `<span class="chevron">${entry.type === 'directory' ? '›' : ''}</span><span class="file-icon">${treeIcon(entry.type)}</span><span class="tree-name" data-full-name="${escapeHTML(entry.name)}" title="${escapeHTML(entry.name)}">${escapeHTML(entry.name)}</span>`;
+      row.innerHTML = `<span class="chevron">${entry.type === 'directory' ? '›' : ''}</span><span class="file-icon">${treeIcon(entry)}</span><span class="tree-name" data-tooltip="${escapeHTML(entry.name)}">${escapeHTML(entry.name)}</span>`;
+      if (entry.link) {
+        row.classList.add('tree-link');
+        row.dataset.linkStatus = entry.link.status;
+        row.dataset.tooltip = t('workspace.linkTitle');
+      }
       container.appendChild(row);
       row.addEventListener('contextmenu', (event) => showTreeMenu(event, entry, row));
       if (entry.type === 'file') row.addEventListener('click', () => openPath(entry.path));
       else {
         const children = document.createElement('div');
         children.className = 'tree-children';
+        children.dataset.parentPath = entry.path;
         container.appendChild(children);
+        const targetDepth = entry.link?.workspaceDepth ?? depth + 1;
+        const createsLinkCycle =
+          entry.link &&
+          (entry.link.targetsWorkspaceRoot || ancestorPaths.has(entry.link.targetPath));
+        if (entry.link?.status === 'outside-workspace' || createsLinkCycle) {
+          const message = t(
+            createsLinkCycle ? 'workspace.linkCycle' : 'workspace.linkOutsideWorkspace',
+          );
+          row.classList.add(
+            'depth-limited',
+            createsLinkCycle ? 'tree-link-cycle' : 'tree-link-outside',
+          );
+          row.querySelector('.chevron').textContent = '·';
+          const notice = document.createElement('div');
+          notice.className = 'tree-depth-notice';
+          notice.textContent = message;
+          children.classList.add('depth-limit');
+          children.appendChild(notice);
+          row.addEventListener('click', () => showMessage(message));
+          continue;
+        }
+        const atDepthLimit = targetDepth >= state.settings.workspaceReadDepth;
+        if (atDepthLimit) {
+          row.classList.add('depth-limited');
+          row.querySelector('.chevron').textContent = '·';
+          const notice = document.createElement('div');
+          notice.className = 'tree-depth-notice';
+          notice.textContent = t('workspace.depthLimited');
+          children.classList.add('depth-limit');
+          children.appendChild(notice);
+          row.addEventListener('click', () => showMessage(t('workspace.depthLimited')));
+          continue;
+        }
         row.addEventListener('click', async () => {
           const open = row.classList.toggle('expanded');
           row.querySelector('.chevron').textContent = open ? '⌄' : '›';
@@ -2007,9 +3014,13 @@
           persistDirectoryExpansion(entry.path, open);
           if (open && !children.dataset.loaded) {
             children.dataset.loaded = 'true';
-            await appendDirectory(children, entry.path);
+            await appendDirectory(
+              children,
+              entry.path,
+              targetDepth,
+              new Set([...ancestorPaths, entry.link?.targetPath || entry.path]),
+            );
           }
-          scheduleTreeNameEllipses();
         });
         row.setAttribute('aria-expanded', 'false');
         if (expandedWorkspacePaths().has(entry.path)) {
@@ -2017,11 +3028,15 @@
           row.setAttribute('aria-expanded', 'true');
           row.querySelector('.chevron').textContent = '⌄';
           children.dataset.loaded = 'true';
-          await appendDirectory(children, entry.path);
+          await appendDirectory(
+            children,
+            entry.path,
+            targetDepth,
+            new Set([...ancestorPaths, entry.link?.targetPath || entry.path]),
+          );
         }
       }
     }
-    scheduleTreeNameEllipses();
   }
 
   function closeContextMenu() {
@@ -2034,6 +3049,7 @@
 
   function showContextMenu(event, items, menuState = null) {
     const menu = $('#contextMenu');
+    closeAppMenu();
     closeContextMenu();
     contextMenuState = menuState;
     items.forEach((item) => {
@@ -2079,6 +3095,10 @@
     return `${modifier}+${key}`;
   }
 
+  function hasClipboardContent(clipboard) {
+    return Boolean(String(clipboard?.text || '') || String(clipboard?.html || ''));
+  }
+
   async function runEditorContextAction(menuState, action) {
     const { tab, mode, selection, table } = menuState || {};
     if (!tab?.ready || tab !== activeTab() || tab.vditor?.getCurrentMode() !== mode) return;
@@ -2097,7 +3117,7 @@
     VDITOR.executeEditorCommand(tab.host, mode, action, clipboard);
   }
 
-  function showEditorContextMenu(tab, event) {
+  async function showEditorContextMenu(tab, event) {
     if (tab !== activeTab() || !tab.ready) return;
     const mode = tab.vditor?.getCurrentMode();
     if (!mode || !VDITOR.isEditableTarget(tab.host, mode, event.target)) return;
@@ -2111,6 +3131,12 @@
     if (!selection) return;
     event.preventDefault();
     event.stopPropagation();
+    let clipboard = null;
+    try {
+      clipboard = await window.appAPI.readClipboard();
+    } catch {
+      // Keep paste disabled when the clipboard cannot be read safely.
+    }
     const table = VDITOR.tableContext(tab.host, mode, event.target);
     const hasSelection = !selection.range.collapsed;
     const menuState = { tab, mode, selection, table };
@@ -2124,8 +3150,13 @@
     const items = [
       action('cut', 'context.cut', { shortcut: editorShortcut('X'), disabled: !hasSelection }),
       action('copy', 'context.copy', { shortcut: editorShortcut('C'), disabled: !hasSelection }),
-      action('paste', 'context.paste', { shortcut: editorShortcut('V') }),
-      action('paste-plain', 'context.pastePlain'),
+      action('paste', 'context.paste', {
+        shortcut: editorShortcut('V'),
+        disabled: !hasClipboardContent(clipboard),
+      }),
+      action('paste-plain', 'context.pastePlain', {
+        disabled: !hasClipboardContent(clipboard),
+      }),
       action('delete', 'context.delete', { disabled: !hasSelection }),
       action('select-context', 'context.selectContext', { shortcut: editorShortcut('A') }),
     ];
@@ -2143,32 +3174,31 @@
 
   function showTreeMenu(event, entry, row) {
     event.preventDefault();
-    const actions =
-      entry.type === 'directory'
-        ? [
-            { label: t('context.newFile'), action: () => createExplorerItem(entry.path, 'file') },
-            {
-              label: t('context.newFolder'),
-              action: () => createExplorerItem(entry.path, 'directory'),
-            },
-          ]
-        : [];
-    actions.push(
+    showContextMenu(event, [
       { label: t('context.rename'), action: () => renameExplorerItem(entry, row) },
       { label: t('context.trash'), action: () => deleteExplorerItem(entry) },
       { label: t('context.reveal'), action: () => window.appAPI.showItemInFolder(entry.path) },
-    );
-    showContextMenu(event, actions);
+    ]);
   }
 
-  function showWorkspaceTreeMenu(event) {
+  function treeContextParent(target) {
+    const element = target instanceof Element ? target : null;
+    return element?.closest('.tree-children')?.dataset.parentPath || state.workspace;
+  }
+
+  function showWorkspaceTreeMenu(event, parent = state.workspace) {
     event.preventDefault();
     const actions = [
       { label: t('context.changeWorkspace'), action: chooseFolder },
       {
         label: t('context.newFile'),
-        action: createWorkspaceUntitledFile,
-        disabled: !state.workspace,
+        action: () => createExplorerItem(parent, 'file'),
+        disabled: !parent,
+      },
+      {
+        label: t('context.newFolder'),
+        action: () => createExplorerItem(parent, 'directory'),
+        disabled: !parent,
       },
       {
         label: t('context.openWorkspace'),
@@ -2179,29 +3209,16 @@
     showContextMenu(event, actions);
   }
 
-  async function createWorkspaceUntitledFile() {
-    if (!state.workspace) return;
-    const number = state.untitledCounter + 1;
-    const name = `${t('tab.untitled', { number })}.md`;
-    try {
-      const created = await window.fileAPI.createItem(state.workspace, name, 'file');
-      state.untitledCounter = number;
-      await refreshTree();
-      await openPath(created);
-    } catch (error) {
-      showMessage(error.message, true);
-    }
-  }
-
   async function createExplorerItem(parent, type) {
-    const name = prompt(type === 'file' ? t('workspace.fileName') : t('workspace.folderName'));
-    if (!name) return;
+    if (!parent) return;
+    const number = await nextUntitledNumber(parent, type);
+    const name = untitledItemName(number, type);
     try {
       const created = await window.fileAPI.createItem(parent, name, type);
       await refreshTree();
-      if (type === 'file') openPath(created);
+      if (type === 'file') await openPath(created);
     } catch (error) {
-      showMessage(error.message, true);
+      showMessage(ipcErrorMessage(error), true);
     }
   }
   function renameExplorerItem(entry, row) {
@@ -2213,6 +3230,7 @@
     label.replaceWith(input);
     let settled = false;
     let submitting = false;
+    let affectedTabs = [];
     const finish = async (commit) => {
       if (settled || submitting) return;
       let name = input.value.trim();
@@ -2236,20 +3254,104 @@
       }
       submitting = true;
       settled = true;
+      let fileSystemCommitted = false;
+      const editorRebuilds = new Set();
+      let settingsPlan = null;
+      let settingsPersisted = false;
       try {
+        const updates = await rebaseOpenTabs(entry.path, entry.path);
+        affectedTabs = updates.map(({ tab }) => tab);
+        const plannedDestination = await window.fileAPI.prepareRename(entry.path, name);
+        const tabPlans = await Promise.all(
+          updates.map(async ({ tab }) => {
+            const nextPath = await window.fileAPI.rebasePath(
+              entry.path,
+              plannedDestination,
+              tab.filePath,
+            );
+            if (!nextPath) throw new Error('Unable to rebase an open document during rename.');
+            return {
+              tab,
+              nextPath,
+              fileIdentity: await window.fileAPI.fileIdentity(nextPath),
+              baseDir: await window.fileAPI.dirname(nextPath),
+            };
+          }),
+        );
+        settingsPlan = await rebasePathState(entry.path, plannedDestination);
+        await suspendDocumentWatches(affectedTabs);
         const destination = await window.fileAPI.renameItem(entry.path, name);
-        state.tabs
-          .filter((tab) => tab.filePath === entry.path)
-          .forEach((tab) => {
-            tab.filePath = destination;
-            tab.title = name;
-          });
+        fileSystemCommitted = true;
+        if (destination !== plannedDestination)
+          throw new Error('The rename destination changed before the operation completed.');
+        for (const { tab, nextPath, fileIdentity, baseDir } of tabPlans) {
+          const previousBaseDir = tab.baseDir;
+          tab.filePath = nextPath;
+          tab.fileIdentity = fileIdentity;
+          tab.title = fileName(nextPath);
+          tab.baseDir = baseDir;
+          if (previousBaseDir !== tab.baseDir) editorRebuilds.add(tab);
+        }
+        state.settings.recentFiles = settingsPlan.recentFiles;
+        state.settings.workspaceTreeStates = settingsPlan.workspaceTreeStates;
+        await syncLocalResourceRoots();
+        await queueSettingsSave(settingsPlan, { throwOnFailure: true });
+        settingsPersisted = true;
+        await rebindDocumentWatches(affectedTabs);
+        const rebuildFailures = rebuildRenamedEditors(editorRebuilds);
+        if (rebuildFailures.length)
+          throw new AggregateError(rebuildFailures, 'Unable to rebuild every renamed document.');
         renderTabs();
         await refreshTree();
         persistSession();
       } catch (error) {
+        const failures = [error];
+        try {
+          await rebindDocumentWatches(affectedTabs);
+        } catch (rebindError) {
+          failures.push(rebindError);
+        }
+        if (fileSystemCommitted) {
+          try {
+            await syncLocalResourceRoots();
+          } catch (resourceError) {
+            failures.push(resourceError);
+          }
+          failures.push(...rebuildRenamedEditors(editorRebuilds));
+          if (!settingsPersisted && settingsPlan) {
+            try {
+              await queueSettingsSave(settingsPlan, { throwOnFailure: true });
+              settingsPersisted = true;
+            } catch (settingsError) {
+              failures.push(settingsError);
+            }
+          }
+          renderTabs();
+          try {
+            await refreshTree();
+          } catch (refreshError) {
+            failures.push(refreshError);
+          }
+          try {
+            await persistSession(true);
+          } catch (sessionError) {
+            failures.push(sessionError);
+          }
+        } else {
+          try {
+            await refreshTree();
+          } catch (refreshError) {
+            failures.push(refreshError);
+          }
+        }
         if (input.isConnected) input.replaceWith(label);
-        showMessage(error.message, true);
+        showMessage(
+          failures
+            .map((failure) => ipcErrorMessage(failure))
+            .filter(Boolean)
+            .join(' '),
+          true,
+        );
       }
     };
     input.addEventListener('click', (event) => event.stopPropagation());
@@ -2274,16 +3376,23 @@
       draggable: true,
     });
     if (!proceed) return;
+    let affectedTabs = [];
     try {
-      await window.fileAPI.deleteItem(entry.path);
-      if (entry.type === 'file') {
-        for (const tab of state.tabs.filter((item) => item.filePath === entry.path)) {
-          await closeTab(tab.id, { discard: true });
-        }
+      for (const tab of state.tabs) {
+        if (tab.filePath && (await window.fileAPI.rebasePath(entry.path, entry.path, tab.filePath)))
+          affectedTabs.push(tab);
       }
+      await suspendDocumentWatches(affectedTabs);
+      await window.fileAPI.deleteItem(entry.path);
+      for (const tab of affectedTabs) await preserveUnavailableTab(tab, 'deleted', tab.filePath);
+      await rebindDocumentWatches(affectedTabs);
+      renderTabs();
+      updateActiveUI();
+      persistSession();
       await refreshTree();
     } catch (error) {
-      showMessage(error.message, true);
+      await rebindDocumentWatches(affectedTabs);
+      showMessage(ipcErrorMessage(error), true);
     }
   }
 
@@ -2329,16 +3438,20 @@
         toggle.type = 'button';
         toggle.className = 'outline-toggle';
         toggle.setAttribute('aria-expanded', String(!tab.outlineCollapsed.has(node.key)));
-        toggle.title = t(
+        const tooltip = t(
           tab.outlineCollapsed.has(node.key) ? 'outline.expand' : 'outline.collapse',
         );
+        toggle.dataset.tooltip = tooltip;
+        toggle.setAttribute('aria-label', tooltip);
         toggle.textContent = tab.outlineCollapsed.has(node.key) ? '›' : '⌄';
         toggle.onclick = () => {
           const collapsed = wrapper.classList.toggle('collapsed');
           if (collapsed) tab.outlineCollapsed.add(node.key);
           else tab.outlineCollapsed.delete(node.key);
           toggle.setAttribute('aria-expanded', String(!collapsed));
-          toggle.title = t(collapsed ? 'outline.expand' : 'outline.collapse');
+          const tooltip = t(collapsed ? 'outline.expand' : 'outline.collapse');
+          toggle.dataset.tooltip = tooltip;
+          toggle.setAttribute('aria-label', tooltip);
           toggle.textContent = collapsed ? '›' : '⌄';
         };
         row.appendChild(toggle);
@@ -2434,6 +3547,17 @@
       : null;
   }
 
+  function blockUnsupportedDocumentLinkNavigation(tab, event) {
+    const link = VDITOR.documentLink(event.target, tab.host);
+    if (!link || link.kind !== 'link') return false;
+    // The main process protects normal navigations, but javascript: and other
+    // active schemes can execute in the renderer without a will-navigate event.
+    event.preventDefault();
+    event.stopPropagation();
+    VDITOR.expandInstantLinkForEditing(link);
+    return true;
+  }
+
   async function openRelativeMarkdownLink(tab, href) {
     if (!tab.filePath) {
       showMessage(t('message.linkSaveFirst'), true);
@@ -2472,7 +3596,7 @@
     if (!hoveredDocumentLink) return;
     VDITOR.clearDocumentLinkHint(hoveredDocumentLink.link);
     hoveredDocumentLink = null;
-    $('#documentLinkTooltip').hidden = true;
+    hideAppTooltip();
   }
 
   function updateHoveredDocumentLinkCursor(event) {
@@ -2485,12 +3609,50 @@
   }
 
   function showDocumentLinkTooltip(event) {
-    const tooltip = $('#documentLinkTooltip');
-    tooltip.textContent = documentNavigationTooltip();
+    showAppTooltip(documentNavigationTooltip(), event);
+  }
+
+  function hideAppTooltip() {
+    $('#appTooltip').hidden = true;
+  }
+
+  function showAppTooltip(text, event) {
+    const tooltip = $('#appTooltip');
+    tooltip.textContent = text;
     tooltip.hidden = false;
     const left = Math.min(window.innerWidth - tooltip.offsetWidth - 8, event.clientX + 12);
     tooltip.style.left = `${Math.max(8, left)}px`;
     tooltip.style.top = `${Math.min(window.innerHeight - tooltip.offsetHeight - 8, event.clientY + 18)}px`;
+  }
+
+  function setHoveredSidebarTooltip(target, event) {
+    const text = target.dataset.tooltip;
+    if (!text) return;
+    hoveredSidebarTooltip = target;
+    showAppTooltip(text, event);
+  }
+
+  function clearHoveredSidebarTooltip() {
+    if (!hoveredSidebarTooltip) return;
+    hoveredSidebarTooltip = null;
+    hideAppTooltip();
+  }
+
+  function setupSidebarTooltips() {
+    const sidebar = $('#sidebar');
+    sidebar.addEventListener('mouseover', (event) => {
+      if (!(event.target instanceof Element)) return;
+      const target = event.target.closest('[data-tooltip]');
+      if (!target || !sidebar.contains(target) || target.contains(event.relatedTarget)) return;
+      setHoveredSidebarTooltip(target, event);
+    });
+    sidebar.addEventListener('mousemove', (event) => {
+      if (hoveredSidebarTooltip) setHoveredSidebarTooltip(hoveredSidebarTooltip, event);
+    });
+    sidebar.addEventListener('mouseout', (event) => {
+      if (!hoveredSidebarTooltip || hoveredSidebarTooltip.contains(event.relatedTarget)) return;
+      clearHoveredSidebarTooltip();
+    });
   }
 
   function setupDocumentAnchorNavigation(tab) {
@@ -2524,7 +3686,10 @@
       'click',
       (event) => {
         const target = documentLinkTarget(tab, event.target);
-        if (!target) return;
+        if (!target) {
+          blockUnsupportedDocumentLinkNavigation(tab, event);
+          return;
+        }
         setHoveredDocumentLink(target, event);
         if (hasDocumentNavigationModifier(event) || target.link.kind === 'toc') {
           event.preventDefault();
@@ -2568,8 +3733,9 @@
       tab.vditor.insertMD(markdown.join('\n'));
       return null;
     } catch (error) {
-      showMessage(`图片保存失败：${error.message}`, true);
-      return error.message;
+      const message = ipcErrorMessage(error);
+      showMessage(`图片保存失败：${message}`, true);
+      return message;
     }
   }
 
@@ -2598,27 +3764,152 @@
     }
   }
 
-  function makeExportHTML(tab) {
-    const body = tab.vditor ? tab.vditor.getHTML() : `<pre>${escapeHTML(tab.content)}</pre>`;
-    return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHTML(stripExtension(tab.title))}</title><style>body{max-width:860px;margin:40px auto;padding:0 24px;font:16px/1.7 system-ui;color:#24292f}pre,code{font-family:ui-monospace,monospace}pre{padding:16px;overflow:auto;background:#f6f8fa}img{max-width:100%}table{border-collapse:collapse}td,th{border:1px solid #d0d7de;padding:6px 12px}</style></head><body>${body}</body></html>`;
+  function exportBodySnapshot(tab) {
+    return tab.vditor
+      ? VDITOR.withOriginalImageSources(tab.host, () => tab.vditor.getHTML())
+      : `<pre>${escapeHTML(tab.content)}</pre>`;
+  }
+
+  function portableExportSource(source, sourceBaseUrl, targetBaseUrl) {
+    if (!source || source.startsWith('#')) return source;
+    let resolved;
+    try {
+      resolved = new URL(source, sourceBaseUrl || 'https://vditor-export.invalid/');
+    } catch (_) {
+      return source;
+    }
+    if (resolved.protocol === 'app:') return null;
+    if (resolved.protocol !== 'local-file:') return source;
+    if (!targetBaseUrl) return null;
+    return VDITOR.relativeSourceFromLocalUrl(resolved.href, targetBaseUrl) || null;
+  }
+
+  function portableExportSourceSet(sourceSet, sourceBaseUrl, targetBaseUrl) {
+    return sourceSet
+      .split(',')
+      .map((candidate) => {
+        const trimmed = candidate.trim();
+        if (!trimmed) return '';
+        const [source, ...descriptor] = trimmed.split(/\s+/);
+        const portableSource = portableExportSource(source, sourceBaseUrl, targetBaseUrl);
+        return portableSource === null ? '' : [portableSource, ...descriptor].join(' ');
+      })
+      .filter(Boolean)
+      .join(', ');
+  }
+
+  function normalizeExportBody(body, tab, outputDirectory = tab.baseDir) {
+    const template = document.createElement('template');
+    template.innerHTML = body;
+    const sourceBaseUrl = localResourceBase(tab.baseDir);
+    const targetBaseUrl = localResourceBase(outputDirectory);
+    template.content.querySelectorAll('[src], [href], [poster], [srcset]').forEach((element) => {
+      ['src', 'href', 'poster'].forEach((attribute) => {
+        if (!element.hasAttribute(attribute)) return;
+        const source = element.getAttribute(attribute) || '';
+        const portableSource = portableExportSource(source, sourceBaseUrl, targetBaseUrl);
+        if (portableSource === null) element.removeAttribute(attribute);
+        else if (portableSource !== source) element.setAttribute(attribute, portableSource);
+      });
+      if (!element.hasAttribute('srcset')) return;
+      const sourceSet = element.getAttribute('srcset') || '';
+      const portableSourceSet = portableExportSourceSet(sourceSet, sourceBaseUrl, targetBaseUrl);
+      if (portableSourceSet) element.setAttribute('srcset', portableSourceSet);
+      else element.removeAttribute('srcset');
+    });
+    return template.innerHTML;
+  }
+
+  function imageMimeType(source) {
+    const extension = source.split(/[?#]/, 1)[0].toLowerCase().split('.').pop();
+    return (
+      {
+        apng: 'image/apng',
+        avif: 'image/avif',
+        gif: 'image/gif',
+        jpeg: 'image/jpeg',
+        jpg: 'image/jpeg',
+        png: 'image/png',
+        svg: 'image/svg+xml',
+        webp: 'image/webp',
+      }[extension] || 'application/octet-stream'
+    );
+  }
+
+  function bytesToBase64(bytes) {
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize)
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+    return btoa(binary);
+  }
+
+  async function embedExportImages(body, tab) {
+    const baseUrl = localResourceBase(tab.baseDir);
+    if (!baseUrl) return body;
+    const template = document.createElement('template');
+    template.innerHTML = body;
+    const images = Array.from(template.content.querySelectorAll('img[src]'));
+    await Promise.all(
+      images.map(async (image) => {
+        const source = image.getAttribute('src') || '';
+        if (!source || source.startsWith('#')) return;
+        let resolved;
+        try {
+          resolved = new URL(source, baseUrl);
+        } catch (_) {
+          return;
+        }
+        if (resolved.protocol !== 'local-file:') return;
+        try {
+          const response = await fetch(resolved.href);
+          if (!response.ok) return;
+          const blob = await response.blob();
+          const bytes = new Uint8Array(await blob.arrayBuffer());
+          const contentType = blob.type.startsWith('image/') ? blob.type : imageMimeType(source);
+          image.setAttribute('src', `data:${contentType};base64,${bytesToBase64(bytes)}`);
+        } catch (_) {
+          // Keep the relative source when a local image cannot be read for PDF export.
+        }
+      }),
+    );
+    return template.innerHTML;
+  }
+
+  function makeExportHTML(tab, body, outputDirectory = tab.baseDir) {
+    const portableBody = normalizeExportBody(body, tab, outputDirectory);
+    return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHTML(stripExtension(tab.title))}</title><style>body{max-width:860px;margin:40px auto;padding:0 24px;font:16px/1.7 system-ui;color:#24292f}pre,code{font-family:ui-monospace,monospace}pre{padding:16px;overflow:auto;background:#f6f8fa}img{max-width:100%}table{border-collapse:collapse}td,th{border:1px solid #d0d7de;padding:6px 12px}</style></head><body>${portableBody}</body></html>`;
   }
   async function exportHTML() {
     const tab = activeTab();
     if (!tab) return;
-    const output = await window.fileAPI.exportDialog('html', `${stripExtension(tab.title)}.html`);
+    const body = exportBodySnapshot(tab);
+    const output = await window.fileAPI.exportDialog(
+      'html',
+      `${stripExtension(tab.title)}.html`,
+      state.settings.defaultOpenPath || undefined,
+    );
     if (output) {
-      await window.fileAPI.writeFile(output, makeExportHTML(tab));
+      await rememberDialogDirectory(output);
+      const outputDirectory = await window.fileAPI.dirname(output);
+      await window.fileAPI.writeFile(output, makeExportHTML(tab, body, outputDirectory));
       showMessage(`已导出 ${output}`);
     }
   }
   async function exportPDF() {
     const tab = activeTab();
     if (!tab) return;
+    const snapshot = exportBodySnapshot(tab);
+    const body = await embedExportImages(normalizeExportBody(snapshot, tab), tab);
     const output = await window.appAPI.exportPDF(
-      makeExportHTML(tab),
+      makeExportHTML(tab, body),
       `${stripExtension(tab.title)}.pdf`,
+      state.settings.defaultOpenPath || undefined,
     );
-    if (output) showMessage(`已导出 ${output}`);
+    if (output) {
+      await rememberDialogDirectory(output);
+      showMessage(`已导出 ${output}`);
+    }
   }
 
   function rememberRecent(filePath) {
@@ -2627,19 +3918,29 @@
       ...(state.settings.recentFiles || []).filter((item) => item.path !== filePath),
     ].slice(0, 20);
     state.settings.recentFiles = recent;
-    window.appAPI.saveSettings({ recentFiles: recent });
+    queueSettingsSave({ recentFiles: recent });
   }
-  function persistSession() {
-    if (!state.settings) return;
+  async function persistSession(throwOnFailure = false) {
+    if (!state.settings) return false;
     const session = {
       workspacePath: state.settings.restoreWorkspace ? state.workspace : '',
-      activeFilePath: state.settings.restoreTabs && activeTab() ? activeTab().filePath : null,
+      activeFilePath:
+        state.settings.restoreTabs && !activeTab()?.externalFileState
+          ? activeTab()?.filePath
+          : null,
       openFiles: state.settings.restoreTabs
-        ? state.tabs.map((tab) => tab.filePath).filter(Boolean)
+        ? state.tabs.map((tab) => (!tab.externalFileState ? tab.filePath : null)).filter(Boolean)
         : [],
     };
     state.settings.session = session;
-    window.appAPI.saveSettings({ session });
+    try {
+      await queueSettingsSave({ session }, { throwOnFailure: true });
+      return true;
+    } catch (error) {
+      if (throwOnFailure) throw error;
+      console.error('Unable to persist the current session.', error);
+      return false;
+    }
   }
 
   function openSettings() {
@@ -2660,6 +3961,7 @@
     const currentMode = tab?.vditor && tab.ready ? tab.vditor.getCurrentMode() : tab?.mode;
     $('#previewZoomSetting').classList.toggle('hidden', currentMode !== 'sv');
     $('#editorTextWidthValue').textContent = `${$('#editorTextWidth').value}%`;
+    syncWorkspaceReadDepthValue();
     restoreSettingsCardSize();
     const modal = $('#settingsModal');
     clearTimeout(settingsCloseTimer);
@@ -2694,6 +3996,8 @@
     clearTimeout(settingsSaveTimer);
     const form = $('#settingsForm');
     const patch = {};
+    const numericSettingNames = new Set(['tabSize']);
+    const previousSettings = state.settings;
     const openModes = new Map(
       state.tabs.map((tab) => [
         tab.id,
@@ -2710,11 +4014,20 @@
       patch[input.name] =
         input.type === 'checkbox'
           ? input.checked
-          : input.type === 'number' || input.type === 'range' || input.name.endsWith('Zoom')
+          : input.type === 'number' ||
+              input.type === 'range' ||
+              input.name.endsWith('Zoom') ||
+              numericSettingNames.has(input.name)
             ? Number(input.value)
             : input.value;
     });
-    patch.lastDarkTheme = isDarkTheme(patch.theme) ? patch.theme : darkThemePreference();
+    const appliedTheme = document.documentElement.dataset.theme || state.settings.theme;
+    patch.systemTheme = previousSettings.systemTheme;
+    patch.theme = previousSettings.systemTheme
+      ? previousSettings.theme
+      : isDarkTheme(appliedTheme)
+        ? patch.darkTheme
+        : patch.lightTheme;
     const dark = patch.systemTheme
       ? isDarkTheme(document.documentElement.dataset.theme)
       : isDarkTheme(patch.theme);
@@ -2723,15 +4036,42 @@
     patch.darkCodeTheme = state.settings.darkCodeTheme;
     patch[codePreferenceKey] = patch.codeTheme;
     patch.toolbarConfig = state.settings.toolbarConfig;
-    state.settings = await window.appAPI.saveSettings(patch);
+    const previousWorkspaceReadDepth = state.settings.workspaceReadDepth;
+    const previousLocale = state.locale;
+    try {
+      state.settings = await queueSettingsSave(patch, { throwOnFailure: true });
+    } catch (error) {
+      showMessage(ipcErrorMessage(error), true);
+      return;
+    }
+    const changedSettings = Object.keys(patch).filter(
+      (key) => JSON.stringify(previousSettings[key]) !== JSON.stringify(state.settings[key]),
+    );
+    const shouldRebuildEditors = changedSettings.some((key) =>
+      VDITOR_INITIALIZATION_SETTINGS.has(key),
+    );
+    if (changedSettings.includes('allowSvgImages')) {
+      state.tabs.forEach((tab) => VDITOR.reloadImageSources(tab.host));
+    }
     if (closeAfterSave) await closeSettings({ applyPresentation: false });
     applyLocale(state.settings.locale);
+    if (state.workspace && previousWorkspaceReadDepth !== state.settings.workspaceReadDepth)
+      await window.fileAPI.setWorkspaceWatch(state.workspace, state.settings.workspaceReadDepth);
+    if (
+      state.workspace &&
+      (previousWorkspaceReadDepth !== state.settings.workspaceReadDepth ||
+        previousLocale !== state.locale)
+    )
+      await refreshTree();
     applyPresentationSettings();
     await applyTheme(await resolveTheme());
-    state.tabs.forEach((tab) => {
-      tab.mode = openModes.get(tab.id) || tab.mode;
-      rebuildEditor(tab);
-    });
+    applyLiveVditorSettings(changedSettings);
+    if (shouldRebuildEditors) {
+      state.tabs.forEach((tab) => {
+        tab.mode = openModes.get(tab.id) || tab.mode;
+        rebuildEditor(tab);
+      });
+    }
     if (!state.tabs.length) {
       destroyToolbarPreview();
       createToolbarPreview();
@@ -2743,7 +4083,10 @@
     const panel = $('[data-settings-panel].active');
     if (!panel || !state.defaultSettings) return;
     if (panel.dataset.settingsPanel === 'appearance') {
-      state.settings.lastDarkTheme = state.defaultSettings.lastDarkTheme;
+      state.settings.systemTheme = state.defaultSettings.systemTheme;
+      state.settings.theme = state.defaultSettings.theme;
+      state.settings.lightTheme = state.defaultSettings.lightTheme;
+      state.settings.darkTheme = state.defaultSettings.darkTheme;
       state.settings.lightCodeTheme = state.defaultSettings.lightCodeTheme;
       state.settings.darkCodeTheme = state.defaultSettings.darkCodeTheme;
     }
@@ -2755,29 +4098,76 @@
     });
     if (panel.dataset.settingsPanel === 'editor')
       $('#editorTextWidthValue').textContent = `${$('#editorTextWidth').value}%`;
+    if (panel.dataset.settingsPanel === 'files') syncWorkspaceReadDepthValue();
     if (panel.dataset.settingsPanel === 'appearance') {
-      const theme = panel.querySelector('[name="theme"]:checked')?.value;
-      syncCodeThemeSelect(isDarkTheme(theme), preferredCodeTheme(isDarkTheme(theme)));
+      const appliedTheme = document.documentElement.dataset.theme || state.settings.theme;
+      syncCodeThemeSelect(isDarkTheme(appliedTheme), preferredCodeTheme(isDarkTheme(appliedTheme)));
     }
     await saveSettings(false);
   }
 
-  function scheduleLiveSettingsSave(event) {
+  async function scheduleLiveSettingsSave(event) {
     const input = event.target;
+    if (input.name === 'allowSvgImages' && input.checked && !state.settings.allowSvgImages) {
+      const confirmed =
+        (await showConfirmDialog({
+          title: t('settings.allowSvgImagesWarningTitle'),
+          message: t('settings.allowSvgImagesWarningMessage'),
+          detail: t('settings.allowSvgImagesWarningDetail'),
+          actions: [
+            { id: 'cancel', label: t('settings.keepSvgImagesBlocked') },
+            {
+              id: 'confirm',
+              label: t('settings.allowSvgImagesAnyway'),
+              primary: true,
+              danger: true,
+            },
+          ],
+          draggable: true,
+        })) === 'confirm';
+      if (!confirmed) {
+        input.checked = false;
+        return;
+      }
+    }
+    if (input.name === 'sanitize' && !input.checked && state.settings.sanitize) {
+      const confirmed =
+        (await showConfirmDialog({
+          title: t('settings.sanitizeWarningTitle'),
+          message: t('settings.sanitizeWarningMessage'),
+          detail: t('settings.sanitizeWarningDetail'),
+          actions: [
+            { id: 'cancel', label: t('settings.keepHtmlFilter') },
+            {
+              id: 'confirm',
+              label: t('settings.disableHtmlFilter'),
+              primary: true,
+              danger: true,
+            },
+          ],
+          draggable: true,
+        })) === 'confirm';
+      if (!confirmed) {
+        input.checked = true;
+        return;
+      }
+    }
     if (
       (input.type === 'number' || input.type === 'range') &&
       (!input.value || !input.validity.valid)
     )
       return;
-    if (input.name === 'theme' && !$('#settingsForm [name="systemTheme"]').checked) {
-      const dark = isDarkTheme(input.value);
-      syncCodeThemeSelect(dark, preferredCodeTheme(dark));
-    }
     clearTimeout(settingsSaveTimer);
     settingsSaveTimer = setTimeout(
       () => saveSettings(false),
       input.type === 'text' || input.type === 'number' ? 250 : 0,
     );
+  }
+
+  function syncWorkspaceReadDepthValue() {
+    const input = $('#settingsForm [name="workspaceReadDepth"]');
+    const output = $('#workspaceReadDepthValue');
+    if (input && output) output.textContent = input.value;
   }
 
   function settingsCardLimits() {
@@ -2839,7 +4229,7 @@
       customized: true,
     };
     state.settings.settingsDialogSize = settingsDialogSize;
-    void window.appAPI.saveSettings({ settingsDialogSize });
+    void queueSettingsSave({ settingsDialogSize });
   }
 
   function setupSettingsDrag() {
@@ -2964,41 +4354,104 @@
   }
 
   async function handleExternalChange(change) {
-    if (state.workspace) {
-      clearTimeout(state.treeTimer);
-      state.treeTimer = setTimeout(refreshTree, 300);
+    if (
+      !['add', 'change', 'unlink', 'addDir', 'unlinkDir', 'unreadable', 'watch-error'].includes(
+        change.event,
+      )
+    )
+      return;
+    if (change.scope === 'workspace') {
+      if (change.event === 'watch-error') {
+        showMessage(t('workspace.watchResourceLimit'), true);
+        return;
+      }
+      if (change.event === 'unlink' || change.event === 'unlinkDir') {
+        const affectedTabs = await rebaseOpenTabs(change.path, change.path);
+        for (const { tab } of affectedTabs)
+          await preserveUnavailableTab(tab, 'deleted', tab.filePath);
+        if (affectedTabs.length) {
+          renderTabs();
+          updateActiveUI();
+          persistSession();
+        }
+      }
+      if (
+        (change.event === 'unlink' || change.event === 'unlinkDir') &&
+        state.workspace &&
+        normalizedFilePath(change.path) === normalizedFilePath(state.workspace) &&
+        !(await window.fileAPI.exists(state.workspace))
+      ) {
+        await setWorkspace('');
+        return;
+      }
+      if (!state.treeTimer)
+        state.treeTimer = setTimeout(() => {
+          state.treeTimer = null;
+          void refreshTree(state.workspaceRevision);
+        }, 300);
+      return;
     }
-    if ((state.ignoredChanges.get(change.path) || 0) > Date.now()) return;
-    if (!['add', 'change', 'unlink'].includes(change.event)) return;
-    const normalizedPath = normalizedFilePath(change.path);
-    const tabs = state.tabs.filter(
-      (tab) => normalizedFilePath(tabTargetPath(tab)) === normalizedPath,
-    );
+    const documentIdentity = change.identity || (await window.fileAPI.fileIdentity(change.path));
+    const tabs = state.tabs.filter((tab) => tabFileIdentity(tab) === documentIdentity);
     for (const tab of tabs) {
       if (change.event === 'unlink') {
-        if (tab.filePath) showMessage(t('external.deleted', { name: tab.title }), true);
+        await preserveUnavailableTab(tab, 'deleted', change.path);
+        continue;
+      }
+      if (change.event === 'unreadable') {
+        await preserveUnavailableTab(tab, 'unreadable', change.path, change.error);
+        continue;
+      }
+      if (typeof change.content !== 'string') continue;
+      if (tab.externalFileState) {
+        clearTimeout(tab.saveTimer);
+        tab.externalConflict = null;
+        tab.externalChangeIgnored = false;
+        tab.externalFileState = {
+          kind: 'reappeared',
+          path: change.path,
+          identity: documentIdentity,
+          content: change.content,
+          encoding: change.encoding || tab.encoding,
+          clipboardContent: tab.externalFileState.clipboardContent,
+          detectedAt: Date.now(),
+          version: tab.externalFileState.version + 1,
+        };
+        continue;
+      }
+      if (change.content === tab.expectedSavedContent) {
+        tab.externalConflict = null;
+        tab.externalChangeIgnored = false;
         continue;
       }
       if (tab.filePath && !tab.modified && !tab.externalChangeIgnored) {
-        try {
-          const result = await window.fileAPI.readFile(change.path);
-          tab.lineEnding = detectLineEnding(result.content);
-          tab.content = tab.savedContent = result.content;
-          tab.encoding = result.encoding;
-          tab.externalConflict = null;
-          tab.externalChangeIgnored = false;
-          if (tab.vditor) tab.vditor.setValue(result.content, true);
-          if (tab.id === state.activeId) updateActiveUI();
-          showMessage(t('external.reloaded', { name: tab.title }));
-        } catch (_) {}
+        if (typeof change.content !== 'string') continue;
+        tab.lineEnding = detectLineEnding(change.content);
+        tab.content = tab.savedContent = tab.expectedSavedContent = change.content;
+        tab.encoding = change.encoding || tab.encoding;
+        tab.externalConflict = null;
+        tab.externalChangeIgnored = false;
+        if (tab.vditor) tab.vditor.setValue(change.content, true);
+        if (tab.id === state.activeId) updateActiveUI();
+        showMessage(t('external.reloaded', { name: tab.title }));
         continue;
       }
       clearTimeout(tab.saveTimer);
-      tab.externalConflict = { kind: 'modified', path: change.path };
+      tab.externalConflict = {
+        kind: 'modified',
+        path: change.path,
+        identity: documentIdentity,
+        content: change.content,
+        encoding: change.encoding || tab.encoding,
+        detectedAt: Date.now(),
+        version: (tab.externalConflict?.version || 0) + 1,
+      };
       tab.externalChangeIgnored = false;
     }
     renderTabs();
     updateExternalChangeBanner(activeTab());
+    updateExternalFileStateBanner(activeTab());
+    persistSession();
   }
 
   function handleMenu(action, value) {
@@ -3028,11 +4481,13 @@
       theme: async () => {
         state.settings.theme = value;
         state.settings.systemTheme = false;
-        if (isDarkTheme(value)) state.settings.lastDarkTheme = value;
-        await window.appAPI.saveSettings({
+        if (isDarkTheme(value)) state.settings.darkTheme = value;
+        else state.settings.lightTheme = value;
+        await queueSettingsSave({
           theme: value,
           systemTheme: false,
-          ...(isDarkTheme(value) ? { lastDarkTheme: value } : {}),
+          ...(isDarkTheme(value) ? { darkTheme: value } : {}),
+          ...(!isDarkTheme(value) ? { lightTheme: value } : {}),
         });
         await applyTheme(value);
       },
@@ -3055,8 +4510,8 @@
     const menus = {
       main: () => [
         ['menu.new', run('new'), 'Ctrl+N'],
-        ['menu.open', run('open'), 'Ctrl+O'],
-        ['menu.openFolder', run('open-folder')],
+        ['menu.open', run('open'), 'Ctrl/⌘+Alt+O'],
+        ['menu.openFolder', run('open-folder'), 'Ctrl/⌘+Alt+K'],
         null,
         ['menu.save', run('save'), 'Ctrl+S'],
         ['menu.saveAs', run('save-as'), 'Ctrl+Shift+S'],
@@ -3091,7 +4546,7 @@
             [
               'menu.layoutSidebar',
               () => toggleSidebar(),
-              'Ctrl+B',
+              'Ctrl/⌘+Alt+B',
               () => state.settings.sidebarVisible,
             ],
             [
@@ -3115,6 +4570,7 @@
       $('#windowTitlebar').classList.remove('app-menu-open');
       reopenMenuOnHover = false;
     };
+    closeAppMenu = close;
     const fillPopup = (popup, items) => {
       items.forEach((item) => {
         if (!item) {
@@ -3215,7 +4671,7 @@
     if (part !== 'toolbar') return;
     state.settings.toolbarVisible = state.settings.toolbarVisible === false;
     $('#app').classList.toggle('toolbar-hidden', !state.settings.toolbarVisible);
-    window.appAPI.saveSettings({ toolbarVisible: state.settings.toolbarVisible });
+    queueSettingsSave({ toolbarVisible: state.settings.toolbarVisible });
   }
 
   function syncTopControlsWidth() {
@@ -3240,23 +4696,50 @@
   function syncToolbarWrapHeight() {
     const app = $('#app');
     const mount = $('#vditorToolbarMount');
+    const mainArea = $('.main-area');
     const toolbar = activeTab()?.toolbar || state.toolbarPreview?.toolbar;
-    const hidden =
-      app.classList.contains('toolbar-hidden') || app.classList.contains('toolbar-unavailable');
+    const hidden = app.classList.contains('toolbar-hidden');
     // Vditor menus are absolutely positioned but contribute to scrollHeight.
     // Only the toolbar's rendered box represents wrapped control rows.
     const toolbarHeight =
       !hidden && toolbar?.parentElement === mount ? toolbar.getBoundingClientRect().height : 0;
-    const extraHeight = Math.max(0, Math.ceil(toolbarHeight - 38));
-    app.classList.toggle('toolbar-wrapped', extraHeight > 0);
-    app.style.setProperty('--toolbar-wrap-height', `${extraHeight}px`);
+    if (toolbarHeight) state.toolbarWrapHeight = Math.max(0, Math.ceil(toolbarHeight - 38));
+    const extraHeight =
+      mount.dataset.toolbarPending === 'true'
+        ? state.toolbarWrapHeight
+        : hidden
+          ? 0
+          : Math.max(0, Math.ceil(toolbarHeight - 38));
+    const wrapHeight = `${extraHeight}px`;
+    // The editor lives below .main-area. Do not put this changing value on an
+    // ancestor, where CSS-variable inheritance would invalidate its full DOM tree.
+    if (mainArea.style.paddingTop !== wrapHeight) mainArea.style.paddingTop = wrapHeight;
+    if (mount.style.getPropertyValue('--toolbar-wrap-height') !== wrapHeight)
+      mount.style.setProperty('--toolbar-wrap-height', wrapHeight);
+  }
+
+  function scheduleToolbarWrapHeight() {
+    if (toolbarWrapHeightFrame !== null) cancelAnimationFrame(toolbarWrapHeightFrame);
+    // Toolbar mutations can be delivered while Vditor is still constructing a
+    // long document. Let its pending style work reach a normal paint before
+    // getBoundingClientRect() measures the shared toolbar.
+    toolbarWrapHeightFrame = requestAnimationFrame(() => {
+      toolbarWrapHeightFrame = requestAnimationFrame(() => {
+        toolbarWrapHeightFrame = null;
+        syncToolbarWrapHeight();
+      });
+    });
   }
 
   function applyTopControlsWidth(sidebarWidth, menuWidth) {
-    const app = $('#app');
     const actions = $('.titlebar-file-actions');
-    app.style.setProperty('--top-controls-width', `${sidebarWidth}px`);
-    app.style.setProperty('--sidebar-current', `${sidebarWidth}px`);
+    // These values change on every sidebar-drag frame. Keep them on the small
+    // chrome subtrees that consume them instead of #app, so CSS-variable
+    // inheritance cannot invalidate Vditor's full document tree.
+    $('.toolbar-sidebar-tabs').style.setProperty('--top-controls-width', `${sidebarWidth}px`);
+    ['#sidebar', '#windowTitlebar', '.titlebar', '#vditorToolbarMount'].forEach((selector) =>
+      $(selector).style.setProperty('--sidebar-current', `${sidebarWidth}px`),
+    );
     actions.style.flexBasis = `${Math.max(0, sidebarWidth - menuWidth)}px`;
   }
 
@@ -3272,7 +4755,63 @@
     );
   }
 
-  function finishSidebarTransition() {
+  function sidebarTransitionDuration() {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 1 : 160;
+  }
+
+  function sidebarLayoutPositions() {
+    return ['#tabBar', '#vditorToolbarMount', '#editorArea'].flatMap((selector) => {
+      const element = $(selector);
+      return element ? [[element, element.getBoundingClientRect().left]] : [];
+    });
+  }
+
+  function measureCollapsedSidebarChrome() {
+    const app = $('#app');
+    const wasAppCollapsed = app.classList.contains('sidebar-collapsed');
+    app.classList.add('sidebar-collapsed');
+    const positions = ['#tabBar', '#vditorToolbarMount'].flatMap((selector) => {
+      const element = $(selector);
+      return element ? [[element, element.getBoundingClientRect().left]] : [];
+    });
+    app.classList.toggle('sidebar-collapsed', wasAppCollapsed);
+    return positions;
+  }
+
+  function cancelSidebarLayoutAnimations() {
+    sidebarLayoutAnimations.forEach((animation) => animation.cancel());
+    sidebarLayoutAnimations = [];
+  }
+
+  function animateSidebarLayout(initialPositions, visible, targetChromePositions) {
+    cancelSidebarLayoutAnimations();
+    const initialByElement = new Map(initialPositions);
+    const targetChromeByElement = new Map(targetChromePositions);
+    const duration = sidebarTransitionDuration();
+    const sidebarWidth = Number(state.settings.sidebarWidth);
+    sidebarLayoutAnimations = sidebarLayoutPositions().flatMap(([element, currentLeft]) => {
+      const initialLeft = initialByElement.get(element);
+      if (initialLeft === undefined) return [];
+      const from = initialLeft - currentLeft;
+      const to =
+        element.id === 'editorArea'
+          ? visible
+            ? sidebarWidth
+            : -sidebarWidth
+          : visible
+            ? 0
+            : (targetChromeByElement.get(element) ?? currentLeft) - currentLeft;
+      if (Math.abs(from - to) < 0.5) return [];
+      return [
+        element.animate(
+          [{ transform: `translateX(${from}px)` }, { transform: `translateX(${to}px)` }],
+          { duration, easing: 'ease', fill: 'forwards' },
+        ),
+      ];
+    });
+  }
+
+  function finishSidebarTransition(refreshEditorLayout = false) {
     const sidebar = $('#sidebar');
     clearTimeout(sidebarTransitionTimer);
     sidebarTransitionTimer = undefined;
@@ -3280,41 +4819,76 @@
       sidebar.removeEventListener('transitionend', sidebarTransitionEndHandler);
       sidebarTransitionEndHandler = undefined;
     }
-    $('#app').classList.remove('sidebar-transitioning');
+    const wasOpening = sidebar.classList.contains('sidebar-opening');
+    const app = $('#app');
+    const wasHiding = app.classList.contains('sidebar-hiding');
+    if (wasHiding) sidebar.classList.add('collapsed');
+    sidebar.classList.remove('sidebar-entering', 'sidebar-opening', 'sidebar-closing');
+    if (wasOpening) sidebar.classList.remove('collapsed');
+    if (wasHiding) app.classList.add('sidebar-collapsed');
+    app.classList.remove('sidebar-transitioning', 'sidebar-hiding');
     syncTopControlsWidth();
+    // The layout now has its final flex geometry, so dropping the composited
+    // FLIP transforms cannot visibly move the toolbar, tabs, or Vditor host.
+    cancelSidebarLayoutAnimations();
+    if (refreshEditorLayout) scheduleSplitLineNumbers(activeTab());
   }
 
   function toggleSidebar(force) {
-    const visible =
-      typeof force === 'boolean' ? force : $('#sidebar').classList.contains('collapsed');
     const app = $('#app');
     const sidebar = $('#sidebar');
-    const wasVisible = !sidebar.classList.contains('collapsed');
-    if (wasVisible === visible) {
+    const isTransitioning = app.classList.contains('sidebar-transitioning');
+    const visible =
+      typeof force === 'boolean'
+        ? force
+        : isTransitioning
+          ? !state.settings.sidebarVisible
+          : sidebar.classList.contains('collapsed');
+    const currentTargetVisible = isTransitioning
+      ? state.settings.sidebarVisible
+      : !sidebar.classList.contains('collapsed');
+    if (currentTargetVisible === visible) {
       state.settings.sidebarVisible = visible;
       $('#toggleSidebar')?.setAttribute('aria-pressed', String(visible));
-      syncTopControlsWidth();
+      if (!isTransitioning) syncTopControlsWidth();
       return;
     }
     finishSidebarTransition();
+    const initialLayout = sidebarLayoutPositions();
     app.classList.add('sidebar-transitioning');
     if (visible) {
       const menuWidth = $('#appMenuBar').getBoundingClientRect().width;
       applyTopControlsWidth(state.settings.sidebarWidth, menuWidth);
+      // A collapsed sidebar has zero layout width. Keep an overlay box until
+      // the slide-in ends, so Vditor does not reflow during this animation.
+      sidebar.classList.add('sidebar-entering');
+      void sidebar.offsetWidth;
+      sidebar.classList.add('sidebar-opening');
     } else {
       $('.titlebar-file-actions').style.flexBasis = 'auto';
+      // Keep the sidebar's flex space until it finishes sliding out, so the
+      // Vditor document resizes at the same point as on sidebar open.
+      sidebar.classList.add('sidebar-closing');
     }
-    sidebar.classList.toggle('collapsed', !visible);
-    app.classList.toggle('sidebar-collapsed', !visible);
+    if (!visible) sidebar.classList.remove('collapsed');
+    if (visible) {
+      app.classList.remove('sidebar-collapsed', 'sidebar-hiding');
+    } else {
+      app.classList.add('sidebar-hiding');
+    }
     state.settings.sidebarVisible = visible;
     $('#toggleSidebar')?.setAttribute('aria-pressed', String(visible));
-    window.appAPI.saveSettings({ sidebarVisible: visible });
+    queueSettingsSave({ sidebarVisible: visible });
+    const targetChromeLayout = visible ? [] : measureCollapsedSidebarChrome();
+    // Keep Vditor's width fixed for the slide, while the surrounding chrome
+    // follows its eventual flex position on compositor-only transforms.
+    animateSidebarLayout(initialLayout, visible, targetChromeLayout);
     sidebarTransitionEndHandler = (event) => {
-      if (event.target !== sidebar || event.propertyName !== 'width') return;
-      finishSidebarTransition();
+      if (event.target !== sidebar || event.propertyName !== 'transform') return;
+      finishSidebarTransition(true);
     };
     sidebar.addEventListener('transitionend', sidebarTransitionEndHandler);
-    sidebarTransitionTimer = setTimeout(finishSidebarTransition, 220);
+    sidebarTransitionTimer = setTimeout(() => finishSidebarTransition(true), 220);
   }
 
   function setupEvents() {
@@ -3338,7 +4912,17 @@
     $('#findNext').onclick = () => moveFindMatch(1);
     $('#findClose').onclick = closeFind;
     $('#externalReload').onclick = () => void reloadExternalChange(activeTab());
+    $('#externalSaveAs').onclick = () => void saveTab(activeTab(), true);
+    $('#externalOverwrite').onclick = () => void confirmExternalOverwrite(activeTab());
     $('#externalIgnore').onclick = () => ignoreExternalChange(activeTab());
+    $('#externalFileReload').onclick = () => void reloadReappearedFile(activeTab());
+    $('#externalFileSaveAs').onclick = () => void saveTab(activeTab(), true);
+    $('#externalFileKeepUntitled').onclick = () => void keepExternalFileAsUntitled(activeTab());
+    $('#externalFileRecreate').onclick = () => void confirmExternalFileRecreate(activeTab());
+    $('#externalFileClose').onclick = () => void confirmExternalFileClose(activeTab());
+    $('#recoverySave').onclick = () => void saveRecoveredVersion(activeTab());
+    $('#recoverySaveAs').onclick = () => void saveRecoveredAs(activeTab());
+    $('#recoveryDiscard').onclick = () => void discardRecoveredVersion(activeTab());
     $('#replaceOne').onclick = replaceFindMatch;
     $('#replaceAll').onclick = replaceAllFindMatches;
     $('#findInput').addEventListener('input', () => {
@@ -3399,21 +4983,20 @@
       selectStatusMode(button.dataset.statusMode);
     };
     $('#statusSettings').onclick = openSettings;
-    $('#statusThemeToggle').onchange = async (event) => {
-      const theme = event.target.checked ? darkThemePreference() : 'classic';
-      state.settings.theme = theme;
-      state.settings.systemTheme = false;
-      await window.appAPI.saveSettings({
-        theme,
-        systemTheme: false,
-        ...(isDarkTheme(theme) ? { lastDarkTheme: theme } : {}),
-      });
-      await applyTheme(theme);
+    $('#statusThemeMode').onclick = (event) => {
+      event.stopPropagation();
+      toggleStatusThemeMenu();
+    };
+    $('#statusThemeMenu').onclick = (event) => {
+      const button = event.target.closest('[data-theme-mode]');
+      if (!button) return;
+      event.stopPropagation();
+      void selectStatusThemeMode(button.dataset.themeMode);
     };
     $('#refreshTree').onclick = refreshTree;
     $('#fileTree').addEventListener('contextmenu', (event) => {
       if (event.target.closest('.tree-row, button')) return;
-      showWorkspaceTreeMenu(event);
+      showWorkspaceTreeMenu(event, treeContextParent(event.target));
     });
     $('#workspaceHeading').onclick = () => {
       if (!state.workspace) chooseFolder();
@@ -3429,7 +5012,6 @@
             view.classList.toggle('active', view.id === `${button.dataset.view}View`),
           );
           if (button.dataset.view === 'outline') renderOutline();
-          else scheduleTreeNameEllipses();
         }),
     );
     $$('.settings-nav button').forEach(
@@ -3458,6 +5040,7 @@
       $('#editorTextWidthValue').textContent = `${value}%`;
       document.documentElement.style.setProperty('--editor-text-width', `${value}%`);
     };
+    $('#settingsForm [name="workspaceReadDepth"]').oninput = syncWorkspaceReadDepthValue;
     $('#resetSettings').onclick = async () => {
       if (await confirmDialog({ message: t('confirm.resetSettings') })) {
         state.settings = await window.appAPI.resetSettings();
@@ -3472,7 +5055,10 @@
     $$('[data-external]').forEach((button) => {
       button.onclick = () => window.appAPI.openExternal(button.dataset.external);
     });
-    document.addEventListener('click', () => closeStatusModeMenu());
+    document.addEventListener('click', () => {
+      closeStatusModeMenu();
+      closeStatusThemeMenu();
+    });
     document.addEventListener('pointerdown', (event) => {
       if (!event.target.closest('#contextMenu')) closeContextMenu();
     });
@@ -3507,6 +5093,8 @@
     window.addEventListener('blur', () => {
       editorSelectionActive = false;
       closeContextMenu();
+      closeStatusModeMenu();
+      closeStatusThemeMenu();
       clearHoveredDocumentLink();
     });
     document.addEventListener('keydown', (event) => {
@@ -3530,6 +5118,12 @@
         event.preventDefault();
         closeStatusModeMenu();
         $('#statusMode').focus({ preventScroll: true });
+        return;
+      }
+      if (event.key === 'Escape' && !$('#statusThemeMenu').classList.contains('hidden')) {
+        event.preventDefault();
+        closeStatusThemeMenu();
+        $('#statusThemeMode').focus({ preventScroll: true });
         return;
       }
       if (event.key === 'Escape' && !$('#settingsModal').classList.contains('hidden')) {
@@ -3558,6 +5152,9 @@
         window.appAPI.toggleFullscreen();
         return;
       }
+      // Vditor 3.11.3 consumes its editor shortcuts before this document listener.
+      // Do not run an application command for the same editor gesture.
+      if (event.defaultPrevented) return;
       if (!(event.ctrlKey || event.metaKey)) return;
       const key = event.key.toLowerCase();
       if (key === 'a') {
@@ -3565,19 +5162,19 @@
         if (!keepsNativeSelectAll(event.target)) event.preventDefault();
         return;
       }
-      if (key === 'i' && event.shiftKey) {
-        event.preventDefault();
-        window.appAPI.toggleDevTools();
-      } else if (key === 's') {
+      if (key === 's') {
         event.preventDefault();
         saveTab(activeTab(), event.shiftKey);
-      } else if (key === 'o') {
+      } else if (key === 'o' && event.altKey && !event.shiftKey) {
         event.preventDefault();
         chooseFiles();
+      } else if (key === 'k' && event.altKey && !event.shiftKey) {
+        event.preventDefault();
+        chooseFolder();
       } else if (key === 'n') {
         event.preventDefault();
         newTab();
-      } else if (key === 'b') {
+      } else if (key === 'b' && event.altKey && !event.shiftKey) {
         event.preventDefault();
         toggleSidebar();
       } else if (key === 'f') {
@@ -3600,36 +5197,91 @@
     let resizeMinimum = 0;
     let resizeMenuWidth = 0;
     let resizeAppLeft = 0;
+    let resizeFrame = null;
+    let pendingSidebarWidth = null;
+    let frozenEditorHost = null;
+    let frozenEditorHostStyle = null;
+    const resizeChrome = [
+      $('#sidebar'),
+      $('.titlebar'),
+      $('.titlebar-file-actions'),
+      $('.toolbar-sidebar-tabs'),
+    ];
+    const restoreFrozenEditorHost = () => {
+      if (!frozenEditorHost || !frozenEditorHostStyle) return;
+      ['inset', 'left', 'width', 'transform'].forEach((property) => {
+        const saved = frozenEditorHostStyle[property];
+        if (saved.value) frozenEditorHost.style.setProperty(property, saved.value, saved.priority);
+        else frozenEditorHost.style.removeProperty(property);
+      });
+      frozenEditorHostStyle = null;
+    };
+    const applySidebarResize = () => {
+      resizeFrame = null;
+      if (!resizing || pendingSidebarWidth === null) return;
+      const width = pendingSidebarWidth;
+      $('#sidebar').style.width = `${width}px`;
+      applyTopControlsWidth(width, resizeMenuWidth);
+      state.settings.sidebarWidth = width;
+    };
     const startSidebarResize = () => {
       resizing = true;
       resizeMinimum = sidebarMinimumWidth();
       resizeMenuWidth = $('#appMenuBar').getBoundingClientRect().width;
       resizeAppLeft = $('#app').getBoundingClientRect().left;
-      $('#app').style.setProperty('--sidebar-min-width', `${resizeMinimum}px`);
-      document.body.classList.add('resizing');
+      $('#sidebar').style.setProperty('--sidebar-min-width', `${resizeMinimum}px`);
+      // Keep Vditor's layout viewport stable while its parent is clipped and
+      // moved by the resize. A long document therefore reflows once on mouseup
+      // instead of for every pointer update.
+      frozenEditorHost = activeTab()?.host || null;
+      if (frozenEditorHost?.classList.contains('vditor')) {
+        const editorWidth = frozenEditorHost.getBoundingClientRect().width;
+        frozenEditorHostStyle = Object.fromEntries(
+          ['inset', 'left', 'width', 'transform'].map((property) => [
+            property,
+            {
+              value: frozenEditorHost.style.getPropertyValue(property),
+              priority: frozenEditorHost.style.getPropertyPriority(property),
+            },
+          ]),
+        );
+        frozenEditorHost.style.setProperty('inset', '0 auto', 'important');
+        frozenEditorHost.style.setProperty('left', '50%', 'important');
+        frozenEditorHost.style.setProperty('width', `${editorWidth}px`, 'important');
+        frozenEditorHost.style.setProperty('transform', 'translateX(-50%)');
+      }
+      // Keeping the editor focused avoids Vditor 3.11.3's expensive blur
+      // serialization path for a long document. Limit the resize state to
+      // application chrome so it cannot invalidate the editor's DOM tree.
+      resizeChrome.forEach((element) => element.classList.add('sidebar-resizing'));
     };
-    resize.onmousedown = startSidebarResize;
+    resize.onmousedown = (event) => {
+      event.preventDefault();
+      startSidebarResize();
+    };
     window.addEventListener('mousemove', (event) => {
       if (resizing) {
-        const width = Math.max(resizeMinimum, Math.min(500, event.clientX - resizeAppLeft));
-        $('#sidebar').style.width = `${width}px`;
-        applyTopControlsWidth(width, resizeMenuWidth);
-        state.settings.sidebarWidth = width;
+        pendingSidebarWidth = Math.max(resizeMinimum, Math.min(500, event.clientX - resizeAppLeft));
+        if (resizeFrame === null) resizeFrame = requestAnimationFrame(applySidebarResize);
       }
     });
     window.addEventListener('mouseup', () => {
       if (resizing) {
+        if (resizeFrame !== null) {
+          cancelAnimationFrame(resizeFrame);
+          resizeFrame = null;
+          applySidebarResize();
+        }
         resizing = false;
-        document.body.classList.remove('resizing');
-        scheduleTreeNameEllipses();
+        pendingSidebarWidth = null;
+        restoreFrozenEditorHost();
+        frozenEditorHost = null;
+        resizeChrome.forEach((element) => element.classList.remove('sidebar-resizing'));
         syncTopControlsWidth();
-        window.appAPI.saveSettings({ sidebarWidth: state.settings.sidebarWidth });
+        requestAnimationFrame(() => scheduleSplitLineNumbers(activeTab()));
+        queueSettingsSave({ sidebarWidth: state.settings.sidebarWidth });
       }
     });
-    new ResizeObserver(() => {
-      if (!resizing) scheduleTreeNameEllipses();
-    }).observe($('#sidebar'));
-    new ResizeObserver(scheduleTreeNameEllipses).observe($('#fileTree'));
     const topControlsObserver = new ResizeObserver(() => {
       if (!resizing) syncTopControlsWidth();
     });
@@ -3637,7 +5289,7 @@
     topControlsObserver.observe($('#appMenuBar'));
     const toolbarMount = $('#vditorToolbarMount');
     new ResizeObserver(syncToolbarWrapHeight).observe(toolbarMount);
-    new MutationObserver(() => requestAnimationFrame(syncToolbarWrapHeight)).observe(toolbarMount, {
+    new MutationObserver(scheduleToolbarWrapHeight).observe(toolbarMount, {
       attributes: true,
       childList: true,
       subtree: true,
@@ -3646,6 +5298,7 @@
     syncToolbarWrapHeight();
     setupAutoHideScrollbar($('#fileTree'));
     setupAutoHideScrollbar($('#outlineTree'));
+    setupSidebarTooltips();
     setupAutoHideScrollbar($('#settingsForm'));
     setupAutoHideScrollbar($('#tabBar'));
     setupTabWheelScrolling($('#tabBar'));
@@ -3664,6 +5317,12 @@
     });
     window.fileAPI.onChanged(handleExternalChange);
     window.appAPI.onRequestClose(async () => {
+      const unresolvedFileState = state.tabs.find((tab) => tab.externalFileState);
+      if (unresolvedFileState) {
+        switchTab(unresolvedFileState.id);
+        showMessage(t('external.resolveFileStateBeforeSave'), true);
+        return;
+      }
       const dirty = state.tabs.filter((tab) => tab.modified);
       if (!dirty.length) {
         window.appAPI.closeConfirmed();
@@ -3678,6 +5337,8 @@
         for (const tab of dirty) {
           if (!(await saveTab(tab))) return;
         }
+      } else {
+        await Promise.all(dirty.map((tab) => discardRecoverySnapshot(tab)));
       }
       window.appAPI.closeConfirmed();
     });
@@ -3711,9 +5372,12 @@
       minimumSidebarWidth,
       Number(state.settings.sidebarWidth) || minimumSidebarWidth,
     );
-    $('#app').style.setProperty('--sidebar-min-width', `${minimumSidebarWidth}px`);
+    $('#sidebar').style.setProperty('--sidebar-min-width', `${minimumSidebarWidth}px`);
     $('#sidebar').style.width = `${state.settings.sidebarWidth}px`;
-    $('#app').style.setProperty('--sidebar-current', `${state.settings.sidebarWidth}px`);
+    applyTopControlsWidth(
+      state.settings.sidebarWidth,
+      $('#appMenuBar').getBoundingClientRect().width,
+    );
     toggleSidebar(state.settings.sidebarVisible);
     $('#app').classList.toggle('fullscreen', await window.appAPI.isFullscreen());
     updateMaximizedState(await window.appAPI.isMaximized());
@@ -3724,18 +5388,24 @@
     $('#statusVersion').textContent = `v${info.app}`;
     $('#versionInfo').textContent = `Version ${info.app} · Electron ${info.electron}`;
     const session = state.settings.session;
-    if (state.settings.restoreWorkspace && session?.workspacePath)
-      await setWorkspace(session.workspacePath);
+    if (state.settings.restoreWorkspace && session?.workspacePath) {
+      if (await window.fileAPI.exists(session.workspacePath))
+        await setWorkspace(session.workspacePath);
+      else await setWorkspace('');
+    }
     if (state.settings.restoreTabs && session?.openFiles?.length) {
       await openPaths(session.openFiles);
       const active = state.tabs.find((tab) => tab.filePath === session.activeFilePath);
       if (active) switchTab(active.id);
     }
+    await restoreRecoverySnapshots();
     if (!state.tabs.length) {
       createToolbarPreview();
       updateActiveUI();
     }
     syncTopControlsWidth();
+    await persistSession();
+    document.body.dataset.appReady = 'true';
     window.appAPI.rendererReady();
   }
 

@@ -22,4 +22,22 @@ describe('external URL allowlist', () => {
       expect(allowedExternalUrl(value)).toBeNull();
     }
   });
+
+  it('normalizes protocol casing while rejecting invisible or encoded scheme tricks', () => {
+    expect(allowedExternalUrl('HTTPS://example.com/docs')).toBe('https://example.com/docs');
+    expect(allowedExternalUrl('MAILTO:author@example.com')).toBe('mailto:author@example.com');
+
+    for (const value of [
+      ' https://example.com/docs',
+      'https://example.com/docs ',
+      'https://example.com/\njavascript:alert(1)',
+      '\u0000https://example.com/docs',
+      'https://example.com/docs\u007f',
+      'java%73cript:alert(1)',
+      'https://example.com/%ZZ',
+      'https://[::1',
+    ]) {
+      expect(allowedExternalUrl(value)).toBeNull();
+    }
+  });
 });
