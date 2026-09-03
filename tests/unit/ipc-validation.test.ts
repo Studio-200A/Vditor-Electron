@@ -57,7 +57,7 @@ describe('IPC request validation', () => {
       editMode: 'sv',
       workspaceReadDepth: 12,
       toolbarConfig: { hide: true, pin: false },
-      session: { workspacePath: '', activeFilePath: null, openFiles: [] },
+      session: { schemaVersion: 1, workspacePath: '', activeFilePath: null, openFiles: [] },
     });
   });
 
@@ -71,6 +71,7 @@ describe('IPC request validation', () => {
       { recentPaths: ['relative/path'] },
       { defaultOpenPath: 'relative/path' },
       { session: { workspacePath: 'relative', activeFilePath: null, openFiles: [] } },
+      { session: { schemaVersion: 2, workspacePath: '', activeFilePath: null, openFiles: [] } },
       {
         workspaceTreeStates: [{ workspacePath: '/notes', expandedPaths: ['relative/path'] }],
       },
@@ -103,6 +104,7 @@ describe('IPC request validation', () => {
         pasteImagesDir: './assets/images',
         recentPaths: ['/notes', '/archive'],
         session: {
+          schemaVersion: 1,
           workspacePath: '',
           activeFilePath: null,
           openFiles: ['/notes/readme.md'],

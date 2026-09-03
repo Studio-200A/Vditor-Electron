@@ -2109,8 +2109,20 @@ test('protects open documents when files are deleted and reappear outside the ap
     );
     await expect(reappearedFileRow).toBeVisible();
     await expect(editor).toContainText('Kept local content');
+    await page.locator('#externalFileRecreate').click();
+    await expect(confirm).toBeVisible();
+    await confirm.locator('#confirmActions [data-action="confirm"]').click();
+    await expect.poll(() => fs.readFileSync(modifiedPath, 'utf8')).toContain('Kept local content');
+    await expect(banner).toBeHidden();
+
+    fs.rmSync(modifiedPath);
+    await expect(banner).toBeVisible();
+    fs.writeFileSync(modifiedPath, 'Second reappeared disk content');
+    await expect(page.locator('#externalFileStateMessage')).toHaveText(
+      '“modified.md” is available again, but its disk version may conflict.',
+    );
     await page.locator('#externalFileReload').click();
-    await expect(editor).toContainText('Reappeared disk content');
+    await expect(editor).toContainText('Second reappeared disk content');
     await expect(banner).toBeHidden();
 
     await editor.fill('Content to recreate');

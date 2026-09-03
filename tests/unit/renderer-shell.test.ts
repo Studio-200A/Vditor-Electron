@@ -243,7 +243,6 @@ describe('renderer shell', () => {
     expect(mainScript).toContain('send(IPC_CHANNELS.appOpenFiles, paths)');
     expect(preloadScript).toContain('onOpenFiles: (callback: (paths: string[]) => void)');
     expect(preloadScript).toContain('ipcRenderer.send(IPC_CHANNELS.appRendererReady)');
-    expect(rendererScript).toContain('window.appAPI.onOpenFiles((paths) => void openPaths(paths))');
     expect(rendererScript).toContain('window.appAPI.rendererReady()');
   });
 
@@ -330,10 +329,6 @@ describe('renderer shell', () => {
       ),
     ).not.toBeNull();
     expect(css).toContain('.temporary-document-notice');
-    expect(rendererScript).toContain('showTemporaryDocumentNotice');
-    expect(rendererScript).toContain("preserveUnavailableTab(tab, 'deleted'");
-    expect(rendererScript).toContain("kind: 'reappeared'");
-    expect(rendererScript).toContain("preserveUnavailableTab(tab, 'unreadable'");
     expect(css).toContain('.persistent-banner');
   });
 

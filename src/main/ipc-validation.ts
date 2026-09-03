@@ -223,14 +223,22 @@ function parseWorkspaceTreeStates(value: unknown): AppSettings['workspaceTreeSta
 }
 
 function parseSession(value: unknown): AppSettings['session'] {
-  return parseSettingsObject(value, ['workspacePath', 'activeFilePath', 'openFiles'], (record) => ({
-    workspacePath: parseAbsolutePathOrEmpty(record.workspacePath),
-    activeFilePath:
-      record.activeFilePath === null
-        ? null
-        : parseOptionalAbsolutePath(record.activeFilePath) || null,
-    openFiles: parseAbsolutePathArray(record.openFiles),
-  }));
+  return parseSettingsObject(
+    value,
+    ['schemaVersion', 'workspacePath', 'activeFilePath', 'openFiles'],
+    (record) => {
+      if (record.schemaVersion !== undefined && record.schemaVersion !== 1) invalidIpcArgument();
+      return {
+        schemaVersion: 1 as const,
+        workspacePath: parseAbsolutePathOrEmpty(record.workspacePath),
+        activeFilePath:
+          record.activeFilePath === null
+            ? null
+            : parseOptionalAbsolutePath(record.activeFilePath) || null,
+        openFiles: parseAbsolutePathArray(record.openFiles),
+      };
+    },
+  );
 }
 
 function parseToolbarConfig(value: unknown): AppSettings['toolbarConfig'] {

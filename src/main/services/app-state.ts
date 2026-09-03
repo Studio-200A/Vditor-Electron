@@ -97,6 +97,7 @@ export interface WorkspaceTreeState {
 }
 
 export interface AppSession {
+  schemaVersion: 1;
   workspacePath: string;
   activeFilePath: string | null;
   openFiles: string[];
@@ -188,5 +189,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   recentFiles: [],
   fileExplorer: { visibleExtensions: ['md'] },
   workspaceTreeStates: [],
-  session: { workspacePath: '', activeFilePath: null, openFiles: [] },
+  session: { schemaVersion: 1, workspacePath: '', activeFilePath: null, openFiles: [] },
 };

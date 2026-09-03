@@ -17,3 +17,6 @@ export interface FileListItem {
   type: 'file' | 'directory';
   isSymlink?: boolean;
 }
+
+export { SESSION_SNAPSHOT_VERSION } from './session.js';
+export type { SessionSnapshot } from './session.js';

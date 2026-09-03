@@ -18,15 +18,18 @@
   const validateDarkThemeImpl = PURE.validateDarkTheme;
   const validateLightThemeImpl = PURE.validateLightTheme;
   const getPreferredCodeThemeImpl = PURE.getPreferredCodeTheme;
-  // 批次 4 将创建 store 实例并迁移 state 对象
-  // const AppStore = PURE.AppStore;
-  // const store = new AppStore();
-
-  // 过渡期：保留 state 对象，但在批次 4 中将迁移到 store
-  // 删除阶段：批次 4 完成后删除 state 对象，改用 store.getState()
+  const AppStore = PURE.AppStore;
+  const store = new AppStore();
   const state = {
-    tabs: [],
-    activeId: null,
+    get tabs() {
+      return store.getState().documents;
+    },
+    get activeId() {
+      return store.getState().activeDocumentId;
+    },
+    set activeId(id) {
+      store.setActiveDocument(id);
+    },
     toolbarPreview: null,
     workspace: '',
     settings: null,
@@ -40,7 +43,92 @@
     workspaceRevision: 0,
     toolbarWrapHeight: 0,
   };
-  const saveOperationsByIdentity = new Map();
+  const tabController = new PURE.TabController({
+    tabBar: $('#tabBar'),
+    addTab: $('#addTab'),
+    getAttentionTitle: (tab) => t('external.needsAttention', { name: tab.title }),
+    getCloseTitle: () => t('tab.close'),
+    callbacks: {
+      activate: (id) => switchTab(id),
+      close: (id) => void closeTab(id),
+      move: (id, beforeId, placeAfter) => {
+        store.moveDocument(id, beforeId, placeAfter);
+        renderTabs();
+        void persistSession();
+      },
+    },
+  });
+  const documentController = new PURE.DocumentController({
+    fileBridge: {
+      fileIdentity: (filePath) => window.fileAPI.fileIdentity(filePath),
+      readFile: (filePath) => window.fileAPI.readFile(filePath),
+      dirname: (filePath) => window.fileAPI.dirname(filePath),
+    },
+    findDocumentByIdentity: (fileIdentity) =>
+      fileIdentity ? state.tabs.find((tab) => tab.fileIdentity === fileIdentity) || null : null,
+    findDocumentByPath: (filePath) => {
+      const normalizedPath = normalizedFilePath(filePath);
+      return (
+        state.tabs.find(
+          (tab) => !tab.filePath && normalizedFilePath(tabTargetPath(tab)) === normalizedPath,
+        ) || null
+      );
+    },
+    prepareDocumentResources: (baseDir) => syncLocalResourceRoots([baseDir]),
+    createDocument: ({
+      filePath,
+      title,
+      content,
+      encoding,
+      baseDir,
+      activate,
+      pendingAnchor,
+      fileIdentity,
+    }) =>
+      createTab({
+        filePath,
+        title,
+        content,
+        encoding,
+        baseDir,
+        activate,
+        pendingAnchor,
+        fileIdentity,
+      }),
+    onExistingDocument: (tab, { filePath, fileIdentity, activate, pendingAnchor }) => {
+      if (!tab.filePath) {
+        clearTimeout(tab.saveTimer);
+        tab.externalConflict = {
+          kind: 'modified',
+          path: filePath,
+          identity: fileIdentity,
+          detectedAt: Date.now(),
+          version: (tab.externalConflict?.version || 0) + 1,
+        };
+        tab.externalChangeIgnored = false;
+        renderTabs();
+      }
+      if (activate) switchTab(tab.id);
+      if (pendingAnchor) {
+        tab.pendingAnchor = pendingAnchor;
+        requestAnimationFrame(() => scrollToPendingAnchor(tab));
+      }
+    },
+    onDocumentOpened: async (tab) => {
+      await watchTabDocument(tab);
+      rememberRecent(tab.filePath);
+    },
+    onDocumentNotCreated: () => syncLocalResourceRoots(),
+    readDocumentContent: (tab) => {
+      try {
+        return tab.vditor && tab.ready
+          ? VDITOR.withOriginalImageSources(tab.host, () => tab.vditor.getValue())
+          : tab.content;
+      } catch (_) {
+        return tab.content;
+      }
+    },
+  });
   let resourceRootsQueue = Promise.resolve();
   let settingsSaveQueue = Promise.resolve();
   const LOCALES = window.VditorDesktopLocales || {};
@@ -121,11 +209,6 @@
   let findIndex = -1;
   let findQuery = '';
   let findRefreshTimer;
-  let draggedTabId = null;
-  let tabDragPointerId = null;
-  let tabDragGhost = null;
-  let tabDragMoved = false;
-  let activeTabScrollFrame = null;
   let toolbarWrapHeightFrame = null;
   let hoveredDocumentLink = null;
   let hoveredSidebarTooltip = null;
@@ -363,8 +446,13 @@
   }
   async function watchTabDocument(tab) {
     if (!tab?.filePath) return;
-    tab.fileIdentity = await window.fileAPI.fileIdentity(tab.filePath);
-    await window.fileAPI.watchDocument(tab.filePath, true);
+    const filePath = tab.filePath;
+    const fileIdentity = await window.fileAPI.fileIdentity(filePath);
+    if (!state.tabs.includes(tab) || tab.filePath !== filePath) return;
+    tab.fileIdentity = fileIdentity;
+    await window.fileAPI.watchDocument(filePath, true);
+    if (!state.tabs.includes(tab) || tab.filePath !== filePath || tab.fileIdentity !== fileIdentity)
+      await releaseDocumentWatch(filePath, fileIdentity);
   }
   async function releaseDocumentWatch(filePath, identity) {
     if (!filePath) return;
@@ -1614,7 +1702,6 @@
       fileIdentity,
       contentRevision: 0,
       pendingEditorContent: false,
-      saveOperation: null,
       mode,
       vditor: null,
       ready: false,
@@ -1659,7 +1746,7 @@
     tab.modeShortcutCleanup = () => tab.host.removeEventListener('keydown', onModeShortcut, true);
     tab.host.addEventListener('contextmenu', (event) => showEditorContextMenu(tab, event), true);
     $('#editorArea').appendChild(tab.host);
-    state.tabs.push(tab);
+    store.addDocument(tab);
     renderTabs();
     if (activate) switchTab(tab.id);
     persistSession();
@@ -1683,52 +1770,7 @@
 
   async function openPath(filePath, activate = true, pendingAnchor = '') {
     try {
-      const fileIdentity = await window.fileAPI.fileIdentity(filePath);
-      const normalizedPath = normalizedFilePath(filePath);
-      const existing = state.tabs.find(
-        (tab) =>
-          tab.fileIdentity === fileIdentity ||
-          normalizedFilePath(tabTargetPath(tab)) === normalizedPath,
-      );
-      if (existing) {
-        if (!existing.filePath) {
-          clearTimeout(existing.saveTimer);
-          existing.externalConflict = {
-            kind: 'modified',
-            path: filePath,
-            identity: fileIdentity,
-            detectedAt: Date.now(),
-            version: (existing.externalConflict?.version || 0) + 1,
-          };
-          existing.externalChangeIgnored = false;
-          renderTabs();
-        }
-        if (activate) switchTab(existing.id);
-        if (pendingAnchor) {
-          existing.pendingAnchor = pendingAnchor;
-          requestAnimationFrame(() => scrollToPendingAnchor(existing));
-        }
-        return existing;
-      }
-      const result = await window.fileAPI.readFile(filePath);
-      const baseDir = await window.fileAPI.dirname(filePath);
-      await syncLocalResourceRoots([baseDir]);
-      const tab = createTab({
-        filePath,
-        content: result.content,
-        encoding: result.encoding,
-        baseDir,
-        activate,
-        pendingAnchor,
-        fileIdentity,
-      });
-      if (!tab) {
-        await syncLocalResourceRoots();
-        return null;
-      }
-      await watchTabDocument(tab);
-      rememberRecent(filePath);
-      return tab;
+      return await documentController.openPath(filePath, activate, pendingAnchor);
     } catch (error) {
       showMessage(t('message.openFailed', { error: ipcErrorMessage(error) }), true);
       return null;
@@ -1769,7 +1811,7 @@
 
   async function newTab() {
     const number = await nextUntitledNumber(state.workspace, 'file');
-    createTab({ untitledNumber: number });
+    documentController.createUntitled(t('tab.untitled', { number }));
   }
 
   function switchTab(id) {
@@ -1795,7 +1837,18 @@
   async function closeTab(id, { discard = false } = {}) {
     const tab = state.tabs.find((item) => item.id === id);
     if (!tab) return;
+    const wasActive = state.activeId === id;
     if (contextMenuState?.tab === tab) closeContextMenu();
+    const index = state.tabs.indexOf(tab);
+    await documentController.close(tab, {
+      confirmClose: () => confirmTabClose(tab, discard),
+      disposeRuntime: () => disposeClosedTabRuntime(tab),
+      removeDocument: () => store.removeDocument(tab.id),
+      afterClose: () => finishClosingTab(tab, index, wasActive),
+    });
+  }
+
+  async function confirmTabClose(tab, discard) {
     if (tab.externalFileState && !tab.modified && !discard) {
       const action = await showConfirmDialog({
         title: t('external.closeTitle'),
@@ -1807,14 +1860,18 @@
         ],
         draggable: true,
       });
-      if (action !== 'confirm') return;
+      return action === 'confirm';
     } else if (tab.modified && !discard) {
       const action = await showUnsavedDialog(
         t('confirm.closeDirty', { title: tab.title }),
         t('confirm.closeDirtyDetail'),
       );
-      if (action === 'cancel' || (action === 'save' && !(await saveTab(tab)))) return;
+      return action !== 'cancel' && (action !== 'save' || (await saveTab(tab)));
     }
+    return true;
+  }
+
+  async function disposeClosedTabRuntime(tab) {
     clearTimeout(tab.saveTimer);
     await discardRecoverySnapshot(tab);
     disconnectSplitLineNumbers(tab);
@@ -1834,8 +1891,9 @@
       } catch (_) {}
     }
     tab.host.remove();
-    const index = state.tabs.indexOf(tab);
-    state.tabs.splice(index, 1);
+  }
+
+  async function finishClosingTab(tab, index, wasActive) {
     syncToolbarAvailability();
     await releaseDocumentWatch(tab.filePath, tab.fileIdentity);
     await syncLocalResourceRoots();
@@ -1847,7 +1905,7 @@
       updateActiveUI();
       renderOutline();
       persistSession();
-    } else if (state.activeId === id) switchTab(state.tabs[Math.max(0, index - 1)].id);
+    } else if (wasActive) switchTab(state.tabs[Math.max(0, index - 1)].id);
     else {
       renderTabs();
       updateEmptyState();
@@ -1856,92 +1914,16 @@
   }
 
   function renderTabs() {
-    $$('.document-tab', $('#tabBar')).forEach((node) => node.remove());
-    const add = $('#addTab');
-    state.tabs.forEach((tab) => {
-      const button = document.createElement('button');
-      button.className = `document-tab${tab.id === state.activeId ? ' active' : ''}`;
-      button.dataset.id = tab.id;
-      button.title = tab.filePath || tab.title;
-      button.innerHTML = `<span>${escapeHTML(tab.title)}</span>${tab.externalConflict || tab.externalFileState ? `<i class="conflict" title="${escapeHTML(t('external.needsAttention', { name: tab.title }))}">!</i>` : ''}<i class="dirty">${tab.modified ? '●' : ''}</i><b title="${escapeHTML(t('tab.close'))}">×</b>`;
-      button.addEventListener('click', (event) => {
-        if (tabDragMoved) return;
-        if (event.target.tagName === 'B') closeTab(tab.id);
-        else switchTab(tab.id);
-      });
-      button.addEventListener('auxclick', (event) => {
-        if (event.button === 1) closeTab(tab.id);
-      });
-      button.addEventListener('pointerdown', (event) => {
-        if (event.button !== 0 || event.target.closest('b')) return;
-        draggedTabId = tab.id;
-        tabDragPointerId = event.pointerId;
-        button.setPointerCapture(event.pointerId);
-      });
-      button.addEventListener('pointermove', (event) => {
-        if (!draggedTabId || event.pointerId !== tabDragPointerId) return;
-        if (!tabDragMoved && Math.abs(event.movementX) + Math.abs(event.movementY) > 3) {
-          tabDragMoved = true;
-          button.classList.add('dragging');
-          tabDragGhost = button.cloneNode(true);
-          tabDragGhost.className = 'document-tab tab-drag-ghost';
-          document.body.append(tabDragGhost);
-        }
-        if (tabDragGhost) {
-          tabDragGhost.style.left = `${event.clientX}px`;
-          tabDragGhost.style.top = `${event.clientY}px`;
-        }
-        const target = document
-          .elementFromPoint(event.clientX, event.clientY)
-          ?.closest('.document-tab');
-        $$('.document-tab.drag-over', $('#tabBar')).forEach((node) =>
-          node.classList.remove('drag-over'),
-        );
-        if (target && target.dataset.id !== draggedTabId) {
-          const bounds = target.getBoundingClientRect();
-          target.dataset.dropSide =
-            event.clientX < bounds.left + bounds.width / 2 ? 'before' : 'after';
-          target.classList.add('drag-over');
-        }
-      });
-      button.addEventListener('pointerup', (event) => {
-        if (!draggedTabId || event.pointerId !== tabDragPointerId) return;
-        const target = document
-          .elementFromPoint(event.clientX, event.clientY)
-          ?.closest('.document-tab');
-        const from = state.tabs.findIndex((item) => item.id === draggedTabId);
-        const to = state.tabs.findIndex((item) => item.id === target?.dataset.id);
-        if (from >= 0 && to >= 0 && from !== to) {
-          const [moved] = state.tabs.splice(from, 1);
-          const targetIndex = target?.dataset.dropSide === 'after' ? to + 1 : to;
-          state.tabs.splice(targetIndex > from ? targetIndex - 1 : targetIndex, 0, moved);
-          renderTabs();
-          persistSession();
-        }
-        draggedTabId = null;
-        tabDragPointerId = null;
-        if (tabDragGhost) tabDragGhost.remove();
-        tabDragGhost = null;
-        $$('.document-tab.dragging, .document-tab.drag-over', $('#tabBar')).forEach((node) =>
-          node.classList.remove('dragging', 'drag-over'),
-        );
-        setTimeout(() => {
-          tabDragMoved = false;
-        }, 0);
-      });
-      $('#tabBar').insertBefore(button, add);
-    });
-    if (activeTabScrollFrame !== null) cancelAnimationFrame(activeTabScrollFrame);
-    // Vditor can still be invalidating a long document while its `after`
-    // callback renders the tab. Wait for one normal paint before asking
-    // scrollIntoView() to read tab geometry, avoiding a forced full-document
-    // style calculation on that callback's frame.
-    activeTabScrollFrame = requestAnimationFrame(() => {
-      activeTabScrollFrame = requestAnimationFrame(() => {
-        activeTabScrollFrame = null;
-        $('#tabBar .document-tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-      });
-    });
+    tabController.render(
+      state.tabs.map((tab) => ({
+        id: tab.id,
+        title: tab.title,
+        filePath: tab.filePath,
+        modified: tab.modified,
+        needsAttention: Boolean(tab.externalConflict || tab.externalFileState),
+      })),
+      state.activeId,
+    );
   }
 
   function onEditorInput(tab, value) {
@@ -1969,14 +1951,7 @@
   }
 
   function currentContent(tab) {
-    if (!tab) return '';
-    try {
-      return tab.vditor && tab.ready
-        ? VDITOR.withOriginalImageSources(tab.host, () => tab.vditor.getValue())
-        : tab.content;
-    } catch (_) {
-      return tab.content;
-    }
+    return documentController.currentContent(tab);
   }
 
   function recreateClipboardSnapshot(tab) {
@@ -1990,24 +1965,9 @@
     recreateFileState = null,
   ) {
     if (!tab) return Promise.resolve(false);
-    const previous = tab.saveOperation || Promise.resolve(false);
-    const operation = previous
-      .catch(() => false)
-      .then(() => performSaveTab(tab, saveAs, overwriteConflict, recreateFileState));
-    tab.saveOperation = operation.catch(() => false);
-    return operation;
-  }
-
-  function queueSaveForIdentity(identity, operation) {
-    const previous = saveOperationsByIdentity.get(identity) || Promise.resolve();
-    const queued = previous.catch(() => undefined).then(operation);
-    saveOperationsByIdentity.set(identity, queued);
-    const release = () => {
-      if (saveOperationsByIdentity.get(identity) === queued)
-        saveOperationsByIdentity.delete(identity);
-    };
-    void queued.then(release, release);
-    return queued;
+    return documentController.save(tab, () =>
+      performSaveTab(tab, saveAs, overwriteConflict, recreateFileState),
+    );
   }
 
   function queueSettingsSave(settings, { throwOnFailure = false } = {}) {
@@ -2041,7 +2001,7 @@
     if (!destination) return false;
     const destinationIdentity = await window.fileAPI.fileIdentity(destination);
     if (queuedIdentity !== destinationIdentity) {
-      return queueSaveForIdentity(destinationIdentity, () =>
+      return documentController.saveForIdentity(destinationIdentity, () =>
         performSaveTab(
           tab,
           saveAs,
@@ -2128,7 +2088,11 @@
       if (tab.filePath && tab.fileIdentity === destinationIdentity && !fileState && !conflict) {
         expectedContent = tab.expectedSavedContent;
       } else if (writesUnavailablePath) {
-        expectedAbsent = true;
+        // A reappeared file has a watcher-provided stable snapshot that the user
+        // explicitly confirmed replacing. Keep that snapshot as the write baseline.
+        if (fileState.kind === 'reappeared' && typeof fileState.content === 'string')
+          expectedContent = fileState.content;
+        else expectedAbsent = true;
       } else if (await window.fileAPI.exists(destination)) {
         expectedContent = (await window.fileAPI.readFile(destination)).content;
       } else {
@@ -2140,6 +2104,14 @@
         expectedContent,
         expectedAbsent,
       );
+      // A close, Save As, rename, or workspace transition can complete while the
+      // safe writer is awaiting I/O. Its result must not update a replacement binding.
+      if (
+        !state.tabs.includes(tab) ||
+        tab.filePath !== previousPath ||
+        tab.fileIdentity !== previousIdentity
+      )
+        return false;
       if (result.error) {
         if (result.error === 'external-change') {
           clearTimeout(tab.saveTimer);
@@ -2168,6 +2140,13 @@
         if (previousWatchSuspended) await rebindDocumentWatches([tab]);
         return false;
       }
+      const destinationBaseDir = await window.fileAPI.dirname(destination);
+      if (
+        !state.tabs.includes(tab) ||
+        tab.filePath !== previousPath ||
+        tab.fileIdentity !== previousIdentity
+      )
+        return false;
       const previousBaseDir = tab.baseDir;
       tab.filePath = destination;
       tab.fileIdentity = destinationIdentity;
@@ -2179,7 +2158,7 @@
       tab.externalChangeIgnored = false;
       tab.externalFileState = null;
       tab.encoding = 'utf-8';
-      tab.baseDir = await window.fileAPI.dirname(destination);
+      tab.baseDir = destinationBaseDir;
       await releaseDocumentWatch(previousPath, previousIdentity);
       await syncLocalResourceRoots();
       await watchTabDocument(tab);
@@ -2207,9 +2186,8 @@
   }
 
   function recoverySnapshotFor(tab) {
-    return {
-      schemaVersion: 2,
-      id: tab.recoverySnapshotId || recoveryId(),
+    return PURE.toRecoveryStoreSnapshot({
+      recoverySnapshotId: tab.recoverySnapshotId || recoveryId(),
       filePath: tab.filePath,
       title: tab.title,
       content: tab.content,
@@ -2218,8 +2196,7 @@
       encoding: tab.encoding,
       lineEnding: tab.lineEnding,
       mode: tab.mode,
-      updatedAt: Date.now(),
-    };
+    });
   }
 
   function queueRecoveryOperation(tab, operation) {
@@ -2315,7 +2292,9 @@
       return;
     }
     for (const candidate of candidates) {
-      const snapshot = await window.appAPI.restoreRecovery(candidate.id);
+      const snapshot = PURE.fromRecoveryStoreSnapshot(
+        await window.appAPI.restoreRecovery(candidate.id),
+      );
       if (!snapshot) continue;
       if (snapshot.diskState !== 'unchanged') {
         const baseDir = snapshot.filePath ? await window.fileAPI.dirname(snapshot.filePath) : '';
@@ -3834,16 +3813,18 @@
   }
   async function persistSession(throwOnFailure = false) {
     if (!state.settings) return false;
-    const session = {
-      workspacePath: state.settings.restoreWorkspace ? state.workspace : '',
-      activeFilePath:
-        state.settings.restoreTabs && !activeTab()?.externalFileState
-          ? activeTab()?.filePath
-          : null,
-      openFiles: state.settings.restoreTabs
-        ? state.tabs.map((tab) => (!tab.externalFileState ? tab.filePath : null)).filter(Boolean)
-        : [],
-    };
+    const session = PURE.toPersistedSessionSnapshot({
+      restoreWorkspace: state.settings.restoreWorkspace,
+      restoreTabs: state.settings.restoreTabs,
+      workspacePath: state.workspace,
+      activeFilePath: activeTab()?.filePath || null,
+      openFiles: state.tabs.map((tab) => tab.filePath),
+      unavailableFilePaths: new Set(
+        state.tabs
+          .filter((tab) => tab.externalFileState && tab.filePath)
+          .map((tab) => tab.filePath),
+      ),
+    });
     state.settings.session = session;
     try {
       await queueSettingsSave({ session }, { throwOnFailure: true });
@@ -4272,7 +4253,15 @@
         continue;
       }
       if (typeof change.content !== 'string') continue;
-      if (tab.externalFileState) {
+      const decision = documentController.classifyExternalChange({
+        hasUnavailableState: Boolean(tab.externalFileState),
+        expectedSavedContent: tab.expectedSavedContent,
+        modified: tab.modified,
+        externalChangeIgnored: tab.externalChangeIgnored,
+        hasFilePath: Boolean(tab.filePath),
+        content: change.content,
+      });
+      if (decision === 'reappeared') {
         clearTimeout(tab.saveTimer);
         tab.externalConflict = null;
         tab.externalChangeIgnored = false;
@@ -4288,12 +4277,12 @@
         };
         continue;
       }
-      if (change.content === tab.expectedSavedContent) {
+      if (decision === 'matches-baseline') {
         tab.externalConflict = null;
         tab.externalChangeIgnored = false;
         continue;
       }
-      if (tab.filePath && !tab.modified && !tab.externalChangeIgnored) {
+      if (decision === 'reload-clean-document') {
         if (typeof change.content !== 'string') continue;
         tab.lineEnding = detectLineEnding(change.content);
         tab.content = tab.savedContent = tab.expectedSavedContent = change.content;
@@ -5256,7 +5245,7 @@
     const info = await window.appAPI.getInfo();
     $('#statusVersion').textContent = `v${info.app}`;
     $('#versionInfo').textContent = `Version ${info.app} · Electron ${info.electron}`;
-    const session = state.settings.session;
+    const session = PURE.fromPersistedSessionSnapshot(state.settings.session);
     if (state.settings.restoreWorkspace && session?.workspacePath) {
       if (await window.fileAPI.exists(session.workspacePath))
         await setWorkspace(session.workspacePath);
@@ -5279,4 +5268,5 @@
   }
 
   window.__vditorDesktopLegacyBootstrap = init;
+  window.__vditorDesktopLegacyDispose = () => tabController.dispose();
 })();

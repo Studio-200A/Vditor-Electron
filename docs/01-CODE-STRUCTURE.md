@@ -1,8 +1,8 @@
 # Vditor-Electron Code Structure World Map
 
-- **生成时间：** 2026-09-02
-- **基于的工作区：** `dev-0.2.5` 当前工作区实现（批次 1-3 完成）
-- **文档版本：** v1.16
+- **生成时间：** 2026-09-03
+- **基于的工作区：** `dev-0.2.5` 当前工作区实现（批次 4 手测通过，待无失败完整 E2E）
+- **文档版本：** v1.17
 - **对应 package.json 版本号：** 0.2.0（开发中 0.2.5）
 
 ---
@@ -15,7 +15,7 @@
 
 **核心功能：** 多标签页 Markdown 编辑、三种编辑模式（IR/SV/WYSIWYG）、分栏预览、文件树侧栏、文档大纲、查找替换、图片插入与压缩、HTML/PDF 导出、TOML 配置持久化、三语国际化（英/简/繁）。
 
-**开发阶段：** 0.2.5 渲染层架构重构中。批次 1-3 已完成：TypeScript 构建管线与组合入口、纯函数与基础 UI 域迁移（含 CSS 主题拆分和 notifications/dialogs 模块提取）、AppStore 与文档状态模型（类型定义、受控 store、快照投影、状态所有权表）。批次 4（文档与标签生命周期迁移）待开始。0.2.0 阶段的所有功能（保存、恢复、工作区内外 watcher、外部修改冲突、外部删除/重新出现/不可读状态、工作区读取/监听深度边界、目录级路径一致性、批次 7 本地闭环和批次 8/9/9.1 安全代码、专项验证、Linux 全量回归及手测）均已完成并作为行为基线。批次 10 已完成受控 `local-file://root`、资源类型响应边界、Linux 专项自动化和用户手测；批次 11 已完成 CSP 收紧、sanitize 风险交互与 Linux 全量闭环；批次 12 已完成窗口级关闭确认与 Linux 全量闭环，macOS Dock 激活验证递延；批次 14 已完成可移植 HTML/自包含 PDF 导出、隔离 PDF 窗口，以及默认关闭的本地/远程 SVG 渲染控制；批次 15 已统一 0.2.0 版本号、Electron 44.1.0、Node.js engine、Linux 应用 metadata 和依赖安装检查，并取得 Linux 全量检查通过证据。批次 14 最终复验、已有目标的长期 TOCTOU、主窗口 sandbox 的 bundled-preload 迁移、发布门槛和其他 Windows/macOS 实体机验证仍在后续工作。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
+**开发阶段：** 0.2.5 渲染层架构重构中。批次 1-3 已完成：TypeScript 构建管线与组合入口、纯函数与基础 UI 域迁移（含 CSS 主题拆分和 notifications/dialogs 模块提取）、AppStore 与文档状态模型（类型定义、受控 store、快照投影、状态所有权表）。批次 4 已接入标签表现、identity-aware 打开、新建、保存/关闭/外部变化命令编排、session schema v1 与 recovery schema v2 DTO；`TabController` 拥有的延迟拖拽 reset timer 会在 dispose 时清理，重新出现文件的确认重建使用 watcher 稳定快照作为安全写入基线。保存/外部事件/recovery 的 Vditor 正文、runtime 与 editor-owned UI 协调仍在 legacy `app.js` 的窄过渡回调，现已明确归属批次 5 的 EditorController 收口；批次 4 手测已通过，等待一次无失败的完整 E2E 运行。0.2.0 阶段的所有功能（保存、恢复、工作区内外 watcher、外部修改冲突、外部删除/重新出现/不可读状态、工作区读取/监听深度边界、目录级路径一致性、批次 7 本地闭环和批次 8/9/9.1 安全代码、专项验证、Linux 全量回归及手测）均已完成并作为行为基线。批次 10 已完成受控 `local-file://root`、资源类型响应边界、Linux 专项自动化和用户手测；批次 11 已完成 CSP 收紧、sanitize 风险交互与 Linux 全量闭环；批次 12 已完成窗口级关闭确认与 Linux 全量闭环，macOS Dock 激活验证递延；批次 14 已完成可移植 HTML/自包含 PDF 导出、隔离 PDF 窗口，以及默认关闭的本地/远程 SVG 渲染控制；批次 15 已统一 0.2.0 版本号、Electron 44.1.0、Node.js engine、Linux 应用 metadata 和依赖安装检查，并取得 Linux 全量检查通过证据。批次 14 最终复验、已有目标的长期 TOCTOU、主窗口 sandbox 的 bundled-preload 迁移、发布门槛和其他 Windows/macOS 实体机验证仍在后续工作。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
 
 ---
 
@@ -123,6 +123,14 @@ Vditor-Electron/
 │   │   ├── types.ts               # 核心状态类型（EditMode、DocumentIdentity、DocumentState、EditorRuntime、DocumentTab、AppState 等）
 │   │   ├── store.ts               # AppStore 类（受控修改 API、订阅机制、文档/设置/locale/工作区操作）
 │   │   └── snapshots.ts           # 快照投影函数（toSessionSnapshot、toRecoverySnapshot、restoreDocumentState、restoreRecoveryState）
+│   ├── documents/                 # 批次 4 文档生命周期渐进迁移
+│   │   ├── tab-controller.ts      # 标签栏表现、交互和 dispose
+│   │   ├── document-controller.ts # 新建、打开、canonical identity 去重和正文读取边界
+│   │   ├── document-save-controller.ts # 文档/identity 两级保存队列
+│   │   ├── document-close-controller.ts # 确认、runtime 释放、Store 删除顺序
+│   │   ├── external-change-controller.ts # watcher 正文的纯分类
+│   │   ├── recovery-snapshot.ts   # RecoveryStore schema v2 投影/恢复验证
+│   │   └── session-snapshot.ts    # settings session schema v1 的白名单投影/验证
 │   ├── styles/
 │   │   ├── app.css                # 应用样式文件（布局、通用组件、共享语义变量；:root 默认主题变量）
 │   │   └── themes/                # 主题样式文件（批次 2 剩余拆分）
@@ -419,6 +427,8 @@ webPreferences: {
 3. 注册并初始化 `LegacyAppController`（调用 `window.__vditorDesktopLegacyBootstrap`）
 4. 注册 `beforeunload` 事件，触发 `lifecycle.dispose()`
 
+文档域的渐进迁移位于 `src/renderer/documents/`：`TabController` 只负责标签栏表现；`DocumentController` 通过注入的最小 file bridge 串行化 canonical identity 的打开、保存命令、关闭命令和外部变化分类，在读取完成后复核去重，并保留未命名标签的目标路径碰撞回调；资源根准备、标签创建、watch 注册、保存交易和 UI 收敛交回明确的领域回调；其内部组合 `DocumentSaveController` 的文档/identity 两级队列与 `DocumentCloseController` 的确认→runtime 释放→Store 删除顺序。它们都不查询或拼接标签 DOM。
+
 `init()` 函数（`src/renderer/app.js`，由 `LegacyAppController` 调用）：
 
 1. 设置 `body.dataset.platform`
@@ -439,12 +449,12 @@ webPreferences: {
 
 ### 6.3 状态管理
 
-无独立状态管理层。全部状态为 IIFE 内部的 `state` 闭包对象：
+`src/renderer/state/` 提供 typed `AppStore`、文档状态/运行时类型与旧状态快照工具。`AppStore` 现在是打开文档集合及 `activeDocumentId` 的 source of truth：legacy `app.js` 通过只读访问器读取它，并只经 `addDocument`、`removeDocument`、`setActiveDocument`、`moveDocument` 改变集合或活动标签。
+
+批次 4 已在 `src/renderer/documents/` 建立文档边界：`TabController` 只渲染标签；`DocumentController` 负责新建、canonical-identity 打开和当前正文读取；`DocumentSaveController` 拥有文档 ID 和 canonical identity 两级队列；`DocumentCloseController` 固定确认/运行时释放/Store 删除顺序；`ExternalChangeController` 纯函数分类 watcher 正文。保存交易所需的 Vditor 正文读取、自动保存 timer、外部事件与 recovery 的 editor-owned 状态提交，以及 `switchTab()` 的 runtime/UI 协调仍在 `app.js` 的窄过渡回调中，已归属批次 5 的 EditorController 收口。其他应用壳层状态仍在 `app.js` 的 `state` 闭包对象中：
 
 ```javascript
 const state = {
-  tabs: [],              // Tab[] 所有打开的标签页
-  activeId: null,        // string 当前激活标签 ID
   toolbarPreview: null,  // 无标签时用于展示默认编辑模式 toolbar 的非文档 Vditor 实例
   workspace: '',         // string 当前工作目录路径
   workspaceRevision: 0,  // number 工作区切换/树读取 revision，丢弃迟到结果
@@ -458,12 +468,11 @@ const state = {
   treeTimer: null,       // Timer 工作区树刷新防抖计时器
 };
 
-const saveOperationsByIdentity = new Map(); // 同一 canonical identity 的保存串行队列
 ```
 
-持久化策略：每次标签/工作区状态变更调用 `persistSession()`，通过 `saveSettings({ session })` 写入 TOML。
+持久化策略：每次标签/工作区状态变更调用 `persistSession()`，由 `documents/session-snapshot.ts` 显式投影为仅含 schema v1、workspace、active path 和可恢复文件路径的 settings-session DTO；读取时先验证并兼容无版本的旧配置，再通过 `saveSettings({ session })` 写入 TOML。恢复快照由 `documents/recovery-snapshot.ts` 按 RecoveryStore schema v2 投影并在恢复 IPC 返回后验证，DOM、Vditor、observer、timer 和队列句柄均不能跨这两个边界。
 
-恢复运行时状态属于各 `tab`：`fileIdentity`、`contentRevision`、`pendingEditorContent`、`saveOperation`、`recoverySnapshotId`、防抖 timer、`recoveryRevision` 与 `recoveryState`。外部变更状态包含 `expectedSavedContent`、`externalConflict`、`externalChangeIgnored` 和独立的 `externalFileState`（`deleted` / `reappeared` / `unreadable`）；文件不可访问时冻结的重建剪贴板正文也只存在运行时标签状态中。文档 watcher 的实际句柄、timer 和 binding generation 仅由主进程 `FileWatchService` 持有。它们都不进入 session；脏标签只将经过白名单投影的恢复快照经 `app:saveRecovery` 写入私有目录。
+恢复运行时状态属于各 `tab`：`fileIdentity`、`contentRevision`、`pendingEditorContent`、`recoverySnapshotId`、防抖 timer、`recoveryRevision` 与 `recoveryState`。外部变更状态包含 `expectedSavedContent`、`externalConflict`、`externalChangeIgnored` 和独立的 `externalFileState`（`deleted` / `reappeared` / `unreadable`）；文件不可访问时冻结的重建剪贴板正文也只存在运行时标签状态中。文档 watcher 的实际句柄、timer 和 binding generation 仅由主进程 `FileWatchService` 持有。它们都不进入 session；脏标签只将经过白名单投影的恢复快照经 `app:saveRecovery` 写入私有目录。
 
 ---
 
@@ -910,7 +919,6 @@ onEditorInput(tab, value)
   modified: boolean,            // content !== savedContent
   contentRevision: number,      // 编辑版本；保存完成后仅匹配捕获版本才可清脏
   pendingEditorContent: boolean,// editor 未 ready 时等待 after() 交接的可信正文
-  saveOperation: Promise<boolean> | null, // 当前标签保存串行链
   encoding: string,             // 读取时探测的编码
   lineEnding: 'LF' | 'CRLF',  // 原始行结尾，保存时还原
   baseDir: string,              // 文件父目录（用于 localResourceBase）
@@ -939,6 +947,8 @@ onEditorInput(tab, value)
   recoveryState: null | 'unchanged' | 'changed' | 'unavailable',
 }
 ```
+
+保存串行链不再保存在 tab 上：`DocumentSaveController` 在 renderer 运行时分别按 document ID 与 canonical identity 持有队列，并在完成后释放 handle。
 
 **脏标记**：`tab.modified` 为 `true` 时，标签列表显示 `●` 指示器。
 
@@ -977,7 +987,7 @@ function rememberRecent(filePath) {
 
 ## 10. UI 组件体系
 
-本项目无独立组件目录或组件化框架。所有 UI 逻辑集中在单体控制器 `app.js` 中，以函数形式组织。以下列出各逻辑组件的职责与实现位置。
+本项目没有 UI 框架。批次 4 已建立 `src/renderer/documents/` 的标签/文档生命周期控制器，但编辑器、工作区、设置、菜单与导出等其余 UI 逻辑仍在 legacy `app.js` 中；以下列出各逻辑组件的职责与实现位置。
 
 ### 10.1 逻辑组件清单
 
@@ -993,10 +1003,10 @@ function rememberRecent(filePath) {
 - **空状态：** 无文档时编辑模式菜单项 disabled 且不展开；布局中的显示工具栏仍可切换默认模式 toolbar 预览的显隐
 - **macOS：** 使用 `src/main/menu.ts` 的原生 Menu，通过 `menu:action` IPC 与渲染器同步
 
-#### 标签栏（`app.js` 的 `renderTabs()`，`index.html:64-66`）
+#### 标签栏（`documents/tab-controller.ts`，`index.html:64-66`）
 
 - **职责：** 渲染标签按钮列表、支持拖拽重排序、中键关闭、脏标记显示、外部冲突标记
-- **实现：** `renderTabs()`、标签拖拽使用 Pointer Events API
+- **实现：** `TabController` 只拥有 tab-bar DOM、Pointer Events 与延迟 drag-reset timer；`dispose()` 会取消其 animation frame 和 timer。`app.js` 的过渡 `renderTabs()` 仅投影标签视图模型并把 activate/close/reorder 命令转交到文档域。控制器不访问文件 bridge、watcher 或 Vditor。
 
 #### 编辑区（`app.js` 的 `ensureEditor()` 及相关编辑器生命周期函数，`index.html:141-213`）
 

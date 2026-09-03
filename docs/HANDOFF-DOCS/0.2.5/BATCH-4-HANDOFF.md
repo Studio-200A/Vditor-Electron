@@ -65,10 +65,9 @@
 
 - 新增 `src/renderer/state/` 目录，包含类型定义、AppStore 实现和快照投影函数
 - AppStore、类型和快照函数通过 `window.__vditorDesktopPureFunctions` 暴露
-- `app.js` 中添加了注释，为批次 4 的迁移做准备（尚未实际使用 store）
-- 批次 3 的类型定义和 AppStore 已建立，但 app.js 中的 state 对象和 activeTab() 等函数尚未迁移到 store
+- 批次 3 的类型定义和 AppStore 已建立；批次 4 已将文档集合和 active document ID 接入 Store，`app.js` 仅保留组合入口兼容访问
 
-## 批次 4 施工卡
+## 批次 4 施工卡（当前工作树）
 
 摘自 `docs/15-0.2.5-EXECUTION-TRACKER.md` §6：
 
@@ -78,13 +77,13 @@
 
 1. **TabController**：标签渲染、活动标签切换（只管表现，不读写磁盘）。
 2. **新建和打开文件**：当前内容读取。
-3. **保存、另存和自动保存**：单次磁盘快照映射为解码正文与 `expectedBytes` 后交给安全写入器；结果通过明确返回值/领域错误表达。
-4. **关闭文档与未保存确认**：先协调 EditorController（或过渡期现有编辑器接口）释放运行时资源，再从 store 删除。
-5. **外部变化和冲突**：外部删除/重新出现/不可读。
-6. **session 与 recovery 接入快照 DTO**。
+3. **保存、另存和自动保存**：建立 identity-aware 保存队列和命令边界；Vditor 正文读取、timer 与交易调用的 runtime 协调归批次 5。
+4. **关闭文档与未保存确认**：固定确认 → runtime 释放 → Store 删除顺序；具体 runtime 清理和 editor UI 收敛归批次 5。
+5. **外部变化和冲突**：完成 identity-aware 分类；更新 Vditor 和 editor-owned UI 的实际提交归批次 5。
+6. **session 与 recovery 接入快照 DTO**：恢复正文注入和 recovery UI 协调归批次 5。
 7. **测试迁移**：将本域相关的源码字符串测试替换为行为测试，补齐 watcher ready/reconciliation、identity 别名、基线一致性的聚焦测试。
 
-**不包含范围**：不迁移 Vditor 实例管理本体（批次 5）；不改变冲突动作的 UI 文案与流程；不扩大后台文件保护范围。
+**不包含范围**：不迁移 Vditor 实例管理、editor runtime 内容读写、自动保存 timer、恢复 UI 或 editor 相关 UI 协调（批次 5）；不改变冲突动作的 UI 文案与流程；不扩大后台文件保护范围。
 
 **必须证明（安全回归，缺一不可）**：
 
@@ -95,6 +94,18 @@
 - 冲突期间自动保存暂停、外部删除不静默重建、`unchanged`/`changed`/`unavailable` 恢复分支行为不变。
 
 **用户手测重点**：按 `docs/05-FILE-SAFETY.md` 的用户路径逐项对比：普通保存、另存、自动保存、外部修改四种动作、外部删除与重新出现、异常退出恢复。
+
+### 当前实施状态（2026-09-03）
+
+- `TabController` 已接入 `app.js`，只拥有标签栏 DOM、点击/中键关闭/拖拽和活动标签滚动；`renderTabs()` 仅投影 `TabViewModel`，其拖拽 reset timer 会在 controller dispose 时取消。
+- `AppStore` 已作为文档集合和活动文档 ID 的 source of truth；`state.tabs` / `state.activeId` 只保留组合入口兼容访问，集合、激活和排序通过 Store 受控 API 完成。
+- `DocumentController` 已接管新建、canonical identity-aware 打开、当前正文读取，并组合保存队列、关闭顺序和外部变化分类；打开流程同时保留未命名标签的目标路径碰撞保护，`saveTab()`、`closeTab()` 和 watcher 正文分类均经其命令入口进入。
+- session 已使用 `src/shared/contracts/session.ts` 定义的 schema v1 DTO，兼容读取无版本旧配置；recovery 使用 schema v2 DTO。DOM、Vditor、observer、timer 和队列句柄不跨持久化边界。
+- 已新增真实 `AppStore` + controllers + fake bridge/Vditor 集成测试，并删除本域 `renderer-shell.test.ts` 中依赖 `app.js` 源码字符串的断言；剩余源码字符串断言属于其他尚未迁移域。
+- `performSaveTab()` 的 Vditor 正文读取与交易调用、自动保存 timer、外部事件的 editor UI 提交、recovery UI、多数关闭 runtime 清理和 `switchTab()` 的 editor 组合仍在 `app.js` 过渡回调；这些已正式归属批次 5 的 EditorController 收口。批次 4 保留 DocumentController 的命令入口、identity 和安全语义，不建立第二条文件生命周期。
+- 因此批次 4 的代码交付已完成；重新出现文件的确认重建手测也已通过。它保持“待手测”仅等待一次无失败的完整 E2E 运行，不表示仍有批次 4 的开发任务。
+
+**当前聚焦验证：** `typecheck`、`typecheck:renderer`、`format:check`、`lint`、`check:vditor`、`build` 全部通过；批次 4 相关单元测试 12 文件 135/135 通过；自动保存、恢复、identity 合并、别名 Save As、冲突、删除/重现的 renderer 生命周期 E2E 6/6 通过。用户曾取得一次 373/373 单测与 142/142 E2E 的干净 `check:all`；重新出现文件确认重建修复后，受影响删除/重现场景 E2E 1/1 和手测均通过。修复后的 `check:all` 为 373/373 单测及非 E2E gate 通过、141/142 E2E，通过后单项重跑显示 editor-mode 大纲导航用例 flaky；仍待一次无失败的完整 E2E 运行。
 
 ## 关键技术约束（摘自 AGENTS.md）
 
@@ -122,6 +133,8 @@ export class AppStore {
   addDocument(document: DocumentTab): void;
   removeDocument(id: string): void;
   activateDocument(id: string): void;
+  setActiveDocument(id: string | null): void;
+  moveDocument(id: string, beforeId: string, placeAfter: boolean): void;
   updateDocument(id: string, updates: Partial<DocumentState>): void;
   updateDocumentRuntime(id: string, updates: Partial<EditorRuntime>): void;
   getDocument(id: string): DocumentTab | undefined;
@@ -211,7 +224,6 @@ export interface EditorRuntime {
   readonly recoveryOperation: Promise<void>;
   readonly pendingAnchor: string;
   readonly pendingEditorContent: boolean;
-  readonly saveOperation: Promise<void> | null;
   readonly tableCompositionScrollCleanup: (() => void) | null;
 }
 
@@ -302,6 +314,8 @@ export function toRecoverySnapshot(document: DocumentState): RecoveryDocumentSna
 export function restoreDocumentState(snapshot: unknown): Omit<DocumentState, 'runtime'> | null;
 export function restoreRecoveryState(snapshot: unknown): RecoveryState | null;
 ```
+
+批次 4 的 settings session 边界另由 `src/shared/contracts/session.ts` 的 schema v1 `SessionSnapshot` 与 `src/renderer/documents/session-snapshot.ts` 白名单投影/验证负责；recovery IPC 使用 `src/renderer/documents/recovery-snapshot.ts` 的 schema v2 DTO。旧的无版本 session 配置只在读取时兼容归一化，未知版本拒绝。
 
 ### 纯函数暴露
 
@@ -400,12 +414,12 @@ window.__vditorDesktopLegacyBootstrap = init;
 
 ## 当前 app.js 关键事实
 
-批次 3 完成后的当前状态：
+批次 4 当前工作树状态：
 
-- **5281 行**单 IIFE（原 5414 行，减少 133 行）
-- `state` 对象 12 字段 + 28 模块级 `let` + 3 队列/映射
+- **5244 行**单 IIFE；文档域已通过组合入口接入 Store 与 TypeScript 控制器，其他域仍在 legacy IIFE
+- `state` 对象保留应用壳层字段，文档集合和活动 ID 改由 `AppStore` 提供；资源/设置/恢复异步链仍由组合入口协调
 - 每标签对象 ~44 字段（包含运行时属性如 vditor、host、toolbar 等）
-- 70 次 addEventListener，21 setTimeout，19 rAF
+- 60 次 addEventListener，18 setTimeout，16 rAF
 - 4 类 ResizeObserver，2 类 MutationObserver
 - 1 个 Vditor 创建点（ensureEditor:1524），3 个销毁点
 - 7 个 IPC 事件订阅
@@ -419,10 +433,16 @@ window.__vditorDesktopLegacyBootstrap = init;
 - `resolveLocale`、`t`（→`translate`）、`ipcErrorMessage`（→`formatIpcErrorMessage`）、`IPC_ERROR_MESSAGE_KEYS` → `src/renderer/ui/localization.ts`
 - `darkThemePreference`（→`validateDarkTheme`）、`lightThemePreference`（→`validateLightTheme`）、`preferredCodeTheme`（→`getPreferredCodeTheme`）、`themeModeFromSettings`（→`resolveThemeMode`） → `src/renderer/ui/theme-controller.ts`
 - `showMessage`、`showTemporaryDocumentNotice`、`showConfirmDialog`、`closeConfirmDialog`、`confirmDialog`、`showUnsavedDialog`、`setConfirmDialogDraggable`、`setupConfirmDialogDrag` → `src/renderer/ui/notifications.ts`（NotificationsController 类）
+- 标签栏表现与交互 → `src/renderer/documents/tab-controller.ts`
+- 新建、identity-aware 打开和正文读取 → `src/renderer/documents/document-controller.ts`
+- 文档/identity 两级保存队列 → `src/renderer/documents/document-save-controller.ts`
+- 关闭确认后的 runtime 释放、Store 删除顺序 → `src/renderer/documents/document-close-controller.ts`
+- watcher 正文状态分类 → `src/renderer/documents/external-change-controller.ts`
+- recovery/session 白名单 DTO → `src/renderer/documents/recovery-snapshot.ts`、`session-snapshot.ts` 与 `src/shared/contracts/session.ts`
 
 **仍在 app.js 中的主要函数**（按域分类）：
 
-- **文档/标签**：`activeTab`、`createTab`、`openPaths`、`openPath`、`switchTab`、`closeTab`、`renderTabs`、`saveTab`、`performSaveTab` 等
+- **文档/标签过渡组合**：`activeTab`、`createTab`、`openPaths`、`openPath`、`switchTab`、`closeTab`、`renderTabs`、`saveTab`、`performSaveTab` 等；其中打开/新建、标签表现、保存排队、关闭顺序和外部分类已由上述控制器拥有入口
 - **编辑器**：`ensureEditor`、`editorOptions`、`rebuildEditor`、`synchronizeVditorMode` 等
 - **主题 DOM 操作**：`applyTheme`、`syncThemeModeControl`、`selectStatusThemeMode`、`syncCodeThemeSelect`、`syncCodeThemeMenus`、`syncCodeThemeControls`、`syncContentThemeHosts`、`resolveTheme`
 - **工作区**：`setWorkspace`、`refreshFileTree`、`restoreWorkspace` 等
@@ -432,7 +452,7 @@ window.__vditorDesktopLegacyBootstrap = init;
 
 **关键数据结构**：
 
-app.js 中的 tab 对象（批次 4 需要统一为 store 的 DocumentTab 类型）：
+app.js 中的 tab 对象（当前仍以扁平属性访问 runtime；EditorController 迁移时再统一为 store 的 `DocumentTab.runtime`）：
 
 ```javascript
 const tab = {
@@ -449,9 +469,8 @@ const tab = {
   fileIdentity,
   contentRevision: 0,
   pendingEditorContent: false,
-  saveOperation: null,
   mode,
-  // 运行时属性（需要放入 runtime 字段）
+  // 当前 legacy 组合仍以扁平属性访问 runtime
   vditor: null,
   ready: false,
   saveTimer: null,
@@ -483,8 +502,8 @@ const tab = {
 
 - `build:main`：`tsconfig.main.json` 编译 main process TypeScript
 - `build:renderer`：`scripts/build-renderer.js` 使用 esbuild 打包两个入口：
-  - `src/renderer/main.ts` → `dist/renderer/main.js`（IIFE，~13KB dev）
-  - `src/renderer/pure-functions.ts` → `dist/renderer/pure-functions.js`（IIFE，~16KB dev，`globalName: '__vditorDesktopPureFunctions'`）
+  - `src/renderer/main.ts` → `dist/renderer/main.js`（IIFE，当前构建约 8.4KB）
+  - `src/renderer/pure-functions.ts` → `dist/renderer/pure-functions.js`（IIFE，当前构建约 138.1KB，`globalName: '__vditorDesktopPureFunctions'`）
 - `build:assets`：将 `src/renderer/*`（跳过 `.ts`）和 Vditor 资产复制到 `dist/`
 - `npm run build` = `build:main` + `build:renderer` + `build:assets`
 - `check` = `format:check` + `check:project` + `lint` + `typecheck` + `typecheck:renderer` + `check:vditor` + `npm test` + `npm run build`
@@ -492,63 +511,13 @@ const tab = {
 
 ## 下一步行动
 
-### 批次 4 实施策略
+### 当前交接动作
 
-批次 4 是安全敏感度最高的批次，需要严格按子步骤推进并逐步验证。建议采用以下策略：
-
-1. **渐进式迁移**：不要一次性重写所有文档/标签逻辑，而是按子步骤逐步迁移，每步验证后继续。
-
-2. **结构统一**：首先需要将 app.js 中的 tab 对象结构统一为 store 的 DocumentTab 类型（将运行时属性放入 runtime 字段）。
-
-3. **过渡适配器**：可以创建过渡适配器，让旧代码和新 store 共存，逐步替换。
-
-4. **测试覆盖**：每迁移一个子步骤，都要补充相应的单元测试和集成测试。
-
-5. **安全回归**：特别关注文件安全契约，确保保存基线、冲突检测、watcher 生命周期等行为不变。
-
-### 具体步骤
-
-1. **阅读相关文档**：
-   - `docs/05-FILE-SAFETY.md`：了解文件安全契约
-   - `docs/14-0.2.5-RENDERER-REFACTOR-PLAN.md` §4.1、§17、§18：了解批次 4 的设计原则
-   - `docs/01-CODE-STRUCTURE.md`：了解当前代码结构
-
-2. **创建 TabController 骨架**：
-   - 在 `src/renderer/documents/` 目录下创建 `tab-controller.ts`
-   - 实现标签渲染和活动标签切换（只管表现，不读写磁盘）
-   - 使用 AppStore 管理标签状态
-
-3. **统一 tab 对象结构**：
-   - 将 app.js 中的 tab 对象改为符合 DocumentTab 类型
-   - 将运行时属性（vditor、host、toolbar 等）放入 runtime 字段
-   - 更新所有引用 tab 对象的代码
-
-4. **迁移新建和打开文件**：
-   - 将 `createTab`、`openPaths`、`openPath` 等函数迁移到 TabController
-   - 使用 store.addDocument() 添加标签
-   - 使用 store.activateDocument() 激活标签
-
-5. **迁移保存逻辑**：
-   - 将 `saveTab`、`performSaveTab` 等函数迁移到 TabController 或单独的 SaveController
-   - 使用 store.updateContent() 和 store.markContentSaved() 更新内容状态
-   - 确保保存基线和 expectedBytes 的正确性
-
-6. **迁移关闭逻辑**：
-   - 将 `closeTab` 函数迁移到 TabController
-   - 使用 store.removeDocument() 删除标签
-   - 确保运行时资源正确释放
-
-7. **迁移外部变化和冲突**：
-   - 将 `handleExternalChange` 等函数迁移到 TabController
-   - 使用 store.setExternalConflict()、store.setExternalFileState() 等更新状态
-
-8. **迁移 session 与 recovery**：
-   - 使用快照投影函数（toSessionSnapshot、toRecoverySnapshot）序列化状态
-   - 使用恢复函数（restoreDocumentState、restoreRecoveryState）恢复状态
-
-9. **测试迁移**：
-   - 将 renderer-shell.test.ts 中的源码字符串测试替换为行为测试
-   - 补充 watcher ready/reconciliation、identity 别名、基线一致性的聚焦测试
+1. 用户已完成重新出现文件横幅“重新创建文件”确认路径的复测；下一次完整 E2E 运行需确认 `editor-modes.spec.ts` 的大纲导航用例不再 flaky，取得无失败结果后方可关闭批次 4。
+2. 若用户发现当前 HEAD 的行为回归，先保留失败输出，再按 `docs/05-FILE-SAFETY.md` 对应契约定位；不得用单项重跑替代全量结果。
+3. 用户全量验证批次 4 后进入批次 5：将 `ensureEditor`、`rebuildEditor`、runtime 句柄、自动保存 timer、编辑器内容读写，以及批次 4 文档命令的 runtime/UI 协调迁移到 `EditorController`，然后把 `app.js` 的过渡回调缩窄为组合层。
+4. 批次 5 迁移时继续保持 `DocumentController` 的命令入口、`TabController` 的纯表现边界、canonical identity 和 generation/revision 保护；不要把 Vditor 私有 DOM 查询扩散到文档域。
+5. 每次结构变化后同步更新 `docs/15-0.2.5-EXECUTION-TRACKER.md`、`docs/01-CODE-STRUCTURE.md` 和 `CHANGELOG.md`，并只运行与改动匹配的聚焦验证。
 
 ### 重要提醒
 

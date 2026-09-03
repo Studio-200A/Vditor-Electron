@@ -4,6 +4,7 @@ import { LifecycleManager } from './core/lifecycle.js';
 declare global {
   interface Window {
     __vditorDesktopLegacyBootstrap?: () => Promise<void>;
+    __vditorDesktopLegacyDispose?: () => void;
   }
 }
 
@@ -22,7 +23,7 @@ class LegacyAppController implements Controller {
   }
 
   dispose(): void {
-    // legacy app.js does not have a dispose mechanism yet
+    window.__vditorDesktopLegacyDispose?.();
   }
 }
 

@@ -31,7 +31,6 @@ function createMockRuntime(overrides: Partial<EditorRuntime> = {}): EditorRuntim
     recoveryOperation: Promise.resolve(),
     pendingAnchor: '',
     pendingEditorContent: false,
-    saveOperation: null,
     tableCompositionScrollCleanup: null,
     ...overrides,
   };
@@ -140,6 +139,34 @@ describe('AppStore', () => {
 
       const state = store.getState();
       expect(state.activeDocumentId).toBeNull();
+    });
+
+    it('sets and clears the active document through a controlled command', () => {
+      const doc = createMockDocumentTab();
+      store.addDocument(doc);
+      store.setActiveDocument(doc.id);
+      expect(store.getState().activeDocumentId).toBe(doc.id);
+
+      store.setActiveDocument(null);
+      expect(store.getState().activeDocumentId).toBeNull();
+    });
+
+    it('moves a document without changing active ownership', () => {
+      const first = createMockDocumentTab({ id: 'first' });
+      const second = createMockDocumentTab({ id: 'second' });
+      const third = createMockDocumentTab({ id: 'third' });
+      store.addDocument(first);
+      store.addDocument(second);
+      store.addDocument(third);
+      store.activateDocument(second.id);
+
+      store.moveDocument(third.id, first.id, false);
+      expect(store.getState().documents.map((document) => document.id)).toEqual([
+        'third',
+        'first',
+        'second',
+      ]);
+      expect(store.getState().activeDocumentId).toBe(second.id);
     });
 
     it('should update document state', () => {

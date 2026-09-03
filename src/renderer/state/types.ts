@@ -64,7 +64,6 @@ export interface EditorRuntime {
   readonly recoveryOperation: Promise<void>;
   readonly pendingAnchor: string;
   readonly pendingEditorContent: boolean;
-  readonly saveOperation: Promise<void> | null;
   readonly tableCompositionScrollCleanup: (() => void) | null;
 }
 

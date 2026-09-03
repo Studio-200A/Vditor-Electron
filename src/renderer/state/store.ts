@@ -94,6 +94,26 @@ export class AppStore {
     }));
   }
 
+  setActiveDocument(id: string | null): void {
+    this._updateState((state) => ({
+      ...state,
+      activeDocumentId: id !== null && state.documents.some((doc) => doc.id === id) ? id : null,
+    }));
+  }
+
+  moveDocument(id: string, beforeId: string, placeAfter: boolean): void {
+    this._updateState((state) => {
+      const from = state.documents.findIndex((document) => document.id === id);
+      const to = state.documents.findIndex((document) => document.id === beforeId);
+      if (from < 0 || to < 0 || from === to) return state;
+      const documents = [...state.documents];
+      const [moved] = documents.splice(from, 1);
+      const insertAt = placeAfter ? to + 1 : to;
+      documents.splice(insertAt > from ? insertAt - 1 : insertAt, 0, moved);
+      return { ...state, documents };
+    });
+  }
+
   updateDocument(id: string, updates: Partial<DocumentState>): void {
     this._updateState((state) => ({
       ...state,
