@@ -20,6 +20,17 @@
 - **refactor(document safety):** Centralized save, close, and external-change command entry in `DocumentController`; added explicit external-change classification, a versioned recovery DTO, and a versioned settings-session projection with legacy-read compatibility. Recovery IPC and persisted session data are validated before becoming document state; unavailable paths and runtime handles are excluded from session persistence.
 - **refactor(save safety):** Revalidate the tab’s Store membership and canonical binding after every awaited write-related step, so a late save cannot mutate a document closed, renamed, or replaced while I/O was pending.
 - **fix(file recovery):** Confirming recreation after a previously deleted file has reappeared now uses the watcher-provided disk snapshot as its safe write baseline. The confirmed local content replaces that version; a further external change is still rejected rather than silently overwritten.
+- **refactor(editor runtime):** Began the editor-domain migration with typed `EditorController`, `SplitViewController`, `OutlineController`, and `FindController` ownership. Vditor runtime generations now reject callbacks from rebuilt or closed instances; Desktop outline rendering, find state, SV divider pointer lifecycle, and their deferred refresh cleanup no longer live in the application shell. Find replacement uses the selected editor range and Vditor input path, preserving undo and mode state instead of resetting the document value.
+- **refactor(editor construction and toolbar):** Moved Vditor constructor-only options, image upload/compression, and shared toolbar hand-off/wrap-height lifecycle into typed editor modules. Existing offline resources, supported toolbar show/hide behavior, image Markdown insertion, and Vditor undo paths remain unchanged.
+- **refactor(editor tab runtime):** Moved tab activation's editor-runtime coordination into `EditorRuntimeCoordinator`. It now owns toolbar hand-off, host activation, editor initialization, deferred spacer/anchor work, outline/find refresh, and session persistence ordering; stale animation-frame work is rejected after a newer tab becomes active.
+- **fix(renderer startup):** Deferred localized image-upload messages until they are needed, so renderer bootstrap no longer reads the locale table before its initialization and prevents Vditor Desktop from becoming ready.
+- **fix(editor runtime):** Preserve editor-destroy failures for rebuild callers after cleanup, restore the rename warning when every affected editor cannot rebuild, and clear stale SV whitespace scroll compensation after a redraw.
+- **test(e2e):** Drive the paragraph-width range input through native keyboard events, matching the browser control contract instead of using unsupported text-input filling.
+
+### Project Maintenance
+
+- **fix(dependencies):** Updated the transitive `fast-uri` dependency from 3.1.5 to 3.1.7 to resolve Dependabot security alerts.
+- **fix(dependencies):** Updated the transitive `@xmldom/xmldom` dependency from 0.8.14 to 0.8.15 to resolve a Dependabot security alert.
 
 ## 0.2.0 - Under-the-Hood Robustness Improvement
 

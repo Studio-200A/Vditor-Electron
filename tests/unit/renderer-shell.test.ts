@@ -185,7 +185,6 @@ describe('renderer shell', () => {
         (option) => (option as HTMLOptionElement).value,
       ),
     ).toEqual(['system', 'en_US', 'zh_Hans', 'zh_Hant']);
-    expect(rendererScript).toContain("state.locale === 'zh_Hant' ? 'zh_TW'");
   });
 
   it('uses native macOS traffic lights with a protected custom-titlebar menu area', () => {
@@ -354,14 +353,6 @@ describe('renderer shell', () => {
     expect(css).toContain("mask-image: url('../assets/symbolic/replace.svg')");
     expect(css).toContain("mask-image: url('../assets/symbolic/replace-all.svg')");
     expect(css).toContain('background: currentColor');
-    expect(rendererScript).toContain('VDITOR.revealTextMatch(tab.host, mode, query, findIndex)');
-    expect(rendererScript).toContain("$('#findWidget').addEventListener('focusout'");
-    expect(rendererScript).toContain('event.stopImmediatePropagation()');
-    expect(rendererScript).toContain("event.key === 'Enter' && event.target === $('#findInput')");
-    expect(rendererScript).toContain("event.key.toLowerCase() === 's'");
-    expect(rendererScript).not.toContain(
-      'moveFindMatch(event.shiftKey ? -1 : 1);\n        }\n      },\n      true,',
-    );
     expect(css).toMatch(/\.find-widget\s*\{[^}]*position:\s*absolute[^}]*z-index:\s*12/s);
   });
 
@@ -491,7 +482,6 @@ describe('renderer shell', () => {
     expect(document.querySelector('#outlineView > .panel-heading')).toBeNull();
     expect(document.querySelector('#outlineTree')).not.toBeNull();
     expect(css).toMatch(/\.outline-row:hover\s*\{[^}]*background:\s*var\(--hover\)/s);
-    expect(rendererScript).toContain("toggle.className = 'outline-toggle'");
     expect(css).toContain('color-mix(in srgb, var(--text) 78%, var(--muted))');
     expect(rendererScript).toContain('function scrollHeadingIntoEditor');
     expect(vditorAdapterScript).toContain('sourceHeading: \'[data-type="heading-marker"]\'');
@@ -685,9 +675,6 @@ describe('renderer shell', () => {
     expect(document.querySelectorAll('[name="tabSize"] option')).toHaveLength(4);
     expect(document.querySelector('[name="showWhitespace"]')).not.toBeNull();
     expect(document.querySelector('[name="autoIndent"]')).not.toBeNull();
-    expect(rendererScript).toContain("document.createElement('canvas')");
-    expect(rendererScript).toContain('canvas.whitespaceMarkerPositions = markerPositions');
-    expect(rendererScript).toContain('if (tab.whitespaceFrame) return');
     expect(css).toMatch(
       /\.editor-host\.vditor:not\(\.active\)\s*\{[^}]*display:\s*none !important/s,
     );

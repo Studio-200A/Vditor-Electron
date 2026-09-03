@@ -97,7 +97,7 @@
       }),
     onExistingDocument: (tab, { filePath, fileIdentity, activate, pendingAnchor }) => {
       if (!tab.filePath) {
-        clearTimeout(tab.saveTimer);
+        editorController.cancelAutoSave(tab);
         tab.externalConflict = {
           kind: 'modified',
           path: filePath,
@@ -119,7 +119,42 @@
       rememberRecent(tab.filePath);
     },
     onDocumentNotCreated: () => syncLocalResourceRoots(),
-    readDocumentContent: (tab) => {
+    readDocumentContent: (tab) => editorController.currentContent(tab),
+  });
+  const editorController = new PURE.EditorController({
+    adapter: {
+      editorScrollContainer: (host, mode) => VDITOR.editorScrollContainer(host, mode),
+    },
+    createOptions: (tab, generation) => editorOptions(tab, generation),
+    getActiveDocumentId: () => state.activeId,
+    onAvailabilityChanged: (tab) => {
+      if (tab.id === state.activeId || tab.toolbarPreview) syncToolbarAvailability();
+    },
+    onBeforeDestroy: (tab, disposeTabResources) => {
+      if (contextMenuState?.tab === tab) closeContextMenu();
+      disconnectEditorBottomSpacer(tab);
+      imageRuntimeController.detach(tab);
+      tab.outlineObserver?.disconnect();
+      tab.outlineObserver = null;
+      if (disposeTabResources) {
+        tab.tableCompositionScrollCleanup?.();
+        tab.tableCompositionScrollCleanup = null;
+        tab.modeShortcutCleanup?.();
+        tab.modeShortcutCleanup = null;
+      }
+      splitViewController.dispose(tab);
+      restoreEditorToolbar(tab);
+    },
+    onCreationFailure: (tab, error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      tab.host.innerHTML = `<div class="fatal"><h2>Editor initialization failed</h2><p>${escapeHTML(message)}</p></div>`;
+      showMessage(message, true);
+    },
+    onModeChanged: (tab) => {
+      if (tab.id === state.activeId) updateActiveUI();
+      scheduleSplitLineNumbers(tab);
+    },
+    readContent: (tab) => {
       try {
         return tab.vditor && tab.ready
           ? VDITOR.withOriginalImageSources(tab.host, () => tab.vditor.getValue())
@@ -128,6 +163,116 @@
         return tab.content;
       }
     },
+  });
+  const outlineController = new PURE.OutlineController({
+    view: $('#outlineView'),
+    tree: $('#outlineTree'),
+    getActiveTab: () => activeTab(),
+    getSnapshot: (tab) => VDITOR.outlineSnapshot(tab.host, tab.mode),
+    scrollToHeading: (tab, index) => scrollToOutlineHeading(tab, index),
+    translate: (key) => t(key),
+  });
+  const findController = new PURE.FindController({
+    widget: $('#findWidget'),
+    input: $('#findInput'),
+    replaceInput: $('#replaceInput'),
+    replaceRow: $('#replaceRow'),
+    toggleReplace: $('#findToggleReplace'),
+    count: $('#findCount'),
+    getActiveRuntime: () => {
+      const tab = activeTab();
+      if (!tab?.vditor || !tab.ready) return null;
+      return {
+        id: tab.id,
+        content: currentContent(tab),
+        host: tab.host,
+        mode: tab.vditor.getCurrentMode() || tab.mode,
+        focus: () => tab.vditor?.focus(),
+      };
+    },
+    adapter: {
+      revealTextMatch: (host, mode, query, occurrence) =>
+        VDITOR.revealTextMatch(host, mode, query, occurrence),
+      selectTextMatch: (host, mode, query, occurrence) =>
+        VDITOR.selectTextMatch(host, mode, query, occurrence),
+      replaceTextMatch: (host, mode, query, occurrence, replacement) =>
+        VDITOR.replaceTextMatch(host, mode, query, occurrence, replacement),
+      clearFindHighlights: () => VDITOR.clearFindHighlights(),
+    },
+    onSave: () => void saveTab(),
+  });
+  const imageController = new PURE.ImageController({
+    fileBridge: {
+      dirname: (filePath) => window.fileAPI.dirname(filePath),
+      writeBinaryFile: (filePath, bytes) => window.fileAPI.writeBinaryFile(filePath, bytes),
+      relative: (from, to) => window.fileAPI.relative(from, to),
+    },
+    getAssetsDirectory: () => state.settings.pasteImagesDir || './assets',
+    getMaximumWidth: () => state.settings.imageMaxWidth,
+    getQuality: () => state.settings.imageQuality,
+    onError: (message) => showMessage(message, true),
+    formatError: ipcErrorMessage,
+    saveFirstMessage: () => t('message.imageSaveFirst'),
+    uploadFailedMessage: (error) => t('message.imageSaveFailed', { error }),
+  });
+  const imageRuntimeController = new PURE.ImageRuntimeController({
+    localResourceBase,
+    adapter: {
+      observeRelativeImageSources: (host, baseUrl) =>
+        VDITOR.observeRelativeImageSources(host, baseUrl),
+      reloadImageSources: (host) => VDITOR.reloadImageSources(host),
+    },
+  });
+  const toolbarController = new PURE.ToolbarController({
+    app: $('#app'),
+    mount: $('#vditorToolbarMount'),
+    mainArea: $('.main-area'),
+    getActiveRuntime: () => activeTab(),
+    getPreviewRuntime: () => state.toolbarPreview,
+    findRuntimeByToolbar: (toolbar) => state.tabs.find((tab) => tab.toolbar === toolbar) || null,
+    getMountedToolbar: () => $('#vditorToolbarMount').querySelector(VDITOR.selectors.toolbar),
+  });
+  const editorRuntimeCoordinator = new PURE.EditorRuntimeCoordinator({
+    getTab: (id) => state.tabs.find((tab) => tab.id === id) || null,
+    getTabs: () => state.tabs,
+    getActiveTab: () => activeTab(),
+    getActiveDocumentId: () => state.activeId,
+    closeContextMenu,
+    restoreToolbar: restoreEditorToolbar,
+    activateDocument: (id) => {
+      state.activeId = id;
+    },
+    syncToolbarAvailability,
+    ensureEditor,
+    updateBottomSpacer: updateEditorBottomSpacer,
+    scrollToPendingAnchor,
+    mountToolbar: mountEditorToolbar,
+    scheduleSplitLineNumbers,
+    renderTabs,
+    updateActiveUI,
+    onOutlineRuntimeChanged: renderOutline,
+    onFindRuntimeChanged: () => findController.onRuntimeChanged(),
+    persistSession: () => void persistSession(),
+  });
+  const splitViewController = new PURE.SplitViewController({
+    getContent: (tab) => VDITOR.editorParts(tab.host).content,
+    getSource: (tab) => VDITOR.editorParts(tab.host).source,
+    ensureResizer: (tab) => VDITOR.ensureSplitResizer(tab.host),
+    getVisibility: (tab, mode) => VDITOR.splitViewVisibility(tab.host, mode),
+    getRatio: () => state.settings.splitRatio,
+    setRatio: (ratio) => {
+      state.settings.splitRatio = ratio;
+    },
+    persistRatio: () => void queueSettingsSave({ splitRatio: state.settings.splitRatio }),
+    onLayoutChanged: (tab) => scheduleSplitLineNumbers(tab),
+    refreshLineNumbers: (tab) => updateSplitLineNumbers(tab),
+    shouldDeferLineNumberResize: () => $('#app').classList.contains('sidebar-transitioning'),
+    syncScroll: (tab) => VDITOR.syncSplitDecorationScroll(tab.host),
+    installScrollEnhancement: (tab) => setupAutoHideScrollbar(VDITOR.editorParts(tab.host).source),
+    installAutoIndent: (tab) =>
+      VDITOR.installSplitAutoIndent(tab.host, () => state.settings.autoIndent),
+    captureIndentSelection: (tab) => VDITOR.captureSplitIndentSelection(tab.host),
+    applyIndent: (tab, type, range) => VDITOR.applySplitListIndent(tab.host, type, range),
   });
   let resourceRootsQueue = Promise.resolve();
   let settingsSaveQueue = Promise.resolve();
@@ -168,35 +313,7 @@
   // Vditor 3.11.3 exposes public setters only for themes and preview mode.
   // Keep this list limited to settings that are passed to its constructor and
   // have no safe runtime setter; rebuilding clears Vditor's undo stack.
-  const VDITOR_INITIALIZATION_SETTINGS = new Set([
-    'iconSet',
-    'locale',
-    'placeholder',
-    'typewriterMode',
-    'tabInsertSpaces',
-    'tabSize',
-    'rtl',
-    'toolbarItems',
-    'previewDelay',
-    'previewMaxWidth',
-    'multiPlatformPreview',
-    'mathEngine',
-    'enableHighlight',
-    'lineNumbers',
-    'enableAutoSpace',
-    'enableCallout',
-    'enableFootnotes',
-    'enableImageCaption',
-    'enableMark',
-    'enableSub',
-    'enableSup',
-    'paragraphBeginningSpace',
-    'fixTermTypo',
-    'gfmAutoLink',
-    'toc',
-    'listStyle',
-    'sanitize',
-  ]);
+  const VDITOR_INITIALIZATION_SETTINGS = PURE.VDITOR_INITIALIZATION_SETTINGS;
   let appMenuCloseHandler;
   let closeAppMenu = () => {};
   let appMenuBlurHandler;
@@ -205,11 +322,6 @@
   let sidebarTransitionTimer;
   let sidebarTransitionEndHandler;
   let sidebarLayoutAnimations = [];
-  let findMatches = [];
-  let findIndex = -1;
-  let findQuery = '';
-  let findRefreshTimer;
-  let toolbarWrapHeightFrame = null;
   let hoveredDocumentLink = null;
   let hoveredSidebarTooltip = null;
   let editorSelectionActive = false;
@@ -300,7 +412,7 @@
     if ($('#appMenuBar')?.dataset.ready === 'true') setupAppMenus();
     renderTabs();
     updateActiveUI();
-    renderOutline();
+    outlineController.onRuntimeChanged();
   }
 
   function uid() {
@@ -590,135 +702,6 @@
     notifications.showTemporaryDocumentNotice(message, error);
   }
 
-  function findWidgetVisible() {
-    return !$('#findWidget').classList.contains('hidden');
-  }
-
-  function collectFindMatches(content, query) {
-    if (!query) return [];
-    const matches = [];
-    const haystack = content.toLocaleLowerCase();
-    const needle = query.toLocaleLowerCase();
-    let offset = 0;
-    while (offset <= haystack.length - needle.length) {
-      const start = haystack.indexOf(needle, offset);
-      if (start < 0) break;
-      matches.push({ start, end: start + query.length });
-      offset = start + Math.max(query.length, 1);
-    }
-    return matches;
-  }
-
-  function revealFindMatch() {
-    const tab = activeTab();
-    const query = $('#findInput').value;
-    if (!tab?.vditor || findIndex < 0 || !query) return;
-    const mode = tab.vditor.getCurrentMode();
-    VDITOR.revealTextMatch(tab.host, mode, query, findIndex);
-    const highlightIndex = findIndex;
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (
-          activeTab() !== tab ||
-          $('#findInput').value !== query ||
-          findIndex !== highlightIndex ||
-          !findWidgetVisible()
-        )
-          return;
-        VDITOR.highlightTextMatches(
-          tab.host,
-          tab.vditor?.getCurrentMode() || mode,
-          query,
-          findIndex,
-        );
-      });
-    });
-  }
-
-  function refreshFind({ preserveIndex = true, reveal = true, content, index } = {}) {
-    const tab = activeTab();
-    const query = $('#findInput').value;
-    findQuery = query;
-    const previousIndex = findIndex;
-    findMatches = tab ? collectFindMatches(content ?? tab.content, query) : [];
-    if (!findMatches.length) findIndex = -1;
-    else if (typeof index === 'number') findIndex = Math.min(index, findMatches.length - 1);
-    else if (preserveIndex && previousIndex >= 0)
-      findIndex = Math.min(previousIndex, findMatches.length - 1);
-    else findIndex = 0;
-    $('#findCount').textContent = `${findIndex < 0 ? 0 : findIndex + 1} / ${findMatches.length}`;
-    if (reveal) revealFindMatch();
-  }
-
-  function moveFindMatch(direction) {
-    if (!findMatches.length) return;
-    findIndex = (findIndex + direction + findMatches.length) % findMatches.length;
-    $('#findCount').textContent = `${findIndex + 1} / ${findMatches.length}`;
-    revealFindMatch();
-  }
-
-  function openFind() {
-    if (!activeTab()) return;
-    const selection = window.getSelection()?.toString() || '';
-    const input = $('#findInput');
-    $('#findWidget').classList.remove('hidden');
-    if (!findWidgetVisible()) return;
-    if (selection && !selection.includes('\n')) input.value = selection;
-    refreshFind({ preserveIndex: false, reveal: false });
-    input.focus();
-    input.select();
-  }
-
-  function closeFind() {
-    clearTimeout(findRefreshTimer);
-    const tab = activeTab();
-    const query = $('#findInput').value;
-    if (tab?.vditor && findIndex >= 0 && query) {
-      VDITOR.selectTextMatch(tab.host, tab.vditor.getCurrentMode(), query, findIndex);
-    }
-    $('#findWidget').classList.add('hidden');
-    VDITOR.clearFindHighlights();
-    tab?.vditor?.focus();
-  }
-
-  function toggleReplace() {
-    const expanded = $('#replaceRow').classList.toggle('hidden') === false;
-    $('#findToggleReplace').setAttribute('aria-expanded', String(expanded));
-    if (expanded) $('#replaceInput').focus();
-  }
-
-  function applyFindContent(tab, content) {
-    tab.pendingEditorContent = true;
-    tab.vditor?.setValue(content);
-    onEditorInput(tab, content);
-  }
-
-  function replaceFindMatch() {
-    const tab = activeTab();
-    const match = findMatches[findIndex];
-    if (!tab || !match) return;
-    const replacedIndex = findIndex;
-    const content = tab.content;
-    const replacement = $('#replaceInput').value;
-    const nextContent = `${content.slice(0, match.start)}${replacement}${content.slice(match.end)}`;
-    applyFindContent(tab, nextContent);
-    refreshFind({ content: nextContent, index: replacedIndex });
-  }
-
-  function replaceAllFindMatches() {
-    const tab = activeTab();
-    if (!tab || !findMatches.length) return;
-    const content = tab.content;
-    const replacement = $('#replaceInput').value;
-    let nextContent = content;
-    for (let index = findMatches.length - 1; index >= 0; index -= 1) {
-      const match = findMatches[index];
-      nextContent = `${nextContent.slice(0, match.start)}${replacement}${nextContent.slice(match.end)}`;
-    }
-    applyFindContent(tab, nextContent);
-    refreshFind({ preserveIndex: false, content: nextContent });
-  }
-
   function darkThemePreference() {
     return validateDarkThemeImpl(state.settings.darkTheme);
   }
@@ -865,54 +848,11 @@
   }
 
   function scheduleSplitLineNumbers(tab) {
-    if (!tab) return;
-    if (tab.lineNumberFrame) cancelAnimationFrame(tab.lineNumberFrame);
-    tab.lineNumberFrame = requestAnimationFrame(() => {
-      tab.lineNumberFrame = null;
-      updateSplitLineNumbers(tab);
-    });
-  }
-
-  function scheduleWhitespaceMarkers(tab, sv = VDITOR.editorParts(tab?.host).source) {
-    if (!tab || !sv) return;
-    if (tab.whitespaceFrame) return;
-    tab.whitespaceFrame = requestAnimationFrame(() => {
-      tab.whitespaceFrame = null;
-      renderWhitespaceMarkers(tab, sv);
-    });
+    if (tab) splitViewController.scheduleLineNumbers(tab);
   }
 
   function observeSplitLineNumbers(tab) {
-    tab.lineObserver?.disconnect();
-    tab.lineResizeObserver?.disconnect();
-    const sv = VDITOR.editorParts(tab.host).source;
-    if (!sv) return;
-    tab.lineObserver = new MutationObserver(() => scheduleSplitLineNumbers(tab));
-    tab.lineObserver.observe(sv, {
-      attributes: true,
-      childList: true,
-      subtree: true,
-      attributeFilter: ['class', 'style'],
-    });
-    tab.lineResizeObserver = new ResizeObserver(() => {
-      if (!$('#app').classList.contains('sidebar-transitioning')) scheduleSplitLineNumbers(tab);
-    });
-    tab.lineResizeObserver.observe(sv);
-  }
-
-  function disconnectSplitLineNumbers(tab) {
-    tab.lineObserver?.disconnect();
-    tab.lineResizeObserver?.disconnect();
-    if (tab.lineScrollSource && tab.lineScrollHandler)
-      tab.lineScrollSource.removeEventListener('scroll', tab.lineScrollHandler);
-    if (tab.lineNumberFrame) cancelAnimationFrame(tab.lineNumberFrame);
-    if (tab.whitespaceFrame) cancelAnimationFrame(tab.whitespaceFrame);
-    tab.lineObserver = null;
-    tab.lineResizeObserver = null;
-    tab.lineScrollSource = null;
-    tab.lineScrollHandler = null;
-    tab.lineNumberFrame = null;
-    tab.whitespaceFrame = null;
+    splitViewController.observeLineNumbers(tab);
   }
 
   function updateEditorBottomSpacer(tab) {
@@ -937,282 +877,32 @@
     tab.bottomSpacerObserver = null;
   }
 
-  function renderWhitespaceMarkers(tab, sv) {
-    const content = VDITOR.editorParts(tab.host).content;
-    let layer = content.querySelector(':scope > .sv-whitespace-layer');
-    if (!state.settings.showWhitespace) {
-      layer?.remove();
-      return;
-    }
-    if (!layer) {
-      layer = document.createElement('div');
-      layer.className = 'sv-whitespace-layer';
-      content.appendChild(layer);
-    }
-    layer.style.left = `${sv.offsetLeft}px`;
-    layer.style.top = `${sv.offsetTop}px`;
-    layer.style.width = `${sv.clientWidth}px`;
-    layer.style.height = `${sv.clientHeight}px`;
-    let canvas = layer.querySelector(':scope > .sv-whitespace-canvas');
-    if (!canvas) {
-      canvas = document.createElement('canvas');
-      canvas.className = 'sv-whitespace-canvas';
-      layer.appendChild(canvas);
-    }
-    const pixelRatio = window.devicePixelRatio || 1;
-    const width = Math.max(1, sv.clientWidth);
-    const height = Math.max(1, sv.clientHeight);
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
-    canvas.style.transform = 'translateY(0)';
-    canvas.width = Math.ceil(width * pixelRatio);
-    canvas.height = Math.ceil(height * pixelRatio);
-    const context = canvas.getContext('2d');
-    if (!context) return;
-    context.scale(pixelRatio, pixelRatio);
-    context.fillStyle = getComputedStyle(layer).color;
-    const svRect = sv.getBoundingClientRect();
-    const markerPositions = [];
-    const walker = document.createTreeWalker(sv, NodeFilter.SHOW_TEXT);
-    let textNode = walker.nextNode();
-    while (textNode) {
-      for (let index = 0; index < textNode.data.length; index += 1) {
-        const character = textNode.data[index];
-        if (character !== ' ' && character !== '\t') continue;
-        const range = document.createRange();
-        range.setStart(textNode, index);
-        range.setEnd(textNode, index + 1);
-        const rect = Array.from(range.getClientRects()).find(
-          (item) =>
-            item.width > 0 &&
-            item.height > 0 &&
-            item.right > svRect.left &&
-            item.left < svRect.right &&
-            item.bottom > svRect.top &&
-            item.top < svRect.bottom,
-        );
-        if (!rect) continue;
-        const markerCount = character === '\t' ? Number(state.settings.tabSize) || 4 : 1;
-        for (let markerIndex = 0; markerIndex < markerCount; markerIndex += 1) {
-          const x = rect.left - svRect.left + (rect.width * (markerIndex + 0.5)) / markerCount;
-          const y = rect.top - svRect.top + rect.height / 2;
-          markerPositions.push({ x, y });
-          context.beginPath();
-          context.arc(x, y, Math.max(1, Math.min(1.35, rect.height / 12)), 0, Math.PI * 2);
-          context.fill();
-        }
-      }
-      textNode = walker.nextNode();
-    }
-    canvas.dataset.markerCount = String(markerPositions.length);
-    canvas.dataset.scrollTop = String(sv.scrollTop);
-    canvas.whitespaceMarkerPositions = markerPositions;
-  }
-
   function syncSplitViewLayout(tab) {
     if (!tab?.vditor || !tab.ready) return;
-    const { source: sv, preview } = VDITOR.editorParts(tab.host);
-    if (!sv || !preview) return;
-    const splitMode = tab.vditor.getCurrentMode() === 'sv';
-    const sourceVisible = splitMode && getComputedStyle(sv).display !== 'none';
-    const previewVisible = splitMode && getComputedStyle(preview).display !== 'none';
-    tab.host.classList.toggle('sv-editor-only', sourceVisible && !previewVisible);
-    tab.host.classList.toggle('sv-preview-only', !sourceVisible && previewVisible);
-    tab.host.classList.toggle('sv-both', sourceVisible && previewVisible);
+    return splitViewController.syncLayout(tab, tab.vditor.getCurrentMode());
   }
 
   function ensureSplitResizer(tab) {
-    const { content, preview } = VDITOR.editorParts(tab.host);
-    if (!content || !preview) return;
-    let resizer = content.querySelector(':scope > .sv-split-resizer');
-    if (!resizer) {
-      resizer = document.createElement('div');
-      resizer.className = 'sv-split-resizer hidden';
-      resizer.setAttribute('role', 'separator');
-      resizer.setAttribute('aria-orientation', 'vertical');
-      content.insertBefore(resizer, preview);
-      resizer.addEventListener('mousedown', (event) => {
-        event.preventDefault();
-        resizer.classList.add('dragging');
-        const move = (moveEvent) => {
-          const rect = content.getBoundingClientRect();
-          const ratio = Math.min(
-            80,
-            Math.max(20, ((moveEvent.clientX - rect.left) / rect.width) * 100),
-          );
-          state.settings.splitRatio =
-            Math.abs(ratio - 50) <= 2.5 ? 50 : Math.round(ratio * 10) / 10;
-          resizer.classList.toggle('snapped', state.settings.splitRatio === 50);
-          tab.host.style.setProperty('--split-source-width', `${state.settings.splitRatio}%`);
-          scheduleSplitLineNumbers(tab);
-        };
-        const up = () => {
-          resizer.classList.remove('dragging');
-          window.removeEventListener('mousemove', move);
-          window.removeEventListener('mouseup', up);
-          queueSettingsSave({ splitRatio: state.settings.splitRatio });
-        };
-        window.addEventListener('mousemove', move);
-        window.addEventListener('mouseup', up);
-      });
-    }
-    tab.host.style.setProperty('--split-source-width', `${state.settings.splitRatio || 50}%`);
-    tab.splitResizer = resizer;
+    splitViewController.attach(tab);
   }
 
   function updateSplitLineNumbers(tab) {
     if (!tab || !tab.vditor || !tab.ready) return;
-    const { content, source: sv, preview } = VDITOR.editorParts(tab.host);
-    if (!content || !sv || !preview) return;
-    let gutter = content.querySelector(':scope > .sv-line-numbers');
-    if (!gutter) {
-      gutter = document.createElement('div');
-      gutter.className = 'sv-line-numbers';
-      content.insertBefore(gutter, content.firstChild);
-    }
-    if (tab.lineScrollSource !== sv) {
-      if (tab.lineScrollSource && tab.lineScrollHandler)
-        tab.lineScrollSource.removeEventListener('scroll', tab.lineScrollHandler);
-      tab.lineScrollSource = sv;
-      tab.lineScrollHandler = () => {
-        const currentContent = VDITOR.editorParts(tab.host).content;
-        const currentGutter = currentContent?.querySelector(':scope > .sv-line-numbers');
-        const lineNumberCanvas = currentGutter?.querySelector(':scope > .sv-line-number-canvas');
-        if (lineNumberCanvas && !lineNumberCanvas.classList.contains('scroll-linked'))
-          lineNumberCanvas.style.transform = `translateY(${-sv.scrollTop}px)`;
-        const canvas = currentContent?.querySelector('.sv-whitespace-canvas');
-        if (canvas) {
-          const renderedScrollTop = Number(canvas.dataset.scrollTop || 0);
-          canvas.style.transform = `translateY(${renderedScrollTop - sv.scrollTop}px)`;
-        }
-        scheduleWhitespaceMarkers(tab, sv);
-      };
-      sv.addEventListener('scroll', tab.lineScrollHandler);
-    }
-    const isSplitView = tab.vditor.getCurrentMode() === 'sv';
     syncSplitViewLayout(tab);
-    const sourceVisible = isSplitView && getComputedStyle(sv).display !== 'none';
-    gutter.classList.toggle('hidden', !sourceVisible);
-    if (tab.splitResizer) {
-      const previewVisible = getComputedStyle(preview).display !== 'none';
-      tab.splitResizer.classList.toggle('hidden', !sourceVisible || !previewVisible);
-    }
-    if (!sourceVisible) {
-      content.querySelector(':scope > .sv-whitespace-layer')?.remove();
-      return;
-    }
-
-    const style = getComputedStyle(sv);
-    const lineHeight =
-      Number.parseFloat(style.lineHeight) || Number.parseFloat(style.fontSize) * 1.5;
-    const svRect = sv.getBoundingClientRect();
-    // Vditor can represent several textual source lines inside one private
-    // newline marker (notably table and HTML syntax). Measure the actual
-    // source text lines, otherwise positions after the final marker are only
-    // guessed and spill into the editor's trailing spacer.
-    const sourceLines = VDITOR.sourceLineRanges(sv);
-    if (!sourceLines.length) {
-      const range = document.createRange();
-      range.selectNodeContents(sv);
-      sourceLines.push({ range, fallbackRange: range.cloneRange() });
-    }
-    const positions = [];
-    for (let index = 0; index < sourceLines.length; index += 1) {
-      const { range, fallbackRange } = sourceLines[index];
-      // Raw HTML markers and wrapped source lines can return client rects in
-      // an order that ends at the newline marker. The line number belongs at
-      // the visually topmost rect of the logical source line.
-      const rect = Array.from(range.getClientRects())
-        .filter((item) => item.height > 0)
-        .reduce((topmost, item) => (!topmost || item.top < topmost.top ? item : topmost), null);
-      const fallbackRect = fallbackRange.getBoundingClientRect();
-      // Empty source lines have a zero-sized fallback range. It is not a
-      // layout position: treating it as one places every such line at the
-      // top of the gutter after the scroll-linked transform is applied.
-      const measuredRect = rect || (fallbackRect.height > 0 ? fallbackRect : null);
-      const measuredTop = measuredRect
-        ? measuredRect.top - svRect.top + sv.scrollTop + (measuredRect.height - lineHeight) / 2
-        : index === 0
-          ? Number.parseFloat(style.paddingTop) || 0
-          : positions[index - 1] + lineHeight;
-      positions.push(measuredTop);
-    }
-
-    const canvas = document.createElement('div');
-    canvas.className = 'sv-line-number-canvas';
-    // Match SV's complete scroll range so source lines and gutter stay aligned.
-    // Only actual Markdown lines receive spans; the trailing editor spacer is
-    // therefore an empty, unnumbered part of this canvas.
-    canvas.style.height = `${Math.max(sv.scrollHeight, (positions.at(-1) || 0) + lineHeight)}px`;
-    const scrollRange = Math.max(0, sv.scrollHeight - sv.clientHeight);
-    // Keep the gutter on the source element's compositor scroll timeline when
-    // Chromium supports it. The scroll-event transform remains a fallback for
-    // older engines, but it trails a compositor scroll by one visual frame.
-    const scrollLinked = CSS.supports?.('animation-timeline: scroll()');
-    canvas.classList.toggle('scroll-linked', Boolean(scrollLinked));
-    canvas.style.setProperty('--sv-scroll-range', `${scrollRange}px`);
-    if (!scrollLinked) canvas.style.transform = `translateY(${-sv.scrollTop}px)`;
-    positions.forEach((top, index) => {
-      const number = document.createElement('span');
-      number.className = 'sv-line-number';
-      number.style.top = `${top}px`;
-      number.textContent = String(index + 1);
-      canvas.appendChild(number);
-    });
-    gutter.replaceChildren(canvas);
-    renderWhitespaceMarkers(tab, sv);
-  }
-
-  function setupSplitEditorEnhancements(tab) {
-    const sv = VDITOR.editorParts(tab.host).source;
-    if (!sv || sv.dataset.desktopEnhancements === 'true') return;
-    sv.dataset.desktopEnhancements = 'true';
-    setupAutoHideScrollbar(sv);
-    sv.addEventListener(
-      'keydown',
-      (event) => {
-        if (
-          !state.settings.autoIndent ||
-          event.key !== 'Enter' ||
-          event.ctrlKey ||
-          event.altKey ||
-          event.metaKey ||
-          event.shiftKey
-        )
-          return;
-        const selection = window.getSelection();
-        if (!selection?.rangeCount) return;
-        const range = selection.getRangeAt(0);
-        if (!sv.contains(range.startContainer)) return;
-        const beforeCursor = range.cloneRange();
-        beforeCursor.selectNodeContents(sv);
-        beforeCursor.setEnd(range.startContainer, range.startOffset);
-        const currentLine = beforeCursor.toString().split('\n').at(-1) || '';
-        const indentation = currentLine.match(/^[ \t]+/)?.[0];
-        if (!indentation || /^\s*(?:[-+*]|\d+\.)\s/.test(currentLine)) return;
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        range.deleteContents();
-        const inserted = document.createTextNode(`\n${indentation}`);
-        range.insertNode(inserted);
-        range.setStartAfter(inserted);
-        range.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(range);
-        sv.dispatchEvent(
-          new InputEvent('input', {
-            bubbles: true,
-            inputType: 'insertText',
-            data: `\n${indentation}`,
-          }),
-        );
-      },
-      true,
+    VDITOR.renderSplitDecorations(
+      tab.host,
+      tab.vditor.getCurrentMode(),
+      state.settings.showWhitespace,
+      state.settings.tabSize,
     );
   }
 
+  function setupSplitEditorEnhancements(tab) {
+    splitViewController.activate(tab);
+  }
+
   function setupAutoHideScrollbar(element) {
-    if (!element || element.dataset.autoHideScrollbar === 'true') return;
+    if (!element || element.dataset.autoHideScrollbar === 'true') return null;
     element.dataset.autoHideScrollbar = 'true';
     element.classList.add('app-scrollbar');
     let timer;
@@ -1225,11 +915,19 @@
       clearTimeout(timer);
       timer = setTimeout(() => element.classList.remove('scrollbar-visible'), 1000);
     };
-    element.addEventListener('mousemove', (event) => {
+    const onMouseMove = (event) => {
       const rect = element.getBoundingClientRect();
       if (rect.right - event.clientX <= 14) reveal();
-    });
+    };
     element.addEventListener('scroll', reveal, { passive: true });
+    element.addEventListener('mousemove', onMouseMove);
+    return () => {
+      clearTimeout(timer);
+      element.removeEventListener('scroll', reveal);
+      element.removeEventListener('mousemove', onMouseMove);
+      element.classList.remove('scrollbar-visible', 'app-scrollbar');
+      delete element.dataset.autoHideScrollbar;
+    };
   }
 
   function setupTabWheelScrolling(tabBar) {
@@ -1256,170 +954,118 @@
     );
   }
 
-  function effectiveToolbarItems(toolbarItems) {
-    const configured = toolbarItems?.length ? toolbarItems : DEFAULT_TOOLBAR;
-    // Vditor 3.11.3 mode transitions still address this internal toolbar item.
-    return configured.includes('outline') ? configured : [...configured, 'outline'];
-  }
-
-  function editorOptions(tab) {
+  function editorOptions(tab, runtimeGeneration) {
     const s = state.settings;
     const wasModified = tab.modified;
-    const lang =
-      state.locale === 'zh_Hans' ? 'zh_CN' : state.locale === 'zh_Hant' ? 'zh_TW' : 'en_US';
-    const appTheme = document.documentElement.dataset.theme || s.theme;
-    return {
-      value: tab.content,
-      mode: tab.mode,
-      theme: isDarkTheme(appTheme) ? 'dark' : 'classic',
-      lang,
-      icon: s.iconSet,
-      cdn: 'app://app/vditor',
-      height: '100%',
-      width: '100%',
-      minHeight: 300,
-      placeholder: s.placeholder || t('editor.placeholder'),
-      typewriterMode: s.typewriterMode,
-      tab: s.tabInsertSpaces ? ' '.repeat(Number(s.tabSize) || 4) : '\t',
-      rtl: s.rtl,
-      toolbar: effectiveToolbarItems(s.toolbarItems),
-      // The Vditor toolbar is mounted into the application toolbar. Its visibility
-      // is controlled as one layout part from View > Layout.
-      toolbarConfig: { hide: false, pin: false },
-      // Desktop owns the single outline experience in the application sidebar.
-      outline: { enable: false, position: 'left' },
-      // Application-level capture owns modifier-click navigation. Normal clicks
-      // must still reach Vditor so IR can place its caret and expand link Markdown.
-      link: { isOpen: false },
-      cache: { enable: false },
-      undoDelay: 500,
-      preview: {
-        mode: s.previewMode,
-        delay: s.previewDelay,
-        maxWidth: s.previewMaxWidth,
-        actions: s.multiPlatformPreview
-          ? ['desktop', 'tablet', 'mobile', 'mp-wechat', 'zhihu']
-          : [],
-        hljs: { enable: s.enableHighlight, lineNumber: s.lineNumbers, style: s.codeTheme },
-        math: { engine: s.mathEngine },
-        markdown: {
-          autoSpace: s.enableAutoSpace,
-          callout: s.enableCallout,
-          footnotes: s.enableFootnotes,
-          imageCaption: s.enableImageCaption,
-          mark: s.enableMark,
-          sub: s.enableSub,
-          sup: s.enableSup,
-          toc: s.toc,
-          paragraphBeginningSpace: s.paragraphBeginningSpace,
-          fixTermTypo: s.fixTermTypo,
-          gfmAutoLink: s.gfmAutoLink,
-          // Resolve Markdown-relative resources before Vditor inserts their DOM nodes.
-          // Doing this in the adapter observer is too late to prevent an initial app:// request.
-          linkBase: localResourceBase(tab.baseDir),
-          listStyle: s.listStyle,
-          sanitize: s.sanitize,
-          codeBlockPreview: true,
-          mathBlockPreview: true,
+    // Resolve Markdown-relative resources before Vditor inserts their DOM nodes.
+    // Doing this in the adapter observer is too late to prevent an initial app:// request.
+    return PURE.createEditorOptions(tab, {
+      settings: s,
+      locale: state.locale,
+      appTheme: document.documentElement.dataset.theme || s.theme,
+      defaultToolbar: DEFAULT_TOOLBAR,
+      placeholder: t('editor.placeholder'),
+      isDarkTheme,
+      localResourceBase,
+      onUpload: handleImageUpload,
+      callbacks: {
+        after: () => {
+          if (!editorController.isCurrent(tab, runtimeGeneration)) return;
+          const contract = VDITOR.validateHost(tab.host);
+          if (!contract.valid) {
+            tab.ready = false;
+            tab.host.dataset.editorReady = 'false';
+            console.error('Unsupported Vditor DOM contract:', contract.missing);
+            showMessage(`Vditor integration mismatch: ${contract.missing.join(', ')}`, true);
+            return;
+          }
+          tab.host.dataset.contentTheme = state.settings.contentTheme;
+          imageRuntimeController.attach(tab);
+          tab.outlineObserver?.disconnect();
+          tab.outlineObserver = VDITOR.observeOutlineChanges(tab.host, () => {
+            if (tab.id === state.activeId) scheduleOutline();
+          });
+          setupDocumentAnchorNavigation(tab);
+          const splitSource = VDITOR.editorParts(tab.host).source;
+          VDITOR.scrollContainers(tab.host)
+            .filter((container) => container !== splitSource)
+            .forEach(setupAutoHideScrollbar);
+          tab.tableCompositionScrollCleanup?.();
+          tab.tableCompositionScrollCleanup = VDITOR.preserveTableScrollDuringInput(
+            tab.host,
+            () => tab.vditor?.getCurrentMode() || tab.mode,
+          );
+          const pendingEditorContent = tab.pendingEditorContent;
+          const pendingSavedContent = tab.savedContent;
+          const pendingModified = tab.modified;
+          if (pendingEditorContent) {
+            tab.pendingEditorContent = !editorController.injectContent(tab, tab.content, true);
+          }
+          const normalized = currentContent(tab);
+          tab.content = normalized;
+          tab.savedContent =
+            wasModified || pendingEditorContent || pendingModified
+              ? pendingSavedContent
+              : normalized;
+          tab.modified =
+            wasModified ||
+            pendingModified ||
+            pendingEditorContent ||
+            normalized !== tab.savedContent;
+          tab.ready = true;
+          tab.toolbar = VDITOR.editorParts(tab.host).toolbar;
+          VDITOR.hideNativeOutlineControl(tab.toolbar);
+          VDITOR.keepSplitToolbarActionsAvailable(tab.toolbar);
+          tab.toolbar.addEventListener(
+            'click',
+            (event) => handleVditorToolbarClick(tab, event),
+            true,
+          );
+          tab.toolbar.addEventListener(
+            'mousedown',
+            (event) => preserveSplitToolbarSelection(tab, event),
+            true,
+          );
+          // Vditor initialization may finish after the user changes the application theme.
+          // Read the current theme here so the late callback cannot restore stale menu filters.
+          const currentAppTheme = document.documentElement.dataset.theme || state.settings.theme;
+          syncCodeThemeControls(isDarkTheme(currentAppTheme), state.settings.codeTheme);
+          if (tab.id === state.activeId || tab.toolbarPreview) mountEditorToolbar(tab);
+          // Vditor may still be mutating the new document here. Its toolbar move
+          // is observed below, so defer measuring it until layout settles instead
+          // of forcing a full-document style calculation in this callback.
+          syncToolbarAvailability(false);
+          if (tab.toolbarPreview) {
+            disableToolbarPreview(tab);
+            syncToolbarWrapHeight();
+            return;
+          }
+          renderTabs();
+          updateActiveUI(false, false);
+          observeSplitLineNumbers(tab);
+          observeEditorBottomSpacer(tab);
+          ensureSplitResizer(tab);
+          setupSplitEditorEnhancements(tab);
+          scheduleSplitLineNumbers(tab);
+          setTimeout(() => tab.vditor && tab.vditor.focus(), 0);
+          restoreEditorScroll(tab);
+          requestAnimationFrame(() => scrollToPendingAnchor(tab));
         },
-        theme: { current: s.contentTheme, path: 'app://app/vditor/dist/css/content-theme' },
+        input: (value) => {
+          if (editorController.isCurrent(tab, runtimeGeneration)) onEditorInput(tab, value);
+        },
+        blur: (value) => {
+          if (editorController.isCurrent(tab, runtimeGeneration)) tab.content = value;
+        },
       },
-      upload: { accept: 'image/*', handler: (files) => handleImageUpload(tab, files) },
-      after: () => {
-        const contract = VDITOR.validateHost(tab.host);
-        if (!contract.valid) {
-          tab.ready = false;
-          tab.host.dataset.editorReady = 'false';
-          console.error('Unsupported Vditor DOM contract:', contract.missing);
-          showMessage(`Vditor integration mismatch: ${contract.missing.join(', ')}`, true);
-          return;
-        }
-        tab.host.dataset.localResourceBase = localResourceBase(tab.baseDir);
-        tab.host.dataset.contentTheme = state.settings.contentTheme;
-        tab.resourceObserver?.disconnect();
-        tab.resourceObserver = VDITOR.observeRelativeImageSources(
-          tab.host,
-          tab.host.dataset.localResourceBase,
-        );
-        tab.outlineObserver?.disconnect();
-        tab.outlineObserver = VDITOR.observeOutlineChanges(tab.host, () => {
-          if (tab.id === state.activeId) scheduleOutline();
-        });
-        setupDocumentAnchorNavigation(tab);
-        VDITOR.scrollContainers(tab.host).forEach(setupAutoHideScrollbar);
-        tab.tableCompositionScrollCleanup?.();
-        tab.tableCompositionScrollCleanup = VDITOR.preserveTableScrollDuringInput(
-          tab.host,
-          () => tab.vditor?.getCurrentMode() || tab.mode,
-        );
-        const pendingEditorContent = tab.pendingEditorContent;
-        const pendingSavedContent = tab.savedContent;
-        const pendingModified = tab.modified;
-        if (pendingEditorContent) {
-          tab.vditor.setValue(tab.content, true);
-          tab.pendingEditorContent = false;
-        }
-        const normalized = currentContent(tab);
-        tab.content = normalized;
-        tab.savedContent =
-          wasModified || pendingEditorContent || pendingModified ? pendingSavedContent : normalized;
-        tab.modified =
-          wasModified || pendingModified || pendingEditorContent || normalized !== tab.savedContent;
-        tab.ready = true;
-        tab.toolbar = VDITOR.editorParts(tab.host).toolbar;
-        VDITOR.hideNativeOutlineControl(tab.toolbar);
-        VDITOR.keepSplitToolbarActionsAvailable(tab.toolbar);
-        tab.toolbar.addEventListener(
-          'click',
-          (event) => handleVditorToolbarClick(tab, event),
-          true,
-        );
-        tab.toolbar.addEventListener(
-          'mousedown',
-          (event) => preserveSplitToolbarSelection(tab, event),
-          true,
-        );
-        // Vditor initialization may finish after the user changes the application theme.
-        // Read the current theme here so the late callback cannot restore stale menu filters.
-        const currentAppTheme = document.documentElement.dataset.theme || state.settings.theme;
-        syncCodeThemeControls(isDarkTheme(currentAppTheme), state.settings.codeTheme);
-        if (tab.id === state.activeId || tab.toolbarPreview) mountEditorToolbar(tab);
-        // Vditor may still be mutating the new document here. Its toolbar move
-        // is observed below, so defer measuring it until layout settles instead
-        // of forcing a full-document style calculation in this callback.
-        syncToolbarAvailability(false);
-        if (tab.toolbarPreview) {
-          disableToolbarPreview(tab);
-          syncToolbarWrapHeight();
-          return;
-        }
-        renderTabs();
-        updateActiveUI(false, false);
-        observeSplitLineNumbers(tab);
-        observeEditorBottomSpacer(tab);
-        ensureSplitResizer(tab);
-        setupSplitEditorEnhancements(tab);
-        scheduleSplitLineNumbers(tab);
-        setTimeout(() => tab.vditor && tab.vditor.focus(), 0);
-        restoreEditorScroll(tab);
-        requestAnimationFrame(() => scrollToPendingAnchor(tab));
-      },
-      input: (value) => onEditorInput(tab, value),
-      blur: (value) => {
-        tab.content = value;
-      },
-    };
+    });
   }
 
   function preserveSplitToolbarSelection(tab, event) {
     const { type } = VDITOR.toolbarContext(event.target);
     if (tab.vditor?.getCurrentMode() === 'sv' && (type === 'outdent' || type === 'indent')) {
       event.preventDefault();
-      const selection = window.getSelection();
-      const sourceEditor = VDITOR.editorParts(tab.host).source;
-      if (sourceEditor?.contains(selection?.anchorNode) && selection.rangeCount > 0) {
-        tab.splitToolbarRange = selection.getRangeAt(0).cloneRange();
-      }
+      splitViewController.preserveIndentSelection(tab);
     }
   }
 
@@ -1433,33 +1079,7 @@
     ) {
       event.preventDefault();
       event.stopImmediatePropagation();
-      const sourceEditor = VDITOR.editorParts(tab.host).source;
-      if (sourceEditor && tab.splitToolbarRange?.startContainer?.isConnected) {
-        sourceEditor.focus({ preventScroll: true });
-        const selection = window.getSelection();
-        selection.removeAllRanges();
-        selection.addRange(tab.splitToolbarRange);
-      }
-      const range = window.getSelection()?.rangeCount ? window.getSelection().getRangeAt(0) : null;
-      const { marker, padding } = VDITOR.listContext(range?.startContainer);
-      if (sourceEditor && marker) {
-        if (type === 'outdent') {
-          padding?.remove();
-        } else {
-          const padding = document.createElement('span');
-          padding.dataset.type = 'padding';
-          padding.textContent = marker.textContent.replace(/\S/g, ' ');
-          marker.before(padding);
-        }
-        sourceEditor.dispatchEvent(
-          new InputEvent('input', {
-            bubbles: true,
-            inputType: type === 'outdent' ? 'deleteContentBackward' : 'insertText',
-            data: type === 'outdent' ? null : ' ',
-          }),
-        );
-      }
-      tab.splitToolbarRange = null;
+      splitViewController.applyToolbarIndent(tab, type);
       return;
     }
     const themeMenu = type === 'code-theme' || type === 'content-theme';
@@ -1517,78 +1137,19 @@
   }
 
   function ensureEditor(tab) {
-    if (tab.vditor) return true;
-    tab.ready = false;
-    tab.host.dataset.editorReady = 'false';
-    if (tab.id === state.activeId || tab.toolbarPreview) syncToolbarAvailability();
-    try {
-      tab.vditor = new Vditor(tab.host, editorOptions(tab));
-      return true;
-    } catch (error) {
-      tab.vditor = null;
-      tab.host.innerHTML = `<div class="fatal"><h2>编辑器初始化失败</h2><p>${escapeHTML(error.message)}</p></div>`;
-      showMessage(error.message, true);
-      return false;
-    }
+    return editorController.ensure(tab);
   }
 
   function captureEditorScroll(tab) {
-    if (!tab?.vditor) return null;
-    const mode = tab.vditor.getCurrentMode();
-    const scroller = VDITOR.editorScrollContainer(tab.host, mode);
-    if (!scroller) return null;
-    const maximumTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
-    return {
-      mode,
-      scrollTop: scroller.scrollTop,
-      scrollLeft: scroller.scrollLeft,
-      progress: maximumTop ? scroller.scrollTop / maximumTop : 0,
-    };
+    return tab ? editorController.captureScroll(tab) : null;
   }
 
   function restoreEditorScroll(tab) {
-    const saved = tab.pendingScroll;
-    if (!saved) return;
-    const restore = () => {
-      const mode = tab.vditor?.getCurrentMode() || tab.mode;
-      const scroller = VDITOR.editorScrollContainer(tab.host, mode);
-      if (!scroller) return false;
-      const maximumTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
-      const maximumLeft = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
-      const top =
-        mode === saved.mode
-          ? Math.min(maximumTop, Math.max(0, saved.scrollTop))
-          : maximumTop * Math.min(1, Math.max(0, saved.progress));
-      scroller.scrollTop = top;
-      scroller.scrollLeft = Math.min(maximumLeft, Math.max(0, saved.scrollLeft));
-      scheduleSplitLineNumbers(tab);
-      return maximumTop > 0 || saved.scrollTop === 0;
-    };
-    // Vditor may finish a mode render after `after` has already run. Restore
-    // before the first paint, then repeat across the next frames and once
-    // after its short asynchronous render work so that it cannot reset the
-    // reconstructed editor back to the document start.
-    const restoreUntilStable = (frame = 0) => {
-      if (tab.pendingScroll !== saved) return;
-      restore();
-      if (frame < 3) {
-        requestAnimationFrame(() => restoreUntilStable(frame + 1));
-        return;
-      }
-      setTimeout(() => {
-        if (tab.pendingScroll !== saved) return;
-        restore();
-        tab.pendingScroll = null;
-      }, 80);
-    };
-    restoreUntilStable();
+    editorController.restoreScroll(tab, () => scheduleSplitLineNumbers(tab));
   }
 
   function synchronizeVditorMode(tab) {
-    if (!tab?.vditor) return;
-    tab.mode = tab.vditor.getCurrentMode();
-    if (tab.id === state.activeId) updateActiveUI();
-    scheduleSplitLineNumbers(tab);
+    if (tab) editorController.synchronizeMode(tab);
   }
 
   function prepareVditorModeTransition(tab, targetMode) {
@@ -1632,34 +1193,12 @@
   }
 
   function rebuildEditor(tab, mode) {
-    let rebuildError = null;
-    tab.ready = false;
-    tab.host.dataset.editorReady = 'false';
-    if (tab.id === state.activeId || tab.toolbarPreview) syncToolbarAvailability();
-    if (contextMenuState?.tab === tab) closeContextMenu();
-    tab.pendingScroll = captureEditorScroll(tab);
-    disconnectSplitLineNumbers(tab);
-    disconnectEditorBottomSpacer(tab);
-    tab.resourceObserver?.disconnect();
-    tab.resourceObserver = null;
-    tab.outlineObserver?.disconnect();
-    tab.outlineObserver = null;
     if (tab.vditor) {
-      restoreEditorToolbar(tab);
       try {
         tab.content = VDITOR.withOriginalImageSources(tab.host, () => tab.vditor.getValue());
-        tab.vditor.destroy();
-      } catch (error) {
-        rebuildError = error;
-      }
-      tab.vditor = null;
-      tab.toolbar = null;
+      } catch (_) {}
     }
-    tab.host.innerHTML = '';
-    if (mode) tab.mode = mode;
-    if (tab.id === state.activeId && !ensureEditor(tab) && !rebuildError)
-      rebuildError = new Error('The editor could not be initialized after the document changed.');
-    return rebuildError;
+    return editorController.rebuild(tab, mode);
   }
 
   function createTab({
@@ -1705,12 +1244,7 @@
       mode,
       vditor: null,
       ready: false,
-      saveTimer: null,
       toolbar: null,
-      lineObserver: null,
-      lineResizeObserver: null,
-      lineNumberFrame: null,
-      whitespaceFrame: null,
       bottomSpacerObserver: null,
       outlineCollapsed: new Set(),
       outlineObserver: null,
@@ -1815,23 +1349,7 @@
   }
 
   function switchTab(id) {
-    const tab = state.tabs.find((item) => item.id === id);
-    if (!tab) return;
-    closeContextMenu();
-    restoreEditorToolbar(activeTab());
-    state.activeId = id;
-    syncToolbarAvailability();
-    state.tabs.forEach((item) => item.host.classList.toggle('active', item.id === id));
-    ensureEditor(tab);
-    requestAnimationFrame(() => updateEditorBottomSpacer(tab));
-    requestAnimationFrame(() => scrollToPendingAnchor(tab));
-    if (tab.toolbar) mountEditorToolbar(tab);
-    scheduleSplitLineNumbers(tab);
-    renderTabs();
-    updateActiveUI();
-    renderOutline();
-    if (findWidgetVisible()) refreshFind({ preserveIndex: false });
-    persistSession();
+    editorRuntimeCoordinator.activate(id);
   }
 
   async function closeTab(id, { discard = false } = {}) {
@@ -1872,24 +1390,9 @@
   }
 
   async function disposeClosedTabRuntime(tab) {
-    clearTimeout(tab.saveTimer);
+    editorController.cancelAutoSave(tab);
     await discardRecoverySnapshot(tab);
-    disconnectSplitLineNumbers(tab);
-    disconnectEditorBottomSpacer(tab);
-    tab.resourceObserver?.disconnect();
-    tab.resourceObserver = null;
-    tab.outlineObserver?.disconnect();
-    tab.outlineObserver = null;
-    tab.tableCompositionScrollCleanup?.();
-    tab.tableCompositionScrollCleanup = null;
-    tab.modeShortcutCleanup?.();
-    tab.modeShortcutCleanup = null;
-    restoreEditorToolbar(tab);
-    if (tab.vditor) {
-      try {
-        tab.vditor.destroy();
-      } catch (_) {}
-    }
+    editorController.destroy(tab);
     tab.host.remove();
   }
 
@@ -1927,12 +1430,7 @@
   }
 
   function onEditorInput(tab, value) {
-    if (value !== tab.content) {
-      tab.pendingEditorContent = false;
-      tab.contentRevision++;
-    }
-    tab.content = value;
-    tab.modified = value !== tab.savedContent;
+    editorController.applyInput(tab, value);
     scheduleRecoverySnapshot(tab);
     renderTabs();
     if (tab.id === state.activeId) updateActiveUI();
@@ -1945,13 +1443,12 @@
       !tab.externalChangeIgnored &&
       !tab.externalFileState
     ) {
-      clearTimeout(tab.saveTimer);
-      tab.saveTimer = setTimeout(() => saveTab(tab), state.settings.autoSaveDelay);
+      editorController.scheduleAutoSave(tab, state.settings.autoSaveDelay, () => void saveTab(tab));
     }
   }
 
   function currentContent(tab) {
-    return documentController.currentContent(tab);
+    return editorController.currentContent(tab);
   }
 
   function recreateClipboardSnapshot(tab) {
@@ -2048,7 +1545,7 @@
       try {
         const diskVersion = await window.fileAPI.readFile(destination);
         if (diskVersion.content !== tab.expectedSavedContent) {
-          clearTimeout(tab.saveTimer);
+          editorController.cancelAutoSave(tab);
           tab.externalConflict = {
             kind: 'modified',
             path: destination,
@@ -2077,7 +1574,7 @@
       previousWatchSuspended = true;
     }
     try {
-      const content = tab.pendingEditorContent ? tab.content : currentContent(tab);
+      const content = editorController.contentForPersistence(tab);
       const diskContent =
         tab.lineEnding === 'CRLF'
           ? content.replace(/\r?\n/g, '\r\n')
@@ -2114,7 +1611,7 @@
         return false;
       if (result.error) {
         if (result.error === 'external-change') {
-          clearTimeout(tab.saveTimer);
+          editorController.cancelAutoSave(tab);
           tab.externalConflict = {
             kind: 'modified',
             path: destination,
@@ -2253,7 +1750,7 @@
       tab.recoverySnapshotId
     )
       return;
-    clearTimeout(tab.saveTimer);
+    editorController.cancelAutoSave(tab);
     clearTimeout(tab.recoveryTimer);
     tab.recoveryTimer = null;
     const editorContent = currentContent(tab);
@@ -2328,7 +1825,8 @@
           existing.recoverySnapshotId = snapshot.id;
           existing.recoveryState = 'unchanged';
           existing.contentRevision++;
-          if (existing.vditor && existing.ready) existing.vditor.setValue(snapshot.content, true);
+          if (existing.vditor && existing.ready)
+            editorController.injectContent(existing, snapshot.content, true);
           else existing.pendingEditorContent = true;
           continue;
         }
@@ -2583,7 +2081,7 @@
       (item) => item === tab || (conflictIdentity && tabFileIdentity(item) === conflictIdentity),
     );
     for (const item of relatedTabs) {
-      clearTimeout(item.saveTimer);
+      editorController.cancelAutoSave(item);
       item.content = conflict.content;
       item.savedContent = conflict.content;
       item.expectedSavedContent = conflict.content;
@@ -2592,7 +2090,7 @@
       item.lineEnding = detectLineEnding(conflict.content);
       item.externalConflict = null;
       item.externalChangeIgnored = false;
-      if (item.vditor) item.vditor.setValue(conflict.content, true);
+      editorController.injectContent(item, conflict.content, true);
     }
     renderTabs();
     updateActiveUI();
@@ -2630,7 +2128,7 @@
       (item) => item === tab || (fileStateIdentity && tabFileIdentity(item) === fileStateIdentity),
     );
     for (const item of relatedTabs) {
-      clearTimeout(item.saveTimer);
+      editorController.cancelAutoSave(item);
       item.content = fileState.content;
       item.savedContent = fileState.content;
       item.expectedSavedContent = fileState.content;
@@ -2640,7 +2138,7 @@
       item.externalConflict = null;
       item.externalChangeIgnored = false;
       item.externalFileState = null;
-      if (item.vditor) item.vditor.setValue(fileState.content, true);
+      editorController.injectContent(item, fileState.content, true);
       await discardRecoverySnapshot(item);
     }
     renderTabs();
@@ -2654,7 +2152,7 @@
     if (!tab?.externalFileState) return;
     const previousPath = tab.filePath;
     const previousIdentity = tab.fileIdentity;
-    clearTimeout(tab.saveTimer);
+    editorController.cancelAutoSave(tab);
     tab.filePath = null;
     tab.fileIdentity = null;
     tab.baseDir = '';
@@ -3288,86 +2786,10 @@
   }
 
   function scheduleOutline() {
-    if (!$('#outlineView').classList.contains('active')) return;
-    clearTimeout(state.outlineTimer);
-    state.outlineTimer = setTimeout(renderOutline, 300);
+    outlineController.schedule();
   }
   function renderOutline() {
-    if (!$('#outlineView').classList.contains('active')) return;
-    const tab = activeTab();
-    const target = $('#outlineTree');
-    target.innerHTML = '';
-    if (!tab) {
-      target.innerHTML = `<div class="empty">${escapeHTML(t('sidebar.noDocument'))}</div>`;
-      return;
-    }
-    const headings = VDITOR.outlineSnapshot(tab.host, tab.mode);
-    if (!headings.length) {
-      target.innerHTML = `<div class="empty">${escapeHTML(t('sidebar.noHeadings'))}</div>`;
-      return;
-    }
-    const roots = [];
-    const stack = [];
-    headings.forEach((heading, index) => {
-      const node = {
-        ...heading,
-        outlineIndex: index,
-        children: [],
-      };
-      while (stack.length && stack.at(-1).level >= node.level) stack.pop();
-      if (stack.length) stack.at(-1).children.push(node);
-      else roots.push(node);
-      stack.push(node);
-    });
-    const appendNode = (node, container) => {
-      const wrapper = document.createElement('div');
-      wrapper.className = 'outline-node';
-      const row = document.createElement('div');
-      row.className = 'outline-row';
-      if (node.children.length) {
-        const toggle = document.createElement('button');
-        toggle.type = 'button';
-        toggle.className = 'outline-toggle';
-        toggle.setAttribute('aria-expanded', String(!tab.outlineCollapsed.has(node.key)));
-        const tooltip = t(
-          tab.outlineCollapsed.has(node.key) ? 'outline.expand' : 'outline.collapse',
-        );
-        toggle.dataset.tooltip = tooltip;
-        toggle.setAttribute('aria-label', tooltip);
-        toggle.textContent = tab.outlineCollapsed.has(node.key) ? '›' : '⌄';
-        toggle.onclick = () => {
-          const collapsed = wrapper.classList.toggle('collapsed');
-          if (collapsed) tab.outlineCollapsed.add(node.key);
-          else tab.outlineCollapsed.delete(node.key);
-          toggle.setAttribute('aria-expanded', String(!collapsed));
-          const tooltip = t(collapsed ? 'outline.expand' : 'outline.collapse');
-          toggle.dataset.tooltip = tooltip;
-          toggle.setAttribute('aria-label', tooltip);
-          toggle.textContent = collapsed ? '›' : '⌄';
-        };
-        row.appendChild(toggle);
-      } else {
-        const spacer = document.createElement('span');
-        spacer.className = 'outline-toggle-spacer';
-        row.appendChild(spacer);
-      }
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'outline-item';
-      button.textContent = node.text;
-      button.onclick = () => scrollToOutlineHeading(tab, node.outlineIndex);
-      row.appendChild(button);
-      wrapper.appendChild(row);
-      if (node.children.length) {
-        const children = document.createElement('div');
-        children.className = 'outline-children';
-        node.children.forEach((child) => appendNode(child, children));
-        wrapper.appendChild(children);
-        wrapper.classList.toggle('collapsed', tab.outlineCollapsed.has(node.key));
-      }
-      container.appendChild(wrapper);
-    };
-    roots.forEach((node) => appendNode(node, target));
+    outlineController.render();
   }
   function scrollHeadingIntoEditor(editor, heading) {
     if (!editor || !heading || !editor.getClientRects().length) return;
@@ -3604,55 +3026,7 @@
   }
 
   async function handleImageUpload(tab, files) {
-    if (!tab.filePath) {
-      showMessage('请先保存文档，再插入本地图片', true);
-      return 'Document must be saved first';
-    }
-    try {
-      const docDir = await window.fileAPI.dirname(tab.filePath);
-      const assetsName = state.settings.pasteImagesDir || './assets';
-      const assetsDir = `${docDir}/${assetsName.replace(/^\.\//, '')}`;
-      const markdown = [];
-      for (const file of files) {
-        const safeName = `${Date.now()}-${file.name.replace(/[^\w.\-\u4e00-\u9fff]/g, '_')}`;
-        const destination = `${assetsDir}/${safeName}`;
-        const bytes = await compressImage(file);
-        await window.fileAPI.writeBinaryFile(destination, bytes);
-        const relative = await window.fileAPI.relative(docDir, destination);
-        markdown.push(`![${file.name}](${encodeURI(relative)})`);
-      }
-      tab.vditor.insertMD(markdown.join('\n'));
-      return null;
-    } catch (error) {
-      const message = ipcErrorMessage(error);
-      showMessage(`图片保存失败：${message}`, true);
-      return message;
-    }
-  }
-
-  async function compressImage(file) {
-    const original = new Uint8Array(await file.arrayBuffer());
-    if (!file.type.match(/^image\/(png|jpeg|webp)$/) || !state.settings.imageMaxWidth)
-      return original;
-    try {
-      const bitmap = await createImageBitmap(file);
-      if (bitmap.width <= state.settings.imageMaxWidth) {
-        bitmap.close();
-        return original;
-      }
-      const ratio = state.settings.imageMaxWidth / bitmap.width;
-      const canvas = document.createElement('canvas');
-      canvas.width = state.settings.imageMaxWidth;
-      canvas.height = Math.round(bitmap.height * ratio);
-      canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-      bitmap.close();
-      const blob = await new Promise((resolve) =>
-        canvas.toBlob(resolve, file.type, state.settings.imageQuality),
-      );
-      return blob ? new Uint8Array(await blob.arrayBuffer()) : original;
-    } catch (_) {
-      return original;
-    }
+    return imageController.upload(tab, files);
   }
 
   function exportBodySnapshot(tab) {
@@ -3784,7 +3158,7 @@
       await rememberDialogDirectory(output);
       const outputDirectory = await window.fileAPI.dirname(output);
       await window.fileAPI.writeFile(output, makeExportHTML(tab, body, outputDirectory));
-      showMessage(`已导出 ${output}`);
+      showMessage(t('message.exported', { output }));
     }
   }
   async function exportPDF() {
@@ -3799,7 +3173,7 @@
     );
     if (output) {
       await rememberDialogDirectory(output);
-      showMessage(`已导出 ${output}`);
+      showMessage(t('message.exported', { output }));
     }
   }
 
@@ -3944,7 +3318,7 @@
       VDITOR_INITIALIZATION_SETTINGS.has(key),
     );
     if (changedSettings.includes('allowSvgImages')) {
-      state.tabs.forEach((tab) => VDITOR.reloadImageSources(tab.host));
+      imageRuntimeController.reload(state.tabs);
     }
     if (closeAfterSave) await closeSettings({ applyPresentation: false });
     applyLocale(state.settings.locale);
@@ -4262,7 +3636,7 @@
         content: change.content,
       });
       if (decision === 'reappeared') {
-        clearTimeout(tab.saveTimer);
+        editorController.cancelAutoSave(tab);
         tab.externalConflict = null;
         tab.externalChangeIgnored = false;
         tab.externalFileState = {
@@ -4289,12 +3663,12 @@
         tab.encoding = change.encoding || tab.encoding;
         tab.externalConflict = null;
         tab.externalChangeIgnored = false;
-        if (tab.vditor) tab.vditor.setValue(change.content, true);
+        editorController.injectContent(tab, change.content, true);
         if (tab.id === state.activeId) updateActiveUI();
         showMessage(t('external.reloaded', { name: tab.title }));
         continue;
       }
-      clearTimeout(tab.saveTimer);
+      editorController.cancelAutoSave(tab);
       tab.externalConflict = {
         kind: 'modified',
         path: change.path,
@@ -4320,7 +3694,7 @@
       save: () => saveTab(),
       'save-as': () => saveTab(activeTab(), true),
       'close-tab': () => activeTab() && closeTab(activeTab().id),
-      find: openFind,
+      find: () => findController.open(),
       quit: () => window.appAPI.closeWindow(),
       'toggle-sidebar': toggleSidebar,
       settings: openSettings,
@@ -4552,41 +3926,18 @@
   }
 
   function syncToolbarWrapHeight() {
-    const app = $('#app');
-    const mount = $('#vditorToolbarMount');
-    const mainArea = $('.main-area');
-    const toolbar = activeTab()?.toolbar || state.toolbarPreview?.toolbar;
-    const hidden = app.classList.contains('toolbar-hidden');
     // Vditor menus are absolutely positioned but contribute to scrollHeight.
     // Only the toolbar's rendered box represents wrapped control rows.
-    const toolbarHeight =
-      !hidden && toolbar?.parentElement === mount ? toolbar.getBoundingClientRect().height : 0;
-    if (toolbarHeight) state.toolbarWrapHeight = Math.max(0, Math.ceil(toolbarHeight - 38));
-    const extraHeight =
-      mount.dataset.toolbarPending === 'true'
-        ? state.toolbarWrapHeight
-        : hidden
-          ? 0
-          : Math.max(0, Math.ceil(toolbarHeight - 38));
-    const wrapHeight = `${extraHeight}px`;
     // The editor lives below .main-area. Do not put this changing value on an
     // ancestor, where CSS-variable inheritance would invalidate its full DOM tree.
-    if (mainArea.style.paddingTop !== wrapHeight) mainArea.style.paddingTop = wrapHeight;
-    if (mount.style.getPropertyValue('--toolbar-wrap-height') !== wrapHeight)
-      mount.style.setProperty('--toolbar-wrap-height', wrapHeight);
+    toolbarController.syncWrapHeight();
   }
 
   function scheduleToolbarWrapHeight() {
-    if (toolbarWrapHeightFrame !== null) cancelAnimationFrame(toolbarWrapHeightFrame);
     // Toolbar mutations can be delivered while Vditor is still constructing a
     // long document. Let its pending style work reach a normal paint before
     // getBoundingClientRect() measures the shared toolbar.
-    toolbarWrapHeightFrame = requestAnimationFrame(() => {
-      toolbarWrapHeightFrame = requestAnimationFrame(() => {
-        toolbarWrapHeightFrame = null;
-        syncToolbarWrapHeight();
-      });
-    });
+    toolbarController.scheduleWrapHeight();
   }
 
   function applyTopControlsWidth(sidebarWidth, menuWidth) {
@@ -4765,10 +4116,10 @@
     $('#addTab').onclick = newTab;
     $('#openFile').onclick = chooseFiles;
     $('#saveFile').onclick = () => saveTab();
-    $('#findToggleReplace').onclick = toggleReplace;
-    $('#findPrevious').onclick = () => moveFindMatch(-1);
-    $('#findNext').onclick = () => moveFindMatch(1);
-    $('#findClose').onclick = closeFind;
+    findController.init();
+    $('#findPrevious').onclick = () => findController.move(-1);
+    $('#findNext').onclick = () => findController.move(1);
+    $('#findClose').onclick = () => findController.close();
     $('#externalReload').onclick = () => void reloadExternalChange(activeTab());
     $('#externalSaveAs').onclick = () => void saveTab(activeTab(), true);
     $('#externalOverwrite').onclick = () => void confirmExternalOverwrite(activeTab());
@@ -4781,47 +4132,8 @@
     $('#recoverySave').onclick = () => void saveRecoveredVersion(activeTab());
     $('#recoverySaveAs').onclick = () => void saveRecoveredAs(activeTab());
     $('#recoveryDiscard').onclick = () => void discardRecoveredVersion(activeTab());
-    $('#replaceOne').onclick = replaceFindMatch;
-    $('#replaceAll').onclick = replaceAllFindMatches;
-    $('#findInput').addEventListener('input', () => {
-      const queryChanged = $('#findInput').value !== findQuery;
-      refreshFind({ preserveIndex: !queryChanged, reveal: false });
-      clearTimeout(findRefreshTimer);
-      findRefreshTimer = setTimeout(() => {
-        if (findWidgetVisible() && $('#findInput').value === findQuery) revealFindMatch();
-      }, 120);
-    });
-    $('#findWidget').addEventListener('focusout', () => {
-      requestAnimationFrame(() => {
-        if (findWidgetVisible() && !$('#findWidget').contains(document.activeElement)) {
-          $('#findInput').focus({ preventScroll: true });
-        }
-      });
-    });
-    window.addEventListener(
-      'keydown',
-      (event) => {
-        if (!findWidgetVisible() || !$('#findWidget').contains(event.target)) return;
-        event.stopImmediatePropagation();
-        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
-          event.preventDefault();
-          void saveTab();
-        } else if (event.key === 'F3') {
-          event.preventDefault();
-          moveFindMatch(event.shiftKey ? -1 : 1);
-        } else if (event.key === 'Enter' && event.target === $('#findInput')) {
-          event.preventDefault();
-          moveFindMatch(event.shiftKey ? -1 : 1);
-        } else if (event.key === 'Enter' && event.target === $('#replaceInput')) {
-          event.preventDefault();
-          replaceFindMatch();
-        } else if (event.key === 'Escape') {
-          event.preventDefault();
-          closeFind();
-        }
-      },
-      true,
-    );
+    $('#replaceOne').onclick = () => findController.replaceOne();
+    $('#replaceAll').onclick = () => findController.replaceAll();
     $('#emptyNewFile').onclick = newTab;
     $('#emptyOpenFile').onclick = chooseFiles;
     $('#toggleSidebar').onclick = () => toggleSidebar();
@@ -4995,16 +4307,6 @@
         return;
       }
       if (event.key === 'Escape') $('#app').classList.remove('fullscreen-menu-visible');
-      if (event.key === 'Escape' && findWidgetVisible()) {
-        event.preventDefault();
-        closeFind();
-        return;
-      }
-      if (event.key === 'F3' && findWidgetVisible()) {
-        event.preventDefault();
-        moveFindMatch(event.shiftKey ? -1 : 1);
-        return;
-      }
       if (event.key === 'F11') {
         event.preventDefault();
         window.appAPI.toggleFullscreen();
@@ -5037,7 +4339,7 @@
         toggleSidebar();
       } else if (key === 'f') {
         event.preventDefault();
-        openFind();
+        findController.open();
       } else if (key === ',') {
         event.preventDefault();
         openSettings();
@@ -5210,14 +4512,14 @@
         /\.(md|markdown|mdown|mkd|mkdn)$/i.test(filePath),
       );
       if (markdown.length) await openPaths(markdown);
-      else if (paths.length) showMessage('仅支持拖入 Markdown 文件', true);
+      else if (paths.length) showMessage(t('message.dropMarkdownOnly'), true);
     });
   }
 
   async function init() {
     if (typeof Vditor === 'undefined' || !VDITOR || !window.fileAPI || !window.appAPI) {
       document.body.innerHTML =
-        '<div class="fatal"><h1>应用资源加载失败</h1><p>请重新运行 npm run build。</p></div>';
+        '<div class="fatal"><h1>Application resources failed to load</h1><p>Please run npm run build again.</p></div>';
       return;
     }
     document.body.dataset.platform = window.appAPI.platform;
@@ -5268,5 +4570,10 @@
   }
 
   window.__vditorDesktopLegacyBootstrap = init;
-  window.__vditorDesktopLegacyDispose = () => tabController.dispose();
+  window.__vditorDesktopLegacyDispose = () => {
+    findController.dispose();
+    outlineController.dispose();
+    toolbarController.dispose();
+    tabController.dispose();
+  };
 })();

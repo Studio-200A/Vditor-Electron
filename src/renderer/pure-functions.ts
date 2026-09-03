@@ -18,6 +18,51 @@ export {
 export { NotificationsController } from './ui/notifications.js';
 export type { ConfirmDialogOptions, DialogAction } from './ui/notifications.js';
 export { TabController } from './documents/tab-controller.js';
+export { EditorController } from './editor/editor-controller.js';
+export type {
+  EditorControllerOptions,
+  EditorRuntimeTab,
+  EditorScrollPosition,
+} from './editor/editor-controller.js';
+export { OutlineController } from './editor/outline-controller.js';
+export type {
+  OutlineControllerOptions,
+  OutlineHeading,
+  OutlineTab,
+} from './editor/outline-controller.js';
+export { FindController } from './editor/find-controller.js';
+export type { FindControllerOptions, FindRuntime } from './editor/find-controller.js';
+export { SplitViewController } from './editor/split-view-controller.js';
+export type { SplitViewControllerOptions, SplitViewTab } from './editor/split-view-controller.js';
+export {
+  ImageController,
+  ImageRuntimeController,
+  sanitizeImageFileName,
+} from './editor/image-controller.js';
+export type {
+  ImageControllerOptions,
+  ImageFileBridge,
+  ImageRuntimeControllerOptions,
+  ImageRuntimeTab,
+  ImageUploadTab,
+} from './editor/image-controller.js';
+export { ToolbarController } from './editor/toolbar-controller.js';
+export type { ToolbarControllerOptions, ToolbarRuntime } from './editor/toolbar-controller.js';
+export { EditorRuntimeCoordinator } from './editor/editor-runtime-coordinator.js';
+export type {
+  EditorRuntimeCoordinatorOptions,
+  EditorRuntimeCoordinatorTab,
+} from './editor/editor-runtime-coordinator.js';
+export {
+  createEditorOptions,
+  effectiveToolbarItems,
+  VDITOR_INITIALIZATION_SETTINGS,
+} from './editor/editor-options.js';
+export type {
+  EditorOptionsDependencies,
+  EditorOptionsSettings,
+  EditorOptionsTab,
+} from './editor/editor-options.js';
 export type {
   TabControllerCallbacks,
   TabControllerOptions,

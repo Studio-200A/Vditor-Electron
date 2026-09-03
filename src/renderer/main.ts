@@ -43,7 +43,7 @@ async function main(): Promise<void> {
     validateGlobalAPIs();
   } catch (error) {
     document.body.innerHTML =
-      '<div class="fatal"><h1>应用资源加载失败</h1><p>请重新运行 npm run build。</p></div>';
+      '<div class="fatal"><h1>Application resources failed to load</h1><p>Please run npm run build again.</p></div>';
     console.error('[main]', error);
     return;
   }

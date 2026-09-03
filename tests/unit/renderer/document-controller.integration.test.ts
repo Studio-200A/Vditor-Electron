@@ -23,7 +23,6 @@ function createRuntime(): EditorRuntime {
     ready: true,
     host: document.createElement('section'),
     toolbar: null,
-    saveTimer: null,
     lineObserver: null,
     lineResizeObserver: null,
     lineNumberFrame: null,

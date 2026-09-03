@@ -49,11 +49,9 @@ export interface EditorRuntime {
   readonly ready: boolean;
   readonly host: HTMLElement;
   readonly toolbar: HTMLElement | null;
-  readonly saveTimer: ReturnType<typeof setTimeout> | null;
   readonly lineObserver: MutationObserver | null;
   readonly lineResizeObserver: ResizeObserver | null;
   readonly lineNumberFrame: number | null;
-  readonly whitespaceFrame: number | null;
   readonly bottomSpacerObserver: ResizeObserver | null;
   readonly outlineCollapsed: Set<string>;
   readonly outlineObserver: MutationObserver | null;

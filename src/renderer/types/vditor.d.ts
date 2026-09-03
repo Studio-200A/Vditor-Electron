@@ -6,6 +6,7 @@ declare global {
 }
 
 export interface VditorOptions {
+  value?: string;
   mode?: 'wysiwyg' | 'ir' | 'sv';
   theme?: string;
   icon?: 'ant' | 'material';
@@ -13,18 +14,21 @@ export interface VditorOptions {
   placeholder?: string;
   typewriterMode?: boolean;
   tab?: string;
+  rtl?: boolean;
   height?: string;
-  minHeight?: string;
+  minHeight?: string | number;
   width?: string;
   toolbar?: Array<string | { name: string; tipPosition?: string }>;
+  toolbarConfig?: { hide?: boolean; pin?: boolean };
+  link?: { isOpen?: boolean };
   cache?: { enable?: boolean; id?: string };
   after?: () => void;
   input?: (value: string) => void;
-  blur?: () => void;
+  blur?: (value: string) => void;
   focus?: () => void;
   upload?: {
     url?: string;
-    handler?: (files: File[]) => string | false;
+    handler?: (files: File[]) => string | false | null | Promise<string | false | null>;
     accept?: string;
     max?: number;
     filename?: (name: string) => string;

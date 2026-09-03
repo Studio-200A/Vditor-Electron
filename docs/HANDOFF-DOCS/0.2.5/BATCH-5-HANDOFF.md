@@ -13,40 +13,42 @@
 ## 前置批次状态
 
 - 批次 1-3 已完成：renderer TypeScript/esbuild 构建、基础 UI/纯函数迁移、AppStore 与文档状态模型均已落地。
-- 批次 4 的代码、文件安全专项验证和用户手测已完成：`src/renderer/documents/` 提供 TabController、DocumentController、DocumentSaveController、DocumentCloseController、ExternalChangeController、session/recovery DTO。
+- 批次 4 的代码、文件安全专项验证和用户手测已完成：`src/renderer/documents/` 提供 TabController、DocumentController、DocumentSaveController、DocumentCloseController、ExternalChangeController、session/recovery DTO；本轮用户全量验证已取得 406/406 Vitest 与 142/142 Electron E2E 通过。
 - 批次 4 的重新出现文件“确认重建”修复已由专项 E2E 和用户手测验证；重新出现时使用 watcher 稳定正文作为 `expectedContent`，不是 `expectedAbsent`。
-- 批次 4 记录暂为“待手测”，仅因修复后的完整 E2E 有一个与其无直接关联的 flaky 用例：`editor-modes.spec.ts` 的 `navigates outline headings in instant, WYSIWYG, and both split panes`。它在完整 E2E 中超时，精确重跑中还出现过 `#appTooltip` 未显示；不可把单项重跑替代为无失败全量证据。
-- 批次 5 开始前，先阅读 Tracker 的批次 4 记录和本文件。若用户没有接受该 flaky 风险或尚未取得新的干净全量运行，先记录该状态，不要重写或回退批次 4 已验证的文档安全迁移。
+- 历史完整 E2E 曾有与批次 4 无直接关联的 outline flaky；该首次失败与精确重跑记录保留。2026-09-03 的后续完整 E2E 已 142/142 通过，不得抹除历史记录或回退批次 4 已验证的文档安全迁移。
 
-## 批次 5 施工卡
+## 批次 5 当前进度与施工顺序
 
-摘自 `docs/15-0.2.5-EXECUTION-TRACKER.md` §6：
+目标仍是迁移与 Vditor 耦合最深的编辑器域，并收口批次 4 命令边界中依赖 editor runtime 的 legacy 协调；用户可观察行为和文件安全契约必须保持不变。当前顺序已按实际实施进度重排，接班 agent 不应回到旧清单顺序：
 
-> **目标**：迁移与 Vditor 耦合最深的编辑器域，并收口批次 4 已建立命令边界中仍依赖 editor runtime 的 legacy 执行与 UI 协调。用户可观察行为和文件安全契约必须保持不变。
+### 已完成或已接入
 
-**有序子步骤：**
+1. **EditorController 基础生命周期**：已接管 Vditor 创建、销毁、重建、runtime generation、模式同步、滚动恢复、currentContent、focus 和正文注入。`after/input/blur` 回调使用 generation 拒绝旧实例迟到结果。
+2. **OutlineController**：已接管 Desktop outline DOM、snapshot、折叠状态和防抖 refresh；仍需补齐最终 tab 激活/销毁协作测试。
+3. **FindController**：已接管 find widget、query/matches/index、refresh timer、F3/Enter/Escape、tab/runtime 切换清理；`replaceTextMatch()` 经 adapter 复用 Vditor 原生 selection/input/undo 路径。
+4. **SplitViewController**：已完成施工卡提取，包含 SV 行号、空白符 canvas、20–80% 比例、divider 拖动、source-only/preview-only/both 布局、滚动增强、列表缩进 Range 和自动缩进。每 tab 的 observer、rAF、scroll/pointer/keydown runtime 均在 rebuild/关闭时清理；Vditor 私有 selector、Range 和结构判断仅在 adapter。
+5. **EditorController runtime 子阶段**：自动保存 debounce timer 已迁入 controller 私有 per-tab Map；恢复、冲突/重新出现重载、watcher 自动重载统一使用 `injectContent()`；保存正文选择使用 `contentForPersistence()`；`onEditorInput()` 的正文、modified、content revision 和 pending recovery 标记使用 `applyInput()`。
+6. **构造、工具栏与图片子域**：`editor-options.ts` 已迁出 constructor-only settings、离线 CDN、locale、relative resource base、upload callback 和 Vditor callbacks；`ImageController` 已接管图片压缩、文件写入及相对 Markdown 插入；`ToolbarController` 已接管 shared mount 的归还/交接、preview controls 禁用、pending 状态和 wrap-height 双 rAF 清理。它们均不访问 Vditor 私有 DOM，现有 adapter 边界未扩大。
+7. **图片 runtime 与 Outline 切换协作**：`ImageRuntimeController` 已接管每 tab 的 adapter-backed relative image observer、resource base、destroy/rebuild detach 和 allow-SVG policy reload；`OutlineController.onRuntimeChanged()` 会取消旧 tab 的待刷新并立即按新 active tab 渲染。相对资源与 SVG 私有 DOM 仍只经 adapter。
+8. **标签切换 runtime 编排**：`EditorRuntimeCoordinator` 已接管 `switchTab()` 的 editor/UI 顺序：旧 toolbar 归还、active host、ensure、toolbar hand-off、split/outline/find refresh 和 session 持久化；bottom spacer 与 pending anchor rAF 在回调时核对 active document ID，快速切换后不会作用到旧 tab。DocumentController 仍是文件安全命令 owner。
 
-1. **EditorController**：迁移 Vditor 创建、销毁、重建、runtime 持有、内容读写、focus、模式切换及 input/blur/after 回调；每个 runtime 绑定稳定 document ID，并在异步回调提交前确认 runtime 仍有效。
-2. **批次 4 runtime 收口**：将当前正文读取、自动保存 timer、保存交易调用、关闭时 runtime 释放、恢复正文注入、外部变化的 editor UI 协调迁入 EditorController 或其窄协作接口。
-3. **editor-options**：从设置构造 Vditor options；仅确实需要重建 editor 的设置允许进入该边界，展示类设置不得清空 undo 或无关重建。
-4. **SplitViewController**：迁移 SV 行号、空白符 canvas、分栏比例/拖动、滚动增强与特殊缩进选择。所有资源 tab-scoped，离开 SV、关闭标签、重建 editor 时必须 dispose。
-5. **ToolbarController**：迁移当前支持的显示/隐藏状态、toolbar 挂载和按钮过滤。浮动工具栏尚未实现，不得在本批次新增。
-6. **OutlineController 与 ImageController**：迁移 Desktop 大纲生成/跳转、图片上传压缩和资源基址；所有 Vditor 私有 DOM 查询必须继续留在 adapter。
-7. **FindController**：迁移查找替换 widget、query/matches/active-index、refresh timer、窗口级快捷键和 tab/editor 切换清理。通过 EditorController 的窄接口编辑内容，不能以整篇 `getValue()`/`setValue()` 绕过 selection、undo 或 mode 状态；收敛 F3/Escape 的重叠监听。
-8. **标签切换 runtime 协调**：迁移 `switchTab()` 中 editor host 激活、toolbar 挂载、大纲/查找刷新和 focus。TabController 继续只发送 activate 意图，DocumentController 继续拥有文件安全命令。
-9. **测试收口**：替换本域源码字符串测试，覆盖重复调用、过期刷新、集合错位、dispose、editor 重建和迟到回调。
+### 接下来必须按此顺序
+
+9. **完成 EditorController 与批次 4 runtime 协作边界**：继续迁移 recovery/外部变化 editor UI 协调、剩余正文交接和命名 runtime 回调；DocumentController 继续独占 identity、binding、expected-content、保存/关闭/恢复安全语义。补充旧 callback、旧 timer、关闭后异步完成和 rebuild 后 callback 的失效测试。
+10. **测试与文档收口**：拆分大纲组合 E2E、删除本域 renderer-shell 源码字符串断言、补齐 dispose/stale/rebuild 行为测试，并同步 Tracker、架构图、升级文档和 CHANGELOG。全量 `check`/`check:all` 留给用户。
 
 ## 当前 legacy 入口与目标归属
 
-`src/renderer/app.js` 仍包含下列批次 5 迁移源；迁移时按当前源码核对，不能仅依赖此清单：
+`src/renderer/app.js` 仍包含下列批次 5 迁移源；已迁移的职责不要重新实现，接班时按当前源码核对：
 
-- `ensureEditor()`、`rebuildEditor()`、`editorOptions()`、`synchronizeVditorMode()` 和 mode shortcut 处理。
-- `onEditorInput()`、`currentContent()`、per-tab `saveTimer`，以及由 input 触发的恢复/自动保存调度。
-- `switchTab()` 中 Vditor host、toolbar、focus、bottom spacer、outline/find 刷新协调。
-- `disposeClosedTabRuntime()` 的 Vditor/observer/timer/listener 释放。
-- `restoreRecoverySnapshots()` 的 editor 正文交接与 recovery banner 协调。
-- `renderOutline()`、heading/anchor navigation、图片资源观察、SV 行号、空白符、底部 spacer、table composition scroll 和 editor context menu。
-- `openFind()`、`refreshFind()`、`replaceFindMatch()`、`replaceAllFindMatches()` 及窗口级 find 快捷键。
+- `synchronizeVditorMode()` 和部分 mode shortcut/toolbar runtime 协调；`editorOptions()` 已是保留 callback 协调的薄调用层，构造选项已在 `editor-options.ts`。
+- `onEditorInput()` 的 recovery snapshot 调度、行号/大纲/UI 刷新；正文状态、自动保存 timer 和 input 基础状态已由 EditorController API 承担。
+- `performSaveTab()` 的安全交易编排、`restoreRecoverySnapshots()` 的 recovery banner/状态协调、`preserveUnavailableTab()` 的不可用状态转换；这些必须继续通过 DocumentController 的命令和安全语义。
+- `switchTab()` 已是 `EditorRuntimeCoordinator.activate()` 的薄调用层；host active、toolbar、ensure、bottom spacer、anchor、outline/find 和 session 顺序已迁出。
+- `disposeClosedTabRuntime()` 的文档 recovery 操作与剩余 editor-owned observer/listener 释放。
+- `renderOutline()`、heading/anchor navigation、底部 spacer、table composition scroll 和 editor context menu。图片压缩、写入、Markdown 插入、资源观察和 SVG policy reload 已在 `ImageController`/`ImageRuntimeController`。
+
+已从 app.js 删除或只保留窄回调的职责：SV 行号/空白符/divider/滚动/缩进、Find widget 与窗口快捷键、Outline DOM/snapshot、Vditor 正文 `setValue()` 直写、tab saveTimer 直接管理。
 
 迁移完成后，这些职责不应以“新 controller 调旧 app.js callback”的形式长期保留。旧实现接入新 controller 并通过测试后，应在同一职责迁移中删除；但不要在一个提交中同时搬迁多个高风险 editor 子域。
 
@@ -82,9 +84,18 @@
 
 ## 当前测试风险
 
-- `tests/e2e/editor-modes.spec.ts:1154` 现有“大纲导航”用例同时覆盖 tooltip、链接、outline、三种模式、SV 双栏与 Vditor TOC，且有多处固定 `waitForTimeout(300)`；它是已知 flaky 风险。
-- 批次 5 应在迁移 FindController/OutlineController 时拆分该用例：tooltip/link、Desktop outline、SV 双栏导航和 Vditor TOC 分别独立验证，并用可观察稳定状态替换固定延迟。不要把这个测试错误归为批次 4 文件生命周期回归。
-- 首次完整 E2E 失败时保留完整输出、trace 和 error context；先判断是应用断言失败还是 flaky，不能通过单项重跑改写全量结果。
+- 历史 outline、Split 行号和列表缩进的 flaky/隔离重跑记录保留；它们不是 2026-09-03 后续完整 E2E 142/142 通过的替代证据。
+- 本轮首次完整 E2E 的第二实例启动超时、随后 3 个稳定 E2E 失败均已记录在 Tracker：启动问题来自 locale 初始化顺序，其余分别为 range 测试交互、rebuild destroy 错误传播和 SV 空白符 redraw 补偿；修复后精确回归与完整 E2E 均通过。
+
+## 当前专项验证证据
+
+- `tests/unit/renderer/editor-controller.test.ts` 当前 8 条，覆盖 runtime generation、destroy 幂等、destroy 失败清理与传播、mode 同步、自动保存 timer、初始化阶段正文注入、pending persistence 和 input 状态。
+- Split/adapter 聚焦测试合计 35/35；renderer typecheck、build 通过。
+- 当前 HEAD 的自动保存 Electron 精确用例通过（1/1）；恢复快照正文注入精确用例通过（1/1）。
+- 本轮新增的 editor-options、image-controller、toolbar-controller 和 editor-controller 聚焦单测共 18/18 通过；`typecheck:renderer` 和 `build` 通过。未运行 E2E、`check` 或 `check:all`。
+- 图片 runtime、Outline 和 adapter 聚焦单测 38/38 通过；精确 Electron SVG policy 用例 1/1 通过。未运行全量 E2E、`check` 或 `check:all`。
+- `editor-runtime-coordinator` 与 editor/toolbar/outline/find 聚焦单测 17/17 通过；工具栏 tab hand-off 精确 Electron 用例首次因漏导出 coordinator 超时，修复 export 后重跑 1/1 通过。该重跑不代替全量 E2E。
+- 用户于 2026-09-03 已完成 `npm run check:all`：45 个 Vitest 文件、406/406 测试和 Electron E2E 142/142 均通过。当前阶段应由用户先提交；接班 agent 不得在该提交前继续批次 5 的 recovery/external-change/autosave 协调迁移。
 
 ## 本 Session 工作原则
 

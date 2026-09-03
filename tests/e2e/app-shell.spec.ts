@@ -1461,7 +1461,12 @@ test('applies the editor paragraph-width slider in WYSIWYG mode', async () => {
       .fill('Paragraph width test');
     await page.locator('#statusSettings').click();
     await page.locator('.settings-nav [data-panel="editor"]').click();
-    await page.locator('#editorTextWidth').fill('60');
+    const paragraphWidth = page.locator('#editorTextWidth');
+    await paragraphWidth.focus();
+    await paragraphWidth.press('Home');
+    for (let index = 0; index < 20; index += 1) {
+      await paragraphWidth.press('ArrowRight');
+    }
     await expect(page.locator('#editorTextWidthValue')).toHaveText('60%');
     await page.locator('#saveSettings').click();
 

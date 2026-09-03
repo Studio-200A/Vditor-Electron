@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { JSDOM } from 'jsdom';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('Vditor DOM compatibility adapter', () => {
   let window: JSDOM['window'];
@@ -56,6 +56,54 @@ describe('Vditor DOM compatibility adapter', () => {
       expect(editor.style.getPropertyValue('--editor-bottom')).toBe('242px'),
     );
     expect(adapter.setEditorBottomSpacer(host, Number.NaN)).toBe(false);
+  });
+
+  it('owns the SV divider structure and reports pane visibility semantically', () => {
+    const host = createHost();
+    const { content, preview } = adapter.editorParts(host);
+    preview.style.display = 'block';
+
+    const resizer = adapter.ensureSplitResizer(host);
+    expect(resizer).not.toBeNull();
+    expect(content.querySelector(':scope > .sv-split-resizer')).toBe(resizer);
+    expect(adapter.ensureSplitResizer(host)).toBe(resizer);
+    expect(adapter.splitViewVisibility(host, 'sv')).toEqual({
+      sourceVisible: true,
+      previewVisible: true,
+    });
+    expect(adapter.splitViewVisibility(host, 'ir')).toEqual({
+      sourceVisible: false,
+      previewVisible: false,
+    });
+  });
+
+  it('renders SV decorations and cleans up its private auto-indent listener', () => {
+    const host = createHost();
+    const { content, source } = adapter.editorParts(host);
+    source.style.display = 'block';
+    adapter.editorParts(host).preview.style.display = 'block';
+    source.textContent = '  text';
+    Object.defineProperties(window.Range.prototype, {
+      getClientRects: { configurable: true, value: () => [] },
+      getBoundingClientRect: {
+        configurable: true,
+        value: () => ({ top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0 }),
+      },
+    });
+    const removeAutoIndent = adapter.installSplitAutoIndent(host, () => true);
+
+    expect(adapter.renderSplitDecorations(host, 'sv', true, 4)).toBe(true);
+    expect(content.querySelector(':scope > .sv-line-numbers')).not.toBeNull();
+    expect(content.querySelector(':scope > .sv-whitespace-layer')).not.toBeNull();
+    const range = window.document.createRange();
+    range.selectNodeContents(source);
+    range.collapse(false);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    removeAutoIndent();
+    const event = new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
+    source.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
   });
 
   it('reissues every rendered image source when an image policy changes', () => {
@@ -436,6 +484,19 @@ describe('Vditor DOM compatibility adapter', () => {
     expect(adapter.selectTextMatch(host, 'sv', 'alpha', 1)).toBe(true);
     expect(window.getSelection()?.toString()).toBe('alpha');
     expect(adapter.selectTextMatch(host, 'sv', 'missing', 0)).toBe(false);
+  });
+
+  it('replaces a selected match through the active editor input path', () => {
+    const host = createHost();
+    window.document.body.append(host);
+    const source = adapter.editorParts(host).source;
+    source.innerHTML = '<span>alpha beta alpha</span>';
+    const onInput = vi.fn();
+    source.addEventListener('input', onInput);
+
+    expect(adapter.replaceTextMatch(host, 'sv', 'alpha', 1, 'gamma')).toBe(true);
+    expect(source.textContent).toBe('alpha beta gamma');
+    expect(onInput).toHaveBeenCalledTimes(1);
   });
 
   it('selects the current rendered block before the whole editor', () => {

@@ -16,6 +16,7 @@
     instantRendering: '.vditor-ir',
     wysiwyg: '.vditor-wysiwyg',
     preview: '.vditor-preview',
+    splitResizer: ':scope > .sv-split-resizer',
     reset: '.vditor-reset',
     sourceNewline: 'span[data-type="newline"]',
     sourceHeading: '[data-type="heading-marker"]',
@@ -41,6 +42,33 @@
       instantRendering: host?.querySelector(selectors.instantRendering) || null,
       wysiwyg: host?.querySelector(selectors.wysiwyg) || null,
       preview: host?.querySelector(selectors.preview) || null,
+    };
+  }
+
+  function ensureSplitResizer(host) {
+    const { content, preview } = editorParts(host);
+    if (!content || !preview) return null;
+    let resizer = content.querySelector(selectors.splitResizer);
+    if (!resizer) {
+      // Vditor 3.11.3 replaces the source/preview children during SV updates.
+      // Keep Desktop's divider in that private content container so it follows
+      // the panes without exposing their structure to renderer controllers.
+      resizer = document.createElement('div');
+      resizer.className = 'sv-split-resizer hidden';
+      resizer.setAttribute('role', 'separator');
+      resizer.setAttribute('aria-orientation', 'vertical');
+      content.insertBefore(resizer, preview);
+    }
+    return resizer;
+  }
+
+  function splitViewVisibility(host, mode) {
+    const { source, preview } = editorParts(host);
+    if (!source || !preview) return null;
+    const isSplitMode = mode === 'sv';
+    return {
+      sourceVisible: isSplitMode && getComputedStyle(source).display !== 'none',
+      previewVisible: isSplitMode && getComputedStyle(preview).display !== 'none',
     };
   }
 
@@ -190,6 +218,226 @@
       }
     }
     return ranges;
+  }
+
+  function renderSplitDecorations(host, mode, showWhitespace, tabSize) {
+    const { content, source } = editorParts(host);
+    if (!content || !source) return false;
+    let gutter = content.querySelector(':scope > .sv-line-numbers');
+    if (!gutter) {
+      gutter = document.createElement('div');
+      gutter.className = 'sv-line-numbers';
+      content.insertBefore(gutter, content.firstChild);
+    }
+    const sourceVisible = splitViewVisibility(host, mode)?.sourceVisible || false;
+    gutter.classList.toggle('hidden', !sourceVisible);
+    let layer = content.querySelector(':scope > .sv-whitespace-layer');
+    if (!sourceVisible || !showWhitespace) {
+      layer?.remove();
+      if (!sourceVisible) return true;
+    }
+    const style = getComputedStyle(source);
+    const lineHeight =
+      Number.parseFloat(style.lineHeight) || Number.parseFloat(style.fontSize) * 1.5;
+    const sourceRect = source.getBoundingClientRect();
+    const ranges = sourceLineRanges(source);
+    if (!ranges.length) {
+      const range = document.createRange();
+      range.selectNodeContents(source);
+      ranges.push({ range, fallbackRange: range.cloneRange() });
+    }
+    const positions = [];
+    ranges.forEach(({ range, fallbackRange }, index) => {
+      const rect = Array.from(range.getClientRects())
+        .filter((item) => item.height > 0)
+        .reduce((topmost, item) => (!topmost || item.top < topmost.top ? item : topmost), null);
+      const fallbackRect = fallbackRange.getBoundingClientRect();
+      const measured = rect || (fallbackRect.height > 0 ? fallbackRect : null);
+      positions.push(
+        measured
+          ? measured.top - sourceRect.top + source.scrollTop + (measured.height - lineHeight) / 2
+          : index === 0
+            ? Number.parseFloat(style.paddingTop) || 0
+            : positions[index - 1] + lineHeight,
+      );
+    });
+    const canvas = document.createElement('div');
+    canvas.className = 'sv-line-number-canvas';
+    canvas.style.height = `${Math.max(source.scrollHeight, (positions.at(-1) || 0) + lineHeight)}px`;
+    const scrollLinked = window.CSS?.supports?.('animation-timeline: scroll()');
+    canvas.classList.toggle('scroll-linked', Boolean(scrollLinked));
+    canvas.style.setProperty(
+      '--sv-scroll-range',
+      `${Math.max(0, source.scrollHeight - source.clientHeight)}px`,
+    );
+    if (!scrollLinked) canvas.style.transform = `translateY(${-source.scrollTop}px)`;
+    positions.forEach((top, index) => {
+      const number = document.createElement('span');
+      number.className = 'sv-line-number';
+      number.style.top = `${top}px`;
+      number.textContent = String(index + 1);
+      canvas.appendChild(number);
+    });
+    gutter.replaceChildren(canvas);
+    if (!showWhitespace) return true;
+    if (!layer) {
+      layer = document.createElement('div');
+      layer.className = 'sv-whitespace-layer';
+      content.appendChild(layer);
+    }
+    layer.style.left = `${source.offsetLeft}px`;
+    layer.style.top = `${source.offsetTop}px`;
+    layer.style.width = `${source.clientWidth}px`;
+    layer.style.height = `${source.clientHeight}px`;
+    let whitespaceCanvas = layer.querySelector(':scope > .sv-whitespace-canvas');
+    if (!whitespaceCanvas) {
+      whitespaceCanvas = document.createElement('canvas');
+      whitespaceCanvas.className = 'sv-whitespace-canvas';
+      layer.appendChild(whitespaceCanvas);
+    }
+    const pixelRatio = window.devicePixelRatio || 1;
+    whitespaceCanvas.style.width = `${Math.max(1, source.clientWidth)}px`;
+    whitespaceCanvas.style.height = `${Math.max(1, source.clientHeight)}px`;
+    whitespaceCanvas.width = Math.ceil(Math.max(1, source.clientWidth) * pixelRatio);
+    whitespaceCanvas.height = Math.ceil(Math.max(1, source.clientHeight) * pixelRatio);
+    const context = whitespaceCanvas.getContext('2d');
+    if (!context) return true;
+    context.scale(pixelRatio, pixelRatio);
+    context.fillStyle = getComputedStyle(layer).color;
+    const walker = document.createTreeWalker(source, NodeFilter.SHOW_TEXT);
+    const positionsForWhitespace = [];
+    for (let textNode = walker.nextNode(); textNode; textNode = walker.nextNode()) {
+      for (let index = 0; index < textNode.data.length; index += 1) {
+        const character = textNode.data[index];
+        if (character !== ' ' && character !== '\t') continue;
+        const range = document.createRange();
+        range.setStart(textNode, index);
+        range.setEnd(textNode, index + 1);
+        const rect = Array.from(range.getClientRects()).find(
+          (item) =>
+            item.width > 0 &&
+            item.height > 0 &&
+            item.right > sourceRect.left &&
+            item.left < sourceRect.right &&
+            item.bottom > sourceRect.top &&
+            item.top < sourceRect.bottom,
+        );
+        if (!rect) continue;
+        const count = character === '\t' ? Number(tabSize) || 4 : 1;
+        for (let markerIndex = 0; markerIndex < count; markerIndex += 1) {
+          const x = rect.left - sourceRect.left + (rect.width * (markerIndex + 0.5)) / count;
+          const y = rect.top - sourceRect.top + rect.height / 2;
+          positionsForWhitespace.push({ x, y });
+          context.beginPath();
+          context.arc(x, y, Math.max(1, Math.min(1.35, rect.height / 12)), 0, Math.PI * 2);
+          context.fill();
+        }
+      }
+    }
+    whitespaceCanvas.dataset.markerCount = String(positionsForWhitespace.length);
+    whitespaceCanvas.dataset.scrollTop = String(source.scrollTop);
+    whitespaceCanvas.style.transform = 'translateY(0)';
+    whitespaceCanvas.whitespaceMarkerPositions = positionsForWhitespace;
+    return true;
+  }
+
+  function syncSplitDecorationScroll(host) {
+    const { content, source } = editorParts(host);
+    if (!content || !source) return false;
+    const lineCanvas = content.querySelector(':scope > .sv-line-numbers > .sv-line-number-canvas');
+    if (lineCanvas && !lineCanvas.classList.contains('scroll-linked'))
+      lineCanvas.style.transform = `translateY(${-source.scrollTop}px)`;
+    const whitespaceCanvas = content.querySelector(
+      ':scope > .sv-whitespace-layer > .sv-whitespace-canvas',
+    );
+    if (whitespaceCanvas) {
+      const renderedScrollTop = Number(whitespaceCanvas.dataset.scrollTop || 0);
+      whitespaceCanvas.style.transform = `translateY(${renderedScrollTop - source.scrollTop}px)`;
+    }
+    return true;
+  }
+
+  function captureSplitIndentSelection(host) {
+    const source = editorParts(host).source;
+    const selection = window.getSelection();
+    if (!source?.contains(selection?.anchorNode) || !selection.rangeCount) return null;
+    return selection.getRangeAt(0).cloneRange();
+  }
+
+  function applySplitListIndent(host, type, storedRange) {
+    if (!['indent', 'outdent'].includes(type)) return false;
+    const source = editorParts(host).source;
+    if (!source) return false;
+    if (storedRange?.startContainer?.isConnected) {
+      source.focus({ preventScroll: true });
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(storedRange);
+    }
+    const range = window.getSelection()?.rangeCount ? window.getSelection().getRangeAt(0) : null;
+    const { marker, padding } = listContext(range?.startContainer);
+    if (!marker) return false;
+    if (type === 'outdent') padding?.remove();
+    else {
+      const paddingElement = document.createElement('span');
+      paddingElement.dataset.type = 'padding';
+      paddingElement.textContent = marker.textContent.replace(/\S/g, ' ');
+      marker.before(paddingElement);
+    }
+    source.dispatchEvent(
+      new InputEvent('input', {
+        bubbles: true,
+        inputType: type === 'outdent' ? 'deleteContentBackward' : 'insertText',
+        data: type === 'outdent' ? null : ' ',
+      }),
+    );
+    return true;
+  }
+
+  function installSplitAutoIndent(host, shouldAutoIndent) {
+    const source = editorParts(host).source;
+    if (!source) return null;
+    // Vditor 3.11.3 owns SV's editable tree. Keep the Range-based Enter
+    // workaround beside that private tree and return its exact cleanup.
+    const onKeyDown = (event) => {
+      if (
+        !shouldAutoIndent() ||
+        event.key !== 'Enter' ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.metaKey ||
+        event.shiftKey
+      )
+        return;
+      const selection = window.getSelection();
+      if (!selection?.rangeCount) return;
+      const range = selection.getRangeAt(0);
+      if (!source.contains(range.startContainer)) return;
+      const beforeCursor = range.cloneRange();
+      beforeCursor.selectNodeContents(source);
+      beforeCursor.setEnd(range.startContainer, range.startOffset);
+      const currentLine = beforeCursor.toString().split('\n').at(-1) || '';
+      const indentation = currentLine.match(/^[ \t]+/)?.[0];
+      if (!indentation || /^\s*(?:[-+*]|\d+\.)\s/.test(currentLine)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      range.deleteContents();
+      const inserted = document.createTextNode(`\n${indentation}`);
+      range.insertNode(inserted);
+      range.setStartAfter(inserted);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      source.dispatchEvent(
+        new InputEvent('input', {
+          bubbles: true,
+          inputType: 'insertText',
+          data: `\n${indentation}`,
+        }),
+      );
+    };
+    source.addEventListener('keydown', onKeyDown, true);
+    return () => source.removeEventListener('keydown', onKeyDown, true);
   }
 
   function listContext(node) {
@@ -916,6 +1164,26 @@
     return true;
   }
 
+  function replaceTextMatch(host, mode, query, occurrence, replacement, caseSensitive = false) {
+    const matches = textMatches(host, mode, query, caseSensitive);
+    const match = matches[occurrence];
+    const editor = activeEditor(host, mode);
+    if (!match || !editor) return false;
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(match.range);
+    editor.focus({ preventScroll: true });
+    // Keep replacement on Vditor's native editable/input path so its mode
+    // serialization, selection and undo stack remain authoritative.
+    if (document.execCommand?.('insertText', false, replacement)) return true;
+    match.range.deleteContents();
+    match.range.insertNode(document.createTextNode(replacement));
+    editor.dispatchEvent(
+      new InputEvent('input', { bubbles: true, inputType: 'insertText', data: replacement }),
+    );
+    return true;
+  }
+
   function normalizedAnchor(value) {
     const fragment = String(value || '').replace(/^#/, '');
     try {
@@ -1245,6 +1513,8 @@
   window.VditorDesktopAdapter = Object.freeze({
     selectors,
     editorParts,
+    ensureSplitResizer,
+    splitViewVisibility,
     toolbarContext,
     toolbarButton,
     hideNativeOutlineControl,
@@ -1259,6 +1529,11 @@
     classifyCodeThemeButtons,
     sourceNewlines,
     sourceLineRanges,
+    renderSplitDecorations,
+    syncSplitDecorationScroll,
+    captureSplitIndentSelection,
+    applySplitListIndent,
+    installSplitAutoIndent,
     listContext,
     headingTargets,
     outlineContentElement,
@@ -1288,6 +1563,7 @@
     scrollRangeIntoView,
     revealTextMatch,
     selectTextMatch,
+    replaceTextMatch,
     documentAnchor,
     documentLink,
     setDocumentLinkHint,

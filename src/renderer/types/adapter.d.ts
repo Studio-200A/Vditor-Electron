@@ -17,6 +17,11 @@ export interface ToolbarContext {
 export interface VditorDesktopAdapter {
   readonly selectors: Readonly<Record<string, string>>;
   editorParts(host: HTMLElement): EditorParts;
+  ensureSplitResizer(host: HTMLElement): HTMLElement | null;
+  splitViewVisibility(
+    host: HTMLElement,
+    mode: 'wysiwyg' | 'ir' | 'sv',
+  ): { sourceVisible: boolean; previewVisible: boolean } | null;
   toolbarContext(target: EventTarget | null): ToolbarContext;
   toolbarButton(toolbar: HTMLElement | null, type: string): HTMLButtonElement | null;
   hideNativeOutlineControl(toolbar: HTMLElement | null): void;
@@ -31,6 +36,16 @@ export interface VditorDesktopAdapter {
   classifyCodeThemeButtons(buttons: HTMLElement[]): { valid: boolean; missing: string[] };
   sourceNewlines(host: HTMLElement): HTMLElement[];
   sourceLineRanges(host: HTMLElement): HTMLElement[];
+  renderSplitDecorations(
+    host: HTMLElement,
+    mode: 'wysiwyg' | 'ir' | 'sv',
+    showWhitespace: boolean,
+    tabSize: number,
+  ): boolean;
+  syncSplitDecorationScroll(host: HTMLElement): boolean;
+  captureSplitIndentSelection(host: HTMLElement): Range | null;
+  applySplitListIndent(host: HTMLElement, type: 'indent' | 'outdent', range: Range | null): boolean;
+  installSplitAutoIndent(host: HTMLElement, shouldAutoIndent: () => boolean): (() => void) | null;
   listContext(host: HTMLElement): unknown;
   headingTargets(host: HTMLElement): HTMLElement[];
   outlineContentElement(host: HTMLElement): HTMLElement | null;
@@ -53,13 +68,44 @@ export interface VditorDesktopAdapter {
   selectedTableCell(host: HTMLElement): HTMLElement | null;
   selectTableCellContents(host: HTMLElement, cell: HTMLElement): void;
   setEditorBottomSpacer(host: HTMLElement, height: number): void;
-  textMatches(host: HTMLElement, query: string, options?: unknown): unknown[];
+  textMatches(
+    host: HTMLElement,
+    mode: 'wysiwyg' | 'ir' | 'sv',
+    query: string,
+    caseSensitive?: boolean,
+  ): unknown[];
   clearFindHighlights(host: HTMLElement): void;
-  highlightTextMatches(host: HTMLElement, matches: unknown[]): void;
-  animateDocumentNavigationScroll(host: HTMLElement, target: HTMLElement): void;
-  scrollRangeIntoView(host: HTMLElement, range: Range): void;
-  revealTextMatch(host: HTMLElement, match: unknown): void;
-  selectTextMatch(host: HTMLElement, match: unknown): void;
+  highlightTextMatches(
+    host: HTMLElement,
+    mode: 'wysiwyg' | 'ir' | 'sv',
+    query: string,
+    activeIndex: number,
+    caseSensitive?: boolean,
+  ): unknown[];
+  animateDocumentNavigationScroll(host: HTMLElement, target: number): boolean;
+  scrollRangeIntoView(host: HTMLElement, range: Range): boolean;
+  revealTextMatch(
+    host: HTMLElement,
+    mode: 'wysiwyg' | 'ir' | 'sv',
+    query: string,
+    occurrence?: number,
+    caseSensitive?: boolean,
+  ): boolean;
+  selectTextMatch(
+    host: HTMLElement,
+    mode: 'wysiwyg' | 'ir' | 'sv',
+    query: string,
+    occurrence?: number,
+    caseSensitive?: boolean,
+  ): boolean;
+  replaceTextMatch(
+    host: HTMLElement,
+    mode: 'wysiwyg' | 'ir' | 'sv',
+    query: string,
+    occurrence: number,
+    replacement: string,
+    caseSensitive?: boolean,
+  ): boolean;
   documentAnchor(host: HTMLElement): HTMLElement | null;
   documentLink(host: HTMLElement): HTMLElement | null;
   setDocumentLinkHint(host: HTMLElement, element: HTMLElement): void;

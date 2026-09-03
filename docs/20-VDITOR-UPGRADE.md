@@ -13,9 +13,12 @@ Vditor Desktop 不修改 `node_modules/vditor` 的源码，但工具栏合并、
 - 同一私有切换路径会在 SV 中隐藏并禁用 `outdent` / `indent`；adapter 为它们设置应用专用稳定占位标记，CSS 保持按钮可见且应用捕获层处理 source-selection 缩进。升级时须确认 WYSIWYG/IR → SV 没有延迟二次工具栏重排，且 SV 缩进与反缩进仍可用。
 - Desktop 大纲通过 adapter 复刻 Vditor `Outline.render()` 的 content-element 选择：preview 可见时读取其 `.vditor-reset`，否则读取当前模式编辑区，再枚举直接 H1–H6。升级时须验证三种模式的 snapshot、SV 双侧目标映射与原生顺序一致。
 - Desktop 编辑区底部留白通过 adapter 向 SV、IR、WYSIWYG 与 preview 写入私有 CSS 变量 `--editor-bottom`；Vditor 3.11.3 的 SV/IR/WYSIWYG 使用尾部 `::after` 消费该变量，Desktop 为 preview 提供同等尾部元素。升级时须验证三种编辑模式、SV preview 及窗口缩放后的留白高度均约为编辑器实际高度的一半，且用户的 typewriterMode 设置语义不变。
+- Desktop 的 SV divider 由 adapter 插入 Vditor 3.11.3 私有 `.vditor-content`，并以 source 与 preview 的实际 display 状态报告 source-only、preview-only、both 语义。升级时须验证 Vditor 异步 pane 替换后 divider 不重复、两单栏均隐藏 divider、both 中可拖动且关闭/重建不保留 window pointer listener。
+- Desktop 的 SV 行号、空白符 canvas、滚动同步、列表缩进 selection 与自动缩进均经 adapter 访问私有 `.vditor-sv`、source line/Range、list marker/padding 和 capture `keydown` 路径。空白符 canvas 在重绘时以当前 viewport 坐标重新生成并归零旧滚动补偿 transform。升级时须验证长文档、空行、表格/HTML 源码、空白符开关、source 滚动、工具栏缩进/反缩进与非列表行 Enter 自动缩进；pane 替换、rebuild 或关闭后不得遗留 observer、rAF、scroll 或 keydown listener。
 - Desktop 编辑区右键菜单通过 adapter 识别私有 WYSIWYG / IR table、保存与恢复编辑 Range，并按 Vditor 3.11.3 的表格 DOM 结构执行行列动作后重新进入其 mode-specific input / undo 路径。右键菜单不提供撤销/重做，仍使用 Vditor 工具栏和快捷键。升级时须验证三种模式的可编辑表面识别、SV preview 排除、四项表格操作、Markdown 输出、undo 与光标恢复；如上游公开表格 API，应优先评估替换该私有适配。
 - Vditor 3.11.3 的 WYSIWYG/IR 会在 paste、input 或 composition 提交中重建当前表格，导致表格自身 `scrollLeft` 丢失。adapter 的 `preserveTableScrollDuringInput()` 在这些事件的捕获阶段保存位置，再以有界 observer 在重建后恢复，并仅在光标越出表格可视区域时作最小横向调整。升级时须验证该重建行为、长单元格右侧多字符粘贴、右侧连续输入和中间位置输入至光标越界；若上游保留滚动状态或提供公共 API，应删除该私有补偿而不是叠加两套恢复。
 - Vditor 3.11.3 在编辑区的私有 `keydown` 路径直接处理 `Ctrl/Cmd+Alt+7/8/9`，并同步重建 WYSIWYG、IR 或 SV。adapter 的 `editModeShortcut()` 必须与该平台修饰键契约一致，使 Desktop 能在重建前保存文档位置、在重建后同步状态栏模式。升级时须验证三种快捷键均切换到正确模式，状态栏即时更新，且滚动位置不会回到文档顶部。
+- 查找替换通过 adapter 的 `replaceTextMatch()` 选择 Vditor 3.11.3 当前可编辑表面中的匹配 Range，并触发其原生编辑/input 路径；不得改用整篇 `getValue()`/`setValue()`。升级时须验证单次/全部替换、undo、选区和三种模式均保持正常。
 - Desktop 的应用快捷键必须与 Vditor 的组合键分离：打开文件/文件夹/侧栏使用 `Ctrl/Cmd+Alt+O/K/B`，缩放不注册 Electron menu role；渲染器只在事件未被 Vditor `preventDefault()` 时执行应用命令。升级时须复核 Vditor 默认工具栏和表格快捷键，尤其是 `Ctrl/Cmd+B`、`O`、`K`、`Shift+I`、`=`、`-` 和 `Shift+F`。
 - SVG 渲染开关变更时，adapter 的 `reloadImageSources()` 假定 Vditor 3.11.3 会把三种模式中的 Markdown 图片保留为 host 内的 `img[src]`。升级时须验证本地与 HTTP(S) SVG 在开关关闭时不显示、开启后无需重建编辑器即可显示，且既有 undo 与选区不受影响。
 

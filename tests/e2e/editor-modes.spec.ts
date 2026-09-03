@@ -1201,7 +1201,6 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
     await expect.poll(() => scrollTop(ir)).toBe(0);
     await irLink.click({ modifiers: [linkModifier] });
     await expect.poll(() => scrollTop(ir)).toBeGreaterThan(0);
-    await page.waitForTimeout(300);
     await ir.evaluate((node) => {
       node.scrollTop = 0;
       const reset = node.querySelector(':scope > .vditor-reset');
@@ -1234,7 +1233,6 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
     });
     await wysiwyg.locator('a[href="#target"]').click({ modifiers: [linkModifier] });
     await expect.poll(() => scrollTop(wysiwyg)).toBeGreaterThan(0);
-    await page.waitForTimeout(300);
     await wysiwyg.evaluate((node) => {
       node.scrollTop = 0;
       const reset = node.querySelector(':scope > .vditor-reset');
@@ -1257,7 +1255,6 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
     });
     await preview.locator('a[href="#target"]').click({ modifiers: [linkModifier] });
     await expect.poll(() => preview.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
-    await page.waitForTimeout(300);
     await source.evaluate((node) => {
       node.scrollTop = 0;
     });
