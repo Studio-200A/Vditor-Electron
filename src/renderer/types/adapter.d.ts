@@ -1,138 +1,295 @@
+export type AdapterEditMode = 'wysiwyg' | 'ir' | 'sv';
+export type SplitListAction = 'indent' | 'outdent';
+
 export interface EditorParts {
-  toolbar: HTMLElement | null;
-  content: HTMLElement | null;
-  source: HTMLElement | null;
-  instantRendering: HTMLElement | null;
-  wysiwyg: HTMLElement | null;
-  preview: HTMLElement | null;
+  readonly toolbar: HTMLElement | null;
+  readonly content: HTMLElement | null;
+  readonly source: HTMLElement | null;
+  readonly instantRendering: HTMLElement | null;
+  readonly wysiwyg: HTMLElement | null;
+  readonly preview: HTMLElement | null;
 }
 
 export interface ToolbarContext {
-  button: HTMLButtonElement | null;
-  item: HTMLElement | null;
-  trigger: HTMLElement | null;
-  type: string;
+  readonly button: HTMLButtonElement | null;
+  readonly item: HTMLElement | null;
+  readonly trigger: HTMLButtonElement | null;
+  readonly type: string;
+}
+
+export interface SourceLineRange {
+  readonly range: Range;
+  readonly fallbackRange: Range;
+}
+
+export interface CodeThemeButton {
+  readonly button: HTMLButtonElement;
+  readonly name: string;
+  readonly tone: 'dark' | 'light';
+}
+
+export interface ListContext {
+  readonly block: HTMLElement | null;
+  readonly marker: HTMLElement | null;
+  readonly padding: HTMLElement | null;
+}
+
+export interface HeadingTarget {
+  readonly editor: HTMLElement | null;
+  readonly heading: Element | null;
+}
+
+export interface OutlineSnapshotEntry {
+  readonly index: number;
+  readonly level: number;
+  readonly text: string;
+  readonly key: string;
+}
+
+export interface OutlineHeadingTarget {
+  readonly scroller: HTMLElement | null;
+  readonly heading: Element;
+}
+
+export interface EditorSelection {
+  readonly editor: HTMLElement;
+  readonly range: Range;
+}
+
+export interface SelectionScope {
+  readonly scope: 'line' | 'cell' | 'block' | 'all';
+}
+
+export interface TableContext {
+  readonly editor: HTMLElement;
+  readonly table: HTMLTableElement;
+  readonly cell: HTMLTableCellElement;
+  readonly mode: Extract<AdapterEditMode, 'ir' | 'wysiwyg'>;
+}
+
+/** Minimal private Vditor surface read by the adapter's table action only. */
+export interface VditorUndoAdapterSurface {
+  recordFirstPosition(instance: VditorTableAdapterSurface, event: { readonly key: string }): void;
+  addToUndoStack(instance: VditorTableAdapterSurface): void;
+}
+
+export interface VditorModeAdapterSurface {
+  preventInput: boolean;
+}
+
+export interface VditorTableAdapterSurface {
+  readonly undo?: VditorUndoAdapterSurface;
+  readonly ir?: VditorModeAdapterSurface;
+  readonly wysiwyg?: VditorModeAdapterSurface;
+}
+
+export interface FindMatch {
+  readonly start: number;
+  readonly end: number;
+  readonly range: Range;
+}
+
+export interface DocumentLink {
+  readonly element: Element;
+  readonly href: string;
+  readonly kind: 'link' | 'toc';
+}
+
+export interface HostValidationResult {
+  readonly valid: boolean;
+  readonly missing: string[];
+}
+
+export interface ClipboardContent {
+  readonly text?: string;
+  readonly html?: string;
 }
 
 export interface VditorDesktopAdapter {
   readonly selectors: Readonly<Record<string, string>>;
-  editorParts(host: HTMLElement): EditorParts;
-  ensureSplitResizer(host: HTMLElement): HTMLElement | null;
+  editorParts(host: HTMLElement | null | undefined): EditorParts;
+  ensureSplitResizer(host: HTMLElement | null | undefined): HTMLElement | null;
   splitViewVisibility(
-    host: HTMLElement,
-    mode: 'wysiwyg' | 'ir' | 'sv',
-  ): { sourceVisible: boolean; previewVisible: boolean } | null;
-  toolbarContext(target: EventTarget | null): ToolbarContext;
-  toolbarButton(toolbar: HTMLElement | null, type: string): HTMLButtonElement | null;
-  hideNativeOutlineControl(toolbar: HTMLElement | null): void;
-  keepSplitToolbarActionsAvailable(toolbar: HTMLElement | null): void;
-  toolbarHint(toolbar: HTMLElement | null, type: string): HTMLElement | null;
-  selectEditMode(host: HTMLElement, mode: 'wysiwyg' | 'ir' | 'sv'): void;
-  editModeShortcut(host: HTMLElement): 'wysiwyg' | 'ir' | 'sv' | null;
-  toolbarHints(toolbar: HTMLElement | null): HTMLElement[];
+    host: HTMLElement | null | undefined,
+    mode: AdapterEditMode,
+  ): { readonly sourceVisible: boolean; readonly previewVisible: boolean } | null;
+  toolbarContext(target: EventTarget | null | undefined): ToolbarContext;
+  toolbarButton(toolbar: HTMLElement | null | undefined, type: string): HTMLButtonElement | null;
+  hideNativeOutlineControl(toolbar: HTMLElement | null | undefined): boolean;
+  keepSplitToolbarActionsAvailable(toolbar: HTMLElement | null | undefined): boolean;
+  toolbarHint(item: Element | null | undefined): HTMLElement | null;
+  selectEditMode(toolbar: HTMLElement | null | undefined, mode: AdapterEditMode): boolean;
+  editModeShortcut(event: KeyboardEvent | null | undefined): AdapterEditMode | null;
+  toolbarHints(root?: Document | HTMLElement): HTMLElement[];
   hoverTooltips(root?: Document | HTMLElement): HTMLElement[];
   openSubmenus(root?: Document | HTMLElement): HTMLElement[];
-  codeThemeButtons(root?: Document | HTMLElement): HTMLElement[];
-  classifyCodeThemeButtons(buttons: HTMLElement[]): { valid: boolean; missing: string[] };
-  sourceNewlines(host: HTMLElement): HTMLElement[];
-  sourceLineRanges(host: HTMLElement): HTMLElement[];
+  codeThemeButtons(toolbar: HTMLElement | null | undefined): HTMLButtonElement[];
+  classifyCodeThemeButtons(toolbar: HTMLElement | null | undefined): CodeThemeButton[];
+  sourceNewlines(source: HTMLElement | null | undefined): HTMLElement[];
+  sourceLineRanges(source: HTMLElement | null | undefined): SourceLineRange[];
   renderSplitDecorations(
-    host: HTMLElement,
-    mode: 'wysiwyg' | 'ir' | 'sv',
+    host: HTMLElement | null | undefined,
+    mode: AdapterEditMode,
     showWhitespace: boolean,
     tabSize: number,
   ): boolean;
-  syncSplitDecorationScroll(host: HTMLElement): boolean;
-  captureSplitIndentSelection(host: HTMLElement): Range | null;
-  applySplitListIndent(host: HTMLElement, type: 'indent' | 'outdent', range: Range | null): boolean;
-  installSplitAutoIndent(host: HTMLElement, shouldAutoIndent: () => boolean): (() => void) | null;
-  listContext(host: HTMLElement): unknown;
-  headingTargets(host: HTMLElement): HTMLElement[];
-  outlineContentElement(host: HTMLElement): HTMLElement | null;
-  outlineSnapshot(host: HTMLElement): unknown;
-  outlineScrollContainer(host: HTMLElement): HTMLElement | null;
-  outlineHeadingTargets(host: HTMLElement): HTMLElement[];
-  observeOutlineChanges(host: HTMLElement, callback: () => void): { disconnect(): void };
-  innerScroller(host: HTMLElement): HTMLElement | null;
-  scrollContainers(host: HTMLElement): HTMLElement[];
-  activeEditor(host: HTMLElement): HTMLElement | null;
-  editorScrollContainer(host: HTMLElement): HTMLElement | null;
-  preserveTableScrollDuringInput(host: HTMLElement): void;
-  isEditableTarget(target: EventTarget | null): boolean;
-  captureEditorSelection(
-    host: HTMLElement,
-    mode: 'wysiwyg' | 'ir' | 'sv',
-    target?: EventTarget | null,
-  ): { editor: HTMLElement; range: Range } | null;
-  restoreEditorSelection(selection: { editor: HTMLElement; range: Range } | null): boolean;
-  selectCurrentContextOrAll(host: HTMLElement): void;
-  tableContext(host: HTMLElement): unknown;
-  performTableAction(host: HTMLElement, action: string): void;
-  executeEditorCommand(
-    host: HTMLElement,
-    mode: 'wysiwyg' | 'ir' | 'sv',
-    command: string,
-    clipboard?: { text: string; html: string } | null,
+  syncSplitDecorationScroll(host: HTMLElement | null | undefined): boolean;
+  captureSplitIndentSelection(host: HTMLElement | null | undefined): Range | null;
+  applySplitListIndent(
+    host: HTMLElement | null | undefined,
+    type: SplitListAction,
+    storedRange: Range | null | undefined,
   ): boolean;
-  selectedTableCell(host: HTMLElement): HTMLElement | null;
-  selectTableCellContents(host: HTMLElement, cell: HTMLElement): void;
-  setEditorBottomSpacer(host: HTMLElement, height: number): void;
+  installSplitAutoIndent(
+    host: HTMLElement | null | undefined,
+    shouldAutoIndent: () => boolean,
+  ): (() => void) | null;
+  listContext(node: Node | null | undefined): ListContext;
+  headingTargets(host: HTMLElement | null | undefined, headingIndex: number): HeadingTarget[];
+  outlineContentElement(
+    host: HTMLElement | null | undefined,
+    mode: AdapterEditMode,
+  ): HTMLElement | null;
+  outlineSnapshot(
+    host: HTMLElement | null | undefined,
+    mode: AdapterEditMode,
+  ): OutlineSnapshotEntry[];
+  outlineScrollContainer(
+    host: HTMLElement | null | undefined,
+    mode: AdapterEditMode,
+  ): HTMLElement | null;
+  outlineHeadingTargets(
+    host: HTMLElement | null | undefined,
+    mode: AdapterEditMode,
+    headingIndex: number,
+  ): OutlineHeadingTarget[];
+  observeOutlineChanges(
+    host: HTMLElement | null | undefined,
+    callback: MutationCallback,
+  ): MutationObserver | null;
+  innerScroller(node: Element | null | undefined): HTMLElement | null;
+  scrollContainers(host: HTMLElement | null | undefined): HTMLElement[];
+  activeEditor(host: HTMLElement | null | undefined, mode: AdapterEditMode): HTMLElement | null;
+  editorScrollContainer(
+    host: HTMLElement | null | undefined,
+    mode: AdapterEditMode,
+  ): HTMLElement | null;
+  preserveTableScrollDuringInput(
+    host: HTMLElement | null | undefined,
+    getMode: () => AdapterEditMode,
+  ): () => void;
+  isEditableTarget(
+    host: HTMLElement | null | undefined,
+    mode: AdapterEditMode,
+    target: EventTarget | null | undefined,
+  ): boolean;
+  captureEditorSelection(
+    host: HTMLElement | null | undefined,
+    mode: AdapterEditMode,
+    target?: EventTarget | null,
+    clientX?: number | null,
+    clientY?: number | null,
+  ): EditorSelection | null;
+  restoreEditorSelection(selection: EditorSelection | null | undefined): boolean;
+  selectCurrentContextOrAll(
+    host: HTMLElement | null | undefined,
+    mode: AdapterEditMode,
+  ): SelectionScope | null;
+  tableContext(
+    host: HTMLElement | null | undefined,
+    mode: AdapterEditMode,
+    target: EventTarget | null | undefined,
+  ): TableContext | null;
+  performTableAction(
+    context: TableContext | null | undefined,
+    action: 'insert-row' | 'delete-row' | 'insert-column' | 'delete-column',
+    vditor?: VditorTableAdapterSurface | null,
+  ): boolean;
+  executeEditorCommand(
+    host: HTMLElement | null | undefined,
+    mode: AdapterEditMode,
+    command: string,
+    clipboard?: ClipboardContent | null,
+  ): boolean;
+  selectedTableCell(
+    host: HTMLElement | null | undefined,
+    mode: AdapterEditMode,
+  ): { readonly editor: HTMLElement; readonly cell: HTMLTableCellElement } | null;
+  selectTableCellContents(
+    cell: HTMLTableCellElement | null | undefined,
+    editor: HTMLElement | null | undefined,
+  ): boolean;
+  setEditorBottomSpacer(host: HTMLElement | null | undefined, height: number): boolean;
   textMatches(
-    host: HTMLElement,
-    mode: 'wysiwyg' | 'ir' | 'sv',
+    host: HTMLElement | null | undefined,
+    mode: AdapterEditMode,
     query: string,
     caseSensitive?: boolean,
-  ): unknown[];
-  clearFindHighlights(host: HTMLElement): void;
+  ): FindMatch[];
+  clearFindHighlights(): void;
   highlightTextMatches(
-    host: HTMLElement,
-    mode: 'wysiwyg' | 'ir' | 'sv',
+    host: HTMLElement | null | undefined,
+    mode: AdapterEditMode,
     query: string,
     activeIndex: number,
     caseSensitive?: boolean,
-  ): unknown[];
-  animateDocumentNavigationScroll(host: HTMLElement, target: number): boolean;
-  scrollRangeIntoView(host: HTMLElement, range: Range): boolean;
+  ): FindMatch[];
+  animateDocumentNavigationScroll(
+    scroller: HTMLElement | null | undefined,
+    destination: number,
+  ): boolean;
+  scrollRangeIntoView(
+    range: Range | null | undefined,
+    editor: HTMLElement | null | undefined,
+  ): boolean;
   revealTextMatch(
-    host: HTMLElement,
-    mode: 'wysiwyg' | 'ir' | 'sv',
+    host: HTMLElement | null | undefined,
+    mode: AdapterEditMode,
     query: string,
     occurrence?: number,
     caseSensitive?: boolean,
   ): boolean;
   selectTextMatch(
-    host: HTMLElement,
-    mode: 'wysiwyg' | 'ir' | 'sv',
+    host: HTMLElement | null | undefined,
+    mode: AdapterEditMode,
     query: string,
     occurrence?: number,
     caseSensitive?: boolean,
   ): boolean;
   replaceTextMatch(
-    host: HTMLElement,
-    mode: 'wysiwyg' | 'ir' | 'sv',
+    host: HTMLElement | null | undefined,
+    mode: AdapterEditMode,
     query: string,
     occurrence: number,
     replacement: string,
     caseSensitive?: boolean,
   ): boolean;
-  documentAnchor(host: HTMLElement): HTMLElement | null;
-  documentLink(host: HTMLElement): HTMLElement | null;
-  setDocumentLinkHint(host: HTMLElement, element: HTMLElement): void;
-  clearDocumentLinkHint(host: HTMLElement): void;
-  focusDocumentLink(host: HTMLElement): void;
-  expandInstantLinkForEditing(host: HTMLElement): void;
-  headingIndexForAnchor(host: HTMLElement, anchor: string): number;
-  relativeSourceFromLocalUrl(url: string): string | null;
-  resolveRelativeImageSources(host: HTMLElement, baseDir: string): { restore(): void };
-  resolveRelativeDocumentLinks(host: HTMLElement, baseDir: string): { restore(): void };
+  documentAnchor(
+    target: EventTarget | null | undefined,
+    host: HTMLElement | null | undefined,
+  ): DocumentLink | null;
+  documentLink(
+    target: EventTarget | null | undefined,
+    host: HTMLElement | null | undefined,
+  ): DocumentLink | null;
+  setDocumentLinkHint(link: DocumentLink | null | undefined, hint: string, cursor: string): boolean;
+  clearDocumentLinkHint(link: DocumentLink | null | undefined): boolean;
+  focusDocumentLink(link: DocumentLink | null | undefined): boolean;
+  expandInstantLinkForEditing(link: DocumentLink | null | undefined): boolean;
+  headingIndexForAnchor(host: HTMLElement | null | undefined, href: string): number;
+  relativeSourceFromLocalUrl(source: string, baseUrl: string): string;
+  resolveRelativeImageSources(host: HTMLElement | null | undefined, baseUrl: string): void;
+  resolveRelativeDocumentLinks(host: HTMLElement | null | undefined, baseUrl: string): void;
   observeRelativeImageSources(
-    host: HTMLElement,
-    baseDir: string,
-    callback: () => void,
-  ): { disconnect(): void };
-  reloadImageSources(host: HTMLElement): void;
-  withOriginalImageSources(host: HTMLElement): { restore(): void };
-  validateHost(host: HTMLElement): boolean;
+    host: HTMLElement | null | undefined,
+    baseUrl: string,
+  ): MutationObserver | null;
+  reloadImageSources(host: HTMLElement | null | undefined): number;
+  withOriginalImageSources<T>(host: HTMLElement | null | undefined, callback: () => T): T;
+  validateHost(
+    host: HTMLElement | null | undefined,
+    mountedToolbar?: HTMLElement | null,
+  ): HostValidationResult;
 }
 
 declare global {

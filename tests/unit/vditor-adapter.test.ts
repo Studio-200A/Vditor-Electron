@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { JSDOM } from 'jsdom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ADAPTER_PUBLIC_KEYS } from '../../src/renderer/types/adapter-contract.js';
 
 describe('Vditor DOM compatibility adapter', () => {
   let window: JSDOM['window'];
@@ -37,6 +38,10 @@ describe('Vditor DOM compatibility adapter', () => {
       </div>`;
     return host;
   }
+
+  it('exports exactly the declared adapter facade', () => {
+    expect(Object.keys(adapter).sort()).toEqual([...ADAPTER_PUBLIC_KEYS].sort());
+  });
 
   it('centralizes and validates the supported Vditor structure', () => {
     const host = createHost();
