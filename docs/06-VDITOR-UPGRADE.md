@@ -4,7 +4,7 @@ Vditor Desktop 不修改 `node_modules/vditor` 的源码，但工具栏合并、
 
 ## 兼容边界
 
-- 公开 API 和初始化选项位于 `src/renderer/app.js`。
+- 公开 API 和初始化选项位于 `src/renderer/editor/editor-options.ts`（Vditor constructor-only 设置、离线资源、locale、relative-resource base 与回调接线）；Vditor 实例化与重建生命周期由 `src/renderer/editor/editor-controller.ts` 负责，其余业务代码不再直接构造 `new Vditor()`。
 - JavaScript 使用的非公开 DOM 选择器和结构判断集中在 `src/renderer/vditor-adapter.js`。
 - `src/renderer/types/adapter.d.ts` 是冻结 `window.VditorDesktopAdapter` facade 的严格类型边界；`src/renderer/types/adapter-contract.ts` 覆盖全部公开成员的编译期调用，并提供给单测比对的导出键 manifest。升级若增删或改签名，必须在同一改动中同步 runtime facade、声明、manifest 和契约测试；不得用宽泛类型或 overload 掩盖差异。
 - Vditor 外观覆盖仍集中在 `src/renderer/styles/app.css` 的 Vditor integration 区段，它是升级时的第二检查面。

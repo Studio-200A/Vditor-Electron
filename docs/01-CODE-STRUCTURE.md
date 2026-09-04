@@ -2,7 +2,7 @@
 
 - **生成时间：** 2026-09-04
 - **基于的工作区：** `dev-0.2.5` 当前工作区实现（批次 8、8.1 已完成，批次 9 尚未开始）
-- **文档版本：** v1.20
+- **文档版本：** v1.21
 - **对应 package.json 版本号：** 0.2.0（开发中 0.2.5）
 
 ---
@@ -82,6 +82,9 @@ Vditor-Electron/
 │   │   ├── local-resource.ts      # local-file URL、受控根和资源 MIME 策略
 │   │   ├── remote-svg-policy.ts   # HTTP(S) 图片 SVG URL/MIME 拒绝策略
 │   │   ├── external-url.ts         # 外部 URL 协议白名单校验
+│   │   ├── validated-url.ts       # 不受信 URL 字符串的安全解析（供外部/导航校验复用）
+│   │   ├── app-url.ts             # 受信任 app://app resource/page origin 判定
+│   │   ├── navigation-policy.ts   # will-navigate / window.open 统一导航分类
 │   │   ├── menu.ts                # macOS 原生菜单构建（Menu.buildFromTemplate）
 │   │   ├── app-paths.ts           # 平台路径解析（config / chromium / recovery 数据目录）
 │   │   ├── open-files.ts          # CLI / OS 文件关联参数解析
@@ -94,6 +97,7 @@ Vditor-Electron/
 │   │       ├── recovery-store.ts  # 私有恢复快照的校验、原子写入、读取与清理
 │   │       ├── settings-store.ts  # 仅用户偏好的 TOML 读写、加载校验、深合并、原子保存
 │   │       ├── persistent-state-store.ts # 版本化 state.json 白名单、迁移、串行原子写入
+│   │       ├── window-close-confirmation.ts # 按 BrowserWindow 绑定的关闭确认状态
 │   │       └── app-state.ts       # AppSettings / PersistentAppState 接口与默认值定义
 ├── src/renderer/                  # 渲染进程（TypeScript 入口 + legacy JavaScript + HTML + CSS）
 │   ├── main.ts                    # 应用组合入口（esbuild bundle → dist/renderer/main.js）
@@ -120,7 +124,11 @@ Vditor-Electron/
 │   │   ├── theme.ts               # 主题常量与判定（isDarkTheme、DARK_THEMES 等）
 │   │   ├── localization.ts        # 本地化纯函数（resolveLocale、translate、formatIpcErrorMessage）
 │   │   ├── theme-controller.ts    # 主题控制器纯函数层（resolveEffectiveTheme、resolveThemeMode 等）
-│   │   └── notifications.ts       # NotificationsController 类（消息提示、临时通知、确认对话框、未保存对话框）
+│   │   ├── notifications.ts       # NotificationsController 类（消息提示、临时通知、确认对话框、未保存对话框）
+│   │   ├── window-controller.ts   # WindowController（标题栏窗口控制按钮与状态订阅）
+│   │   ├── menu-controller.ts     # MenuController（Windows/Linux 自定义主菜单 popup DOM）
+│   │   ├── context-menu-controller.ts # ContextMenuController（共享右键菜单 popup 与互斥交接）
+│   │   └── localization-controller.ts # LocalizationController（运行时 locale 解析与 DOM 刷新）
 │   ├── state/                     # 应用状态管理（批次 3 建立）
 │   │   ├── types.ts               # 核心状态类型（EditMode、DocumentIdentity、DocumentState、EditorRuntime、DocumentTab、AppState 等）
 │   │   ├── store.ts               # AppStore 类（受控修改 API、订阅机制、文档/设置/locale/工作区操作）
@@ -128,6 +136,7 @@ Vditor-Electron/
 │   ├── documents/                 # 批次 4 文档生命周期渐进迁移
 │   │   ├── tab-controller.ts      # 标签栏表现、交互和 dispose
 │   │   ├── document-controller.ts # 新建、打开、canonical identity 去重和正文读取边界
+│   │   ├── document-binding-transition.ts # 文档路径绑定迁移的命令/结果类型契约
 │   │   ├── document-save-controller.ts # 文档/identity 两级保存队列
 │   │   ├── document-close-controller.ts # 确认、runtime 释放、Store 删除顺序
 │   │   ├── external-change-controller.ts # watcher 正文的纯分类
@@ -144,6 +153,14 @@ Vditor-Electron/
 │   │   ├── image-controller.ts    # 图片写入/插入与相对资源 runtime
 │   │   ├── recovery-runtime-controller.ts # recovery debounce 与串行 save/discard
 │   │   └── recovery-banner-controller.ts # recovery banner 渲染与动作路由
+│   ├── workspace/                 # 批次 8 工作区域迁移
+│   │   ├── workspace-controller.ts # 工作区根路径、revision、watcher 刷新 timer 与 dispose
+│   │   └── explorer-controller.ts  # application-owned 文件树 DOM、懒加载展开与展开状态
+│   ├── settings/                  # 批次 8 设置域迁移
+│   │   ├── settings-controller.ts  # AppStore.settings 唯一写入入口与 classifySettingsChange 分类
+│   │   └── settings-window.ts      # 设置 modal enter/exit 动画、close timer 与 dispose
+│   ├── export/                    # 批次 8 导出域迁移
+│   │   └── export-controller.ts    # HTML/PDF 导出事务顺序与资源重写
 │   ├── styles/
 │   │   ├── app.css                # 应用样式文件（布局、通用组件、共享语义变量；:root 默认主题变量）
 │   │   └── themes/                # 主题样式文件（批次 2 剩余拆分）
@@ -157,7 +174,8 @@ Vditor-Electron/
 │       └── notification/          # 持久告警与短暂通知图标
 ├── src/shared/                    # 主进程、preload、renderer 共享类型
 │   └── contracts/                 # 可序列化 DTO（无运行时依赖）
-│       └── index.ts               # ResultCode、WriteResult、DocumentIdentity 等骨架类型
+│       ├── index.ts               # ResultCode、WriteResult、DocumentIdentity 等骨架类型
+│       └── session.ts             # SessionSnapshot schema v1 共享接口与版本常量
 ├── static/
 │   └── dist/                      # [自动生成] 离线 Vditor 构建产物（由 build:assets 复制）
 ├── dist/                          # [自动生成] 主进程编译输出（tsc）
@@ -168,6 +186,8 @@ Vditor-Electron/
 │   ├── build-renderer.js          # esbuild renderer bundle（main.ts → dist/renderer/main.js，pure-functions.ts → dist/renderer/pure-functions.js）
 │   ├── copy-vditor-assets.js      # 复制 Vditor、renderer（跳过 .ts），并生成 Lucide 图标到 dist/
 │   ├── check-vditor-version.js    # Vditor 版本一致性校验
+│   ├── check-project-metadata.js  # package.json / lock / 稳定应用 ID / Linux 元数据一致性检查
+│   ├── run-electron-e2e.js        # Playwright Electron E2E 启动器（Linux 复用本地 Electron dist）
 │   └── release-linux.js           # Linux x64 portable / AppImage 发布脚本
 ├── resources/
 │   └── linux/                     # Linux 打包资源（.desktop、AppRun、metainfo）
@@ -288,7 +308,7 @@ View 菜单:  Editing Mode (WYSIWYG / IR / SV) /
 | 打开文件、文件夹、切换侧栏 | `Ctrl/Cmd+Alt+O`、`K`、`B` | native menu（macOS）及 renderer `keydown` |
 | 全屏、DevTools | `F11`、`F12` | renderer、main `before-input-event` |
 
-缩放没有快捷键。应用监听在 Vditor 已 `preventDefault()` 的编辑器按键后退出，避免重入 Vditor 命令；完整应用/Vditor 对照见 [`40-DEV-NOTE.md`](40-DEV-NOTE.md#快捷键归属与冲突边界)。
+缩放没有快捷键。应用监听在 Vditor 已 `preventDefault()` 的编辑器按键后退出，避免重入 Vditor 命令；完整应用/Vditor 对照见 [`08-DEV-NOTE.md`](08-DEV-NOTE.md#快捷键归属与冲突边界)。
 
 ### 4.7 单实例锁定
 
@@ -344,7 +364,7 @@ webPreferences: {
 | `openFileDialog(defaultDirectory?)`               | `file:openDialog`       | invoke     | `string?`                             | `string[]`                              |
 | `openFolderDialog(defaultDirectory?)`             | `file:openFolderDialog` | invoke     | `string?`                             | `string \| null`                        |
 | `saveFileDialog(defaultPath?, defaultDirectory?)` | `file:saveDialog`       | invoke     | `string?, string?`                    | `string \| null`                        |
-| `exportDialog(type, defaultPath?)`                | `file:exportDialog`     | invoke     | `'html'\|'pdf', string?`              | `string \| null`                        |
+| `exportDialog(type, defaultPath?, defaultDirectory?)` | `file:exportDialog` | invoke     | `'html'\|'pdf', string?, string?`     | `string \| null`                        |
 | `readFile(filePath)`                              | `file:read`             | invoke     | `string`                              | `{ content: string, encoding: string }` |
 | `writeFile(filePath, content)`                    | `file:write`            | invoke     | `string, string`                      | `{ expectedContent, wrote }`            |
 | `writeDocument(filePath, content, expectedContent?, expectedAbsent?)` | `file:writeDocument` | invoke | `string, string, string?, boolean?` | `SafeWriteResult` 或 `{ error, content?, encoding? }` |
@@ -360,10 +380,11 @@ webPreferences: {
 | `dirname(filePath)`                               | `file:dirname`          | invoke     | `string`                              | `string`                                |
 | `relative(from, to)`                              | `file:relative`         | invoke     | `string, string`                      | `string`                                |
 | `resolveMarkdownLink(sourceFile, href)`           | `file:resolveMarkdownLink` | invoke  | `string, string`                      | `MarkdownLinkResolution`                |
-| `setWorkspaceWatch(rootPath?)`                    | `file:setWorkspaceWatch` | invoke    | `string?`                             | `void`                                  |
-| `watchDocument(filePath, reconcile?)`              | `file:watchDocument`    | invoke     | `string, boolean?`                     | `void`                                  |
-| `unwatchDocument(filePath, identity?)`             | `file:unwatchDocument`  | invoke     | `string, string?`                      | `void`                                  |
-| `onChanged(callback)`                             | `file:changed`          | on（订阅） | `{ event, path, identity?, scope, content?, encoding?, error? }` | 取消订阅函数                    |
+| `setWorkspaceWatch(rootPath?, depth?)`             | `file:setWorkspaceWatch` | invoke    | `string?, number?`                    | `void`                                  |
+| `watchDocument(filePath, reconcile?)`              | `file:watchDocument`    | invoke     | `string, boolean?`                    | `void`                                  |
+| `unwatchDocument(filePath, identity?)`             | `file:unwatchDocument`  | invoke     | `string, string?`                     | `void`                                  |
+| `resolveRenamedDocument(filePath)`                 | `file:resolveRenamedDocument` | invoke | `string`                          | 工作区内按 fingerprint 匹配的改名路径或 `null` |
+| `onChanged(callback)`                             | `file:changed`          | on（订阅） | `{ event, path, previousPath?, identity?, scope, content?, encoding?, error? }` | 取消订阅函数                    |
 | `getDroppedPath(file)`                            | _(webUtils)_            | 直接调用   | `File`                                | `string`                                |
 
 `window.fileAPI.rebasePath(oldRoot, newRoot, candidatePath)` 对目录重命名后的路径执行主进程路径 rebase；候选路径不在旧根目录下时返回 `null`。
@@ -391,7 +412,7 @@ webPreferences: {
 | `openExternal(url)`              | `app:openExternal`           | invoke       | `string`               | `Promise`                                   |
 | `showItemInFolder(filePath)`     | `app:showItemInFolder`       | invoke       | `string`               | `void`                                      |
 | `openDirectory(dirPath)`         | `app:openDirectory`          | invoke       | `string`               | `void`                                      |
-| `exportPDF(html, defaultPath?)`  | `app:exportPDF`              | invoke       | `string, string?`      | `string \| null`                            |
+| `exportPDF(html, defaultPath?, defaultDirectory?)` | `app:exportPDF` | invoke       | `string, string?, string?` | `string \| null`                        |
 | `toggleFullscreen()`             | `app:toggleFullscreen`       | send（单向） | 无                     | 无                                          |
 | `rendererReady()`                | `app:rendererReady`          | send         | 无                     | 无                                          |
 | `closeConfirmed()`               | `app:closeConfirmed`         | send         | 无                     | 无                                          |
@@ -476,14 +497,19 @@ webPreferences: {
 
 ```javascript
 const state = {
+  get tabs() { return store.getState().documents; },          // 委托 AppStore
+  get activeId() { return store.getState().activeDocumentId; }, // set 经 store.setActiveDocument
   toolbarPreview: null,  // 无标签时用于展示默认编辑模式 toolbar 的非文档 Vditor 实例
-  settings: null,        // AppSettings 从主进程加载的完整配置
-  defaultSettings: null, // AppSettings 默认配置（用于重置）
-  locale: 'en_US',       // string 当前语言代码
+  get workspace() { return store.getState().workspacePath; }, // 委托 AppStore
+  get settings() { return store.getState().settings; },       // set 经 store.updateSettings
+  get defaultSettings() { return store.getState().defaultSettings; }, // set 经 store.updateDefaultSettings
+  get locale() { return store.getState().locale; },           // set 经 store.updateLocale
   untitledCounters: {     // number 文件与文件夹分别维护的新建序号
     file: 0,
     directory: 0,
   },
+  get workspaceRevision() { return store.getState().workspaceRevision; }, // 委托 AppStore
+  toolbarWrapHeight: 0,  // 共享 toolbar 折行高度缓存
 };
 
 ```
@@ -675,6 +701,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `keepSplitToolbarActionsAvailable(toolbar)` | `toolbar` | `boolean`                          | 为 outdent/indent 设置稳定占位标记，防止切入 SV 时发生延迟二次布局变更        |
 | `toolbarHint(item)`                 | `item`          | `Element \| null`                 | 获取工具栏项的 hover 提示面板                                                 |
 | `selectEditMode(toolbar, mode)`     | `toolbar, mode` | `boolean`                          | 通过 Vditor 自身的 edit-mode 菜单按钮切换模式，复用其状态、undo 与焦点处理    |
+| `editModeShortcut(event)`           | `event`         | `'wysiwyg'\|'ir'\|'sv' \| null`   | 按 Vditor 3.11.3 私有 keydown 的平台修饰键规则解析 `Ctrl/Cmd+Alt+7/8/9` 模式快捷键 |
 | `toolbarHints(root?)`               | `root?`         | `Element[]`                       | 获取所有打开的工具栏面板                                                      |
 | `hoverTooltips(root?)`              | `root?`         | `Element[]`                       | 获取所有 hover 态标签列表                                                     |
 | `openSubmenus(root?)`               | `root?`         | `Element[]`                       | 获取所有打开的自定义子菜单                                                    |
@@ -686,12 +713,14 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | 函数                          | 入参          | 返回值                       | 用途                                                  |
 | ----------------------------- | ------------- | ---------------------------- | ----------------------------------------------------- |
 | `sourceNewlines(source)`      | `sv`          | `Element[]`                  | 获取 SV 模式所有换行 span（用于行号渲染）             |
+| `sourceLineRanges(source)`    | `sv`          | `{ node, start, end }[]`     | 遍历 SV source 文本节点并累计字符偏移，供行号/空白符 Range 测量 |
 | `renderSplitDecorations(host, mode, showWhitespace, tabSize)` | `host, mode, setting` | `boolean` | 按私有 source 行与 Range 测量重绘 SV 行号和空白符 canvas |
 | `syncSplitDecorationScroll(host)` | `host` | `boolean` | 同步行号/空白符 canvas 到 source 的私有滚动位置 |
 | `captureSplitIndentSelection(host)` / `applySplitListIndent(host, type, range)` | `host, type, range` | `Range \| null` / `boolean` | 保存并恢复 SV 列表缩进所需的私有 source Range |
 | `installSplitAutoIndent(host, isEnabled)` | `host, predicate` | `cleanup \| null` | 在私有 source 树安装自动缩进及 Ctrl/Cmd+Shift+I/O 列表命令 capture listener，并返回精确释放函数 |
 | `listContext(node)`           | `textNode`    | `{ block, marker, padding }` | 解析当前列表的 marker/padding 节点（用于缩进/反缩进） |
 | `headingTargets(host, index)` | `host, index` | `{ editor, heading }[]`      | 获取指定索引的标题在所有编辑器模式中的 DOM 节点       |
+| `outlineContentElement(host, mode)` | `host, mode` | `Element \| null`      | 按 Vditor Outline.render 的可见性规则返回大纲应收集的内容元素（可见 preview 优先） |
 | `outlineSnapshot(host, mode)` | `host, mode` | `{ index, level, text, key }[]` | 按 Vditor 原生规则从可见 preview 或当前模式编辑区收集直接 H1–H6，作为 Desktop 大纲的唯一 snapshot |
 | `outlineScrollContainer(host, mode)` | `host, mode` | `Element \| null` | 返回大纲 canonical 内容的实际滚动容器：可见 preview 为外层 preview，IR/WYSIWYG 为 reset，SV 为源码区 |
 | `outlineHeadingTargets(host, mode, index)` | `host, mode, index` | `{ scroller, heading }[]` | 直接返回 snapshot 对应标题 DOM 节点及其滚动容器；SV 两侧集合数量一致时同步源码与 preview，否则只返回原生 canonical 目标 |
@@ -705,6 +734,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `selectCurrentContextOrAll()` | 实现当前 block、表格单元格或 SV 源码行到全文的选择升级 |
 | `tableContext()` / `performTableAction()` | 识别 WYSIWYG / IR 表格上下文并执行四项行列操作，重新进入 Vditor 的 input / undo 更新路径 |
 | `executeEditorCommand()` | 执行剪切、复制、删除和带 `{ text, html }` ClipboardData 的 Vditor paste 事件；撤销/重做不通过右键菜单提供 |
+| `selectedTableCell()` / `selectTableCellContents()` | 当选区完整覆盖单个非空表格单元格内容时返回该单元格及其编辑器，并可重新设置单元格内容选区 |
 
 #### 查找替换（CSS Highlights API）
 
@@ -740,8 +770,10 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 
 | 函数                                         | 入参                      | 返回值             | 用途                                                                                                |
 | -------------------------------------------- | ------------------------- | ------------------ | --------------------------------------------------------------------------------------------------- |
+| `relativeSourceFromLocalUrl(source, baseUrl)` | `source, baseUrl`       | `string`           | 将 `local-file://` URL 反解为受控根内的相对路径；协议/host 不匹配时返回空字符串                    |
 | `resolveRelativeImageSources(host, baseUrl)` | `host, localResourceBase` | `void`             | 将相对路径图片（包括 Vditor 提前转成的 `app://app/` 路径）替换为 `local-file://` URL，记录原始路径到 `data-vditor-desktop-original-src` |
-| `observeRelativeImageSources(host, baseUrl)` | 同上                      | `MutationObserver` | 安装 MutationObserver 持续监听新插入的图片并执行替换                                                |
+| `resolveRelativeDocumentLinks(host, baseUrl)` | 同上                     | `void`             | 将 `a[href]` 中的 `local-file://` 链接反解回相对路径，供序列化与相对链接导航使用                   |
+| `observeRelativeImageSources(host, baseUrl)` | 同上                      | `MutationObserver` | 安装 MutationObserver 持续监听新插入的图片与文档链接并执行替换                                      |
 | `reloadImageSources(host)`                | `host`                    | `number`           | 重新请求 host 内所有图片，使 SVG 渲染开关热更新而不重建 Vditor                                      |
 | `withOriginalImageSources(host, callback)`   | `host, () => T`           | `T`                | 临时还原所有图片为原始相对路径后执行 callback（用于 `getValue()` 序列化），完成后重新替换回绝对 URL |
 
@@ -758,7 +790,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `file:openDialog`            | `defaultDirectory?`               | `string[]`                                  | 多选文件对话框（Markdown + All Files 过滤器） |
 | `file:openFolderDialog`      | `defaultDirectory?`               | `string \| null`                            | 选择工作目录                                 |
 | `file:saveDialog`            | `defaultPath?, defaultDirectory?` | `string \| null`                            | 保存对话框                                   |
-| `file:exportDialog`          | `type, defaultPath?`              | `string \| null`                            | 导出对话框                                   |
+| `file:exportDialog`          | `type, defaultPath?, defaultDirectory?` | `string \| null`                        | 导出对话框                                   |
 | `file:read`                  | `filePath: string`                | `{ content, encoding }`                     | 读取文件（UTF-8/BOM/GB18030）                |
 | `file:write`                 | `filePath, content`               | `{ expectedContent, wrote }`                | 安全写入文本（供非文档导出等使用）           |
 | `file:writeDocument`         | `filePath, content, expectedContent?, expectedAbsent?` | `SafeWriteResult` 或 `{ error, content?, encoding? }` | 安全文档写入；在最终替换前复核磁盘基线，并将权限/外部变化等错误映射为领域结果 |
@@ -773,12 +805,17 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `file:basename`              | `filePath`                        | `string`                                    | `path.basename`                              |
 | `file:dirname`               | `filePath`                        | `string`                                    | `path.dirname`                               |
 | `file:relative`              | `from, to`                        | `string`                                    | 斜杠归一化的相对路径                         |
+| `file:rebasePath`            | `oldRoot, newRoot, candidatePath` | `string \| null`                           | 目录重命名后对候选路径执行路径 rebase；候选路径不在旧根下时返回 `null` |
 | `file:resolveMarkdownLink`   | `sourceFile, href`                | `MarkdownLinkResolution`                    | 仅解析已保存文件的相对 Markdown 链接，验证普通文件并返回规范目标路径与片段 |
 | `file:setWorkspaceWatch`     | `rootPath?, depth?`               | `void`                                      | 按 7–12 深度设置只报告目录结构变化的工作区 watcher，不跟随符号链接 |
 | `file:watchDocument`         | `filePath, reconcile?`            | `void`                                      | 为每个打开文档建立去重的稳定内容 watcher；可在 ready 后请求 reconciliation |
 | `file:unwatchDocument`       | `filePath, identity?`             | `void`                                      | 按路径或已保存 identity 关闭 watcher 并取消迟到读取 |
+| `file:resolveRenamedDocument` | `filePath`                       | `string \| null`                            | 按保存的 fingerprint 在当前工作区内查找改名后的目标路径，不能作为任意文件搜索能力 |
 | `file:setResourceRoots`      | `rootPaths: string[]`             | `void`                                      | 替换 local-file 受控根；仅接受最多 64 个绝对目录，由主进程执行 realpath、私有目录排除和边界校验 |
 | `app:getSettings`            | 无                                | `AppSettings`                               | 返回完整配置副本（structuredClone）          |
+| `app:getPersistentState`     | 无                                | `PersistentAppState`                        | 返回版本化 state.json 副本                   |
+| `app:savePersistentState`    | 白名单状态 patch                  | `PersistentAppState`                        | 校验白名单字段后串行原子写入 state.json       |
+| `app:clearPersistentState`   | 无                                | `PersistentAppState`                        | 清空跨启动应用状态并保留用户偏好              |
 | `app:getDefaultSettings`     | 无                                | `AppSettings`                               | 返回默认配置副本                             |
 | `app:saveSettings`           | `Partial<AppSettings>`            | `AppSettings`                               | 深合并并持久化；相关设置变化时更新 macOS 菜单 |
 | `app:resetSettings`          | 无                                | `AppSettings`                               | 重置为默认值并持久化                         |
@@ -793,7 +830,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `app:openExternal`           | `url: unknown`                    | `Promise`                                   | `allowedExternalUrl()` 验证 http(s)/mailto 后 `shell.openExternal`  |
 | `app:showItemInFolder`       | `filePath`                        | `void`                                      | `shell.showItemInFolder`                     |
 | `app:openDirectory`          | `dirPath`                         | `void`                                      | `shell.openPath`                             |
-| `app:exportPDF`              | `html, defaultPath?`              | `string \| null`                            | 隐藏 BrowserWindow 加载 HTML 后 `printToPDF` |
+| `app:exportPDF`              | `html, defaultPath?, defaultDirectory?` | `string \| null`                        | 隐藏 BrowserWindow 加载 HTML 后 `printToPDF` |
 | `app:readClipboard`          | 无                                | `{ text: string, html: string }`             | 读取编辑区右键菜单所需的系统剪贴板文本和 HTML 数据 |
 | `app:writeClipboard`         | `text: string`                    | `void`                                        | 在用户确认重建文件后写入冻结的此前正文备份       |
 | `app:getRecoveryCandidates`  | 无                                | `{ id, title, updatedAt }[]`                  | 返回不含正文的有效恢复快照元数据              |
@@ -991,14 +1028,14 @@ onEditorInput(tab, value)
 function rememberRecent(filePath) {
   const recent = [
     { path, title, openedAt: Date.now() },
-    ...state.settings.recentFiles.filter(item => item.path !== filePath),
+    ...(state.settings.recentFiles || []).filter(item => item.path !== filePath),
   ].slice(0, 20);  // 最多保存 20 条
   state.settings.recentFiles = recent;
-  window.appAPI.saveSettings({ recentFiles: recent });
+  queueSettingsSave({ recentFiles: recent });
 }
 ```
 
-记录在 `AppSettings.recentFiles` 字段中，每次打开文件时更新。当前未在 UI 显示最近文件列表（数据已就绪，展示层待实现）。
+记录在 `PersistentAppState.recentFiles` 字段中，每次打开文件时更新；`recentFiles` 属于 `PERSISTENT_STATE_KEYS`，经 `queueSettingsSave()` 串行队列通过 `app:savePersistentState` 写入 `state.json`（偏好键才走 `app:saveSettings`）。当前未在 UI 显示最近文件列表（数据已就绪，展示层待实现）。
 
 ### 9.7 异常退出恢复
 
@@ -1044,11 +1081,11 @@ function rememberRecent(filePath) {
 - **职责：** 承载所有标签页的 Vditor 编辑器 host、无标签时的 toolbar 预览 host、空状态引导、外部变更与异常恢复横幅、查找替换组件
 - **实现：** `ensureEditor()`、`switchTab()` 切换 active 类；编辑器重建和三种模式切换均保存主滚动容器的位置，跨模式按文档滚动进度恢复，SV 始终以源码区为准
 
-#### 查找替换（`app.js` 的 `openFind()` / `replaceFindMatch()`，`index.html:153-206`）
+#### 查找替换（`editor/find-controller.ts`，`index.html:153-206`）
 
 - **职责：** 全文查找、逐条匹配、CSS Highlights API 高亮、替换单个/全部
-- **实现：** `openFind()`、`refreshFind()`、`moveFindMatch()`、`replaceFindMatch()`、`replaceAllFindMatches()`
-- **注意：** 当前实现通过 `tab.vditor.setValue(content)` 回写替换结果，可能丢失选择/undo 状态（已知问题）
+- **实现：** `FindController` 拥有 find widget DOM、打开/关闭/切换快捷键、匹配计数、reveal timer 与 dispose；查找高亮和替换经 adapter 的 `textMatches` / `revealTextMatch` / `replaceTextMatch` 完成。`app.js` 仅在组合层注入活动 tab、模式与 adapter 依赖。
+- **替换路径：** `replaceTextMatch()` 经 Vditor 原生编辑/input 路径替换单个匹配，保留选区、undo 历史和模式状态（不再使用 `setValue()` 全文回写）。
 
 #### 侧栏（`app.js` 的 `toggleSidebar()`，`index.html:115-139`）
 
@@ -1058,27 +1095,27 @@ function rememberRecent(filePath) {
 - **状态与清理：** 稳定态根据 `.collapsed` 判断可见性，过渡中以 `state.settings.sidebarVisible` 作为目标状态，重复操作可反向而不会重启动画。`transitionend` 仅接受 sidebar 自身的 `transform`，220ms timeout 为事件缺失回退；完成后清理过渡类、取消 Web Animations、同步顶部宽度，并只调度一次 SV 行号/空白标记更新。`prefers-reduced-motion` 同时缩短 transition 和 keyframe animation。
 - **提示：** `setupSidebarTooltips()` 通过事件委托读取 sidebar 内的 `data-tooltip`，与 Markdown 链接共用独立的 `#appTooltip`；文件名、工作区路径和图标操作不再依赖浏览器原生 `title` 提示。
 
-#### 文件树（`app.js` 的 `appendDirectory()` / `showTreeMenu()` / `showWorkspaceTreeMenu()`，`index.html:127-131`）
+#### 文件树（`workspace/explorer-controller.ts` + `app.js` 命令回调，`index.html:127-131`）
 
 - **职责：** 懒加载工作区目录树、文件展开状态持久化、文件名原生末尾省略；文件/目录条目右键菜单提供重命名、回收站和在管理器中显示，空白树区域菜单提供切换工作区、新建与打开工作区。
-- **实现：** `appendDirectory()`、`showTreeMenu()`、`showWorkspaceTreeMenu()`、`createExplorerItem()`、`nextUntitledNumber()`、`renameExplorerItem()`；`.tree-name` 使用 `overflow: hidden`、`text-overflow: ellipsis` 和 `white-space: nowrap`，保持完整名称作为 DOM 文本及 `data-tooltip`，不在 resize 或树刷新时执行脚本测宽。新建文件自动创建并打开 `Untitled x.md`，新建目录自动创建 `Untitled x`。文件和目录分别编号；文件还避开当前目录已有 Markdown 文件和已打开标签，目录只避开当前目录已有目录。首次保存或另存为后直接调用 `refreshTree()`，避免自身保存事件被抑制时遗漏新文件。
+- **实现：** `ExplorerController` 拥有 application-owned 文件树 DOM（私有 `appendDirectory()` 懒加载）、展开状态和条目/空白区菜单意图，不直接写 document 状态或操作 Vditor；`app.js` 注入 `createExplorerItem()`、`nextUntitledNumber()`、`renameExplorerItem()` 等命令回调并实现 `showWorkspaceTreeMenu()` 的文件桥接操作。`.tree-name` 使用 `overflow: hidden`、`text-overflow: ellipsis` 和 `white-space: nowrap`，保持完整名称作为 DOM 文本及 `data-tooltip`，不在 resize 或树刷新时执行脚本测宽。新建文件自动创建并打开 `Untitled x.md`，新建目录自动创建 `Untitled x`。文件和目录分别编号；文件还避开当前目录已有 Markdown 文件和已打开标签，目录只避开当前目录已有目录。首次保存或另存为后直接调用 `refreshTree()`，避免自身保存事件被抑制时遗漏新文件。
 - **过滤：** 仅显示 `fileExplorer.visibleExtensions` 中的扩展名，隐藏以 `.` 开头的文件
 - **资源边界：** `workspaceReadDepth` 在 Files & Session 中以 7–12 滑块持久化（默认 7）。根目录深度为 0，`appendDirectory()` 不读取超过该边界的后代，恢复展开状态同样受限；边界目录显示不可选中的本地化提示，语言切换时文件树会重建。可由 `realpath` 解析的目录链接会携带目标、相对工作区深度与工作区内外状态：内部目标可展开、外部目标灰色不可展开、循环目标被阻止；链接名称使用斜体和下划线，目录图标切换为 Lucide `folder-symlink`。工作区 watcher 使用相同深度且不跟随链接，资源错误只发送一次降级事件并关闭失效 watcher，手动浏览和刷新仍可用。`FileManagerService.listDir()` 会跳过读取过程中消失、失效或无权限的单个条目，不让一个损坏链接阻断整棵树。
 
-#### 文档大纲（`app.js` 的 `renderOutline()`，`index.html:133-136`）
+#### 文档大纲（`editor/outline-controller.ts` + `app.js` 回调，`index.html:133-136`）
 
 - **职责：** 以 Vditor 原生语义收集当前可见编辑/预览内容的直接标题，构建可折叠层次树，点击跳转并平滑滚动到对应位置
-- **实现：** `renderOutline()` 使用 adapter 的 `outlineSnapshot()`；`scrollToOutlineHeading()` 使用同一 snapshot 对应的标题节点和实际滚动容器。SV 两侧标题数量一致时同步滚动源码与预览。
+- **实现：** `OutlineController` 拥有大纲 DOM、折叠状态渲染与 300ms 防抖 `schedule()` 刷新；`app.js` 的 `renderOutline()` 委托其 `render()`，并注入 adapter `outlineSnapshot()` 的 snapshot 与 `scrollToOutlineHeading()` 滚动回调。`scrollToOutlineHeading()` 使用同一 snapshot 对应的标题节点和实际滚动容器，SV 两侧标题数量一致时同步滚动源码与预览。
 
 #### 状态栏（`app.js`，`index.html:217-266`）
 
 - **职责：** 显示当前文件路径、状态消息、编辑模式（IR/SV/WYSIWYG）、词字符行数、编码、行结尾、三态主题模式、设置快捷入口、版本号；编辑模式文本和主题图标可展开快捷菜单
 - **实现：** `updateActiveUI()` 汇总状态，`toggleStatusModeMenu()` / `selectStatusMode()` 通过适配器复用 Vditor 的原生模式切换；`toggleStatusThemeMenu()` / `selectStatusThemeMode()` 管理太阳、月亮、显示器三种主题模式
 
-#### 设置对话框（`app.js` 的设置保存/关闭逻辑及相关拖拽逻辑，`index.html:249-end`）
+#### 设置对话框（`settings/settings-window.ts` + `settings/settings-controller.ts` + `app.js` 面板逻辑，`index.html:249-end`）
 
 - **职责：** 模态对话框，包含 6 个面板（Appearance/Fonts/Editor/Preview/Files & Session/About），支持拖拽移动和 8 方向拖拽调整大小，保存后按设置类型热应用或重建编辑器
-- **实现：** `openSettings()`、`saveSettings()`、`setupSettingsDrag()`、`restoreSettingsCardSize()`
+- **实现：** `SettingsWindow` 拥有 modal enter/exit rAF、close timer 和 `dispose()`；`SettingsController` 是 `AppStore.settings` / `defaultSettings` 的唯一写入入口，串行化 `savePatch()` / `reset()` 经窄 `saveSettings` bridge 的保存；`app.js` 的 `openSettings()`、`saveSettings()`、`setupSettingsDrag()`、`restoreSettingsCardSize()` 负责面板渲染、拖拽和 `classifySettingsChange()` 结果的热应用/重建分发
 - **图标：** 左侧 6 个分类按钮使用由 `lucide-static` 构建生成的 `assets/symbolic/settings-*.svg`；状态栏设置入口使用 `assets/symbolic/settings.svg`，设置目录入口使用 `assets/symbolic/settings-files.svg`。这些 SVG 不再作为手工下载的源码资源维护。
 
 ##### Appearance 面板
@@ -1327,17 +1364,22 @@ function rememberRecent(filePath) {
 
 ```
 npm run build
-  = npm run build:main + npm run build:assets
+  = npm run build:main + npm run build:renderer + npm run build:assets
 
 build:main:
   tsc -p tsconfig.main.json      → dist/main/index.js
                                   → dist/main/preload.js
                                   → dist/main/services/*.js
 
+build:renderer:
+  node scripts/build-renderer.js
+  ├── src/renderer/main.ts        → dist/renderer/main.js（esbuild bundle）
+  └── src/renderer/pure-functions.ts → dist/renderer/pure-functions.js（esbuild bundle）
+
 build:assets:
   node scripts/copy-vditor-assets.js
   ├── node_modules/vditor/dist/  → static/dist/（Vditor 离线资源）
-  ├── src/renderer/              → dist/renderer/（HTML/CSS/JS/项目自有资源）
+  ├── src/renderer/              → dist/renderer/（HTML/CSS/JS/项目自有资源，跳过 .ts）
   └── node_modules/lucide-static/icons/
                                   → dist/renderer/assets/symbolic/
                                     （选定的 Lucide SVG，含 file/folder/folder-symlink、replace/replace-all 等）
@@ -1371,20 +1413,25 @@ build:assets:
   "compilerOptions": {
     "target": "ES2022",
     "module": "commonjs",             // 主进程 CommonJS 输出
+    "lib": ["ES2022"],
     "outDir": "dist/main",
     "rootDir": "src/main",
     "strict": true,                    // 严格模式
     "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
     "declaration": true,               // 生成 .d.ts（供测试导入类型用）
     "declarationMap": true,
     "sourceMap": true,
     "moduleResolution": "node"
   },
-  "include": ["src/main/**/*.ts"]
+  "include": ["src/main/**/*.ts"],
+  "exclude": ["node_modules"]
 }
 ```
 
-**注意：** 渲染进程为纯 JavaScript，不纳入 TypeScript 编译。
+**渲染进程类型检查：** `tsconfig.renderer.json`（`module: ES2022`、`moduleResolution: bundler`、`strict: true`、`noEmit: true`）覆盖 `src/renderer/**/*.ts` 与 `src/shared/**/*.ts`，包含 adapter 调用契约（`types/adapter-contract.ts`）；由 `npm run typecheck:renderer` 执行。legacy JavaScript（`app.js`、`vditor-adapter.js`、`locales.js`）不参与 TypeScript 编译，esbuild 打包 TypeScript 入口。
 
 ### 13.2 构建工具配置
 
@@ -1393,10 +1440,12 @@ build:assets:
 ### 13.3 ESLint 配置（`eslint.config.mjs`）
 
 - **全局规则：** 基于 `@eslint/js/recommended` + `typescript-eslint/recommended`
-- **`@typescript-eslint/no-explicit-any`:** 关闭（允许 `any`）
-- **`@typescript-eslint/no-unused-vars`:** 允许以 `_` 开头的参数
-- **渲染器文件（`src/renderer/**/*.js`）：** 注入 `Vditor` 全局只读变量和浏览器全局变量
-- **忽略：** `dist/`、`static/`、`release/`、`coverage/`、`playwright-report/`
+- **`@typescript-eslint/no-explicit-any`:** 全局关闭（允许 `any`）；仅 `src/renderer/**/*.ts` 单独设为 `warn`
+- **`@typescript-eslint/no-unused-vars`:** 允许以 `_` 开头的参数和捕获错误
+- **渲染器 JS 文件（`src/renderer/**/*.js`）：** 注入 `Vditor` 全局只读变量和浏览器全局变量
+- **渲染器 TS 文件（`src/renderer/**/*.ts`）：** 浏览器全局变量
+- **主进程/脚本/测试（`src/main/**/*.ts`、`scripts/**/*.js`、`tests/**/*.ts`、`*.config.ts`）：** Node 全局变量；脚本允许 `require`
+- **忽略：** `node_modules/`、`dist/`、`static/`、`release/`、`coverage/`、`test-results/`、`playwright-report/`
 
 ### 13.4 Prettier 配置（`.prettierrc.json`）
 
@@ -1432,8 +1481,8 @@ build:assets:
 ```typescript
 {
   testDir: './tests/e2e',
-  fullyParallel: false,          // 强制串行执行（共享 Electron 实例限制）
-  workers: 1,
+  fullyParallel: false,          // 用例内串行，文件级并行
+  workers: 2,
   timeout: 30_000,
   expect: { timeout: 10_000 },
   reporter: [['list'], ['html', { open: 'never' }]],
@@ -1448,8 +1497,9 @@ build:assets:
 | 命令 | 作用 |
 |---|---|
 | `npm run build:main` | `tsc -p tsconfig.main.json` 编译主进程 → `dist/main/` |
+| `npm run build:renderer` | `scripts/build-renderer.js` esbuild 打包 `main.ts` → `dist/renderer/main.js`，`pure-functions.ts` → `dist/renderer/pure-functions.js` |
 | `npm run build:assets` | `scripts/copy-vditor-assets.js` 复制 Vditor 离线资源、渲染器文件，并从 `lucide-static` 生成选定 SVG |
-| `npm run build` | = `build:main` + `build:assets` 的组合 |
+| `npm run build` | = `build:main` + `build:renderer` + `build:assets` 的组合 |
 | `npm run start` | `build` + `electron .` 启动应用 |
 | `npm run dev` | 同 `start`（`build` + `electron .`） |
 
@@ -1460,13 +1510,14 @@ build:assets:
 | `npm run format` | Prettier 写入格式化（全项目） |
 | `npm run format:check` | Prettier 格式检查（只检查不修改） |
 | `npm run lint` | ESLint 检查 `src/`、`scripts/`、`tests/`、`*.config.*` |
-| `npm run typecheck` | `tsc --noEmit` 主进程类型检查 |
+| `npm run typecheck` | `tsc -p tsconfig.main.json --noEmit` 主进程类型检查 |
 | `npm run typecheck:renderer` | `tsc -p tsconfig.renderer.json --noEmit`；strict renderer 类型检查，包含 adapter 调用契约 |
+| `npm run check:project` | `scripts/check-project-metadata.js` 校验 package.json / lock / 稳定应用 ID / Linux 元数据一致 |
 | `npm run check:vditor` | `scripts/check-vditor-version.js` 校验 package.json / lock / node_modules / 主源码版本一致 |
 | `npm test` | `vitest run` 运行全部单元测试 |
 | `npm run test:watch` | `vitest` 监听模式运行单元测试 |
 | `npm run test:e2e` | `build` + `run-electron-e2e.js` 运行 E2E；Linux 优先复用本地 Electron `dist` |
-| `npm run check` | 流水线验证：`format:check` + `lint` + `typecheck` + `check:vditor` + `test` + `build` |
+| `npm run check` | 流水线验证：`format:check` + `check:project` + `lint` + `typecheck` + `typecheck:renderer` + `check:vditor` + `test` + `build` |
 | `npm run check:all` | `check` + `test:e2e`（含 E2E 的全量验证） |
 
 #### 打包与发布
@@ -1526,10 +1577,12 @@ BrowserWindow 加载 dist/renderer/index.html
 app://app/vditor/dist/index.min.js  →  Vditor 全局
 app://app/locales.js               →  window.VditorDesktopLocales
 app://app/vditor-adapter.js        →  window.VditorDesktopAdapter
-app://app/app.js                   →  IIFE 执行 init()
+app://app/pure-functions.js        →  window.__vditorDesktopPureFunctions
+app://app/app.js                   →  IIFE 暴露 window.__vditorDesktopLegacyBootstrap
+app://app/main.js                  →  esbuild bundle：校验全局 API 并调用 legacy bootstrap
   ↓
-init():
-  getSettings() / getDefaultSettings()      # IPC invoke
+legacy bootstrap (init()):
+  getSettings() / getPersistentState() / getDefaultSettings() # IPC invoke
   applyLocale() → setupEvents() → applyTheme()
   restoreWorkspace() → setWorkspace(folder)  # fileAPI.watch + listDir
   restoreTabs() → openPaths(session.openFiles)
@@ -1674,6 +1727,7 @@ flowchart TB
 | `tests/unit/window-close-confirmation.test.ts` | `src/main/services/window-close-confirmation.ts` | 关闭确认仅对原窗口有效，替换窗口不能继承确认，以及关闭窗口时的状态清理 |
 | `tests/unit/settings-store.test.ts` | `src/main/services/settings-store.ts`   | 首次加载返回默认值、TOML 部分深合并与默认值、未知字段丢弃、`set` 持久化（含 TOML 段结构验证）、`update` 多字段快照（含 `workspaceTreeStates` 数组和 `workspaceReadDepth` 边界）、设置对话框尺寸持久化（`window.settingsDialog`）、`getAll` 返回克隆副本、`reset` 重置内存和磁盘                                                                                                                                                                                                                                                               |
 | `tests/unit/recovery-store.test.ts` | `src/main/services/recovery-store.ts` | 私有目录/文件权限、候选元数据不含正文、原子写入与显式清理、损坏/未知 schema/超限快照移除，以及 `unchanged` / `changed` / `unavailable` 三种磁盘状态 |
+| `tests/unit/persistent-state-store.test.ts` | `src/main/services/persistent-state-store.ts` | 旧 TOML 状态仅迁移一次且保持 config.toml 偏好化、损坏/未知 schema 安全默认值不阻塞启动、串行原子更新、清空状态时保留用户偏好 |
 | `tests/unit/vditor-adapter.test.ts` | `src/renderer/vditor-adapter.js` 与 adapter 类型 manifest | 冻结的 selectors 对象、运行时 67 个导出键与声明 manifest 的精确一致性、`validateHost` 成功（toolbar 通过 `mountedToolbar` 参数提供）、代码主题亮/暗分界点（`ant-design` 前为 dark 组）、DOM 漂移检测（缺少 source 节点时 `valid: false`）、SV divider 创建与 pane 语义可见性、列表 `marker`/`padding` 解析、动态尾部留白写入全部 Vditor 表面、SVG 开关热更新的图片原始来源与缓存隔离、hash anchor 到标题索引（IR 内部链接 + 元素 id + slug）、原生大纲 snapshot、标题间普通块时的准确目标节点及 SV preview 外层滚动容器、跨多 span 文本节点的匹配与选区 |
 | `tests/unit/renderer-shell.test.ts` | 渲染器壳（HTML/CSS/JS/preload）静态结构 | 标题栏 / 菜单 / 窗口控件 DOM；en/zh_Hans/zh_Hant 键完整性对等；Linux 发布脚本；自动隐藏滚动条样式；第二实例文件转发；确认对话框（未保存变更可拖动、无调整尺寸手柄）；设置对话框 8 方向调整手柄；空标签恢复；查找替换控件带 SVG；文件树无 draggable；折叠/展开/中间省略；链接目录斜体下划线与 SVG 资产；设置面板分类；关于面板；UI/编辑器/预览缩放；状态栏三态主题控件与无旧 checkbox；CSP img-src/connect-src；大纲无标题态；Monokai Pro Light / Dark 主题；亮/暗代码主题分离；字体子分组；工作区头部；编辑文本宽度范围；无过时占位符/工具栏设置项；适配器脚本加载顺序；设置路径页脚/重置当前页 |
 | `tests/unit/renderer/editor-controller.test.ts`、`editor-options.test.ts`、`editor-runtime-coordinator.test.ts` | 编辑器实例、构造选项与 tab 激活协调 | generation、幂等 destroy、rebuild 正文/滚动恢复、auto-save cleanup、pending content、constructor-only 设置、快速切换的 stale rAF 拒绝与 toolbar hand-off |
@@ -1681,6 +1735,14 @@ flowchart TB
 | `tests/unit/renderer/image-controller.test.ts`、`recovery-runtime-controller.test.ts`、`recovery-banner-controller.test.ts` | 图片与 recovery editor runtime | 图片文件名/写入边界、资源 observer、recovery debounce 替换、串行 save/discard、不可用文件保存、非致命 I/O 失败、三种 recovery banner 状态与动作路由 |
 | `tests/unit/renderer/document-controller.test.ts`、`document-controller.integration.test.ts`、`document-save-controller.test.ts`、`document-close-controller.test.ts`、`external-change-controller.test.ts` | 文档生命周期命令 | canonical identity、保存队列、关闭顺序、外部变化分类，以及与 editor runtime 的安全组合边界 |
 | `tests/unit/renderer/state/store.test.ts`、`state/snapshots.test.ts`、`session-snapshot.test.ts`、`recovery-snapshot.test.ts` | AppStore 与版本化快照 DTO | 文档/活动标签受控状态、session/recovery 白名单投影、恢复输入验证和运行时句柄隔离 |
+| `tests/unit/renderer/disposables.test.ts`、`dom.test.ts`、`lifecycle.test.ts` | renderer core 基础设施 | DisposableBag 逆序/幂等清理、清理失败容忍及 listener/timer/observer 封装；requiredElement/optionalElement；LifecycleManager 注册顺序 init、逆序 dispose、init 失败回收已初始化控制器 |
+| `tests/unit/renderer/strings.test.ts`、`line-ending.test.ts` | renderer 纯函数工具 | escapeHTML / fileName / stripExtension；detectLineEnding 的 CRLF / LF 判定 |
+| `tests/unit/renderer/theme.test.ts`、`theme-controller.test.ts`、`localization.test.ts` | 主题与本地化纯函数 | isDarkTheme 与主题常量；resolveEffectiveTheme / resolveThemeMode / 亮暗主题校验 / code / content theme 解析；resolveLocale / translate / formatIpcErrorMessage 与稳定错误码 |
+| `tests/unit/renderer/notifications.test.ts`、`window-and-menu-controller.test.ts` | 通知与窗口/菜单控制器 | 状态消息、临时通知与确认对话框的计时、locale 切换与清理；窗口控件绑定与 dispose、菜单 checked 状态与命名命令分发、右键菜单互斥交接 |
+| `tests/unit/renderer/tab-controller.test.ts` | 标签栏控制器 | 从 view model 渲染标题/脏标记/attention/active 态、primary/close/中键点击路由、替换旧标签 DOM、dispose 取消 drag-reset timer |
+| `tests/unit/renderer/settings-controller.test.ts`、`settings-window.test.ts` | 设置保存分类与设置窗口 | classifySettingsChange 将展示/constructor-only 设置分开；SettingsController 加载保存后保持 Store；SettingsWindow 单一 close timer 与按需 presentation |
+| `tests/unit/renderer/workspace-controller.test.ts` | 工作区与文件树 | 根路径/revision/watch 刷新与持久化、不可用工作区路径路由到 document-binding owner、未信任名称按 text 渲染与展开回调、绑定提交失败恢复、ExplorerController 懒加载 |
+| `tests/unit/renderer/export-controller.test.ts` | 导出事务 | 对话框前快照 HTML、确认路径后写可移植输出、PDF 资源规范化与嵌入、无活动文档时不导出 |
 
 ### 15.2 E2E 测试（Playwright Electron，按行为域拆分）
 
@@ -1729,7 +1791,7 @@ flowchart TB
 - 工具栏不出现 `fullscreen` 按钮，WYSIWYG 代码块使用 `previewCodeFontFamily`
 - 编辑区右键菜单仅接管三种模式的真实可编辑表面；覆盖 Range 恢复、SV preview / 查找框排除、剪贴板命令与 WYSIWYG / IR 表格行列操作；SV `Ctrl/Cmd+Shift+I/O` 反/增加列表缩进，以及原生/右键 Markdown、rich-text Paste 均复用 Vditor 的粘贴与 undo 路径
 - 三种模式下的两段式 Ctrl/Cmd+A：普通 block、非空/空表格单元格、SV 源码行，以及非编辑控件原生全选边界
-- WYSIWYG 选区完全落在 `strong` 等祖先格式节点内部时，上游 copy 不保留该语义；这是 Vditor 3.11.3 的已确认限制，不作为 Desktop 回归修复，详见 [`docs/40-DEV-NOTE.md`](40-DEV-NOTE.md#vditor-wysiwyg-部分格式选区复制不保留语义)
+- WYSIWYG 选区完全落在 `strong` 等祖先格式节点内部时，上游 copy 不保留该语义；这是 Vditor 3.11.3 的已确认限制，不作为 Desktop 回归修复，详见 [`docs/08-DEV-NOTE.md`](08-DEV-NOTE.md#vditor-wysiwyg-部分格式选区复制不保留语义)
 
 #### 链接跳转与外部协议
 
@@ -1840,13 +1902,12 @@ flowchart TB
 
 | 文件 | 现状 |
 | ---- | ---- |
-| `src/renderer/app.js` | 图片插入、导出和拖放失败提示仍有少量硬编码中文，后续需补齐三语国际化。 |
 | `src/main/index.ts` | Linux `unmaximize` 后的多次延迟 bounds 复核是平台兼容 workaround，需在真实平台环境持续确认。 |
 | `src/main/preload.ts` | 主窗口尚未启用 Electron sandbox：当前 CommonJS preload 依赖本地 `ipc-contract`；需要单独 bundled-preload 迁移与完整桥接回归。 |
 
 ### 16.2 架构风险点
 
-1. **`app.js` 集中度过高**：标签管理、工作区、设置、文件树、查找替换、主题、菜单、对话框、拖拽等功能全部耦合于同一文件，职责无法隔离测试，修改风险集中。
+1. **`app.js` 集中度仍然偏高**：批次 4–8 已把文档生命周期、编辑器 runtime、工作区、设置、菜单、窗口、导出、查找替换和大纲 DOM 迁入独立 controller；legacy shell 仍组合保存交易、外部变化与 recovery 安全动作、侧栏过渡、状态栏、对话框和拖拽，批次 9 计划移除 `app.js` 收口。
 
 2. **IPC handler 仍集中在 `src/main/index.ts`**：当前仓库没有 `src/main/ipc/` 实现目录，所有 handler 由 `registerIpcHandlers()` 注册；这仍是 0.2.5 的拆分候选，但不应为此预先创建空模块。
 
@@ -1858,15 +1919,13 @@ flowchart TB
 
 6. **非展示设置仍会触发全标签重建**：`saveSettings()` 已将主题、内容/代码主题、缩放和滚动条等展示设置分类为热应用；仍会对影响 Vditor 初始化契约的设置重建标签，分类边界和编辑状态保护属于 0.2.5 范围。
 
-7. **查找替换使用 `setValue()` 回写**：`replaceFindMatch()` 和 `replaceAllFindMatches()` 通过 `tab.vditor.setValue(content)` 替换全文，可能丢失选区状态、undo 历史和模式状态。
+7. **部分 Vditor 私有 DOM 知识泄漏到 `app.js`**：`app.js` 直接访问 `VDITOR.selectors` 和部分未通过 adapter 暴露的 DOM 查询，削弱了适配器边界。
 
-8. **部分 Vditor 私有 DOM 知识泄漏到 `app.js`**：`app.js` 直接访问 `VDITOR.selectors` 和部分未通过 adapter 暴露的 DOM 查询，削弱了适配器边界。
+8. **Windows/Linux 无原生菜单**：仅 macOS 使用 `Menu.buildFromTemplate`，其他平台完全依赖渲染器自定义菜单，原生集成度不对称。
 
-9. **Windows/Linux 无原生菜单**：仅 macOS 使用 `Menu.buildFromTemplate`，其他平台完全依赖渲染器自定义菜单，原生集成度不对称。
+9. **无近期文件 UI**：`recentFiles` 数据已写入 `state.json`，但无 UI 入口展示。
 
-10. **无近期文件 UI**：`recentFiles` 数据已写入 TOML，但无 UI 入口展示。
-
-11. **已有目标仍存在最终替换 TOCTOU 边界**：安全写入器会携带 expected bytes 并在临近替换处复核，但当前 Node/Electron 文件 API 没有跨平台的通用原子 CAS；长期边界和关闭条件见 [`docs/05-FILE-SAFETY.md` §7](05-FILE-SAFETY.md#7-已知原子性边界已有目标的-toctou)。
+10. **已有目标仍存在最终替换 TOCTOU 边界**：安全写入器会携带 expected bytes 并在临近替换处复核，但当前 Node/Electron 文件 API 没有跨平台的通用原子 CAS；长期边界和关闭条件见 [`docs/05-FILE-SAFETY.md` §7](05-FILE-SAFETY.md#7-已知原子性边界已有目标的-toctou)。
 
 ### 16.3 改进建议（按优先级）
 
@@ -1874,15 +1933,14 @@ flowchart TB
 
 1. 为 `local-file://` 补充直接 protocol handler 的纯 `Response` 单测，并完成 Windows/macOS 实体机资源根、大小写、权限和 link 行为验证
 2. 在 `file:write` / `file:delete` handler 中增加路径授权校验
-3. 完成所有硬编码中文字符串的国际化
 
 **P2（架构）：**
-4. 将 `index.ts` 中的 IPC handler 分拆到职责明确的模块，保持 `src/main/ipc/` 只在确有边界时建立，不创建空壳目录
-5. 将 `app.js` 按职责拆分为多个模块（`tabs.js`、`workspace.js`、`settings.js`、`find-replace.js`、`themes.js`、`menus.js`），保持无框架的原生 DOM 架构
-6. 继续完善设置分类：仅影响展示的设置走现有 `applyPresentationSettings()`，影响 Vditor 初始化契约的设置重建时保护 undo、选区和滚动状态
-7. 将剩余 Vditor 私有 DOM 查询（当前 toolbar mount 兼容逻辑）收回 `vditor-adapter.js`
+3. 将 `index.ts` 中的 IPC handler 分拆到职责明确的模块，保持 `src/main/ipc/` 只在确有边界时建立，不创建空壳目录
+4. 按批次 9 计划移除 legacy `app.js`：把剩余保存交易、外部变化与 recovery 安全动作、侧栏过渡、状态栏、对话框和拖拽迁入既有领域 controller，保持无框架的原生 DOM 架构
+5. 继续完善设置分类：仅影响展示的设置走现有 `applyPresentationSettings()`，影响 Vditor 初始化契约的设置重建时保护 undo、选区和滚动状态
+6. 将剩余 Vditor 私有 DOM 查询（当前 toolbar mount 兼容逻辑）收回 `vditor-adapter.js`
 
 **P3（功能完善）：**
-8. 实现近期文件列表 UI
-9. 为 `app:openExternal` 增加 URL 长度和格式验证
-10. 补充缺失的 Windows/Linux 发布配置
+7. 实现近期文件列表 UI
+8. 为 `app:openExternal` 增加 URL 长度和格式验证
+9. 补充缺失的 Windows/Linux 发布配置

@@ -105,7 +105,11 @@ rename(临时文件, 目标文件)
 - `src/main/services/file-manager.ts` 与 `src/main/services/safe-file-writer.ts`：基线、临时文件、替换和错误结果；
 - `src/main/services/file-identity.ts`：已存在、缺失祖先、大小写和符号链接 identity；
 - `src/main/services/file-watch-service.ts`：ready/reconciliation、generation、read revision 和 cleanup；
-- `src/renderer/app.js`：content revision、保存队列、冲突/恢复状态和路径重绑定；
+- `src/renderer/app.js`：content revision 与保存/外部变化交易组合；
+- `src/renderer/documents/document-save-controller.ts`：按 document ID 与 canonical identity 持有两级保存串行队列；
+- `src/renderer/documents/document-controller.ts`：打开、canonical identity 去重与 `transitionBindings()` 路径重绑定；
+- `src/renderer/state/store.ts`：`setExternalConflict` / `setExternalFileState` / `setRecoveryState` 等命名状态命令；
+- `src/renderer/documents/external-change-controller.ts`：watcher 正文的纯分类；
 - `src/renderer/documents/document-close-controller.ts` 与 `src/renderer/editor/recovery-runtime-controller.ts`：关闭去重、recovery timer/队列与失败后的 snapshot ID 保留；
 - `tests/unit/` 中对应的文件管理、identity、watcher、recovery 测试，以及 `tests/e2e/document-lifecycle.spec.ts` 中的文件生命周期回归。
 

@@ -192,7 +192,7 @@ npm test
 npm run check:all
 ```
 
-The Vditor dependency is intentionally pinned to 3.11.3. Before upgrading it, read [the Vditor upgrade notes](docs/20-VDITOR-UPGRADE.md) and validate the adapter boundary and Electron regression tests.
+The Vditor dependency is intentionally pinned to 3.11.3. Before upgrading it, read [the Vditor upgrade notes](docs/06-VDITOR-UPGRADE.md) and validate the adapter boundary and Electron regression tests.
 
 ## Open-source software
 

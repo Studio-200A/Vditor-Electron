@@ -225,7 +225,7 @@ Desktop 侧栏已作为唯一的大纲入口，原生 Vditor 大纲面板关闭�
 ## 注意事项与验证
 
 - 所有 Vditor 私有 toolbar 查询、`closest()` 和 data attribute 标记必须留在 `src/renderer/vditor-adapter.js`；`app.js` 只调用语义化 adapter API。
-- 这是 Vditor 3.11.3 的私有契约。升级 Vditor 时，须检查 `setEditMode()` 对 `outline`、`outdent`、`indent` 的显示和 disabled 行为，并同步更新 `docs/20-VDITOR-UPGRADE.md`。
+- 这是 Vditor 3.11.3 的私有契约。升级 Vditor 时，须检查 `setEditMode()` 对 `outline`、`outdent`、`indent` 的显示和 disabled 行为，并同步更新 `docs/06-VDITOR-UPGRADE.md`。
 - 回归覆盖：adapter 单测验证标记；Electron E2E 验证从 WYSIWYG 与 IR 切入 SV 时两个列表按钮只保留 Vditor 同步 show/hide 的两次 style 更新、不会再出现延迟补偿更新，且最终仍可见；另保留 SV 列表缩进/反缩进功能测试。
 - 大纲对齐 Vditor 原生功能时，当前编辑区的直接 H1–H6 DOM 才是准则。Electron 验证显示 IR 对 Setext 和围栏内 ATX 样式文本的即时结果不等同于完整 Markdown 语义；因此不要把“原生等价”写成“完整 Markdown 标题解析”。若需跨模式一致的 Setext/围栏语义，应单独决策并实现独立 Markdown 解析与目标定位，不能隐式改变原生对齐范围。
 - 原生对齐实现只保留一份 snapshot：preview 可见时取 preview，否则取当前模式编辑区。不要再把原生 DOM 标题、Markdown fallback 和另一套目标数组按下标拼接；集合不一致时行号、折叠 key 和跳转目标都会错位。Outline 视图隐藏期间无需调用 `getValue()` 或重建树，切换到该视图时再刷新即可。
@@ -309,7 +309,7 @@ Vditor `3.11.3` 的 WYSIWYG/IR 将表格本身作为横向滚动容器（`displa
 - 任何表格 DOM 查询、selection/Ranges 和重建兼容逻辑只能保留在 adapter；`app.js` 只负责安装并在 tab 关闭时调用 disposer。
 - 不得以 `getValue()` / `setValue()` 回写全文修复滚动，否则会损害 selection、undo 和 mode 状态。
 - 不得把短单元格首次粘贴超宽的“不跟随”单独修成另一套规则，除非产品另行决定偏离上游行为。
-- Vditor 升级时按照 `docs/20-VDITOR-UPGRADE.md` 验证此私有契约；若上游已保留表格横向位置或提供公共 API，应删除本补偿。
+- Vditor 升级时按照 `docs/06-VDITOR-UPGRADE.md` 验证此私有契约；若上游已保留表格横向位置或提供公共 API，应删除本补偿。
 
 ---
 

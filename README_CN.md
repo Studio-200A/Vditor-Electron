@@ -190,7 +190,7 @@ npm test
 npm run check:all
 ```
 
-Vditor 依赖固定为 3.11.3。升级前请先阅读 [Vditor 升级说明](docs/20-VDITOR-UPGRADE.md)，并检查适配层边界和 Electron 回归测试。
+Vditor 依赖固定为 3.11.3。升级前请先阅读 [Vditor 升级说明](docs/06-VDITOR-UPGRADE.md)，并检查适配层边界和 Electron 回归测试。
 
 ## 开源项目
 

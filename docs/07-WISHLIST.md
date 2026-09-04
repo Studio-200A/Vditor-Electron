@@ -250,7 +250,7 @@ toolbarMode: ToolbarMode;
 - 浮动工具栏相关逻辑不能继续无边界堆积进 `src/renderer/app.js`；应将工具栏模式状态、浮动工具栏生命周期、选区保存/恢复和定位计算组织为边界清晰的模块或控制器。
 - 将纯状态转换和几何定位计算写成可单元测试的纯函数。
 - 不在多个模块各自注册相互竞争的全局 `selectionchange`、`click` 和 `resize` 监听器。
-- 在 `docs/20-VDITOR-UPGRADE.md` 中补充浮动工具栏依赖的 Vditor DOM 契约和人工验证项目。
+- 在 `docs/06-VDITOR-UPGRADE.md` 中补充浮动工具栏依赖的 Vditor DOM 契约和人工验证项目。
 
 ### 10. 验收测试
 
