@@ -123,11 +123,21 @@ export function readSetting(testRoot: string, section: string, key: string): unk
     'settingsDialogSize',
     'session',
   ]);
-  if (persistentKeys.has(key)) {
+  const legacyStateKey =
+    section === 'window' && key === 'settingsDialog'
+      ? 'settingsDialogSize'
+      : section === 'window' && key === 'bounds'
+        ? 'windowBounds'
+        : key;
+  if (section === 'session' || persistentKeys.has(legacyStateKey)) {
     const state = JSON.parse(
       fs.readFileSync(path.join(testRoot, 'config', 'state.json'), 'utf8'),
     ) as Record<string, unknown>;
-    return state[key];
+    if (section === 'session') {
+      const session = state.session as Record<string, unknown> | undefined;
+      return session?.[key];
+    }
+    return state[legacyStateKey];
   }
   return (readSettings(testRoot)[section] as Record<string, unknown>)[key];
 }

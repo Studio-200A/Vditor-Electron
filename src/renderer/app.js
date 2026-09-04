@@ -370,7 +370,10 @@
       $('#workspaceHeading').dataset.tooltip = workspacePath || t('sidebar.openFolder');
     },
     syncLocalResourceRoots: () => syncLocalResourceRoots(),
-    requestTreeRefresh: (revision) => explorerController.refresh(revision),
+    requestTreeRefresh: async (revision) => {
+      await explorerController.refresh(revision);
+      await reconcileRenamedOpenDocuments();
+    },
     persistSession: () => void persistSession(),
     onWorkspacePathUnavailable: async (event) => {
       const affectedTabs = await rebaseOpenTabs(event.path, event.path);
@@ -818,6 +821,75 @@
       });
     }
     return { recentFiles, workspaceTreeStates };
+  }
+
+  async function reconcileExternallyRenamedDocument(change) {
+    if (!change.identity || !change.previousPath) return false;
+    const tabs = state.tabs.filter((tab) => tabFileIdentity(tab) === change.identity);
+    if (!tabs.length) return false;
+    const plans = await Promise.all(
+      tabs.map(async (tab) => ({
+        tab,
+        filePath: change.path,
+        fileIdentity: await window.fileAPI.fileIdentity(change.path),
+        baseDir: await window.fileAPI.dirname(change.path),
+      })),
+    );
+    await suspendDocumentWatches(tabs);
+    try {
+      await documentController.transitionBindings({
+        prepare: async () => plans,
+        commit: async (bindings) => {
+          bindings.forEach(({ tab, filePath, fileIdentity, baseDir }) => {
+            updateTabDocument(tab, {
+              filePath,
+              fileIdentity,
+              title: fileName(filePath),
+              baseDir,
+              externalFileState: null,
+            });
+          });
+        },
+      });
+      const settingsPlan = await rebasePathState(change.previousPath, change.path);
+      state.settings.recentFiles = settingsPlan.recentFiles;
+      state.settings.workspaceTreeStates = settingsPlan.workspaceTreeStates;
+      await queueSettingsSave(settingsPlan, { throwOnFailure: true });
+      await syncLocalResourceRoots();
+      await rebindDocumentWatches(tabs);
+      const rebuildFailures = rebuildRenamedEditors(new Set(tabs));
+      if (rebuildFailures.length)
+        throw new AggregateError(rebuildFailures, 'Unable to rebuild renamed document editors.');
+      renderTabs();
+      updateActiveUI();
+      persistSession();
+      return true;
+    } catch (error) {
+      try {
+        await rebindDocumentWatches(tabs);
+      } catch (rebindError) {
+        console.error('Unable to restore document watchers after an external rename.', rebindError);
+      }
+      showMessage(ipcErrorMessage(error), true);
+      return false;
+    }
+  }
+
+  async function reconcileRenamedOpenDocuments() {
+    for (const tab of [...state.tabs]) {
+      if (!tab.filePath || (await window.fileAPI.exists(tab.filePath))) continue;
+      const previousPath = tab.filePath;
+      const identity = tabFileIdentity(tab);
+      const renamedPath = await window.fileAPI.resolveRenamedDocument(previousPath);
+      if (!identity || !renamedPath) continue;
+      await reconcileExternallyRenamedDocument({
+        event: 'rename',
+        path: renamedPath,
+        previousPath,
+        identity,
+        scope: 'workspace',
+      });
+    }
   }
   function collectLocalResourceRoots(extraRoots = []) {
     const roots = new Set();
@@ -1617,7 +1689,13 @@
       .then(async () => {
         if (Object.keys(preferences).length) {
           const savedPreferences = await window.appAPI.saveSettings(preferences);
-          state.settings = { ...state.settings, ...savedPreferences };
+          // The settings bridge returns an AppSettings-shaped snapshot for compatibility, but its
+          // persistent-state fields are defaults after the TOML/state.json split. Only merge the
+          // preference keys that this request actually wrote so current state.json data survives.
+          const confirmedPreferences = Object.fromEntries(
+            Object.keys(preferences).map((key) => [key, savedPreferences[key]]),
+          );
+          state.settings = { ...state.settings, ...confirmedPreferences };
         }
         if (Object.keys(persistentState).length) {
           const savedState = await window.appAPI.savePersistentState(persistentState);
@@ -1654,6 +1732,17 @@
       );
     if (!destination) return false;
     const destinationIdentity = await window.fileAPI.fileIdentity(destination);
+    const fileState = tab.externalFileState;
+    // Decide before entering the identity queue: the confirmation's accepted action creates a
+    // fresh save transaction for this same identity, which must not wait on itself.
+    if (
+      saveAs &&
+      fileState?.identity === destinationIdentity &&
+      recreateFileState !== fileState.version
+    )
+      return confirmExternalFileRecreate(tab, (version) =>
+        performSaveTab(tab, false, null, version, queuedIdentity, destination),
+      );
     if (queuedIdentity !== destinationIdentity) {
       return documentController.saveForIdentity(destinationIdentity, () =>
         performSaveTab(
@@ -1675,9 +1764,22 @@
     }
     const conflict = tab.externalConflict;
     const writesConflictedPath = Boolean(conflict && conflict.identity === destinationIdentity);
-    const fileState = tab.externalFileState;
     const writesUnavailablePath = Boolean(fileState && fileState.identity === destinationIdentity);
     if (writesUnavailablePath && recreateFileState !== fileState.version) {
+      const renamedPath = tab.filePath
+        ? await window.fileAPI.resolveRenamedDocument(tab.filePath)
+        : null;
+      if (
+        renamedPath &&
+        (await reconcileExternallyRenamedDocument({
+          event: 'rename',
+          path: renamedPath,
+          previousPath: tab.filePath,
+          identity: destinationIdentity,
+          scope: 'workspace',
+        }))
+      )
+        return performSaveTab(tab, saveAs, overwriteConflict, null, null, renamedPath);
       showMessage(t('external.resolveFileStateBeforeSave'), true);
       return false;
     }
@@ -1694,6 +1796,18 @@
     if (tab.filePath && tab.fileIdentity === destinationIdentity && !fileState && !conflict) {
       const exists = await window.fileAPI.exists(destination);
       if (!exists) {
+        const renamedPath = await window.fileAPI.resolveRenamedDocument(tab.filePath);
+        if (
+          renamedPath &&
+          (await reconcileExternallyRenamedDocument({
+            event: 'rename',
+            path: renamedPath,
+            previousPath: tab.filePath,
+            identity: destinationIdentity,
+            scope: 'workspace',
+          }))
+        )
+          return performSaveTab(tab, saveAs, overwriteConflict, null, null, renamedPath);
         await preserveUnavailableTab(tab, 'deleted', destination);
         renderTabs();
         if (tab.id === state.activeId) updateActiveUI();
@@ -1812,9 +1926,13 @@
         filePath: destination,
         fileIdentity: destinationIdentity,
         title: fileName(destination),
+        content,
         savedContent: content,
         expectedSavedContent: result.expectedContent,
-        modified: tab.content !== content,
+        // Persistence is based on the editor snapshot captured with savedRevision. Comparing
+        // serialized text can differ in harmless Vditor line-ending normalization; only a newer
+        // input revision should keep the tab dirty after a successful write.
+        modified: tab.contentRevision !== savedRevision,
         externalConflict: null,
         externalChangeIgnored: false,
         externalFileState: null,
@@ -2260,7 +2378,7 @@
     persistSession();
   }
 
-  async function confirmExternalFileRecreate(tab) {
+  async function confirmExternalFileRecreate(tab, recreate) {
     const fileState = tab?.externalFileState;
     if (!fileState || fileState.kind === 'unreadable') return false;
     const action = await showConfirmDialog({
@@ -2279,7 +2397,9 @@
       return false;
     }
     const previousContent = fileState.clipboardContent || '';
-    const recreated = await saveTab(tab, false, null, fileState.version);
+    const recreated = await (recreate
+      ? recreate(fileState.version)
+      : saveTab(tab, false, null, fileState.version));
     if (!recreated) return false;
     if (!previousContent) {
       const message = t('external.recreated');
@@ -3407,6 +3527,7 @@
     )
       return;
     if (change.scope === 'workspace') {
+      if (change.event === 'rename') await reconcileExternallyRenamedDocument(change);
       await workspaceController.handleWatcherEvent(change);
       return;
     }
@@ -4086,7 +4207,6 @@
     $('#editorTextWidth').oninput = (event) => {
       const value = Math.min(100, Math.max(40, Number(event.target.value)));
       $('#editorTextWidthValue').textContent = `${value}%`;
-      document.documentElement.style.setProperty('--editor-text-width', `${value}%`);
     };
     $('#settingsForm [name="workspaceReadDepth"]').oninput = syncWorkspaceReadDepthValue;
     $('#resetSettings').onclick = async () => {

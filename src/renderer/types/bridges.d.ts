@@ -8,8 +8,10 @@ declare global {
 export type SupportedPlatform = 'linux' | 'darwin' | 'win32';
 
 export interface FileChangedEvent {
-  event: 'add' | 'change' | 'unlink' | 'addDir' | 'unlinkDir' | 'unreadable' | 'watch-error';
+  event:
+    'add' | 'change' | 'unlink' | 'addDir' | 'unlinkDir' | 'rename' | 'unreadable' | 'watch-error';
   path: string;
+  previousPath?: string;
   identity?: string;
   scope: 'workspace' | 'document';
   content?: string;
@@ -67,6 +69,7 @@ export interface FileAPI {
   setWorkspaceWatch(rootPath?: string, depth?: number): Promise<void>;
   watchDocument(filePath: string, reconcile?: boolean): Promise<void>;
   unwatchDocument(filePath: string, identity?: string): Promise<void>;
+  resolveRenamedDocument(filePath: string): Promise<string | null>;
   setResourceRoots(rootPaths: string[]): Promise<void>;
   onChanged(callback: (event: FileChangedEvent) => void): Unsubscribe;
   getDroppedPath(file: File): string;

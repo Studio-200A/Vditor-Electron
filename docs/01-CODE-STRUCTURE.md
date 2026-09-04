@@ -1,8 +1,8 @@
 # Vditor-Electron Code Structure World Map
 
 - **生成时间：** 2026-09-04
-- **基于的工作区：** `dev-0.2.5` 当前工作区实现（批次 5 Pt.2 编辑器域迁移中）
-- **文档版本：** v1.18
+- **基于的工作区：** `dev-0.2.5` 当前工作区实现（批次 8 已完成，批次 9 尚未开始）
+- **文档版本：** v1.19
 - **对应 package.json 版本号：** 0.2.0（开发中 0.2.5）
 
 ---
@@ -15,7 +15,7 @@
 
 **核心功能：** 多标签页 Markdown 编辑、三种编辑模式（IR/SV/WYSIWYG）、分栏预览、文件树侧栏、文档大纲、查找替换、图片插入与压缩、HTML/PDF 导出、TOML 偏好与版本化 JSON 状态持久化、三语国际化（英/简/繁）。
 
-**开发阶段：** 0.2.5 渲染层架构重构中。批次 1-4 已完成 TypeScript 组合入口、基础 UI、AppStore、标签表现与文档安全命令边界。批次 5 Pt.2 正在迁移编辑器域：Vditor runtime、自动保存 timer、recovery runtime、共享 toolbar、Split View、outline、find、图片 runtime 和激活协调已分别有明确 controller；DocumentController 与 shell 仍保留文件 identity、保存交易、外部变化分类和 recovery 安全动作的语义所有权。0.2.0 的文件安全、恢复、watcher、冲突与跨平台边界继续作为不可改变的行为基线。精确的批次状态、手测、首轮失败及重跑证据只记录在 [`docs/15-0.2.5-EXECUTION-TRACKER.md`](15-0.2.5-EXECUTION-TRACKER.md)，本地图不维护实时测试总数。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
+**开发阶段：** 0.2.5 渲染层架构重构中。批次 8 已完成工作区、设置、菜单、窗口和导出域迁移，批次 9 将移除 legacy `app.js` 并收口测试。Vditor runtime、自动保存 timer、recovery runtime、共享 toolbar、Split View、outline、find、图片 runtime 和激活协调均已有明确 controller；DocumentController 与 shell 仍保留文件 identity、保存交易、外部变化分类和 recovery 安全动作的语义所有权。0.2.0 的文件安全、恢复、watcher、冲突与跨平台边界继续作为不可改变的行为基线。精确的批次状态、手测、首轮失败及重跑证据只记录在 [`docs/15-0.2.5-EXECUTION-TRACKER.md`](15-0.2.5-EXECUTION-TRACKER.md)，本地图不维护实时测试总数。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
 
 ---
 
@@ -471,7 +471,7 @@ webPreferences: {
 
 批次 4 的 `src/renderer/documents/` 保留文档安全边界：`TabController` 只渲染标签；`DocumentController` 负责新建、canonical-identity 打开、当前正文读取及 workspace 发起的 `transitionBindings()` 文档路径绑定提交；`DocumentSaveController` 拥有文档 ID 和 canonical identity 两级队列；`DocumentCloseController` 固定确认→runtime 释放→Store 删除顺序；`ExternalChangeController` 纯函数分类 watcher 正文。批次 5 的 `src/renderer/editor/` 已拥有 Vditor 正文读写、auto-save timer、recovery snapshot debounce/串行队列、tab 激活 runtime 协调及 editor-owned UI lifecycle。批次 8 的 `src/renderer/workspace/` 中，`WorkspaceController` 拥有根路径、revision、workspace watcher 刷新 timer 与 dispose；`ExplorerController` 只拥有 application-owned 文件树 DOM、懒加载展开、展开状态和 explorer 菜单意图，不直接写 document 状态或操作 Vditor。shell 仍组合保存交易、外部变化与 recovery 的安全动作，并仅经这些 controller 的命名 API 操作 runtime；它不重新拥有 timer、Vditor 私有 DOM 或第二条文档生命周期。其他应用壳层状态仍在 `app.js` 的 `state` 闭包对象中：
 
-批次 8 的 `src/renderer/settings/` 中，`SettingsController` 是 `AppStore.settings` 与 `defaultSettings` 的唯一写入入口，串行化经窄 `saveSettings` bridge 的保存和重置结果；`classifySettingsChange()` 将展示、主题、locale、workspace watcher、live Vditor setter 与 constructor-only rebuild 明确分类。`SettingsWindow` 拥有 modal enter/exit rAF、close timer 和 dispose。`ui/LocalizationController` 解析三种支持语言，刷新 application-owned DOM，并同步 NotificationsController、菜单、标签和大纲；它不直接操作 Vditor 私有 DOM。运行时 locale E2E 覆盖 `en_US`、`zh_Hans`、`zh_Hant` 对菜单、确认 dialog、空态和设置保存通知的同步更新。主题和展示热应用仍经既有语义函数及 Vditor public setter 完成。
+批次 8 的 `src/renderer/settings/` 中，`SettingsController` 是 `AppStore.settings` 与 `defaultSettings` 的唯一写入入口，串行化经窄 `saveSettings` bridge 的保存和重置结果；`classifySettingsChange()` 将展示、主题、locale、workspace watcher、live Vditor setter 与 constructor-only rebuild 明确分类。`SettingsWindow` 拥有 modal enter/exit rAF、close timer 和 dispose。`ui/LocalizationController` 解析三种支持语言，刷新 application-owned DOM，并同步 NotificationsController、菜单、标签和大纲；它不直接操作 Vditor 私有 DOM。设置桥返回兼容的完整 settings shape 时，shell 只合并本次提交的 preference keys，避免 TOML 默认值覆盖已加载的 `state.json` 状态。运行时 locale E2E 覆盖 `en_US`、`zh_Hans`、`zh_Hant` 对菜单、确认 dialog、空态、设置保存通知和已展开 workspace tree 的同步更新。主题和展示热应用仍经既有语义函数及 Vditor public setter 完成。
 
 ```javascript
 const state = {
@@ -916,6 +916,7 @@ onEditorInput(tab, value)
 
 - 一个工作区 watcher（`file:setWorkspaceWatch`）仅报告新增、删除等目录结构事件；已打开文档的内容事件不会触发文件树重建。
 - 每个打开文档经 `file:watchDocument` 拥有一个按规范路径去重的独立 watcher，因而工作区外文件和工作区切换后的既有标签仍被监听；关闭标签、另存、重绑和应用退出经 `file:unwatchDocument` / `dispose()` 清理。
+- 每个打开文档还保留文件及父目录 fingerprint。工作区刷新后，renderer 仅为已不存在的打开路径调用窄的 `file:resolveRenamedDocument`；main 仅在当前工作区深度内按已保存 fingerprint 查找候选文件。找到后经 `DocumentController.transitionBindings()` 原子迁移 path、identity、watcher 和 local-resource roots；首次保存发现旧路径不存在时使用同一解析作兜底。
 - 文档 watcher 启用 `awaitWriteFinish`（1000 ms / 150 ms poll），读取稳定正文后以 `scope: 'document'` 发送 `{ content, encoding, identity }`；每个 binding 同时维护 generation、read revision 和 ready/reconciliation 状态，防止 cleanup、乱序读取和重绑空窗中的迟到结果污染新状态。
 - Linux 收到 raw `rename` 时延迟 `unwatch/add` 重绑目标路径，覆盖原子替换后的 inode 变化；规范路径会在可用时使用 `realpath`，Windows 键不区分大小写。
 - `watchDocument(filePath, reconcile)` 在已有 binding 上可要求立即 reconciliation；新 binding 在 `ready` 后读取一次当前磁盘事实，再接收实时事件。工作区 watcher 另有 `workspaceRevision`，旧工作区关闭、创建和树读取结果不得写入新工作区。
@@ -1639,13 +1640,13 @@ flowchart TB
 - `preload.ts` 是唯一被 `contextBridge` 允许的通道，渲染器通过 `window.fileAPI` / `window.appAPI` 访问所有主进程能力。
 - `ipc-contract.ts` 让 main、preload 和菜单共用通道名称；`ipc-guard.ts` 在每个 renderer IPC 入口校验当前主窗口的可信顶层 `app://app` frame；`ipc-validation.ts` 在副作用前解析高风险参数并返回稳定错误码。
 - 渲染器内部的 `app.js` 同时依赖 `VditorDesktopAdapter`（Vditor 私有 DOM 隔离）和 `VditorDesktopLocales`（国际化字典）两个全局脚本挂载点。
-- `FileWatchService` 持有一个工作区结构 watcher 和每个打开文档的内容 watcher；事件通过 `mainWindow.webContents.send('file:changed')` 推送渲染器，并以 `scope` 区分树刷新和正文比较。
+- `FileWatchService` 持有一个工作区结构 watcher、每个打开文档的内容 watcher 和仅用于已打开文档外部改名恢复的 fingerprint；事件通过 `mainWindow.webContents.send('file:changed')` 推送渲染器，并以 `scope` 区分树刷新和正文比较。`file:resolveRenamedDocument` 仅返回当前工作区内与既有 fingerprint 匹配的路径，不能作为任意文件搜索能力。
 
 ---
 
 ## 15. 测试覆盖情况
 
-本节用于定位测试责任，不维护实时测试总数。以 `npm test` 与 `npx playwright test --list` 发现当前测试；带日期的验证证据、专项范围和平台限制统一记录在 [`docs/13-0.2.0-EXECUTION-TRACKER.md`](13-0.2.0-EXECUTION-TRACKER.md)。Linux 结果不外推为 Windows/macOS 实体机验证。
+本节用于定位测试责任，不维护实时测试总数。以 `npm test` 与 `npx playwright test --list` 发现当前测试；带日期的验证证据、专项范围和平台限制统一记录在 [`docs/15-0.2.5-EXECUTION-TRACKER.md`](15-0.2.5-EXECUTION-TRACKER.md)。Linux 结果不外推为 Windows/macOS 实体机验证。
 
 ### 15.1 单元测试（Vitest）
 

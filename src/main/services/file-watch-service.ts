@@ -1,3 +1,4 @@
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { watch, ChokidarOptions, FSWatcher } from 'chokidar';
 import { normalizeFileIdentityPath, resolveFileIdentitySync } from './file-identity';
@@ -10,8 +11,10 @@ import {
 export { normalizeWorkspaceReadDepth, WORKSPACE_READ_DEPTH_MAX, WORKSPACE_READ_DEPTH_MIN };
 
 export type FileChangeEvent = {
-  event: 'add' | 'change' | 'unlink' | 'addDir' | 'unlinkDir' | 'unreadable' | 'watch-error';
+  event:
+    'add' | 'change' | 'unlink' | 'addDir' | 'unlinkDir' | 'rename' | 'unreadable' | 'watch-error';
   path: string;
+  previousPath?: string;
   identity?: string;
   scope: 'workspace' | 'document';
   content?: string;
@@ -33,6 +36,8 @@ type DocumentBinding = {
   timer: NodeJS.Timeout | null;
   watcher: FSWatcher;
   renameTimer: NodeJS.Timeout | null;
+  parentDirectoryFingerprint: string | null;
+  fileFingerprint: string | null;
 };
 
 type WorkspaceMutation = {
@@ -66,6 +71,7 @@ export class FileWatchService {
   private workspaceRevision = 0;
   private workspaceWatchErrorReported = false;
   private readonly documents = new Map<string, DocumentBinding>();
+  private readonly documentFingerprints = new Map<string, string>();
   private readonly ownDocumentWrites = new Map<string, number>();
   private readonly ownWorkspaceMutations = new Map<string, WorkspaceMutation>();
 
@@ -144,7 +150,10 @@ export class FileWatchService {
       timer: null,
       watcher,
       renameTimer: null,
+      parentDirectoryFingerprint: this.directoryFingerprint(path.dirname(identity)),
+      fileFingerprint: this.pathFingerprint(identity),
     };
+    if (binding.fileFingerprint) this.documentFingerprints.set(identity, binding.fileFingerprint);
     this.documents.set(identity, binding);
     watcher.on('all', (eventName, changedPath) => {
       if (!this.isCurrentBinding(binding, binding.generation)) return;
@@ -191,9 +200,11 @@ export class FileWatchService {
   }
 
   async unwatchDocument(filePath: string, identity?: string): Promise<void> {
-    const binding = this.documents.get(
-      identity ? normalizeFileIdentityPath(path.resolve(identity)) : this.normalizePath(filePath),
-    );
+    const bindingIdentity = identity
+      ? normalizeFileIdentityPath(path.resolve(identity))
+      : this.normalizePath(filePath);
+    const binding = this.documents.get(bindingIdentity);
+    this.documentFingerprints.delete(bindingIdentity);
     if (!binding) return;
     this.documents.delete(binding.identity);
     binding.generation++;
@@ -202,6 +213,13 @@ export class FileWatchService {
     if (binding.renameTimer) clearTimeout(binding.renameTimer);
     binding.renameTimer = null;
     await binding.watcher.close();
+  }
+
+  async resolveRenamedDocument(filePath: string): Promise<string | null> {
+    const identity = this.normalizePath(filePath);
+    const fingerprint =
+      this.documents.get(identity)?.fileFingerprint ?? this.documentFingerprints.get(identity);
+    return fingerprint ? this.findWorkspacePathByFingerprint(fingerprint) : null;
   }
 
   async dispose(): Promise<void> {
@@ -217,6 +235,7 @@ export class FileWatchService {
     }
     const documentWatchers = [...this.documents.values()].map(({ watcher }) => watcher.close());
     this.documents.clear();
+    this.documentFingerprints.clear();
     this.ownWorkspaceMutations.clear();
     await Promise.all(documentWatchers);
   }
@@ -228,10 +247,25 @@ export class FileWatchService {
     binding.renameTimer = setTimeout(() => {
       binding.renameTimer = null;
       if (!this.isCurrentBinding(binding, generation)) return;
-      binding.watcher.unwatch(binding.identity);
-      binding.watcher.add(binding.identity);
-      this.scheduleDocumentRead(binding, WATCHER_STABILITY_THRESHOLD, 'change');
+      void this.reconcileLinuxRenamedDocument(binding, generation);
     }, LINUX_RENAME_REBIND_DELAY);
+  }
+
+  private async reconcileLinuxRenamedDocument(
+    binding: DocumentBinding,
+    generation: number,
+  ): Promise<void> {
+    const renamedPath = binding.fileFingerprint
+      ? await this.findWorkspacePathByFingerprint(binding.fileFingerprint)
+      : null;
+    if (!this.isCurrentBinding(binding, generation)) return;
+    if (renamedPath && path.resolve(renamedPath) !== path.resolve(binding.path)) {
+      await this.retireRenamedBinding(binding, renamedPath);
+      return;
+    }
+    binding.watcher.unwatch(binding.identity);
+    binding.watcher.add(binding.identity);
+    this.scheduleDocumentRead(binding, WATCHER_STABILITY_THRESHOLD, 'change');
   }
 
   private handleWorkspaceEvent(eventName: string, changedPath: string): void {
@@ -242,8 +276,61 @@ export class FileWatchService {
     const binding = this.documents.get(identity);
     if (binding) return;
     if (event === 'change' || path.basename(changedPath).startsWith('.')) return;
+    if (event === 'unlinkDir') void this.reconcileRenamedDocumentsUnder(changedPath);
+    if (event === 'addDir') void this.reconcileRenamedDirectory(changedPath);
+    if (event === 'add') void this.reconcileRenamedDirectory(path.dirname(changedPath));
     if (!this.isOwnDocumentWriteEvent(identity))
       this.send({ event, path: path.resolve(changedPath), scope: 'workspace' });
+  }
+
+  private async reconcileRenamedDirectory(directoryPath: string): Promise<void> {
+    const fingerprint = this.directoryFingerprint(directoryPath);
+    if (!fingerprint) return;
+    const destinationDirectory = path.resolve(directoryPath);
+    const renamedBindings = [...this.documents.values()].filter(
+      (binding) => binding.parentDirectoryFingerprint === fingerprint,
+    );
+    for (const binding of renamedBindings) {
+      if (!this.isCurrentBinding(binding, binding.generation)) continue;
+      const previousPath = binding.path;
+      const nextPath = path.join(destinationDirectory, path.basename(previousPath));
+      if (path.resolve(previousPath) === nextPath) continue;
+      await this.retireRenamedBinding(binding, nextPath);
+    }
+  }
+
+  private async reconcileRenamedDocumentsUnder(previousDirectory: string): Promise<void> {
+    const candidates = [...this.documents.values()].filter((binding) =>
+      this.isWithinPath(path.resolve(previousDirectory), binding.path),
+    );
+    for (const binding of candidates) {
+      if (!binding.fileFingerprint || !this.isCurrentBinding(binding, binding.generation)) continue;
+      const renamedPath = await this.findWorkspacePathByFingerprint(binding.fileFingerprint);
+      if (
+        renamedPath &&
+        path.resolve(renamedPath) !== path.resolve(binding.path) &&
+        this.isCurrentBinding(binding, binding.generation)
+      )
+        await this.retireRenamedBinding(binding, renamedPath);
+    }
+  }
+
+  private async retireRenamedBinding(binding: DocumentBinding, nextPath: string): Promise<void> {
+    const previousPath = binding.path;
+    this.documents.delete(binding.identity);
+    binding.generation++;
+    if (binding.timer) clearTimeout(binding.timer);
+    if (binding.renameTimer) clearTimeout(binding.renameTimer);
+    binding.timer = null;
+    binding.renameTimer = null;
+    await binding.watcher.close();
+    this.send({
+      event: 'rename',
+      path: nextPath,
+      previousPath,
+      identity: binding.identity,
+      scope: 'workspace',
+    });
   }
 
   private reportWorkspaceWatchError(workspacePath: string, watcher?: FSWatcher): void {
@@ -384,6 +471,41 @@ export class FileWatchService {
 
   private normalizePath(filePath: string): string {
     return resolveFileIdentitySync(filePath);
+  }
+
+  private directoryFingerprint(directoryPath: string): string | null {
+    return this.pathFingerprint(directoryPath);
+  }
+
+  private pathFingerprint(filePath: string): string | null {
+    try {
+      const stat = fs.statSync(filePath);
+      return `${stat.dev}:${stat.ino}`;
+    } catch {
+      return null;
+    }
+  }
+
+  private async findWorkspacePathByFingerprint(fingerprint: string): Promise<string | null> {
+    if (!this.workspacePath) return null;
+    const search = async (directory: string, depth: number): Promise<string | null> => {
+      let entries: fs.Dirent[];
+      try {
+        entries = await fs.promises.readdir(directory, { withFileTypes: true });
+      } catch {
+        return null;
+      }
+      for (const entry of entries) {
+        const candidate = path.join(directory, entry.name);
+        if (entry.isFile() && this.pathFingerprint(candidate) === fingerprint) return candidate;
+        if (entry.isDirectory() && depth < this.workspaceDepth) {
+          const found = await search(candidate, depth + 1);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    return search(this.workspacePath, 0);
   }
 
   private isOwnDocumentWriteEvent(changedPath: string): boolean {

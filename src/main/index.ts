@@ -592,6 +592,10 @@ function registerIpcHandlers(): void {
     requireArgumentCount(args, 1, 2);
     return fileWatchService.unwatchDocument(parseAbsolutePath(args[0]), parseOptionalText(args[1]));
   });
+  handleTrusted(IPC_CHANNELS.fileResolveRenamedDocument, (_event, ...args) => {
+    requireArgumentCount(args, 1);
+    return fileWatchService.resolveRenamedDocument(parseAbsolutePath(args[0]));
+  });
   handleTrusted(IPC_CHANNELS.fileSetResourceRoots, (_event, ...args) => {
     requireArgumentCount(args, 1);
     return localResourcePolicy.setRoots(parseResourceRootPaths(args[0]));

@@ -51,12 +51,16 @@
 
 ### Bug Fixes
 
+- **fix(document binding):** When an opened document's parent directory is renamed outside the application, reconcile its canonical path, watcher, and local-resource roots before the next save; the save writes to the renamed path without recreating the old directory.
+- **fix(save as):** Saving an unavailable document to its original path now uses the existing explicit recreate confirmation instead of silently rejecting the operation.
+- **fix(editor layout):** Delay paragraph-width application until range selection is committed, avoiding repeated long-document layout work while the slider is dragged.
 - **fix(file recovery):** Confirming recreation after a previously deleted file has reappeared now uses the watcher-provided disk snapshot as its safe write baseline. The confirmed local content replaces that version; a further external change is still rejected rather than silently overwritten.
 - **fix(renderer startup):** Deferred localized image-upload messages until they are needed, so renderer bootstrap no longer reads the locale table before its initialization and prevents Vditor Desktop from becoming ready.
 - **fix(editor runtime):** Preserve editor-destroy failures for rebuild callers after cleanup, restore the rename warning when every affected editor cannot rebuild, and clear stale SV whitespace scroll compensation after a redraw.
 - **fix(editor runtime):** Reject delayed scroll-restoration callbacks when a Vditor rebuild advances the tab runtime generation.
 - **fix(editor paste):** Preserve rich HTML through the native Ctrl/Cmd+V path by restoring the editor selection after the narrow clipboard bridge resolves and re-entering Vditor's own paste handler; right-click Paste and Vditor serialization remain on the same path.
 - **fix(split view):** Handle Vditor's existing Ctrl/Cmd+Shift+I (outdent) and Ctrl/Cmd+Shift+O (indent) commands directly against the active SV source selection when Vditor has disabled its own SV toolbar actions.
+- **fix(persistence):** Preserve loaded `state.json` data while saving TOML preferences, so changing a setting such as locale cannot clear remembered workspace expansion or other cross-launch UI state.
 
 ### Test Coverage
 

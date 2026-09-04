@@ -669,6 +669,39 @@ test('keeps open descendant paths, resources, recents, and watchers aligned afte
   }
 });
 
+test('rebinds an open document after its parent directory is renamed externally', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-external-directory-rename-'));
+  const oldDirectory = path.join(workspace, 'rename-folder');
+  const oldFilePath = path.join(oldDirectory, 'inside.md');
+  fs.mkdirSync(oldDirectory);
+  fs.writeFileSync(oldFilePath, 'Original content');
+  const running = await launchApp({
+    autoSave: false,
+    editMode: 'sv',
+    restoreTabs: true,
+    restoreWorkspace: true,
+    session: { workspacePath: workspace, activeFilePath: oldFilePath, openFiles: [oldFilePath] },
+  });
+  try {
+    const { page } = running;
+    const newDirectory = path.join(workspace, 'renamed-folder');
+    const newFilePath = path.join(newDirectory, 'inside.md');
+    fs.renameSync(oldDirectory, newDirectory);
+
+    await expect(page.locator('#statusPath')).toHaveText(newFilePath, { timeout: 5000 });
+    await page.locator('.editor-host.active .vditor-sv').fill('Saved after external rename');
+    await page.keyboard.press('Control+s');
+    await expect(page.locator('#externalFileStateBanner')).toBeHidden();
+    await expect
+      .poll(() => fs.readFileSync(newFilePath, 'utf8').trimEnd())
+      .toBe('Saved after external rename');
+    expect(fs.existsSync(oldFilePath)).toBe(false);
+  } finally {
+    await closeApp(running);
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 test('saves trusted tab content while the rebuilt editor is not ready', async () => {
   const running = await launchApp(
     { editMode: 'sv' },
@@ -835,7 +868,7 @@ test('reconciles a renamed document after repeated watcher rebind failures', asy
   }
 });
 
-test('keeps renamed document state coherent when settings persistence fails once', async () => {
+test('keeps renamed document state coherent when persistent-state persistence fails once', async () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-rename-settings-failure-'));
   const oldDirectory = path.join(workspace, 'notes');
   const filePath = path.join(oldDirectory, 'entry.md');
@@ -850,7 +883,7 @@ test('keeps renamed document state coherent when settings persistence fails once
   });
   try {
     const { app, page, testRoot } = running;
-    const configPath = path.join(testRoot, 'config', 'config.toml');
+    const statePath = path.join(testRoot, 'config', 'state.json');
     await app.evaluate((_, targetPath) => {
       const nodeFs = process.getBuiltinModule('node:fs');
       const nodePath = process.getBuiltinModule('node:path');
@@ -864,7 +897,7 @@ test('keeps renamed document state coherent when settings persistence fails once
         }
         return originalRename(oldPath, newPath);
       };
-    }, configPath);
+    }, statePath);
 
     const oldDirectoryRow = page.locator(`#fileTree .tree-dir[data-path="${oldDirectory}"]`);
     await oldDirectoryRow.click({ button: 'right' });
@@ -875,7 +908,9 @@ test('keeps renamed document state coherent when settings persistence fails once
     const newDirectory = path.join(workspace, 'renamed');
     const newFilePath = path.join(newDirectory, 'entry.md');
     await expect(page.locator('#statusPath')).toHaveText(newFilePath);
-    await expect(page.locator('#statusMessage')).toHaveText('Settings could not be saved.');
+    await expect(page.locator('#statusMessage')).toHaveText(
+      'The operation could not be completed.',
+    );
     await expect.poll(() => readSetting(testRoot, 'session', 'openFiles')).toEqual([newFilePath]);
     expect(fs.existsSync(filePath)).toBe(false);
     expect(fs.readFileSync(newFilePath, 'utf8')).toBe('Original content');
@@ -1467,18 +1502,21 @@ test('limits workspace tree reads to the selected directory depth and persists t
 
     await page.locator('#statusSettings').click();
     await page.locator('[name="locale"]').selectOption('zh_Hans');
+    await page.locator('#saveSettings').click();
+    await expect(page.locator('#settingsModal')).toBeHidden();
     await expect(
       page
         .locator('#fileTree .tree-depth-notice')
         .filter({ hasText: '已达到工作区目录最大读取深度。' }),
     ).toBeVisible();
+    await page.locator('#statusSettings').click();
     await page.locator('.settings-nav [data-panel="files"]').click();
     const depthInput = page.locator('[name="workspaceReadDepth"]');
     await depthInput.fill('12');
     await expect(page.locator('#workspaceReadDepthValue')).toHaveText('12');
-    await expect.poll(() => readSetting(running.testRoot, 'files', 'workspaceReadDepth')).toBe(12);
     await page.locator('#saveSettings').click();
     await expect(page.locator('#settingsModal')).toBeHidden();
+    await expect.poll(() => readSetting(running.testRoot, 'files', 'workspaceReadDepth')).toBe(12);
     for (const directory of directories.slice(6)) {
       await page.locator(`#fileTree .tree-dir[data-path="${directory}"]`).click();
     }
@@ -2214,6 +2252,43 @@ test('copies the last saved content when recreating a deleted file with auto-sav
         page.evaluate(() => window.appAPI.readClipboard().then(({ text }) => text.trim())),
       )
       .toBe('Last saved content');
+  } finally {
+    await closeApp(running);
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('confirms before Save As recreates an unavailable document at its original path', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-save-as-recreate-'));
+  const filePath = path.join(workspace, 'delete-me.md');
+  fs.writeFileSync(filePath, 'Saved before deletion');
+  const running = await launchApp({
+    autoSave: false,
+    editMode: 'sv',
+    restoreTabs: true,
+    restoreWorkspace: true,
+    session: { workspacePath: workspace, activeFilePath: filePath, openFiles: [filePath] },
+  });
+  try {
+    const { app, page } = running;
+    const editor = page.locator('.editor-host.active .vditor-sv');
+    const banner = page.locator('#externalFileStateBanner');
+    const confirm = page.locator('#confirmModal');
+    await editor.fill('Unsaved content recovered by Save As');
+    fs.rmSync(filePath);
+    await expect(banner).toBeVisible();
+    await app.evaluate(({ dialog }, selectedPath) => {
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: selectedPath });
+    }, filePath);
+
+    await page.locator('#externalFileSaveAs').click();
+    await expect(confirm).toBeVisible();
+    expect(fs.existsSync(filePath)).toBe(false);
+    await confirm.locator('#confirmActions [data-action="confirm"]').click();
+    await expect.poll(() => fs.existsSync(filePath)).toBe(true);
+    expect(fs.readFileSync(filePath, 'utf8')).toContain('Unsaved content recovered by Save As');
+    await expect(banner).toBeHidden();
+    await expect(page.locator('.document-tab.active .dirty')).toBeHidden();
   } finally {
     await closeApp(running);
     fs.rmSync(workspace, { recursive: true, force: true });

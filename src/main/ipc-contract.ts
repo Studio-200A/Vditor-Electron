@@ -23,6 +23,7 @@ export const IPC_CHANNELS = {
   fileSetWorkspaceWatch: 'file:setWorkspaceWatch',
   fileWatchDocument: 'file:watchDocument',
   fileUnwatchDocument: 'file:unwatchDocument',
+  fileResolveRenamedDocument: 'file:resolveRenamedDocument',
   fileSetResourceRoots: 'file:setResourceRoots',
   fileChanged: 'file:changed',
   appGetSettings: 'app:getSettings',
