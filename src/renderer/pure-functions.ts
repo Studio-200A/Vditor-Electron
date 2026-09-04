@@ -81,6 +81,7 @@ export type {
   TabViewModel,
 } from './documents/tab-controller.js';
 export { DocumentController } from './documents/document-controller.js';
+export type { DocumentBindingTransition } from './documents/document-binding-transition.js';
 export type {
   DocumentControllerOptions,
   DocumentFileBridge,
@@ -123,3 +124,14 @@ export {
   RECOVERY_SNAPSHOT_VERSION,
 } from './state/snapshots.js';
 export type { SessionDocumentSnapshot, RecoveryDocumentSnapshot } from './state/snapshots.js';
+export { WorkspaceController } from './workspace/workspace-controller.js';
+export type {
+  WorkspaceControllerOptions,
+  WorkspaceSettings,
+} from './workspace/workspace-controller.js';
+export { ExplorerController } from './workspace/explorer-controller.js';
+export type {
+  ExplorerControllerOptions,
+  ExplorerEntry,
+  ExplorerSettings,
+} from './workspace/explorer-controller.js';

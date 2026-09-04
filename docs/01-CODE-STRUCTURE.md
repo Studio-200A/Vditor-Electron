@@ -462,15 +462,13 @@ webPreferences: {
 
 ### 6.3 状态管理
 
-`src/renderer/state/` 提供 typed `AppStore`、文档状态/运行时类型与旧状态快照工具。`AppStore` 现在是打开文档集合及 `activeDocumentId` 的 source of truth：legacy `app.js` 通过只读访问器读取它，并只经 `addDocument`、`removeDocument`、`setActiveDocument`、`moveDocument` 改变集合或活动标签。文档更新保留 canonical tab/runtime 对象身份供 await 中的控制器复核；`subscribeWithSelector()` 以有限嵌套快照观察 document 与 runtime 更新，而不是替换已注册 tab。
+`src/renderer/state/` 提供 typed `AppStore`、文档状态/运行时类型与旧状态快照工具。`AppStore` 现在是打开文档集合、`activeDocumentId`、`workspacePath` 及其 revision 的 source of truth：legacy `app.js` 通过只读访问器读取它，并只经具名命令改变这些域。文档更新保留 canonical tab/runtime 对象身份供 await 中的控制器复核；`subscribeWithSelector()` 以有限嵌套快照观察 document 与 runtime 更新，而不是替换已注册 tab。
 
-批次 4 的 `src/renderer/documents/` 保留文档安全边界：`TabController` 只渲染标签；`DocumentController` 负责新建、canonical-identity 打开和当前正文读取；`DocumentSaveController` 拥有文档 ID 和 canonical identity 两级队列；`DocumentCloseController` 固定确认→runtime 释放→Store 删除顺序；`ExternalChangeController` 纯函数分类 watcher 正文。批次 5 的 `src/renderer/editor/` 已拥有 Vditor 正文读写、auto-save timer、recovery snapshot debounce/串行队列、tab 激活 runtime 协调及 editor-owned UI lifecycle。shell 仍组合保存交易、外部变化与 recovery 的安全动作，并仅经这些 controller 的命名 API 操作 runtime；它不重新拥有 timer、Vditor 私有 DOM 或第二条文档生命周期。其他应用壳层状态仍在 `app.js` 的 `state` 闭包对象中：
+批次 4 的 `src/renderer/documents/` 保留文档安全边界：`TabController` 只渲染标签；`DocumentController` 负责新建、canonical-identity 打开、当前正文读取及 workspace 发起的 `transitionBindings()` 文档路径绑定提交；`DocumentSaveController` 拥有文档 ID 和 canonical identity 两级队列；`DocumentCloseController` 固定确认→runtime 释放→Store 删除顺序；`ExternalChangeController` 纯函数分类 watcher 正文。批次 5 的 `src/renderer/editor/` 已拥有 Vditor 正文读写、auto-save timer、recovery snapshot debounce/串行队列、tab 激活 runtime 协调及 editor-owned UI lifecycle。批次 8 的 `src/renderer/workspace/` 中，`WorkspaceController` 拥有根路径、revision、workspace watcher 刷新 timer 与 dispose；`ExplorerController` 只拥有 application-owned 文件树 DOM、懒加载展开、展开状态和 explorer 菜单意图，不直接写 document 状态或操作 Vditor。shell 仍组合保存交易、外部变化与 recovery 的安全动作，并仅经这些 controller 的命名 API 操作 runtime；它不重新拥有 timer、Vditor 私有 DOM 或第二条文档生命周期。其他应用壳层状态仍在 `app.js` 的 `state` 闭包对象中：
 
 ```javascript
 const state = {
   toolbarPreview: null,  // 无标签时用于展示默认编辑模式 toolbar 的非文档 Vditor 实例
-  workspace: '',         // string 当前工作目录路径
-  workspaceRevision: 0,  // number 工作区切换/树读取 revision，丢弃迟到结果
   settings: null,        // AppSettings 从主进程加载的完整配置
   defaultSettings: null, // AppSettings 默认配置（用于重置）
   locale: 'en_US',       // string 当前语言代码
@@ -478,7 +476,6 @@ const state = {
     file: 0,
     directory: 0,
   },
-  treeTimer: null,       // Timer 工作区树刷新防抖计时器
 };
 
 ```

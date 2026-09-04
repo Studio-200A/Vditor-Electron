@@ -31,7 +31,9 @@
       store.setActiveDocument(id);
     },
     toolbarPreview: null,
-    workspace: '',
+    get workspace() {
+      return store.getState().workspacePath;
+    },
     settings: null,
     defaultSettings: null,
     locale: 'en_US',
@@ -39,8 +41,9 @@
       file: 0,
       directory: 0,
     },
-    treeTimer: null,
-    workspaceRevision: 0,
+    get workspaceRevision() {
+      return store.getState().workspaceRevision;
+    },
     toolbarWrapHeight: 0,
   };
   const RUNTIME_TAB_FIELDS = [
@@ -325,6 +328,68 @@
     onOutlineRuntimeChanged: renderOutline,
     onFindRuntimeChanged: () => findController.onRuntimeChanged(),
     persistSession: () => void persistSession(),
+  });
+  const workspaceController = new PURE.WorkspaceController({
+    store,
+    fileAPI: window.fileAPI,
+    getSettings: () => state.settings,
+    saveSettings: async (updates) => {
+      state.settings = await queueSettingsSave(updates, { throwOnFailure: true });
+    },
+    renderWorkspace: (workspacePath) => {
+      $('#workspaceName').textContent = workspacePath
+        ? fileName(workspacePath)
+        : t('sidebar.noWorkspace');
+      $('#workspaceHeading').dataset.tooltip = workspacePath || t('sidebar.openFolder');
+    },
+    syncLocalResourceRoots: () => syncLocalResourceRoots(),
+    requestTreeRefresh: (revision) => explorerController.refresh(revision),
+    persistSession: () => void persistSession(),
+    onWorkspacePathUnavailable: async (event) => {
+      const affectedTabs = await rebaseOpenTabs(event.path, event.path);
+      for (const { tab } of affectedTabs)
+        await documentController.transitionBindings({
+          prepare: async () => tab,
+          commit: async (document) =>
+            preserveUnavailableTab(document, 'deleted', document.filePath),
+        });
+      if (affectedTabs.length) {
+        renderTabs();
+        updateActiveUI();
+        void persistSession();
+      }
+    },
+    isWorkspaceAvailable: (workspacePath) => window.fileAPI.exists(workspacePath),
+    onWorkspaceWatchError: () => showMessage(t('workspace.watchResourceLimit'), true),
+  });
+  const explorerController = new PURE.ExplorerController({
+    store,
+    fileAPI: window.fileAPI,
+    fileTree: $('#fileTree'),
+    getSettings: () => state.settings,
+    translate: t,
+    treeIcon,
+    openPath: async (filePath) => {
+      await openPath(filePath);
+    },
+    chooseWorkspace: chooseFolder,
+    showMessage,
+    showContextMenu: (event, items) => showContextMenu(event, items),
+    renameEntry: renameExplorerItem,
+    deleteEntry: deleteExplorerItem,
+    revealEntry: (filePath) => window.appAPI.showItemInFolder(filePath),
+    createEntry: createExplorerItem,
+    openWorkspaceInFolder: (workspacePath) => window.appAPI.openDirectory(workspacePath),
+    saveExpansion: (workspacePath, expandedPaths) => {
+      const previous = state.settings.workspaceTreeStates || [];
+      const workspaceTreeStates = [
+        { workspacePath, expandedPaths },
+        ...previous.filter((item) => item.workspacePath !== workspacePath),
+      ].slice(0, 20);
+      state.settings.workspaceTreeStates = workspaceTreeStates;
+      void queueSettingsSave({ workspaceTreeStates });
+    },
+    updateActiveSelection: updateActiveTreeSelection,
   });
   const splitViewController = new PURE.SplitViewController({
     getContent: (tab) => VDITOR.editorParts(tab.host).content,
@@ -2242,171 +2307,11 @@
   }
 
   async function setWorkspace(folder) {
-    const revision = ++state.workspaceRevision;
-    state.workspace = folder || '';
-    $('#workspaceName').textContent = folder ? fileName(folder) : t('sidebar.noWorkspace');
-    $('#workspaceHeading').dataset.tooltip = folder || t('sidebar.openFolder');
-    await syncLocalResourceRoots();
-    await window.fileAPI.setWorkspaceWatch(folder || undefined, state.settings.workspaceReadDepth);
-    if (revision !== state.workspaceRevision) return;
-    await refreshTree(revision);
-    if (revision !== state.workspaceRevision) return;
-    if (folder) {
-      const recent = [
-        folder,
-        ...(state.settings.recentPaths || []).filter((item) => item !== folder),
-      ].slice(0, 10);
-      state.settings.recentPaths = recent;
-      state.settings.defaultOpenPath = folder;
-      await queueSettingsSave({ recentPaths: recent, defaultOpenPath: folder });
-    } else {
-      state.settings.defaultOpenPath = '';
-      await queueSettingsSave({ defaultOpenPath: '' });
-    }
-    persistSession();
+    await workspaceController.setWorkspace(folder);
   }
 
-  async function refreshTree(revision = state.workspaceRevision) {
-    const root = $('#fileTree');
-    const workspace = state.workspace;
-    if (!workspace) {
-      const button = document.createElement('button');
-      button.id = 'openFolderEmpty';
-      button.className = 'empty-action';
-      button.textContent = t('sidebar.openFolder');
-      button.onclick = chooseFolder;
-      root.replaceChildren(button);
-      return;
-    }
-    const content = document.createDocumentFragment();
-    await appendDirectory(content, workspace, 0, new Set([workspace]));
-    if (state.workspace !== workspace || revision !== state.workspaceRevision) return;
-    root.replaceChildren(content);
-    updateActiveTreeSelection();
-  }
-
-  function expandedWorkspacePaths() {
-    if (!state.settings.restoreWorkspace || !state.workspace) return new Set();
-    const saved = (state.settings.workspaceTreeStates || []).find(
-      (item) => item.workspacePath === state.workspace,
-    );
-    return new Set(saved?.expandedPaths || []);
-  }
-
-  function persistDirectoryExpansion(directoryPath, expanded) {
-    if (!state.settings.restoreWorkspace || !state.workspace) return;
-    const previous = state.settings.workspaceTreeStates || [];
-    const current = previous.find((item) => item.workspacePath === state.workspace);
-    const expandedPaths = new Set(current?.expandedPaths || []);
-    if (expanded) expandedPaths.add(directoryPath);
-    else expandedPaths.delete(directoryPath);
-    const workspaceState = {
-      workspacePath: state.workspace,
-      expandedPaths: Array.from(expandedPaths).slice(0, 500),
-    };
-    const workspaceTreeStates = [
-      workspaceState,
-      ...previous.filter((item) => item.workspacePath !== state.workspace),
-    ].slice(0, 20);
-    state.settings.workspaceTreeStates = workspaceTreeStates;
-    void queueSettingsSave({ workspaceTreeStates });
-  }
-
-  async function appendDirectory(container, dirPath, depth, ancestorPaths) {
-    let entries;
-    try {
-      entries = await window.fileAPI.listDir(dirPath, state.workspace);
-    } catch (error) {
-      showMessage(ipcErrorMessage(error), true);
-      return;
-    }
-    const extensions = (state.settings.fileExplorer.visibleExtensions || ['md']).map((ext) =>
-      ext.replace(/^\./, '').toLowerCase(),
-    );
-    for (const entry of entries) {
-      if (entry.name.startsWith('.')) continue;
-      if (entry.type === 'file' && !extensions.includes(entry.name.split('.').pop().toLowerCase()))
-        continue;
-      const row = document.createElement('div');
-      row.className = `tree-row tree-${entry.type === 'directory' ? 'dir' : 'file'}`;
-      row.dataset.path = entry.path;
-      row.innerHTML = `<span class="chevron">${entry.type === 'directory' ? '›' : ''}</span><span class="file-icon">${treeIcon(entry)}</span><span class="tree-name" data-tooltip="${escapeHTML(entry.name)}">${escapeHTML(entry.name)}</span>`;
-      if (entry.link) {
-        row.classList.add('tree-link');
-        row.dataset.linkStatus = entry.link.status;
-        row.dataset.tooltip = t('workspace.linkTitle');
-      }
-      container.appendChild(row);
-      row.addEventListener('contextmenu', (event) => showTreeMenu(event, entry, row));
-      if (entry.type === 'file') row.addEventListener('click', () => openPath(entry.path));
-      else {
-        const children = document.createElement('div');
-        children.className = 'tree-children';
-        children.dataset.parentPath = entry.path;
-        container.appendChild(children);
-        const targetDepth = entry.link?.workspaceDepth ?? depth + 1;
-        const createsLinkCycle =
-          entry.link &&
-          (entry.link.targetsWorkspaceRoot || ancestorPaths.has(entry.link.targetPath));
-        if (entry.link?.status === 'outside-workspace' || createsLinkCycle) {
-          const message = t(
-            createsLinkCycle ? 'workspace.linkCycle' : 'workspace.linkOutsideWorkspace',
-          );
-          row.classList.add(
-            'depth-limited',
-            createsLinkCycle ? 'tree-link-cycle' : 'tree-link-outside',
-          );
-          row.querySelector('.chevron').textContent = '·';
-          const notice = document.createElement('div');
-          notice.className = 'tree-depth-notice';
-          notice.textContent = message;
-          children.classList.add('depth-limit');
-          children.appendChild(notice);
-          row.addEventListener('click', () => showMessage(message));
-          continue;
-        }
-        const atDepthLimit = targetDepth >= state.settings.workspaceReadDepth;
-        if (atDepthLimit) {
-          row.classList.add('depth-limited');
-          row.querySelector('.chevron').textContent = '·';
-          const notice = document.createElement('div');
-          notice.className = 'tree-depth-notice';
-          notice.textContent = t('workspace.depthLimited');
-          children.classList.add('depth-limit');
-          children.appendChild(notice);
-          row.addEventListener('click', () => showMessage(t('workspace.depthLimited')));
-          continue;
-        }
-        row.addEventListener('click', async () => {
-          const open = row.classList.toggle('expanded');
-          row.querySelector('.chevron').textContent = open ? '⌄' : '›';
-          row.setAttribute('aria-expanded', String(open));
-          persistDirectoryExpansion(entry.path, open);
-          if (open && !children.dataset.loaded) {
-            children.dataset.loaded = 'true';
-            await appendDirectory(
-              children,
-              entry.path,
-              targetDepth,
-              new Set([...ancestorPaths, entry.link?.targetPath || entry.path]),
-            );
-          }
-        });
-        row.setAttribute('aria-expanded', 'false');
-        if (expandedWorkspacePaths().has(entry.path)) {
-          row.classList.add('expanded');
-          row.setAttribute('aria-expanded', 'true');
-          row.querySelector('.chevron').textContent = '⌄';
-          children.dataset.loaded = 'true';
-          await appendDirectory(
-            children,
-            entry.path,
-            targetDepth,
-            new Set([...ancestorPaths, entry.link?.targetPath || entry.path]),
-          );
-        }
-      }
-    }
+  async function refreshTree() {
+    await workspaceController.refreshTree();
   }
 
   function closeContextMenu() {
@@ -2542,41 +2447,13 @@
     showContextMenu(event, items, menuState);
   }
 
-  function showTreeMenu(event, entry, row) {
-    event.preventDefault();
-    showContextMenu(event, [
-      { label: t('context.rename'), action: () => renameExplorerItem(entry, row) },
-      { label: t('context.trash'), action: () => deleteExplorerItem(entry) },
-      { label: t('context.reveal'), action: () => window.appAPI.showItemInFolder(entry.path) },
-    ]);
-  }
-
   function treeContextParent(target) {
     const element = target instanceof Element ? target : null;
     return element?.closest('.tree-children')?.dataset.parentPath || state.workspace;
   }
 
   function showWorkspaceTreeMenu(event, parent = state.workspace) {
-    event.preventDefault();
-    const actions = [
-      { label: t('context.changeWorkspace'), action: chooseFolder },
-      {
-        label: t('context.newFile'),
-        action: () => createExplorerItem(parent, 'file'),
-        disabled: !parent,
-      },
-      {
-        label: t('context.newFolder'),
-        action: () => createExplorerItem(parent, 'directory'),
-        disabled: !parent,
-      },
-      {
-        label: t('context.openWorkspace'),
-        action: () => window.appAPI.openDirectory(state.workspace),
-        disabled: !state.workspace,
-      },
-    ];
-    showContextMenu(event, actions);
+    explorerController.showWorkspaceContextMenu(event, parent);
   }
 
   async function createExplorerItem(parent, type) {
@@ -2654,16 +2531,21 @@
         fileSystemCommitted = true;
         if (destination !== plannedDestination)
           throw new Error('The rename destination changed before the operation completed.');
-        for (const { tab, nextPath, fileIdentity, baseDir } of tabPlans) {
-          const previousBaseDir = tab.baseDir;
-          updateTabDocument(tab, {
-            filePath: nextPath,
-            fileIdentity,
-            title: fileName(nextPath),
-            baseDir,
-          });
-          if (previousBaseDir !== tab.baseDir) editorRebuilds.add(tab);
-        }
+        await documentController.transitionBindings({
+          prepare: async () => tabPlans,
+          commit: async (plans) => {
+            for (const { tab, nextPath, fileIdentity, baseDir } of plans) {
+              const previousBaseDir = tab.baseDir;
+              updateTabDocument(tab, {
+                filePath: nextPath,
+                fileIdentity,
+                title: fileName(nextPath),
+                baseDir,
+              });
+              if (previousBaseDir !== tab.baseDir) editorRebuilds.add(tab);
+            }
+          },
+        });
         state.settings.recentFiles = settingsPlan.recentFiles;
         state.settings.workspaceTreeStates = settingsPlan.workspaceTreeStates;
         await syncLocalResourceRoots();
@@ -2756,7 +2638,12 @@
       }
       await suspendDocumentWatches(affectedTabs);
       await window.fileAPI.deleteItem(entry.path);
-      for (const tab of affectedTabs) await preserveUnavailableTab(tab, 'deleted', tab.filePath);
+      for (const tab of affectedTabs)
+        await documentController.transitionBindings({
+          prepare: async () => tab,
+          commit: async (document) =>
+            preserveUnavailableTab(document, 'deleted', document.filePath),
+        });
       await rebindDocumentWatches(affectedTabs);
       renderTabs();
       updateActiveUI();
@@ -3552,34 +3439,7 @@
     )
       return;
     if (change.scope === 'workspace') {
-      if (change.event === 'watch-error') {
-        showMessage(t('workspace.watchResourceLimit'), true);
-        return;
-      }
-      if (change.event === 'unlink' || change.event === 'unlinkDir') {
-        const affectedTabs = await rebaseOpenTabs(change.path, change.path);
-        for (const { tab } of affectedTabs)
-          await preserveUnavailableTab(tab, 'deleted', tab.filePath);
-        if (affectedTabs.length) {
-          renderTabs();
-          updateActiveUI();
-          persistSession();
-        }
-      }
-      if (
-        (change.event === 'unlink' || change.event === 'unlinkDir') &&
-        state.workspace &&
-        normalizedFilePath(change.path) === normalizedFilePath(state.workspace) &&
-        !(await window.fileAPI.exists(state.workspace))
-      ) {
-        await setWorkspace('');
-        return;
-      }
-      if (!state.treeTimer)
-        state.treeTimer = setTimeout(() => {
-          state.treeTimer = null;
-          void refreshTree(state.workspaceRevision);
-        }, 300);
+      await workspaceController.handleWatcherEvent(change);
       return;
     }
     const documentIdentity = change.identity || (await window.fileAPI.fileIdentity(change.path));
@@ -4552,6 +4412,7 @@
 
   window.__vditorDesktopLegacyBootstrap = init;
   window.__vditorDesktopLegacyDispose = () => {
+    workspaceController.dispose();
     state.tabs.forEach((tab) => editorController.destroy(tab));
     findController.dispose();
     outlineController.dispose();

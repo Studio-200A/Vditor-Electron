@@ -8,6 +8,7 @@ import {
   type ExternalChangeDecision,
   type ExternalChangeDecisionInput,
 } from './external-change-controller.js';
+import type { DocumentBindingTransition } from './document-binding-transition.js';
 
 export interface OpenedDocument {
   readonly id: string;
@@ -132,6 +133,24 @@ export class DocumentController<TDocument extends OpenedDocument> {
 
   classifyExternalChange(input: ExternalChangeDecisionInput): ExternalChangeDecision {
     return this.externalChangeController.classify(input);
+  }
+
+  /**
+   * Coordinates a workspace-originated path binding transition. Filesystem and editor
+   * work remain injected, while committing document bindings has one named owner.
+   */
+  async transitionBindings<TResult>(
+    transition: DocumentBindingTransition<TResult>,
+  ): Promise<TResult> {
+    let prepared: TResult | null = null;
+    try {
+      prepared = await transition.prepare();
+      await transition.commit(prepared);
+      return prepared;
+    } catch (error) {
+      await transition.recover?.(prepared, error);
+      throw error;
+    }
   }
 
   private async openNewDocument(
