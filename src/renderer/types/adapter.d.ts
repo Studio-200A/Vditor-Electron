@@ -59,12 +59,21 @@ export interface VditorDesktopAdapter {
   editorScrollContainer(host: HTMLElement): HTMLElement | null;
   preserveTableScrollDuringInput(host: HTMLElement): void;
   isEditableTarget(target: EventTarget | null): boolean;
-  captureEditorSelection(host: HTMLElement): Range | null;
-  restoreEditorSelection(host: HTMLElement, range: Range | null): boolean;
+  captureEditorSelection(
+    host: HTMLElement,
+    mode: 'wysiwyg' | 'ir' | 'sv',
+    target?: EventTarget | null,
+  ): { editor: HTMLElement; range: Range } | null;
+  restoreEditorSelection(selection: { editor: HTMLElement; range: Range } | null): boolean;
   selectCurrentContextOrAll(host: HTMLElement): void;
   tableContext(host: HTMLElement): unknown;
   performTableAction(host: HTMLElement, action: string): void;
-  executeEditorCommand(host: HTMLElement, command: string): void;
+  executeEditorCommand(
+    host: HTMLElement,
+    mode: 'wysiwyg' | 'ir' | 'sv',
+    command: string,
+    clipboard?: { text: string; html: string } | null,
+  ): boolean;
   selectedTableCell(host: HTMLElement): HTMLElement | null;
   selectTableCellContents(host: HTMLElement, cell: HTMLElement): void;
   setEditorBottomSpacer(host: HTMLElement, height: number): void;

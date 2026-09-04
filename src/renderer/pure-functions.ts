@@ -23,6 +23,7 @@ export type {
   EditorControllerOptions,
   EditorRuntimeTab,
   EditorScrollPosition,
+  ToolbarHandlers,
 } from './editor/editor-controller.js';
 export { OutlineController } from './editor/outline-controller.js';
 export type {
@@ -53,6 +54,17 @@ export type {
   EditorRuntimeCoordinatorOptions,
   EditorRuntimeCoordinatorTab,
 } from './editor/editor-runtime-coordinator.js';
+export { RecoveryRuntimeController } from './editor/recovery-runtime-controller.js';
+export type {
+  RecoveryRuntimeControllerOptions,
+  RecoveryRuntimeTab,
+} from './editor/recovery-runtime-controller.js';
+export { RecoveryBannerController } from './editor/recovery-banner-controller.js';
+export type {
+  RecoveryBannerControllerOptions,
+  RecoveryBannerState,
+  RecoveryBannerTab,
+} from './editor/recovery-banner-controller.js';
 export {
   createEditorOptions,
   effectiveToolbarItems,

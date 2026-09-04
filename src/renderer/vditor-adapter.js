@@ -400,6 +400,24 @@
     // Vditor 3.11.3 owns SV's editable tree. Keep the Range-based Enter
     // workaround beside that private tree and return its exact cleanup.
     const onKeyDown = (event) => {
+      const modifierPressed = event.ctrlKey || event.metaKey;
+      const listCommand =
+        modifierPressed &&
+        event.shiftKey &&
+        !event.altKey &&
+        (event.key.toLowerCase() === 'i'
+          ? 'outdent'
+          : event.key.toLowerCase() === 'o'
+            ? 'indent'
+            : null);
+      if (listCommand && applySplitListIndent(host, listCommand, null)) {
+        // Vditor 3.11.3 disables these toolbar commands in SV before its own
+        // hotkey handler runs. Apply the same command to the current source
+        // selection while the private SV tree is still intact.
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
       if (
         !shouldAutoIndent() ||
         event.key !== 'Enter' ||

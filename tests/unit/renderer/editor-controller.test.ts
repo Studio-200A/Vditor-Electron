@@ -17,20 +17,37 @@ interface TestTab {
   modified: boolean;
   contentRevision: number;
   pendingEditorContent: boolean;
+  bottomSpacerObserver: ResizeObserver | null;
   editorRuntimeGeneration?: number;
 }
 
 describe('EditorController', () => {
   let currentMode: 'ir' | 'wysiwyg' | 'sv';
   let destroyed: ReturnType<typeof vi.fn>;
+  let focused: ReturnType<typeof vi.fn>;
   let setValue: ReturnType<typeof vi.fn>;
+  let readRuntimeContent: ReturnType<typeof vi.fn>;
+  let editorContent: string;
+  let setBottomSpacer: ReturnType<typeof vi.fn>;
+  let observeOutlineChanges: ReturnType<typeof vi.fn>;
+  let preserveTableScrollDuringInput: ReturnType<typeof vi.fn>;
+  let scrollContainers: ReturnType<typeof vi.fn>;
+  let installScrollEnhancement: ReturnType<typeof vi.fn>;
   let controller: EditorController<TestTab>;
   let tab: TestTab;
 
   beforeEach(() => {
     currentMode = 'ir';
     destroyed = vi.fn();
+    focused = vi.fn();
     setValue = vi.fn();
+    readRuntimeContent = vi.fn(() => editorContent);
+    editorContent = '';
+    setBottomSpacer = vi.fn();
+    observeOutlineChanges = vi.fn(() => ({ disconnect: vi.fn() }));
+    preserveTableScrollDuringInput = vi.fn(() => vi.fn());
+    scrollContainers = vi.fn(() => []);
+    installScrollEnhancement = vi.fn(() => null);
     class FakeVditor {
       constructor(_host: HTMLElement, options: { after?: () => void }) {
         queueMicrotask(() => options.after?.());
@@ -38,7 +55,11 @@ describe('EditorController', () => {
       destroy(): void {
         destroyed();
       }
+      focus(): void {
+        focused();
+      }
       setValue(content: string, clearStack: boolean): void {
+        editorContent = content;
         setValue(content, clearStack);
       }
       getCurrentMode(): 'ir' | 'wysiwyg' | 'sv' {
@@ -59,16 +80,25 @@ describe('EditorController', () => {
       modified: false,
       contentRevision: 0,
       pendingEditorContent: false,
+      bottomSpacerObserver: null,
     };
     controller = new EditorController({
-      adapter: { editorScrollContainer: () => null },
+      adapter: {
+        editorScrollContainer: () => null,
+        setBottomSpacer,
+        observeOutlineChanges,
+        preserveTableScrollDuringInput,
+        scrollContainers,
+        installScrollEnhancement,
+      },
       createOptions: () => ({}),
       getActiveDocumentId: () => 'one',
       onAvailabilityChanged: () => {},
       onBeforeDestroy: () => {},
       onCreationFailure: () => {},
       onModeChanged: () => {},
-      readContent: () => '',
+      readContent: () => editorContent,
+      readRuntimeContent,
     });
   });
 
@@ -81,6 +111,16 @@ describe('EditorController', () => {
     expect(tab.editorRuntimeGeneration).toBeGreaterThan(firstGeneration);
   });
 
+  it('captures runtime content before destroying an editor for rebuild', () => {
+    editorContent = 'latest runtime content';
+    controller.ensure(tab);
+
+    controller.rebuild(tab);
+
+    expect(readRuntimeContent).toHaveBeenCalledWith(tab);
+    expect(tab.content).toBe('latest runtime content');
+  });
+
   it('destroys a runtime once and clears its ownership', () => {
     controller.ensure(tab);
     controller.destroy(tab);
@@ -90,6 +130,67 @@ describe('EditorController', () => {
     expect(tab.vditor).toBeNull();
     expect(tab.toolbar).toBeNull();
     expect(tab.ready).toBe(false);
+  });
+
+  it('clears a bottom-spacer observer when destroying the runtime', () => {
+    const disconnect = vi.fn();
+    tab.bottomSpacerObserver = { disconnect } as unknown as ResizeObserver;
+    controller.ensure(tab);
+
+    controller.destroy(tab);
+
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    expect(tab.bottomSpacerObserver).toBeNull();
+  });
+
+  it('updates the bottom spacer when ResizeObserver is unavailable', () => {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'ResizeObserver');
+    Object.defineProperty(globalThis, 'ResizeObserver', { configurable: true, value: undefined });
+
+    controller.observeBottomSpacer(tab);
+
+    expect(setBottomSpacer).toHaveBeenCalledWith(tab.host, 0);
+    if (descriptor) Object.defineProperty(globalThis, 'ResizeObserver', descriptor);
+    else Reflect.deleteProperty(globalThis, 'ResizeObserver');
+  });
+
+  it('replaces an outline observer and clears it when the runtime is destroyed', () => {
+    const first = { disconnect: vi.fn() };
+    const second = { disconnect: vi.fn() };
+    observeOutlineChanges.mockReturnValueOnce(first).mockReturnValueOnce(second);
+
+    controller.observeOutlineChanges(tab, vi.fn());
+    controller.observeOutlineChanges(tab, vi.fn());
+    controller.destroy(tab);
+
+    expect(first.disconnect).toHaveBeenCalledTimes(1);
+    expect(second.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('replaces table-scroll and scrollbar enhancements before releasing them on destroy', () => {
+    const firstTableCleanup = vi.fn();
+    const secondTableCleanup = vi.fn();
+    const firstScrollCleanup = vi.fn();
+    const secondScrollCleanup = vi.fn();
+    const firstContainer = document.createElement('div');
+    const secondContainer = document.createElement('div');
+    preserveTableScrollDuringInput
+      .mockReturnValueOnce(firstTableCleanup)
+      .mockReturnValueOnce(secondTableCleanup);
+    scrollContainers.mockReturnValue([firstContainer, secondContainer]);
+    installScrollEnhancement
+      .mockReturnValueOnce(firstScrollCleanup)
+      .mockReturnValueOnce(secondScrollCleanup);
+
+    controller.preserveTableScrollDuringInput(tab);
+    controller.preserveTableScrollDuringInput(tab);
+    controller.installScrollEnhancements(tab, firstContainer);
+    controller.destroy(tab);
+
+    expect(firstTableCleanup).toHaveBeenCalledTimes(1);
+    expect(secondTableCleanup).toHaveBeenCalledTimes(1);
+    expect(firstScrollCleanup).toHaveBeenCalledTimes(1);
+    expect(secondScrollCleanup).not.toHaveBeenCalled();
   });
 
   it('reports a destruction failure after clearing runtime ownership', () => {
@@ -107,7 +208,14 @@ describe('EditorController', () => {
   it('synchronizes the mode from the current runtime only', () => {
     const onModeChanged = vi.fn();
     controller = new EditorController({
-      adapter: { editorScrollContainer: () => null },
+      adapter: {
+        editorScrollContainer: () => null,
+        setBottomSpacer,
+        observeOutlineChanges,
+        preserveTableScrollDuringInput,
+        scrollContainers,
+        installScrollEnhancement,
+      },
       createOptions: () => ({}),
       getActiveDocumentId: () => 'one',
       onAvailabilityChanged: () => {},
@@ -115,6 +223,7 @@ describe('EditorController', () => {
       onCreationFailure: () => {},
       onModeChanged,
       readContent: () => '',
+      readRuntimeContent: () => '',
     });
     controller.ensure(tab);
     currentMode = 'sv';
@@ -122,6 +231,149 @@ describe('EditorController', () => {
 
     expect(tab.mode).toBe('sv');
     expect(onModeChanged).toHaveBeenCalledWith(tab);
+  });
+
+  it('cancels a pending mode transition when the runtime is destroyed', () => {
+    vi.useFakeTimers();
+    const cancelFrame = vi.spyOn(globalThis, 'cancelAnimationFrame');
+    controller.ensure(tab);
+    tab.ready = true;
+
+    expect(controller.prepareModeTransition(tab, 'sv', vi.fn())).toBe(true);
+    controller.destroy(tab);
+    vi.runAllTimers();
+
+    expect(cancelFrame).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it('rejects delayed scroll restoration after the runtime generation changes', () => {
+    vi.useFakeTimers();
+    const scroller = document.createElement('div');
+    Object.defineProperties(scroller, {
+      clientHeight: { value: 100 },
+      clientWidth: { value: 100 },
+      scrollHeight: { value: 200 },
+      scrollWidth: { value: 200 },
+    });
+    controller = new EditorController({
+      adapter: {
+        editorScrollContainer: () => scroller,
+        setBottomSpacer,
+        observeOutlineChanges,
+        preserveTableScrollDuringInput,
+        scrollContainers,
+        installScrollEnhancement,
+      },
+      createOptions: () => ({}),
+      getActiveDocumentId: () => 'one',
+      onAvailabilityChanged: () => {},
+      onBeforeDestroy: () => {},
+      onCreationFailure: () => {},
+      onModeChanged: () => {},
+      readContent: () => editorContent,
+      readRuntimeContent,
+    });
+    controller.ensure(tab);
+    tab.pendingScroll = { mode: 'ir', scrollTop: 30, scrollLeft: 10, progress: 0.3 };
+    const afterRestore = vi.fn();
+
+    controller.restoreScroll(tab, afterRestore);
+    tab.editorRuntimeGeneration = (tab.editorRuntimeGeneration ?? 0) + 1;
+    vi.runAllTimers();
+
+    expect(afterRestore).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it('cancels delayed focus when the runtime is destroyed', () => {
+    vi.useFakeTimers();
+    controller.ensure(tab);
+    controller.scheduleFocus(tab);
+    controller.destroy(tab);
+    vi.runAllTimers();
+
+    expect(focused).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('focuses only the active tab after its delayed initialization work', () => {
+    vi.useFakeTimers();
+    controller.ensure(tab);
+    controller.scheduleFocus(tab);
+    vi.runAllTimers();
+
+    expect(focused).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it('keeps a mode shortcut listener across rebuilds and removes it on tab disposal', () => {
+    const onKeyDown = vi.fn();
+    controller.attachModeShortcut(tab, onKeyDown);
+    controller.ensure(tab);
+
+    controller.rebuild(tab);
+    tab.host.dispatchEvent(new KeyboardEvent('keydown'));
+    expect(onKeyDown).toHaveBeenCalledTimes(1);
+
+    controller.destroy(tab);
+    tab.host.dispatchEvent(new KeyboardEvent('keydown'));
+    expect(onKeyDown).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps document anchor navigation listeners across rebuilds and removes them on tab disposal', () => {
+    const onClick = vi.fn();
+    controller.attachDocumentAnchorNavigation(tab, {
+      onMouseOver: vi.fn(),
+      onMouseOut: vi.fn(),
+      onMouseMove: vi.fn(),
+      onClick,
+    });
+    controller.ensure(tab);
+
+    controller.rebuild(tab);
+    tab.host.dispatchEvent(new MouseEvent('click'));
+    expect(onClick).toHaveBeenCalledTimes(1);
+
+    controller.destroy(tab);
+    tab.host.dispatchEvent(new MouseEvent('click'));
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the context-menu listener across rebuilds and removes it on tab disposal', () => {
+    const onContextMenu = vi.fn();
+    controller.attachContextMenu(tab, onContextMenu);
+    controller.ensure(tab);
+
+    controller.rebuild(tab);
+    tab.host.dispatchEvent(new MouseEvent('contextmenu'));
+    expect(onContextMenu).toHaveBeenCalledTimes(1);
+
+    controller.destroy(tab);
+    tab.host.dispatchEvent(new MouseEvent('contextmenu'));
+    expect(onContextMenu).toHaveBeenCalledTimes(1);
+  });
+
+  it('replaces toolbar handlers and removes them when the runtime is destroyed', () => {
+    const firstToolbar = document.createElement('div');
+    const secondToolbar = document.createElement('div');
+    const firstClick = vi.fn();
+    const secondClick = vi.fn();
+    const onMouseDown = vi.fn();
+
+    controller.attachToolbarHandlers(tab, firstToolbar, { onClick: firstClick, onMouseDown });
+    controller.attachToolbarHandlers(tab, secondToolbar, { onClick: secondClick, onMouseDown });
+    firstToolbar.dispatchEvent(new MouseEvent('click'));
+    secondToolbar.dispatchEvent(new MouseEvent('click'));
+    secondToolbar.dispatchEvent(new MouseEvent('mousedown'));
+
+    expect(firstClick).not.toHaveBeenCalled();
+    expect(secondClick).toHaveBeenCalledTimes(1);
+    expect(onMouseDown).toHaveBeenCalledTimes(1);
+
+    controller.destroy(tab);
+    secondToolbar.dispatchEvent(new MouseEvent('click'));
+    expect(secondClick).toHaveBeenCalledTimes(1);
   });
 
   it('owns one auto-save timer per tab and cancels it on destruction', () => {
@@ -142,17 +394,80 @@ describe('EditorController', () => {
     vi.useRealTimers();
   });
 
-  it('injects recovery content while Vditor is initialized but not ready', () => {
+  it('cancels pending auto-save before applying approved external content', () => {
+    vi.useFakeTimers();
+    const save = vi.fn();
+    controller.ensure(tab);
+    controller.scheduleAutoSave(tab, 100, save);
+
+    expect(controller.applyExternalContent(tab, 'disk content')).toBe(true);
+    vi.advanceTimersByTime(100);
+
+    expect(setValue).toHaveBeenCalledWith('disk content', true);
+    expect(save).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('keeps recovery content pending while Vditor is initialized but not ready', () => {
     controller.ensure(tab);
     expect(tab.ready).toBe(false);
 
-    expect(controller.injectContent(tab, 'recovered', true)).toBe(true);
+    expect(controller.applyRecoveryContent(tab, 'recovered')).toBe(false);
+    expect(setValue).not.toHaveBeenCalled();
+    expect(tab).toMatchObject({ content: 'recovered', pendingEditorContent: true });
+  });
+
+  it('keeps recovery content pending until an editor runtime is available', () => {
+    expect(controller.applyRecoveryContent(tab, 'recovered')).toBe(false);
+    expect(tab.pendingEditorContent).toBe(true);
+
+    controller.ensure(tab);
+    expect(controller.applyPendingContent(tab)).toBe(true);
+
     expect(setValue).toHaveBeenCalledWith('recovered', true);
+    expect(tab.pendingEditorContent).toBe(false);
   });
 
   it('uses pending content for persistence until the editor has received it', () => {
     tab.pendingEditorContent = true;
     expect(controller.contentForPersistence(tab)).toBe('saved pending content');
+  });
+
+  it('keeps pending recovery content authoritative before Vditor initialization completes', () => {
+    tab.content = 'recovered';
+    tab.pendingEditorContent = true;
+    editorContent = 'constructor content';
+
+    expect(controller.currentContent(tab)).toBe('recovered');
+  });
+
+  it('preserves a recovery baseline while reconciling initialized content', () => {
+    tab.content = 'recovered';
+    tab.savedContent = 'saved';
+    tab.modified = true;
+    tab.pendingEditorContent = true;
+    controller.ensure(tab);
+
+    controller.reconcileInitializedContent(tab, false);
+
+    expect(setValue).toHaveBeenCalledWith('recovered', true);
+    expect(tab).toMatchObject({
+      content: 'recovered',
+      savedContent: 'saved',
+      modified: true,
+      pendingEditorContent: false,
+    });
+  });
+
+  it('keeps an already dirty tab dirty when initialization reports current content', () => {
+    tab.content = 'draft';
+    tab.savedContent = 'saved';
+    tab.modified = true;
+    editorContent = 'draft';
+
+    controller.reconcileInitializedContent(tab, true);
+
+    expect(tab).toMatchObject({ content: 'draft', savedContent: 'saved', modified: true });
   });
 
   it('updates editor-owned input state without retaining pending recovery content', () => {

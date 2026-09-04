@@ -90,7 +90,7 @@ export interface AppAPI {
   isMaximized(): Promise<boolean>;
   getInfo(): Promise<FileInfo>;
   setZoomFactor(zoom: number): Promise<void>;
-  readClipboard(): Promise<string>;
+  readClipboard(): Promise<{ text: string; html: string }>;
   writeClipboard(text: string): Promise<void>;
   openExternal(url: string): Promise<void>;
   showItemInFolder(filePath: string): Promise<void>;

@@ -22,15 +22,10 @@ function createMockRuntime(overrides: Partial<EditorRuntime> = {}): EditorRuntim
     whitespaceFrame: null,
     bottomSpacerObserver: null,
     outlineCollapsed: new Set(),
-    outlineObserver: null,
     resourceObserver: null,
-    modeShortcutCleanup: null,
     splitResizer: null,
-    recoveryTimer: null,
-    recoveryOperation: Promise.resolve(),
     pendingAnchor: '',
     pendingEditorContent: false,
-    tableCompositionScrollCleanup: null,
     ...overrides,
   };
 }

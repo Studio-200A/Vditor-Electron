@@ -54,15 +54,10 @@ export interface EditorRuntime {
   readonly lineNumberFrame: number | null;
   readonly bottomSpacerObserver: ResizeObserver | null;
   readonly outlineCollapsed: Set<string>;
-  readonly outlineObserver: MutationObserver | null;
   readonly resourceObserver: MutationObserver | null;
-  readonly modeShortcutCleanup: (() => void) | null;
   readonly splitResizer: SplitResizer | null;
-  readonly recoveryTimer: ReturnType<typeof setTimeout> | null;
-  readonly recoveryOperation: Promise<void>;
   readonly pendingAnchor: string;
   readonly pendingEditorContent: boolean;
-  readonly tableCompositionScrollCleanup: (() => void) | null;
 }
 
 export interface SplitResizer {

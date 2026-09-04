@@ -106,6 +106,44 @@ describe('Vditor DOM compatibility adapter', () => {
     expect(event.defaultPrevented).toBe(false);
   });
 
+  it('handles Vditor split-view list shortcuts before its disabled toolbar path', () => {
+    const host = createHost();
+    window.document.body.append(host);
+    const source = adapter.editorParts(host).source;
+    source.innerHTML =
+      '<span data-block="0"><span data-type="li-marker">- </span><span>item</span></span>';
+    const marker = source.querySelector('[data-type="li-marker"]')!;
+    const range = window.document.createRange();
+    range.setStart(marker.firstChild!, 1);
+    range.collapse(true);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    const cleanup = adapter.installSplitAutoIndent(host, () => false);
+
+    const indent = new window.KeyboardEvent('keydown', {
+      key: 'o',
+      ctrlKey: true,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    source.dispatchEvent(indent);
+    expect(indent.defaultPrevented).toBe(true);
+    expect(source.querySelector('[data-type="padding"]')).not.toBeNull();
+
+    const outdent = new window.KeyboardEvent('keydown', {
+      key: 'i',
+      ctrlKey: true,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    source.dispatchEvent(outdent);
+    expect(outdent.defaultPrevented).toBe(true);
+    expect(source.querySelector('[data-type="padding"]')).toBeNull();
+    cleanup();
+  });
+
   it('reissues every rendered image source when an image policy changes', () => {
     const host = createHost();
     host.querySelector('.vditor-preview')!.innerHTML =

@@ -2,7 +2,7 @@
 
 ## 0.2.5 - Modularized Refactor
 
-### Internal
+### Renderer Architecture
 
 - **refactor(renderer build):** Introduced a TypeScript build pipeline for the renderer process using esbuild. Added `tsconfig.renderer.json` (strict mode), `build:renderer` script, and `typecheck:renderer` for independent renderer type checking. The renderer entry point is now `src/renderer/main.ts`, which orchestrates controller initialization and disposal in dependency order.
 - **refactor(composition entry):** Established `src/renderer/main.ts` as the application composition entry with a lifecycle manager that initializes controllers in dependency order and disposes them in reverse order on shutdown or failure. Legacy `app.js` is loaded as a controlled bootstrap module via `window.__vditorDesktopLegacyBootstrap`.
@@ -12,6 +12,9 @@
 - **refactor(shared contracts):** Created `src/shared/contracts/` skeleton for cross-process serializable DTOs shared between main, preload, and renderer processes.
 - **refactor(CSS theme split):** Split the monolithic `app.css` into a base stylesheet and per-theme files in `src/renderer/styles/themes/`. Classic theme variables remain in `app.css` as `:root` defaults; dark, claude-light, claude-dark, monokai-pro-light, and monokai-pro-dark each have their own CSS file. Theme switching now toggles `<link>` element `disabled` attributes instead of relying on `:root[data-theme]` selectors in a single file.
 - **refactor(notifications module):** Extracted `NotificationsController` class from `app.js` into `src/renderer/ui/notifications.ts`. Encapsulates `showMessage`, `showTemporaryDocumentNotice`, `showConfirmDialog`, `closeConfirmDialog`, `confirmDialog`, `showUnsavedDialog`, `setConfirmDialogDraggable`, and `setupConfirmDialogDrag` with proper lifecycle management (`init()`/`dispose()`) and locale switching support.
+
+### State and Documents
+
 - **refactor(AppStore):** Established `src/renderer/state/` with core state types (`EditMode`, `DocumentIdentity`, `DocumentState`, `EditorRuntime`, `DocumentTab`, `AppState`), `AppStore` class with controlled modification API (addDocument, removeDocument, activateDocument, updateDocument, updateDocumentRuntime, etc.), subscription mechanism (`subscribe`, `subscribeWithSelector`), and snapshot projection functions (`toSessionSnapshot`, `toRecoverySnapshot`, `restoreDocumentState`, `restoreRecoveryState`). Added comprehensive state ownership table documenting source of truth, unique business writers, public commands, and read-only consumers for each state domain.
 - **refactor(tab controller):** Moved tab-bar DOM construction, click and middle-click handling, pointer drag feedback, ordering callbacks, and deferred active-tab scrolling into the typed `TabController`. It receives immutable tab view models and UI callbacks only; file, watcher, and Vditor work remain outside the presentation controller. Its deferred drag reset is now cancelled during disposal.
 - **refactor(document opening):** Moved canonical-identity document opening into `DocumentController`. Concurrent requests for one document now share an operation, repeat identity checks after asynchronous I/O, preserve the existing untitled-target collision guard, and restore resource-root authorization if tab creation is refused; watcher registration also rejects late results after a tab closes or changes path.
@@ -19,12 +22,39 @@
 - **refactor(document close):** Centralized document-close ordering: confirmation and any requested save finish before editor-runtime cleanup, Store removal, watcher/resource cleanup, and remaining-tab activation.
 - **refactor(document safety):** Centralized save, close, and external-change command entry in `DocumentController`; added explicit external-change classification, a versioned recovery DTO, and a versioned settings-session projection with legacy-read compatibility. Recovery IPC and persisted session data are validated before becoming document state; unavailable paths and runtime handles are excluded from session persistence.
 - **refactor(save safety):** Revalidate the tab’s Store membership and canonical binding after every awaited write-related step, so a late save cannot mutate a document closed, renamed, or replaced while I/O was pending.
-- **fix(file recovery):** Confirming recreation after a previously deleted file has reappeared now uses the watcher-provided disk snapshot as its safe write baseline. The confirmed local content replaces that version; a further external change is still rejected rather than silently overwritten.
+
+### Editor Runtime
+
 - **refactor(editor runtime):** Began the editor-domain migration with typed `EditorController`, `SplitViewController`, `OutlineController`, and `FindController` ownership. Vditor runtime generations now reject callbacks from rebuilt or closed instances; Desktop outline rendering, find state, SV divider pointer lifecycle, and their deferred refresh cleanup no longer live in the application shell. Find replacement uses the selected editor range and Vditor input path, preserving undo and mode state instead of resetting the document value.
 - **refactor(editor construction and toolbar):** Moved Vditor constructor-only options, image upload/compression, and shared toolbar hand-off/wrap-height lifecycle into typed editor modules. Existing offline resources, supported toolbar show/hide behavior, image Markdown insertion, and Vditor undo paths remain unchanged.
 - **refactor(editor tab runtime):** Moved tab activation's editor-runtime coordination into `EditorRuntimeCoordinator`. It now owns toolbar hand-off, host activation, editor initialization, deferred spacer/anchor work, outline/find refresh, and session persistence ordering; stale animation-frame work is rejected after a newer tab becomes active.
+- **refactor(recovery):** Moved per-tab recovery snapshot debounce timers and serialized recovery-store operations out of the renderer shell into the editor runtime domain without changing recovery payloads or file-safety decisions.
+- **refactor(external changes):** Centralized external-content runtime application behind EditorController so clean reloads and conflict resolution always cancel stale auto-save work before replacing Vditor content.
+- **refactor(recovery):** Moved recovery-content injection and pending-runtime hand-off behind EditorController, preserving recovery banners and document safety state while removing direct shell-to-Vditor writes.
+- **refactor(editor startup):** Moved initialized editor-content reconciliation into EditorController so recovery and dirty-tab save baselines remain stable across Vditor rebuilds.
+- **refactor(editor rebuild):** Moved pre-rebuild Vditor content capture into EditorController, keeping runtime teardown and content preservation in one lifecycle owner.
+- **refactor(editor layout):** Moved bottom-spacer ResizeObserver ownership and cleanup into EditorController while retaining the existing half-height editor layout behavior.
+- **refactor(editor mode):** Moved Vditor mode-transition scheduling into EditorController so rebuild and close cancel stale mode-sync and scroll-restore callbacks.
+- **refactor(editor shortcuts):** Moved per-tab Vditor mode-shortcut listener ownership into EditorController, preserving it through rebuilds and releasing it when the tab closes.
+- **refactor(editor outline):** Moved per-tab Vditor outline observer ownership into EditorController, replacing it on rebuild and releasing it with the editor runtime.
+- **refactor(editor table scroll):** Moved Vditor table composition-scroll cleanup into EditorController, replacing it with each editor runtime and releasing it on rebuild or close.
+- **refactor(editor scrollbars):** Moved editor-surface auto-hide scrollbar enhancements into EditorController, releasing their listeners and timers on rebuild or close.
+- **refactor(editor links):** Moved document-anchor navigation listener ownership into EditorController, retaining listeners across rebuilds and removing them when tabs close.
+- **refactor(recovery banner):** Moved recovery-banner rendering and action listener lifecycle into a dedicated controller while preserving existing save, save-as, discard, snapshot, and file-safety command paths.
+- **refactor(editor toolbar handlers):** Moved Vditor toolbar click and mousedown listener lifecycle into EditorController, replacing handlers with each runtime and releasing them before rebuild or close.
+- **refactor(editor focus):** Moved delayed post-initialization focus into EditorController so rebuild and close cancel stale focus callbacks and only the active tab receives focus.
+
+### Bug Fixes
+
+- **fix(file recovery):** Confirming recreation after a previously deleted file has reappeared now uses the watcher-provided disk snapshot as its safe write baseline. The confirmed local content replaces that version; a further external change is still rejected rather than silently overwritten.
 - **fix(renderer startup):** Deferred localized image-upload messages until they are needed, so renderer bootstrap no longer reads the locale table before its initialization and prevents Vditor Desktop from becoming ready.
 - **fix(editor runtime):** Preserve editor-destroy failures for rebuild callers after cleanup, restore the rename warning when every affected editor cannot rebuild, and clear stale SV whitespace scroll compensation after a redraw.
+- **fix(editor runtime):** Reject delayed scroll-restoration callbacks when a Vditor rebuild advances the tab runtime generation.
+- **fix(editor paste):** Preserve rich HTML through the native Ctrl/Cmd+V path by restoring the editor selection after the narrow clipboard bridge resolves and re-entering Vditor's own paste handler; right-click Paste and Vditor serialization remain on the same path.
+- **fix(split view):** Handle Vditor's existing Ctrl/Cmd+Shift+I (outdent) and Ctrl/Cmd+Shift+O (indent) commands directly against the active SV source selection when Vditor has disabled its own SV toolbar actions.
+
+### Test Coverage
+
 - **test(e2e):** Drive the paragraph-width range input through native keyboard events, matching the browser control contract instead of using unsupported text-input filling.
 
 ### Project Maintenance

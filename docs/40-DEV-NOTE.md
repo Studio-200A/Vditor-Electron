@@ -158,30 +158,30 @@ Status bar
 
 `Cmd` 表示 macOS，`Ctrl` 表示 Linux/Windows。`globalShortcut` 未使用；除 `F12` 外，应用命令在 renderer `keydown` 中处理。native menu 仅在 macOS 注册相同的 File/View accelerator。
 
-| 应用动作 | 快捷键 | 约束 |
-| --- | --- | --- |
-| 新建文件 | `Ctrl/Cmd+N` | 应用命令 |
-| 打开文件 | `Ctrl/Cmd+Alt+O` | 不占用 Vditor 的有序列表 `Ctrl/Cmd+O` |
-| 打开文件夹 | `Ctrl/Cmd+Alt+K` | 不占用 Vditor 的链接 `Ctrl/Cmd+K` |
-| 保存 / 另存为 | `Ctrl/Cmd+S` / `Ctrl/Cmd+Shift+S` | 应用命令 |
-| 关闭标签 / 关闭窗口 / 退出 | `Ctrl/Cmd+W` / `Ctrl/Cmd+Shift+W` / `Ctrl/Cmd+Q` | 关闭窗口 accelerator 仅由 macOS 原生菜单注册；其余为应用命令 |
-| 切换资源管理器 | `Ctrl/Cmd+Alt+B` | 不占用 Vditor 的加粗 `Ctrl/Cmd+B` |
-| 查找和替换 / 设置 | `Ctrl/Cmd+F` / `Ctrl/Cmd+,` | 查找框内的 `F3`、`Shift+F3`、`Enter`、`Escape` 和 `Ctrl/Cmd+S` 为局部命令 |
-| 上下文 / 全文选择 | `Ctrl/Cmd+A` | Desktop 有意提供“当前上下文 → 全文”两段式选择；非编辑控件保留原生全选 |
-| 全屏 | `F11` | 应用命令 |
-| Chrome DevTools | `F12` | main `before-input-event` 始终拦截；仅 `devToolsEnabled` 为真时切换 |
-| UI / 编辑区 / 预览区缩放 | 无 | 只能从设置页调整；不得重新加入 Electron `zoomIn`、`zoomOut`、`resetZoom` role |
+| 应用动作                   | 快捷键                                           | 约束                                                                          |
+| -------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------- |
+| 新建文件                   | `Ctrl/Cmd+N`                                     | 应用命令                                                                      |
+| 打开文件                   | `Ctrl/Cmd+Alt+O`                                 | 不占用 Vditor 的有序列表 `Ctrl/Cmd+O`                                         |
+| 打开文件夹                 | `Ctrl/Cmd+Alt+K`                                 | 不占用 Vditor 的链接 `Ctrl/Cmd+K`                                             |
+| 保存 / 另存为              | `Ctrl/Cmd+S` / `Ctrl/Cmd+Shift+S`                | 应用命令                                                                      |
+| 关闭标签 / 关闭窗口 / 退出 | `Ctrl/Cmd+W` / `Ctrl/Cmd+Shift+W` / `Ctrl/Cmd+Q` | 关闭窗口 accelerator 仅由 macOS 原生菜单注册；其余为应用命令                  |
+| 切换资源管理器             | `Ctrl/Cmd+Alt+B`                                 | 不占用 Vditor 的加粗 `Ctrl/Cmd+B`                                             |
+| 查找和替换 / 设置          | `Ctrl/Cmd+F` / `Ctrl/Cmd+,`                      | 查找框内的 `F3`、`Shift+F3`、`Enter`、`Escape` 和 `Ctrl/Cmd+S` 为局部命令     |
+| 上下文 / 全文选择          | `Ctrl/Cmd+A`                                     | Desktop 有意提供“当前上下文 → 全文”两段式选择；非编辑控件保留原生全选         |
+| 全屏                       | `F11`                                            | 应用命令                                                                      |
+| Chrome DevTools            | `F12`                                            | main `before-input-event` 始终拦截；仅 `devToolsEnabled` 为真时切换           |
+| UI / 编辑区 / 预览区缩放   | 无                                               | 只能从设置页调整；不得重新加入 Electron `zoomIn`、`zoomOut`、`resetZoom` role |
 
 ### Vditor 3.11.3 默认快捷键
 
-| 类别 | 快捷键 | 动作 |
-| --- | --- | --- |
-| 工具栏格式 | `Ctrl/Cmd+E/H/B/I/D/K` | 表情、标题菜单、加粗、斜体、删除线、链接 |
-| 列表与块 | `Ctrl/Cmd+L/O/J`、`Ctrl/Cmd+Shift+I/O`、`Ctrl/Cmd+;`、`Ctrl/Cmd+Shift+H` | 无序列表、有序列表、任务列表、减少/增加缩进、引用、分隔线 |
-| 代码与结构 | `Ctrl/Cmd+U/G/M`、`Ctrl/Cmd+Shift+B/E` | 代码块、行内代码、表格、在当前块前/后插入 |
-| 历史与视图 | `Ctrl/Cmd+Z/Y`、`Ctrl/Cmd+'`、`Ctrl/Cmd+P` | 撤销、重做、Vditor 全屏、双面板预览 |
-| 标题与模式 | `Ctrl/Cmd+Alt+1…6`、`Ctrl/Cmd+Alt+7…9` | 标题级别 1–6；WYSIWYG、IR、SV 模式 |
-| 表格上下文 | `Ctrl/Cmd+=`、`-`、`Shift+=`、`Shift+-`、`Shift+F/G/L/C/R/U/D/X` | 行列增删、对齐和表格/块的上下文操作；仅对应模式和表格状态下生效 |
+| 类别       | 快捷键                                                                   | 动作                                                            |
+| ---------- | ------------------------------------------------------------------------ | --------------------------------------------------------------- |
+| 工具栏格式 | `Ctrl/Cmd+E/H/B/I/D/K`                                                   | 表情、标题菜单、加粗、斜体、删除线、链接                        |
+| 列表与块   | `Ctrl/Cmd+L/O/J`、`Ctrl/Cmd+Shift+I/O`、`Ctrl/Cmd+;`、`Ctrl/Cmd+Shift+H` | 无序列表、有序列表、任务列表、减少/增加缩进、引用、分隔线       |
+| 代码与结构 | `Ctrl/Cmd+U/G/M`、`Ctrl/Cmd+Shift+B/E`                                   | 代码块、行内代码、表格、在当前块前/后插入                       |
+| 历史与视图 | `Ctrl/Cmd+Z/Y`、`Ctrl/Cmd+'`、`Ctrl/Cmd+P`                               | 撤销、重做、Vditor 全屏、双面板预览                             |
+| 标题与模式 | `Ctrl/Cmd+Alt+1…6`、`Ctrl/Cmd+Alt+7…9`                                   | 标题级别 1–6；WYSIWYG、IR、SV 模式                              |
+| 表格上下文 | `Ctrl/Cmd+=`、`-`、`Shift+=`、`Shift+-`、`Shift+F/G/L/C/R/U/D/X`         | 行列增删、对齐和表格/块的上下文操作；仅对应模式和表格状态下生效 |
 
 Vditor 的 `keydown` 会先在编辑器 host 内运行。document 级应用监听必须先检查 `event.defaultPrevented`；这保证将来新增的 Vditor 编辑器快捷键不会继续触发同键的应用命令。`Escape` 与 `F3` 的应用优先级只在可见弹层或查找框内生效，属于有意的局部焦点行为，不是编辑器冲突。
 
@@ -296,13 +296,13 @@ Vditor `3.11.3` 的 WYSIWYG/IR 将表格本身作为横向滚动容器（`displa
 
 恢复先保留用户原位置。若输入前已贴住右边界，恢复到新表格右边界；最后只在当前 Vditor selection 越出表格可视范围时移动最小距离以显示光标。这样不强制中间阅读位置跳到右端，也允许内容增长后继续跟随输入。
 
-| 场景 | Vditor 网页 3.11.3 | Desktop | 处理原则 |
-| --- | --- | --- | --- |
-| 短单元格持续输入至超宽 | 跟随 | 跟随 | 上游行为 |
-| 短单元格粘贴至首次超宽 | 不跟随 | 不跟随 | 不扩展范围 |
-| 超长单元格右侧输入 | 跟随 | 跟随 | 上游行为 |
-| 超长单元格右侧多字符粘贴 | 回到左侧 | 跟随 | Desktop 补全 |
-| 超长单元格中间输入至光标越界 | 不跟随 | 最小距离右移 | Desktop 补全 |
+| 场景                         | Vditor 网页 3.11.3 | Desktop      | 处理原则     |
+| ---------------------------- | ------------------ | ------------ | ------------ |
+| 短单元格持续输入至超宽       | 跟随               | 跟随         | 上游行为     |
+| 短单元格粘贴至首次超宽       | 不跟随             | 不跟随       | 不扩展范围   |
+| 超长单元格右侧输入           | 跟随               | 跟随         | 上游行为     |
+| 超长单元格右侧多字符粘贴     | 回到左侧           | 跟随         | Desktop 补全 |
+| 超长单元格中间输入至光标越界 | 不跟随             | 最小距离右移 | Desktop 补全 |
 
 ## 维护约束
 
@@ -310,3 +310,21 @@ Vditor `3.11.3` 的 WYSIWYG/IR 将表格本身作为横向滚动容器（`displa
 - 不得以 `getValue()` / `setValue()` 回写全文修复滚动，否则会损害 selection、undo 和 mode 状态。
 - 不得把短单元格首次粘贴超宽的“不跟随”单独修成另一套规则，除非产品另行决定偏离上游行为。
 - Vditor 升级时按照 `docs/20-VDITOR-UPGRADE.md` 验证此私有契约；若上游已保留表格横向位置或提供公共 API，应删除本补偿。
+
+---
+
+# Vditor WYSIWYG 部分格式选区复制不保留语义
+
+## 记录版本：0.2.5 / 2026-09-04
+
+在 Vditor 3.11.3 的 WYSIWYG 中，视觉上选中加粗文本 `abc`（其 DOM 位于`<strong>` 内）后，通过 Ctrl/Cmd+C 或 Desktop 编辑器右键菜单 Copy 复制，再粘贴，结果为普通文本 `abc`。IR 中若连同 `**` Markdown 标记一起选中，复制结果为`**abc**`，粘贴后会恢复加粗；这不是两个 Desktop 菜单路径的差异。
+
+上游 WYSIWYG `copy()` 对普通选区使用 `Range.cloneContents()`，再将得到的片段交给`VditorDOM2Md()`。当 Range 起止位置都在同一 `<strong>` 的文本节点内时，clone 的片段不包含该祖先元素，因而转换结果只能是 `abc`；上游还明确将 `text/html` 清为空。其代码只为 code 和 link 做了格式化特例，没有为 strong、em、del 或跨节点部分选区补回祖先语义。Vditor 的粘贴逻辑会正确解析输入的Markdown，但这里的剪贴板中已经没有可恢复的 Markdown 标记或 HTML。
+
+本地 Vditor `v3.11.3` 标签与 Desktop 安装依赖的对应源码哈希一致。对比本地`v3.11.3..v4.0.0` 后，WYSIWYG/IR 的 copy handler 没有变化；4.0.0 不能修复此场景。
+
+## Desktop 决策
+
+这是 Vditor 的上游限制/缺陷，不是 0.2.5 renderer 重构回归。Desktop 不在 adapter 或菜单层补写祖先标签、HTML 剪贴板格式或 Markdown 包装：跨嵌套格式、部分链接、列表和代码边界的正确序列化属于 Vditor 编辑引擎职责，应用层猜测 Range 祖先会偏离上游并增加selection/undo 风险。后续仅在 Vditor 上游提供修复或稳定公开 API 时重新评估。
+
+本轮 Electron 专项覆盖完整 Markdown 语义选区在 WYSIWYG、IR 中经快捷键及右键菜单Copy/Paste 的往返：剪贴板 HTML 为空，Markdown、粗体和列表语义保持一致。该测试不将上述已确认的上游限制编码为 Desktop 行为承诺。

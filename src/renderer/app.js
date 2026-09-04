@@ -97,7 +97,7 @@
       }),
     onExistingDocument: (tab, { filePath, fileIdentity, activate, pendingAnchor }) => {
       if (!tab.filePath) {
-        editorController.cancelAutoSave(tab);
+        editorController.beginExternalChange(tab);
         tab.externalConflict = {
           kind: 'modified',
           path: filePath,
@@ -124,24 +124,21 @@
   const editorController = new PURE.EditorController({
     adapter: {
       editorScrollContainer: (host, mode) => VDITOR.editorScrollContainer(host, mode),
+      setBottomSpacer: (host, height) => VDITOR.setEditorBottomSpacer(host, height),
+      observeOutlineChanges: (host, callback) => VDITOR.observeOutlineChanges(host, callback),
+      preserveTableScrollDuringInput: (host, getMode) =>
+        VDITOR.preserveTableScrollDuringInput(host, getMode),
+      scrollContainers: (host) => VDITOR.scrollContainers(host),
+      installScrollEnhancement: setupAutoHideScrollbar,
     },
     createOptions: (tab, generation) => editorOptions(tab, generation),
     getActiveDocumentId: () => state.activeId,
     onAvailabilityChanged: (tab) => {
       if (tab.id === state.activeId || tab.toolbarPreview) syncToolbarAvailability();
     },
-    onBeforeDestroy: (tab, disposeTabResources) => {
+    onBeforeDestroy: (tab, _disposeTabResources) => {
       if (contextMenuState?.tab === tab) closeContextMenu();
-      disconnectEditorBottomSpacer(tab);
       imageRuntimeController.detach(tab);
-      tab.outlineObserver?.disconnect();
-      tab.outlineObserver = null;
-      if (disposeTabResources) {
-        tab.tableCompositionScrollCleanup?.();
-        tab.tableCompositionScrollCleanup = null;
-        tab.modeShortcutCleanup?.();
-        tab.modeShortcutCleanup = null;
-      }
       splitViewController.dispose(tab);
       restoreEditorToolbar(tab);
     },
@@ -163,6 +160,41 @@
         return tab.content;
       }
     },
+    readRuntimeContent: (tab) => {
+      try {
+        return VDITOR.withOriginalImageSources(
+          tab.host,
+          () => tab.vditor?.getValue() ?? tab.content,
+        );
+      } catch (_) {
+        return tab.content;
+      }
+    },
+  });
+  const recoveryRuntimeController = new PURE.RecoveryRuntimeController({
+    createSnapshotId: recoveryId,
+    saveSnapshot: async (tab) => window.appAPI.saveRecovery(recoverySnapshotFor(tab)),
+    discardSnapshot: async (id) => window.appAPI.discardRecovery(id),
+    onFailure: (operation) => {
+      console.error(
+        operation === 'save'
+          ? 'Unable to save a recovery snapshot.'
+          : 'Unable to remove a recovery snapshot.',
+      );
+    },
+  });
+  const recoveryBannerController = new PURE.RecoveryBannerController({
+    banner: $('#recoveryBanner'),
+    message: $('#recoveryMessage'),
+    detail: $('#recoveryDetail'),
+    saveButton: $('#recoverySave'),
+    saveAsButton: $('#recoverySaveAs'),
+    discardButton: $('#recoveryDiscard'),
+    getActiveTab: activeTab,
+    translate: t,
+    onSave: (tab) => void saveTab(tab),
+    onSaveAs: (tab) => void saveTab(tab, true),
+    onDiscard: (tab) => void closeTab(tab.id, { discard: true }),
   });
   const outlineController = new PURE.OutlineController({
     view: $('#outlineView'),
@@ -244,7 +276,7 @@
     },
     syncToolbarAvailability,
     ensureEditor,
-    updateBottomSpacer: updateEditorBottomSpacer,
+    updateBottomSpacer: (tab) => editorController.updateBottomSpacer(tab),
     scrollToPendingAnchor,
     mountToolbar: mountEditorToolbar,
     scheduleSplitLineNumbers,
@@ -855,28 +887,6 @@
     splitViewController.observeLineNumbers(tab);
   }
 
-  function updateEditorBottomSpacer(tab) {
-    if (!tab?.host) return;
-    VDITOR.setEditorBottomSpacer(tab.host, tab.host.clientHeight / 2);
-  }
-
-  function observeEditorBottomSpacer(tab) {
-    tab.bottomSpacerObserver?.disconnect();
-    if (typeof ResizeObserver !== 'function') {
-      updateEditorBottomSpacer(tab);
-      return;
-    }
-    // ResizeObserver delivers the initial host size after layout. Avoid reading
-    // clientHeight while Vditor is still completing its long-document setup.
-    tab.bottomSpacerObserver = new ResizeObserver(() => updateEditorBottomSpacer(tab));
-    tab.bottomSpacerObserver.observe(tab.host);
-  }
-
-  function disconnectEditorBottomSpacer(tab) {
-    tab.bottomSpacerObserver?.disconnect();
-    tab.bottomSpacerObserver = null;
-  }
-
   function syncSplitViewLayout(tab) {
     if (!tab?.vditor || !tab.ready) return;
     return splitViewController.syncLayout(tab, tab.vditor.getCurrentMode());
@@ -981,51 +991,22 @@
           }
           tab.host.dataset.contentTheme = state.settings.contentTheme;
           imageRuntimeController.attach(tab);
-          tab.outlineObserver?.disconnect();
-          tab.outlineObserver = VDITOR.observeOutlineChanges(tab.host, () => {
+          editorController.observeOutlineChanges(tab, () => {
             if (tab.id === state.activeId) scheduleOutline();
           });
           setupDocumentAnchorNavigation(tab);
           const splitSource = VDITOR.editorParts(tab.host).source;
-          VDITOR.scrollContainers(tab.host)
-            .filter((container) => container !== splitSource)
-            .forEach(setupAutoHideScrollbar);
-          tab.tableCompositionScrollCleanup?.();
-          tab.tableCompositionScrollCleanup = VDITOR.preserveTableScrollDuringInput(
-            tab.host,
-            () => tab.vditor?.getCurrentMode() || tab.mode,
-          );
-          const pendingEditorContent = tab.pendingEditorContent;
-          const pendingSavedContent = tab.savedContent;
-          const pendingModified = tab.modified;
-          if (pendingEditorContent) {
-            tab.pendingEditorContent = !editorController.injectContent(tab, tab.content, true);
-          }
-          const normalized = currentContent(tab);
-          tab.content = normalized;
-          tab.savedContent =
-            wasModified || pendingEditorContent || pendingModified
-              ? pendingSavedContent
-              : normalized;
-          tab.modified =
-            wasModified ||
-            pendingModified ||
-            pendingEditorContent ||
-            normalized !== tab.savedContent;
+          editorController.installScrollEnhancements(tab, splitSource);
+          editorController.preserveTableScrollDuringInput(tab);
+          editorController.reconcileInitializedContent(tab, wasModified);
           tab.ready = true;
           tab.toolbar = VDITOR.editorParts(tab.host).toolbar;
           VDITOR.hideNativeOutlineControl(tab.toolbar);
           VDITOR.keepSplitToolbarActionsAvailable(tab.toolbar);
-          tab.toolbar.addEventListener(
-            'click',
-            (event) => handleVditorToolbarClick(tab, event),
-            true,
-          );
-          tab.toolbar.addEventListener(
-            'mousedown',
-            (event) => preserveSplitToolbarSelection(tab, event),
-            true,
-          );
+          editorController.attachToolbarHandlers(tab, tab.toolbar, {
+            onClick: (event) => handleVditorToolbarClick(tab, event),
+            onMouseDown: (event) => preserveSplitToolbarSelection(tab, event),
+          });
           // Vditor initialization may finish after the user changes the application theme.
           // Read the current theme here so the late callback cannot restore stale menu filters.
           const currentAppTheme = document.documentElement.dataset.theme || state.settings.theme;
@@ -1043,11 +1024,11 @@
           renderTabs();
           updateActiveUI(false, false);
           observeSplitLineNumbers(tab);
-          observeEditorBottomSpacer(tab);
+          editorController.observeBottomSpacer(tab);
           ensureSplitResizer(tab);
           setupSplitEditorEnhancements(tab);
           scheduleSplitLineNumbers(tab);
-          setTimeout(() => tab.vditor && tab.vditor.focus(), 0);
+          editorController.scheduleFocus(tab);
           restoreEditorScroll(tab);
           requestAnimationFrame(() => scrollToPendingAnchor(tab));
         },
@@ -1140,10 +1121,6 @@
     return editorController.ensure(tab);
   }
 
-  function captureEditorScroll(tab) {
-    return tab ? editorController.captureScroll(tab) : null;
-  }
-
   function restoreEditorScroll(tab) {
     editorController.restoreScroll(tab, () => scheduleSplitLineNumbers(tab));
   }
@@ -1153,26 +1130,61 @@
   }
 
   function prepareVditorModeTransition(tab, targetMode) {
-    if (!tab?.vditor || !tab.ready || targetMode === tab.vditor.getCurrentMode()) return false;
+    if (!tab) return false;
     closeContextMenu();
-    tab.pendingScroll = captureEditorScroll(tab);
-    // Vditor changes its internal mode synchronously for toolbar clicks and
-    // Ctrl/Cmd+Alt+7/8/9. Run after that handler, before the next paint.
-    requestAnimationFrame(() => {
-      if (!tab.vditor) return;
-      synchronizeVditorMode(tab);
-      restoreEditorScroll(tab);
-    });
-    setTimeout(() => synchronizeVditorMode(tab), 50);
-    return true;
+    return editorController.prepareModeTransition(tab, targetMode, () =>
+      scheduleSplitLineNumbers(tab),
+    );
   }
 
   function handleVditorModeShortcut(tab, event) {
+    if (handleVditorPasteShortcut(tab, event)) return;
     const targetMode = VDITOR.editModeShortcut(event);
     if (!targetMode || !tab?.vditor || !tab.ready) return;
     const currentMode = tab.vditor.getCurrentMode();
     if (!VDITOR.isEditableTarget(tab.host, currentMode, event.target)) return;
     prepareVditorModeTransition(tab, targetMode);
+  }
+
+  function handleVditorPasteShortcut(tab, event) {
+    const usesPlatformModifier =
+      window.appAPI.platform === 'darwin'
+        ? event.metaKey && !event.ctrlKey
+        : event.ctrlKey && !event.metaKey;
+    if (
+      !usesPlatformModifier ||
+      event.altKey ||
+      event.shiftKey ||
+      event.key.toLowerCase() !== 'v' ||
+      !tab?.vditor ||
+      !tab.ready
+    )
+      return false;
+    const mode = tab.vditor.getCurrentMode();
+    if (!VDITOR.isEditableTarget(tab.host, mode, event.target)) return false;
+    const selection = VDITOR.captureEditorSelection(tab.host, mode, event.target);
+    if (!selection) return false;
+    const vditor = tab.vditor;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    void window.appAPI
+      .readClipboard()
+      .then((clipboard) => {
+        if (
+          tab !== activeTab() ||
+          !tab.ready ||
+          tab.vditor !== vditor ||
+          tab.vditor.getCurrentMode() !== mode ||
+          !VDITOR.restoreEditorSelection(selection)
+        )
+          return;
+        VDITOR.executeEditorCommand(tab.host, mode, 'paste', clipboard);
+      })
+      .catch(() => {
+        // The native shortcut must remain a no-op when the privileged clipboard
+        // read fails; do not leak the IPC error into the editor surface.
+      });
+    return true;
   }
 
   function restoreEditorToolbar(tab) {
@@ -1193,11 +1205,6 @@
   }
 
   function rebuildEditor(tab, mode) {
-    if (tab.vditor) {
-      try {
-        tab.content = VDITOR.withOriginalImageSources(tab.host, () => tab.vditor.getValue());
-      } catch (_) {}
-    }
     return editorController.rebuild(tab, mode);
   }
 
@@ -1247,18 +1254,14 @@
       toolbar: null,
       bottomSpacerObserver: null,
       outlineCollapsed: new Set(),
-      outlineObserver: null,
       resourceObserver: null,
-      modeShortcutCleanup: null,
       splitResizer: null,
       externalConflict: null,
       externalChangeIgnored: false,
       externalFileState: null,
       recoverySnapshotId,
       recoveryState,
-      recoveryTimer: null,
       recoveryRevision: 0,
-      recoveryOperation: Promise.resolve(),
       pendingAnchor,
       host: document.createElement('section'),
     };
@@ -1275,10 +1278,8 @@
       },
       true,
     );
-    const onModeShortcut = (event) => handleVditorModeShortcut(tab, event);
-    tab.host.addEventListener('keydown', onModeShortcut, true);
-    tab.modeShortcutCleanup = () => tab.host.removeEventListener('keydown', onModeShortcut, true);
-    tab.host.addEventListener('contextmenu', (event) => showEditorContextMenu(tab, event), true);
+    editorController.attachModeShortcut(tab, (event) => handleVditorModeShortcut(tab, event));
+    editorController.attachContextMenu(tab, (event) => showEditorContextMenu(tab, event));
     $('#editorArea').appendChild(tab.host);
     store.addDocument(tab);
     renderTabs();
@@ -1390,7 +1391,6 @@
   }
 
   async function disposeClosedTabRuntime(tab) {
-    editorController.cancelAutoSave(tab);
     await discardRecoverySnapshot(tab);
     editorController.destroy(tab);
     tab.host.remove();
@@ -1545,7 +1545,7 @@
       try {
         const diskVersion = await window.fileAPI.readFile(destination);
         if (diskVersion.content !== tab.expectedSavedContent) {
-          editorController.cancelAutoSave(tab);
+          editorController.beginExternalChange(tab);
           tab.externalConflict = {
             kind: 'modified',
             path: destination,
@@ -1611,7 +1611,7 @@
         return false;
       if (result.error) {
         if (result.error === 'external-change') {
-          editorController.cancelAutoSave(tab);
+          editorController.beginExternalChange(tab);
           tab.externalConflict = {
             kind: 'modified',
             path: destination,
@@ -1696,50 +1696,12 @@
     });
   }
 
-  function queueRecoveryOperation(tab, operation) {
-    const previous = tab.recoveryOperation || Promise.resolve();
-    tab.recoveryOperation = previous.catch(() => undefined).then(operation);
-    return tab.recoveryOperation;
-  }
-
   function scheduleRecoverySnapshot(tab) {
-    clearTimeout(tab.recoveryTimer);
-    if (!tab.modified && !tab.externalFileState) {
-      void discardRecoverySnapshot(tab);
-      return;
-    }
-    if (!tab.modified) return;
-    const id = tab.recoverySnapshotId || recoveryId();
-    tab.recoverySnapshotId = id;
-    const revision = ++tab.recoveryRevision;
-    tab.recoveryTimer = setTimeout(() => {
-      tab.recoveryTimer = null;
-      void queueRecoveryOperation(tab, async () => {
-        if (tab.recoverySnapshotId !== id || tab.recoveryRevision !== revision || !tab.modified)
-          return;
-        try {
-          await window.appAPI.saveRecovery(recoverySnapshotFor(tab));
-        } catch (_) {
-          console.error('Unable to save a recovery snapshot.');
-        }
-      });
-    }, 500);
+    recoveryRuntimeController.schedule(tab);
   }
 
   async function discardRecoverySnapshot(tab) {
-    clearTimeout(tab.recoveryTimer);
-    tab.recoveryTimer = null;
-    const id = tab.recoverySnapshotId;
-    tab.recoverySnapshotId = null;
-    tab.recoveryRevision++;
-    if (!id) return;
-    await queueRecoveryOperation(tab, async () => {
-      try {
-        await window.appAPI.discardRecovery(id);
-      } catch (_) {
-        console.error('Unable to remove a recovery snapshot.');
-      }
-    });
+    await recoveryRuntimeController.discard(tab);
   }
 
   async function preserveUnavailableTab(tab, kind, filePath, error) {
@@ -1750,9 +1712,7 @@
       tab.recoverySnapshotId
     )
       return;
-    editorController.cancelAutoSave(tab);
-    clearTimeout(tab.recoveryTimer);
-    tab.recoveryTimer = null;
+    editorController.beginExternalChange(tab);
     const editorContent = currentContent(tab);
     if (editorContent.trim() || tab.modified || (!tab.content && !tab.savedContent))
       tab.content = editorContent;
@@ -1768,17 +1728,7 @@
       detectedAt: Date.now(),
       version: (tab.externalFileState?.version || 0) + 1,
     };
-    const id = tab.recoverySnapshotId || recoveryId();
-    tab.recoverySnapshotId = id;
-    const revision = ++tab.recoveryRevision;
-    await queueRecoveryOperation(tab, async () => {
-      if (tab.recoverySnapshotId !== id || tab.recoveryRevision !== revision) return;
-      try {
-        await window.appAPI.saveRecovery(recoverySnapshotFor(tab));
-      } catch (_) {
-        console.error('Unable to preserve an unavailable document for recovery.');
-      }
-    });
+    await recoveryRuntimeController.preserveUnavailable(tab);
   }
 
   async function restoreRecoverySnapshots() {
@@ -1825,9 +1775,7 @@
           existing.recoverySnapshotId = snapshot.id;
           existing.recoveryState = 'unchanged';
           existing.contentRevision++;
-          if (existing.vditor && existing.ready)
-            editorController.injectContent(existing, snapshot.content, true);
-          else existing.pendingEditorContent = true;
+          editorController.applyRecoveryContent(existing, snapshot.content);
           continue;
         }
         const baseDir = snapshot.filePath ? await window.fileAPI.dirname(snapshot.filePath) : '';
@@ -1858,7 +1806,7 @@
     if (!tab) {
       updateExternalChangeBanner(null);
       updateExternalFileStateBanner(null);
-      updateRecoveryBanner(null);
+      recoveryBannerController.render(null);
       $('#saveFile').disabled = true;
       document.title = 'Vditor Desktop';
       $('#windowTitle').textContent = 'Vditor Desktop';
@@ -1875,7 +1823,7 @@
     }
     updateExternalChangeBanner(tab);
     updateExternalFileStateBanner(tab);
-    updateRecoveryBanner(tab);
+    recoveryBannerController.render(tab);
     $('#saveFile').disabled = false;
     const content = currentContent(tab);
     tab.content = content;
@@ -2037,42 +1985,6 @@
     $('#externalFileRecreate').classList.toggle('hidden', fileState.kind === 'unreadable');
   }
 
-  function updateRecoveryBanner(tab) {
-    const banner = $('#recoveryBanner');
-    const recoveryState = tab?.recoveryState;
-    banner.classList.toggle('hidden', !recoveryState);
-    if (!recoveryState) return;
-
-    const changed = recoveryState === 'changed';
-    const unavailable = recoveryState === 'unavailable';
-    $('#recoveryMessage').textContent = t(
-      changed ? 'recovery.changed' : unavailable ? 'recovery.unavailable' : 'recovery.restored',
-    );
-    $('#recoveryDetail').textContent = t(
-      changed
-        ? 'recovery.changedDetail'
-        : unavailable
-          ? 'recovery.unavailableDetail'
-          : 'recovery.restoredDetail',
-    );
-    $('#recoverySave').classList.toggle('hidden', recoveryState !== 'unchanged');
-  }
-
-  async function saveRecoveredVersion(tab) {
-    if (!tab?.recoveryState) return;
-    await saveTab(tab);
-  }
-
-  async function saveRecoveredAs(tab) {
-    if (!tab?.recoveryState) return;
-    await saveTab(tab, true);
-  }
-
-  async function discardRecoveredVersion(tab) {
-    if (!tab?.recoveryState) return;
-    await closeTab(tab.id, { discard: true });
-  }
-
   async function reloadExternalChange(tab) {
     const conflict = tab?.externalConflict;
     if (!conflict || typeof conflict.content !== 'string') return;
@@ -2081,7 +1993,6 @@
       (item) => item === tab || (conflictIdentity && tabFileIdentity(item) === conflictIdentity),
     );
     for (const item of relatedTabs) {
-      editorController.cancelAutoSave(item);
       item.content = conflict.content;
       item.savedContent = conflict.content;
       item.expectedSavedContent = conflict.content;
@@ -2090,7 +2001,7 @@
       item.lineEnding = detectLineEnding(conflict.content);
       item.externalConflict = null;
       item.externalChangeIgnored = false;
-      editorController.injectContent(item, conflict.content, true);
+      editorController.applyExternalContent(item, conflict.content);
     }
     renderTabs();
     updateActiveUI();
@@ -2128,7 +2039,6 @@
       (item) => item === tab || (fileStateIdentity && tabFileIdentity(item) === fileStateIdentity),
     );
     for (const item of relatedTabs) {
-      editorController.cancelAutoSave(item);
       item.content = fileState.content;
       item.savedContent = fileState.content;
       item.expectedSavedContent = fileState.content;
@@ -2138,7 +2048,7 @@
       item.externalConflict = null;
       item.externalChangeIgnored = false;
       item.externalFileState = null;
-      editorController.injectContent(item, fileState.content, true);
+      editorController.applyExternalContent(item, fileState.content);
       await discardRecoverySnapshot(item);
     }
     renderTabs();
@@ -2969,35 +2879,20 @@
   }
 
   function setupDocumentAnchorNavigation(tab) {
-    if (tab.host.dataset.anchorNavigation === 'true') return;
-    tab.host.dataset.anchorNavigation = 'true';
-    tab.host.addEventListener(
-      'mouseover',
-      (event) => {
+    editorController.attachDocumentAnchorNavigation(tab, {
+      onMouseOver: (event) => {
         const target = documentLinkTarget(tab, event.target);
         if (target) setHoveredDocumentLink(target, event);
       },
-      true,
-    );
-    tab.host.addEventListener(
-      'mouseout',
-      (event) => {
+      onMouseOut: (event) => {
         if (!hoveredDocumentLink || hoveredDocumentLink.link.element.contains(event.relatedTarget))
           return;
         clearHoveredDocumentLink();
       },
-      true,
-    );
-    tab.host.addEventListener(
-      'mousemove',
-      (event) => {
+      onMouseMove: (event) => {
         if (hoveredDocumentLink) showDocumentLinkTooltip(event);
       },
-      true,
-    );
-    tab.host.addEventListener(
-      'click',
-      (event) => {
+      onClick: (event) => {
         const target = documentLinkTarget(tab, event.target);
         if (!target) {
           blockUnsupportedDocumentLinkNavigation(tab, event);
@@ -3021,8 +2916,7 @@
         }
         if (target.link.kind === 'toc') VDITOR.focusDocumentLink(target.link);
       },
-      true,
-    );
+    });
   }
 
   async function handleImageUpload(tab, files) {
@@ -3636,7 +3530,7 @@
         content: change.content,
       });
       if (decision === 'reappeared') {
-        editorController.cancelAutoSave(tab);
+        editorController.beginExternalChange(tab);
         tab.externalConflict = null;
         tab.externalChangeIgnored = false;
         tab.externalFileState = {
@@ -3663,12 +3557,12 @@
         tab.encoding = change.encoding || tab.encoding;
         tab.externalConflict = null;
         tab.externalChangeIgnored = false;
-        editorController.injectContent(tab, change.content, true);
+        editorController.applyExternalContent(tab, change.content);
         if (tab.id === state.activeId) updateActiveUI();
         showMessage(t('external.reloaded', { name: tab.title }));
         continue;
       }
-      editorController.cancelAutoSave(tab);
+      editorController.beginExternalChange(tab);
       tab.externalConflict = {
         kind: 'modified',
         path: change.path,
@@ -4129,9 +4023,6 @@
     $('#externalFileKeepUntitled').onclick = () => void keepExternalFileAsUntitled(activeTab());
     $('#externalFileRecreate').onclick = () => void confirmExternalFileRecreate(activeTab());
     $('#externalFileClose').onclick = () => void confirmExternalFileClose(activeTab());
-    $('#recoverySave').onclick = () => void saveRecoveredVersion(activeTab());
-    $('#recoverySaveAs').onclick = () => void saveRecoveredAs(activeTab());
-    $('#recoveryDiscard').onclick = () => void discardRecoveredVersion(activeTab());
     $('#replaceOne').onclick = () => findController.replaceOne();
     $('#replaceAll').onclick = () => findController.replaceAll();
     $('#emptyNewFile').onclick = newTab;
@@ -4222,8 +4113,21 @@
     notifications.init();
     $('#openSettingsFolder').onclick = async () =>
       window.appAPI.showItemInFolder(await window.appAPI.getSettingsPath());
-    $$('[data-external]').forEach((button) => {
-      button.onclick = () => window.appAPI.openExternal(button.dataset.external);
+    // Vanessa Easter Egg
+    let vanessaEasterEggClicks = 0;
+    let vanessaEasterEggTimer = null;
+    $('.about-logo').onclick = () => {
+      vanessaEasterEggClicks++;
+      clearTimeout(vanessaEasterEggTimer);
+      vanessaEasterEggTimer = setTimeout(() => {
+        vanessaEasterEggClicks = 0;
+      }, 2000);
+      if (vanessaEasterEggClicks < 10) return;
+      vanessaEasterEggClicks = 0;
+      window.appAPI.openExternal('https://github.com/Vanessa219');
+    };
+    $$('[data-external]').forEach((element) => {
+      element.onclick = () => window.appAPI.openExternal(element.dataset.external);
     });
     document.addEventListener('click', () => {
       closeStatusModeMenu();
