@@ -14,8 +14,26 @@ const locales: VditorDesktopLocales = {
       save: 'Save',
     },
   },
-  zh_Hans: { dialog: {} } as Record<string, unknown>,
-  zh_Hant: { dialog: {} } as Record<string, unknown>,
+  zh_Hans: {
+    dialog: {
+      confirmTitle: '确认',
+      cancel: '取消',
+      continue: '继续',
+      unsavedTitle: '未保存的更改',
+      dontSave: '不保存',
+      save: '保存',
+    },
+  },
+  zh_Hant: {
+    dialog: {
+      confirmTitle: '確認',
+      cancel: '取消',
+      continue: '繼續',
+      unsavedTitle: '未儲存的變更',
+      dontSave: '不儲存',
+      save: '儲存',
+    },
+  },
 } as VditorDesktopLocales;
 
 function translateFn(locs: VditorDesktopLocales, locale: SupportedLocale, key: string): string {
@@ -182,6 +200,30 @@ describe('NotificationsController', () => {
       expect(document.getElementById('confirmTitle')?.textContent).toBe('Confirm');
       controller.closeConfirmDialog('cancel');
       await promise;
+    });
+
+    it('uses the current locale for dialogs opened after a locale switch', async () => {
+      controller.setLocale('zh_Hans');
+      const simplified = controller.showUnsavedDialog('内容');
+      expect(document.getElementById('confirmTitle')?.textContent).toBe('未保存的更改');
+      expect(
+        Array.from(document.querySelectorAll('#confirmActions button')).map((button) =>
+          button.textContent?.trim(),
+        ),
+      ).toEqual(['取消', '不保存', '保存']);
+      controller.closeConfirmDialog('cancel');
+      await simplified;
+
+      controller.setLocale('zh_Hant');
+      const traditional = controller.showUnsavedDialog('內容');
+      expect(document.getElementById('confirmTitle')?.textContent).toBe('未儲存的變更');
+      expect(
+        Array.from(document.querySelectorAll('#confirmActions button')).map((button) =>
+          button.textContent?.trim(),
+        ),
+      ).toEqual(['取消', '不儲存', '儲存']);
+      controller.closeConfirmDialog('cancel');
+      await traditional;
     });
 
     it('creates action buttons with primary and danger classes', async () => {

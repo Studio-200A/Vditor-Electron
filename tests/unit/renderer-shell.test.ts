@@ -157,19 +157,6 @@ describe('renderer shell', () => {
     expect(css).toMatch(/#app\s*\{[^}]*border-radius:\s*var\(--window-radius\)/s);
   });
 
-  it('places all three localized editing modes under the View menu', () => {
-    const nativeMenu = fs.readFileSync(path.resolve('src/main/menu.ts'), 'utf8');
-    expect(rendererScript).toContain("label: 'menu.editMode'");
-    expect(rendererScript).toContain("run('mode', 'wysiwyg')");
-    expect(rendererScript).toContain("run('mode', 'ir')");
-    expect(rendererScript).toContain("run('mode', 'sv')");
-    expect(localesScript).toContain("'menu.editModeWysiwyg': '所见即所得模式'");
-    expect(localesScript).toContain("'menu.editModeIr': '即时渲染模式'");
-    expect(localesScript).toContain("'menu.editModeSv': '分栏预览模式'");
-    expect(nativeMenu).toContain("label: tr('Editing Mode', '编辑模式', '編輯模式')");
-    expect(nativeMenu).not.toContain("label: tr('Mode', '模式', '模式')");
-  });
-
   it('provides complete Simplified and Traditional Chinese locales', () => {
     const localeWindow: { VditorDesktopLocales?: Record<string, Record<string, string>> } = {};
     new Function('window', localesScript)(localeWindow);
@@ -766,7 +753,6 @@ describe('renderer shell', () => {
     expect(input.max).toBe('12');
     expect(input.step).toBe('1');
     expect(document.querySelector('#workspaceReadDepthValue')).not.toBeNull();
-    expect(rendererScript).toContain('syncWorkspaceReadDepthValue');
     expect(css).toMatch(/\.tree-depth-notice\s*\{[^}]*user-select:\s*none/s);
   });
 

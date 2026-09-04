@@ -61,6 +61,7 @@
 ### Test Coverage
 
 - **test(e2e):** Drive the paragraph-width range input through native keyboard events, matching the browser control contract instead of using unsupported text-input filling.
+- **test(localization):** Replace batch-domain source-string assertions with controller and Electron behavior coverage; runtime switching across English, Simplified Chinese, and Traditional Chinese now verifies menus, confirmation dialogs, empty state, and settings notifications refresh together.
 
 ### Project Maintenance
 

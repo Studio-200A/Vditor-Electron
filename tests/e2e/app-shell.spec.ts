@@ -1811,6 +1811,73 @@ test('shows the Traditional Chinese locale throughout settings', async () => {
   }
 });
 
+test('updates menus, dialogs, empty state, and notifications after runtime locale switches', async () => {
+  const running = await launchApp({ locale: 'zh_Hant', editMode: 'sv' });
+  try {
+    const { page } = running;
+    const locales = {
+      en_US: {
+        lang: 'en-US',
+        empty: 'No opened tabs',
+        saved: 'Settings saved',
+        quit: 'Quit',
+        unsaved: 'Unsaved Changes',
+        actions: ['Cancel', "Don't Save", 'Save'],
+      },
+      zh_Hans: {
+        lang: 'zh-Hans',
+        empty: '没有打开的标签页',
+        saved: '设置已保存',
+        quit: '退出',
+        unsaved: '未保存的更改',
+        actions: ['取消', '不保存', '保存'],
+      },
+      zh_Hant: {
+        lang: 'zh-Hant',
+        empty: '沒有開啟的標籤頁',
+        saved: '設定已儲存',
+        quit: '離開',
+        unsaved: '未儲存的變更',
+        actions: ['取消', '不儲存', '儲存'],
+      },
+    } as const;
+
+    for (const [locale, expected] of Object.entries(locales)) {
+      await page.locator('#statusSettings').click();
+      await page.locator('[name="locale"]').selectOption(locale);
+      await page.locator('#saveSettings').click();
+      await expect(page.locator('#settingsModal')).toBeHidden();
+
+      await expect(page.locator('html')).toHaveAttribute('lang', expected.lang);
+      await expect(page.locator('#noTabs [data-i18n="empty.noTabs"]')).toHaveText(expected.empty);
+      await expect(page.locator('#statusMessage')).toHaveText(expected.saved);
+
+      await page.locator('#appMenuBar [data-menu="main"]').click();
+      await expect(
+        page.locator('.app-menu-popup button').filter({ hasText: expected.quit }),
+      ).toBeVisible();
+      await page.locator('#appMenuBar [data-menu="main"]').click();
+
+      await createNewTab(page);
+      await page.locator('.editor-host.active .vditor-sv').fill('unsaved');
+      await page.locator('#appMenuBar [data-menu="main"]').click();
+      await page.locator('.app-menu-popup button', { hasText: expected.quit }).click();
+
+      const dialog = page.locator('#confirmModal');
+      await expect(dialog).toBeVisible();
+      await expect(dialog.locator('#confirmTitle')).toHaveText(expected.unsaved);
+      await expect(dialog.locator('#confirmActions button')).toHaveText(expected.actions);
+      await dialog.locator('[data-action="cancel"]').click();
+
+      await page.locator('.document-tab.active b').click();
+      await page.locator('#confirmActions [data-action="discard"]').click();
+      await expect(page.locator('#noTabs')).toBeVisible();
+    }
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('uses the file name in the title and matches the layered chrome surfaces', async () => {
   const running = await launchApp();
   try {
