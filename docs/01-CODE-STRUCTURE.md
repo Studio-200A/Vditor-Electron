@@ -862,7 +862,9 @@ openPath(filePath)
     after() 回调 → 挂载工具栏、安装观察者、刷新 UI
 ```
 
-打开文件、打开文件夹和 HTML/PDF 导出共用 `settings.defaultOpenPath` 作为原生对话框的默认目录；用户确认选择文件后，renderer 取第一个文件的父目录持久化，确认选择工作区或导出位置后则持久化该目录。取消原生对话框不会改变该目录。
+打开文件、打开文件夹和 HTML/PDF 导出共用 `state.defaultOpenPath` 作为原生对话框的默认目录；用户确认选择文件后，renderer 取第一个文件的父目录持久化，确认选择工作区或导出位置后则持久化该目录。取消原生对话框不会改变该目录。
+
+`src/renderer/export/export-controller.ts` 拥有导出事务顺序：先读取当前文档/Vditor 的 HTML 快照，再打开原生对话框；HTML 写入前将 `local-file:` 重写为相对资源并移除内部 `app:` 来源，PDF 则先将可读取的本地图片嵌入为 `data:` URL，最后仅通过 `app:exportPDF` 进入主进程的 sandboxed 隐藏窗口。路径转换、图片嵌入和完整 HTML 模板以显式依赖注入，导出 controller 不访问 Vditor 私有 DOM 或改变文件安全写入语义。
 
 Ctrl/Cmd+单击相对 Markdown 链接时，渲染器先调用 `file:resolveMarkdownLink(sourceFile, href)`；主进程拒绝协议、绝对路径、非 Markdown 和不存在目标，仅返回规范化的普通文件路径及可选片段。`openPath()` 复用已有标签或创建新标签，待 Vditor 就绪后将 `#片段` 定位到目标标题。
 
@@ -1012,7 +1014,7 @@ function rememberRecent(filePath) {
 
 ## 10. UI 组件体系
 
-本项目没有 UI 框架。批次 4 已建立 `src/renderer/documents/` 的标签/文档生命周期控制器，但编辑器、工作区、设置、菜单与导出等其余 UI 逻辑仍在 legacy `app.js` 中；以下列出各逻辑组件的职责与实现位置。
+本项目没有 UI 框架。批次 4 已建立 `src/renderer/documents/` 的标签/文档生命周期控制器；工作区、设置、菜单、窗口和导出已有对应 controller，legacy `app.js` 目前主要负责组合及尚未迁出的应用壳事件。以下列出各逻辑组件的职责与实现位置。
 
 ### 10.1 逻辑组件清单
 

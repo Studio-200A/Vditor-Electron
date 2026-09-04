@@ -151,3 +151,5 @@ export { MenuController } from './ui/menu-controller.js';
 export type { MenuControllerOptions, MenuItem } from './ui/menu-controller.js';
 export { WindowController } from './ui/window-controller.js';
 export type { WindowControllerOptions } from './ui/window-controller.js';
+export { ExportController } from './export/export-controller.js';
+export type { ExportControllerOptions, ExportDocument } from './export/export-controller.js';

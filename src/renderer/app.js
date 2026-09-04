@@ -3001,36 +3001,24 @@
     const portableBody = normalizeExportBody(body, tab, outputDirectory);
     return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHTML(stripExtension(tab.title))}</title><style>body{max-width:860px;margin:40px auto;padding:0 24px;font:16px/1.7 system-ui;color:#24292f}pre,code{font-family:ui-monospace,monospace}pre{padding:16px;overflow:auto;background:#f6f8fa}img{max-width:100%}table{border-collapse:collapse}td,th{border:1px solid #d0d7de;padding:6px 12px}</style></head><body>${portableBody}</body></html>`;
   }
+  const exportController = new PURE.ExportController({
+    getActiveDocument: () => activeTab(),
+    fileAPI: window.fileAPI,
+    appAPI: window.appAPI,
+    getDefaultDirectory: () => state.settings.defaultOpenPath || undefined,
+    snapshotBody: exportBodySnapshot,
+    normalizeBody: normalizeExportBody,
+    embedImages: embedExportImages,
+    makeHTML: makeExportHTML,
+    defaultFileName: (tab, type) => `${stripExtension(tab.title)}.${type}`,
+    rememberConfirmedDirectory: rememberDialogDirectory,
+    showExported: (output) => showMessage(t('message.exported', { output })),
+  });
   async function exportHTML() {
-    const tab = activeTab();
-    if (!tab) return;
-    const body = exportBodySnapshot(tab);
-    const output = await window.fileAPI.exportDialog(
-      'html',
-      `${stripExtension(tab.title)}.html`,
-      state.settings.defaultOpenPath || undefined,
-    );
-    if (output) {
-      await rememberDialogDirectory(output);
-      const outputDirectory = await window.fileAPI.dirname(output);
-      await window.fileAPI.writeFile(output, makeExportHTML(tab, body, outputDirectory));
-      showMessage(t('message.exported', { output }));
-    }
+    await exportController.exportHTML();
   }
   async function exportPDF() {
-    const tab = activeTab();
-    if (!tab) return;
-    const snapshot = exportBodySnapshot(tab);
-    const body = await embedExportImages(normalizeExportBody(snapshot, tab), tab);
-    const output = await window.appAPI.exportPDF(
-      makeExportHTML(tab, body),
-      `${stripExtension(tab.title)}.pdf`,
-      state.settings.defaultOpenPath || undefined,
-    );
-    if (output) {
-      await rememberDialogDirectory(output);
-      showMessage(t('message.exported', { output }));
-    }
+    await exportController.exportPDF();
   }
 
   function rememberRecent(filePath) {

@@ -26,6 +26,7 @@
 - **refactor(settings):** Moved settings/default-settings Store ownership, runtime-impact classification, settings-modal animation cleanup, and application locale DOM refresh into typed controllers. Presentation-only settings remain hot-applied without recreating Vditor or clearing undo history.
 - **refactor(persistence):** Split explicit TOML preferences from versioned cross-launch `state.json`. Recent files and directories, session/workspace expansion, confirmed dialog directory, and window/UI restore state now use a validated, atomic serialized state store with one-time legacy migration; resetting preferences leaves state intact.
 - **refactor(window controls):** Moved application-menu popup lifecycle, non-editor context-menu rendering, and titlebar window commands/display subscriptions into dedicated controllers while preserving existing menu entries and Electron window behavior.
+- **refactor(export):** Centralized HTML/PDF export transaction ordering in `ExportController`, preserving pre-dialog snapshots, portable HTML resource rewriting, local-image PDF embedding, and the isolated main-process PDF window.
 
 ### Editor Runtime
 
