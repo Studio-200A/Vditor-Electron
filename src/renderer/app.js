@@ -11,7 +11,6 @@
   const detectLineEnding = PURE.detectLineEnding;
   const isDarkTheme = PURE.isDarkTheme;
   const THEME_MODES = PURE.THEME_MODES;
-  const resolveLocaleImpl = PURE.resolveLocale;
   const translateImpl = PURE.translate;
   const formatIpcErrorMessageImpl = PURE.formatIpcErrorMessage;
   const resolveThemeModeImpl = PURE.resolveThemeMode;
@@ -34,9 +33,24 @@
     get workspace() {
       return store.getState().workspacePath;
     },
-    settings: null,
-    defaultSettings: null,
-    locale: 'en_US',
+    get settings() {
+      return store.getState().settings;
+    },
+    set settings(settings) {
+      store.updateSettings(settings);
+    },
+    get defaultSettings() {
+      return store.getState().defaultSettings;
+    },
+    set defaultSettings(settings) {
+      store.updateDefaultSettings(settings);
+    },
+    get locale() {
+      return store.getState().locale;
+    },
+    set locale(locale) {
+      store.updateLocale(locale);
+    },
     untitledCounters: {
       file: 0,
       directory: 0,
@@ -415,6 +429,32 @@
   let settingsSaveQueue = Promise.resolve();
   const LOCALES = window.VditorDesktopLocales || {};
   const notifications = new PURE.NotificationsController(translateImpl, LOCALES, 'en_US');
+  const settingsController = new PURE.SettingsController({
+    store,
+    save: (patch) => queueSettingsSave(patch, { throwOnFailure: true }),
+  });
+  const settingsWindow = new PURE.SettingsWindow({
+    modal: $('#settingsModal'),
+    onClosed: (applyPresentation) => {
+      if (applyPresentation) applyPresentationSettings();
+    },
+  });
+  const localizationController = new PURE.LocalizationController({
+    store,
+    locales: LOCALES,
+    navigatorLanguage: () => navigator.language,
+    onLocaleApplied: (locale) => {
+      notifications.setLocale(locale);
+      if (state.workspace) {
+        $('#workspaceName').textContent = fileName(state.workspace);
+        $('#workspaceHeading').dataset.tooltip = state.workspace;
+      }
+      if ($('#appMenuBar')?.dataset.ready === 'true') setupAppMenus();
+      renderTabs();
+      updateActiveUI();
+      outlineController.onRuntimeChanged();
+    },
+  });
   const DEFAULT_TOOLBAR = [
     'emoji',
     'headings',
@@ -455,7 +495,6 @@
   let closeAppMenu = () => {};
   let appMenuBlurHandler;
   let settingsSaveTimer;
-  let settingsCloseTimer;
   let sidebarTransitionTimer;
   let sidebarTransitionEndHandler;
   let sidebarLayoutAnimations = [];
@@ -464,10 +503,6 @@
   let editorSelectionActive = false;
   let pendingTableCellSelection = null;
   let contextMenuState = null;
-
-  function resolveLocale(locale) {
-    return resolveLocaleImpl(locale, navigator.language, LOCALES);
-  }
 
   function t(key, params = {}) {
     return translateImpl(LOCALES, state.locale, key, params);
@@ -510,46 +545,7 @@
   }
 
   function applyLocale(locale) {
-    state.locale = resolveLocale(locale);
-    notifications.setLocale(state.locale);
-    document.documentElement.lang =
-      state.locale === 'zh_Hans' ? 'zh-Hans' : state.locale === 'zh_Hant' ? 'zh-Hant' : 'en-US';
-    $$('[data-i18n]').forEach((node) => {
-      node.textContent = t(node.dataset.i18n);
-    });
-    $$('[data-i18n-title]').forEach((node) => {
-      const value = t(node.dataset.i18nTitle);
-      node.title = value;
-      node.setAttribute('aria-label', value);
-    });
-    $$('[data-i18n-tooltip]').forEach((node) => {
-      const value = t(node.dataset.i18nTooltip);
-      node.dataset.tooltip = value;
-      node.setAttribute('aria-label', value);
-    });
-    $$('[data-i18n-placeholder]').forEach((node) => {
-      node.placeholder = t(node.dataset.i18nPlaceholder);
-    });
-    $$('[data-i18n-label]').forEach((label) => {
-      Array.from(label.childNodes)
-        .filter((node) => node.nodeType === Node.TEXT_NODE)
-        .forEach((node) => node.remove());
-      let text = label.querySelector(':scope > .i18n-label');
-      if (!text) {
-        text = document.createElement('span');
-        text.className = 'i18n-label';
-        label.insertBefore(text, label.firstChild);
-      }
-      text.textContent = t(label.dataset.i18nLabel);
-    });
-    if (state.workspace) {
-      $('#workspaceName').textContent = fileName(state.workspace);
-      $('#workspaceHeading').dataset.tooltip = state.workspace;
-    }
-    if ($('#appMenuBar')?.dataset.ready === 'true') setupAppMenus();
-    renderTabs();
-    updateActiveUI();
-    outlineController.onRuntimeChanged();
+    localizationController.apply(locale);
   }
 
   function uid() {
@@ -3084,41 +3080,18 @@
     $('#editorTextWidthValue').textContent = `${$('#editorTextWidth').value}%`;
     syncWorkspaceReadDepthValue();
     restoreSettingsCardSize();
-    const modal = $('#settingsModal');
-    clearTimeout(settingsCloseTimer);
-    modal.classList.remove('hidden', 'modal-closing', 'modal-open');
-    requestAnimationFrame(() => requestAnimationFrame(() => modal.classList.add('modal-open')));
+    settingsWindow.open();
   }
 
   function closeSettings({ applyPresentation = true } = {}) {
-    const modal = $('#settingsModal');
-    if (modal.classList.contains('hidden')) return Promise.resolve();
-    if (modal.classList.contains('modal-closing'))
-      return new Promise((resolve) => setTimeout(resolve, 190));
-    clearTimeout(settingsCloseTimer);
-    modal.classList.remove('modal-open');
-    modal.classList.add('modal-closing');
-    const duration = parseFloat(
-      getComputedStyle(modal).getPropertyValue('--settings-exit-duration'),
-    );
-    return new Promise((resolve) => {
-      settingsCloseTimer = setTimeout(
-        () => {
-          modal.classList.add('hidden');
-          modal.classList.remove('modal-closing');
-          if (applyPresentation) applyPresentationSettings();
-          resolve();
-        },
-        Number.isFinite(duration) ? duration + 30 : 190,
-      );
-    });
+    return settingsWindow.close(applyPresentation);
   }
   async function saveSettings(closeAfterSave = true) {
     clearTimeout(settingsSaveTimer);
     const form = $('#settingsForm');
     const patch = {};
     const numericSettingNames = new Set(['tabSize']);
-    const previousSettings = state.settings;
+    const previousSettings = { ...state.settings };
     const openModes = new Map(
       state.tabs.map((tab) => [
         tab.id,
@@ -3160,17 +3133,18 @@
     const previousWorkspaceReadDepth = state.settings.workspaceReadDepth;
     const previousLocale = state.locale;
     try {
-      state.settings = await queueSettingsSave(patch, { throwOnFailure: true });
+      await settingsController.savePatch(patch);
     } catch (error) {
       showMessage(ipcErrorMessage(error), true);
       return;
     }
-    const changedSettings = Object.keys(patch).filter(
-      (key) => JSON.stringify(previousSettings[key]) !== JSON.stringify(state.settings[key]),
+    const settingsChange = PURE.classifySettingsChange(
+      previousSettings,
+      state.settings,
+      VDITOR_INITIALIZATION_SETTINGS,
     );
-    const shouldRebuildEditors = changedSettings.some((key) =>
-      VDITOR_INITIALIZATION_SETTINGS.has(key),
-    );
+    const changedSettings = settingsChange.changedKeys;
+    const shouldRebuildEditors = settingsChange.shouldRebuildEditor;
     if (changedSettings.includes('allowSvgImages')) {
       imageRuntimeController.reload(state.tabs);
     }
@@ -4041,7 +4015,7 @@
     $('#settingsForm [name="workspaceReadDepth"]').oninput = syncWorkspaceReadDepthValue;
     $('#resetSettings').onclick = async () => {
       if (await confirmDialog({ message: t('confirm.resetSettings') })) {
-        state.settings = await window.appAPI.resetSettings();
+        await settingsController.reset(() => window.appAPI.resetSettings());
         applyLocale(state.settings.locale);
         openSettings();
       }
@@ -4364,8 +4338,10 @@
       return;
     }
     document.body.dataset.platform = window.appAPI.platform;
-    state.settings = await window.appAPI.getSettings();
-    state.defaultSettings = await window.appAPI.getDefaultSettings();
+    settingsController.load(
+      await window.appAPI.getSettings(),
+      await window.appAPI.getDefaultSettings(),
+    );
     applyLocale(state.settings.locale);
     setupEvents();
     const minimumSidebarWidth = sidebarMinimumWidth();
@@ -4412,6 +4388,8 @@
 
   window.__vditorDesktopLegacyBootstrap = init;
   window.__vditorDesktopLegacyDispose = () => {
+    settingsWindow.dispose();
+    localizationController.dispose();
     workspaceController.dispose();
     state.tabs.forEach((tab) => editorController.destroy(tab));
     findController.dispose();

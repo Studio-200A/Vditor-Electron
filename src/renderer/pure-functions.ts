@@ -135,3 +135,13 @@ export type {
   ExplorerEntry,
   ExplorerSettings,
 } from './workspace/explorer-controller.js';
+export { SettingsController, classifySettingsChange } from './settings/settings-controller.js';
+export type {
+  SettingsChange,
+  SettingsControllerOptions,
+  SettingsImpact,
+} from './settings/settings-controller.js';
+export { SettingsWindow } from './settings/settings-window.js';
+export type { SettingsWindowOptions } from './settings/settings-window.js';
+export { LocalizationController } from './ui/localization-controller.js';
+export type { LocalizationControllerOptions } from './ui/localization-controller.js';

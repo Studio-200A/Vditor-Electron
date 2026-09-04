@@ -466,6 +466,8 @@ webPreferences: {
 
 批次 4 的 `src/renderer/documents/` 保留文档安全边界：`TabController` 只渲染标签；`DocumentController` 负责新建、canonical-identity 打开、当前正文读取及 workspace 发起的 `transitionBindings()` 文档路径绑定提交；`DocumentSaveController` 拥有文档 ID 和 canonical identity 两级队列；`DocumentCloseController` 固定确认→runtime 释放→Store 删除顺序；`ExternalChangeController` 纯函数分类 watcher 正文。批次 5 的 `src/renderer/editor/` 已拥有 Vditor 正文读写、auto-save timer、recovery snapshot debounce/串行队列、tab 激活 runtime 协调及 editor-owned UI lifecycle。批次 8 的 `src/renderer/workspace/` 中，`WorkspaceController` 拥有根路径、revision、workspace watcher 刷新 timer 与 dispose；`ExplorerController` 只拥有 application-owned 文件树 DOM、懒加载展开、展开状态和 explorer 菜单意图，不直接写 document 状态或操作 Vditor。shell 仍组合保存交易、外部变化与 recovery 的安全动作，并仅经这些 controller 的命名 API 操作 runtime；它不重新拥有 timer、Vditor 私有 DOM 或第二条文档生命周期。其他应用壳层状态仍在 `app.js` 的 `state` 闭包对象中：
 
+批次 8 的 `src/renderer/settings/` 中，`SettingsController` 是 `AppStore.settings` 与 `defaultSettings` 的唯一写入入口，串行化经窄 `saveSettings` bridge 的保存和重置结果；`classifySettingsChange()` 将展示、主题、locale、workspace watcher、live Vditor setter 与 constructor-only rebuild 明确分类。`SettingsWindow` 拥有 modal enter/exit rAF、close timer 和 dispose。`ui/LocalizationController` 解析三种支持语言，刷新 application-owned DOM，并同步 NotificationsController、菜单、标签和大纲；它不直接操作 Vditor 私有 DOM。主题和展示热应用仍经既有语义函数及 Vditor public setter 完成。
+
 ```javascript
 const state = {
   toolbarPreview: null,  // 无标签时用于展示默认编辑模式 toolbar 的非文档 Vditor 实例

@@ -23,6 +23,7 @@
 - **refactor(document safety):** Centralized save, close, and external-change command entry in `DocumentController`; added explicit external-change classification, a versioned recovery DTO, and a versioned settings-session projection with legacy-read compatibility. Recovery IPC and persisted session data are validated before becoming document state; unavailable paths and runtime handles are excluded from session persistence.
 - **refactor(save safety):** Revalidate the tab’s Store membership and canonical binding after every awaited write-related step, so a late save cannot mutate a document closed, renamed, or replaced while I/O was pending.
 - **refactor(workspace explorer):** Moved workspace-root revisions, workspace watcher refresh scheduling, explorer tree DOM, lazy expansion, and explorer context-menu composition into typed workspace controllers. File and directory rename/delete paths now submit open-document binding updates through a named DocumentController transition boundary, preserving the existing watcher and unavailable-document safeguards.
+- **refactor(settings):** Moved settings/default-settings Store ownership, runtime-impact classification, settings-modal animation cleanup, and application locale DOM refresh into typed controllers. Presentation-only settings remain hot-applied without recreating Vditor or clearing undo history.
 
 ### Editor Runtime
 
