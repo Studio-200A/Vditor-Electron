@@ -3,7 +3,12 @@ import * as path from 'path';
 import * as os from 'os';
 import * as TOML from '@iarna/toml';
 import { parseSettingsPatch } from '../ipc-validation';
-import { AppSettings, DEFAULT_SETTINGS, normalizeWorkspaceReadDepth } from './app-state';
+import {
+  AppSettings,
+  DEFAULT_SETTINGS,
+  PersistentAppState,
+  normalizeWorkspaceReadDepth,
+} from './app-state';
 
 type SettingsDocument = {
   application: Pick<AppSettings, 'restoreTabs' | 'restoreWorkspace' | 'devToolsEnabled' | 'locale'>;
@@ -85,19 +90,14 @@ type SettingsDocument = {
     | 'imageMaxWidth'
     | 'imageQuality'
     | 'workspaceReadDepth'
-    | 'defaultOpenPath'
-    | 'recentPaths'
-    | 'recentFiles'
   >;
-  workspace: Pick<
-    AppSettings,
-    'sidebarWidth' | 'sidebarVisible' | 'toolbarVisible' | 'fileExplorer' | 'workspaceTreeStates'
-  >;
-  window: Pick<AppSettings, 'windowMaximized'> & {
-    bounds: AppSettings['windowBounds'];
-    settingsDialog: AppSettings['settingsDialogSize'];
+  workspace: Pick<AppSettings, 'fileExplorer'>;
+  /** Accepted only as an upgrade input; new config.toml files never write these fields. */
+  window?: Pick<AppSettings, 'windowMaximized'> & {
+    bounds?: AppSettings['windowBounds'];
+    settingsDialog?: AppSettings['settingsDialogSize'];
   };
-  session: AppSettings['session'];
+  session?: AppSettings['session'];
 };
 
 type SettingsFileSystem = Pick<
@@ -208,6 +208,28 @@ export class SettingsStore {
     return this.configPath;
   }
 
+  getLegacyPersistentState(): PersistentAppState {
+    const settings = this.data;
+    return {
+      schemaVersion: 1,
+      defaultOpenPath: settings.defaultOpenPath,
+      recentPaths: structuredClone(settings.recentPaths),
+      recentFiles: structuredClone(settings.recentFiles),
+      workspaceTreeStates: structuredClone(settings.workspaceTreeStates),
+      sidebarWidth: settings.sidebarWidth,
+      sidebarVisible: settings.sidebarVisible,
+      toolbarVisible: settings.toolbarVisible,
+      windowBounds: structuredClone(settings.windowBounds),
+      windowMaximized: settings.windowMaximized,
+      settingsDialogSize: structuredClone(settings.settingsDialogSize),
+      session: structuredClone(settings.session),
+    };
+  }
+
+  removeLegacyPersistentStateFromDisk(): boolean {
+    return this.save(this.data);
+  }
+
   reset(): AppSettings {
     return this.commit(structuredClone(DEFAULT_SETTINGS), false);
   }
@@ -308,23 +330,8 @@ export class SettingsStore {
         'imageMaxWidth',
         'imageQuality',
         'workspaceReadDepth',
-        'defaultOpenPath',
-        'recentPaths',
-        'recentFiles',
       ]),
-      workspace: pick(settings, [
-        'sidebarWidth',
-        'sidebarVisible',
-        'toolbarVisible',
-        'fileExplorer',
-        'workspaceTreeStates',
-      ]),
-      window: {
-        windowMaximized: settings.windowMaximized,
-        bounds: settings.windowBounds,
-        settingsDialog: settings.settingsDialogSize,
-      },
-      session: settings.session,
+      workspace: pick(settings, ['fileExplorer']),
     };
   }
 

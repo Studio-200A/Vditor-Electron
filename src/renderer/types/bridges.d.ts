@@ -75,6 +75,7 @@ export interface FileAPI {
 export interface AppAPI {
   readonly platform: SupportedPlatform;
   getSettings(): Promise<Record<string, unknown>>;
+  getPersistentState(): Promise<Record<string, unknown>>;
   getRecoveryCandidates(): Promise<Array<Record<string, unknown>>>;
   restoreRecovery(id: string): Promise<Record<string, unknown> | null>;
   saveRecovery(snapshot: Record<string, unknown>): Promise<void>;
@@ -82,6 +83,8 @@ export interface AppAPI {
   getDefaultSettings(): Promise<Record<string, unknown>>;
   saveSettings(settings: Record<string, unknown>): Promise<void>;
   resetSettings(): Promise<void>;
+  savePersistentState(state: Record<string, unknown>): Promise<Record<string, unknown>>;
+  clearPersistentState(): Promise<Record<string, unknown>>;
   getSettingsPath(): Promise<string>;
   getSettingsDisplayPath(): Promise<string>;
   getSystemLocale(): Promise<string>;

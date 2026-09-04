@@ -109,6 +109,37 @@ export interface RecentFile {
   openedAt: number;
 }
 
+/** Data restored across launches, deliberately separate from user-selected preferences. */
+export interface PersistentAppState {
+  schemaVersion: 1;
+  defaultOpenPath: string;
+  recentPaths: string[];
+  recentFiles: RecentFile[];
+  workspaceTreeStates: WorkspaceTreeState[];
+  sidebarWidth: number;
+  sidebarVisible: boolean;
+  toolbarVisible: boolean;
+  windowBounds: { x: number | undefined; y: number | undefined; width: number; height: number };
+  windowMaximized: boolean;
+  settingsDialogSize: { width: number; height: number; customized: boolean };
+  session: AppSession;
+}
+
+export const DEFAULT_PERSISTENT_APP_STATE: PersistentAppState = {
+  schemaVersion: 1,
+  defaultOpenPath: '',
+  recentPaths: [],
+  recentFiles: [],
+  workspaceTreeStates: [],
+  sidebarWidth: 260,
+  sidebarVisible: false,
+  toolbarVisible: true,
+  windowBounds: { x: undefined, y: undefined, width: 1200, height: 800 },
+  windowMaximized: false,
+  settingsDialogSize: { width: 1080, height: 780, customized: false },
+  session: { schemaVersion: 1, workspacePath: '', activeFilePath: null, openFiles: [] },
+};
+
 export const DEFAULT_SETTINGS: AppSettings = {
   restoreTabs: true,
   restoreWorkspace: true,

@@ -77,6 +77,7 @@ contextBridge.exposeInMainWorld('fileAPI', {
 contextBridge.exposeInMainWorld('appAPI', {
   platform: process.platform,
   getSettings: () => ipcRenderer.invoke(IPC_CHANNELS.appGetSettings),
+  getPersistentState: () => ipcRenderer.invoke(IPC_CHANNELS.appGetPersistentState),
   getRecoveryCandidates: () => ipcRenderer.invoke(IPC_CHANNELS.appGetRecoveryCandidates),
   restoreRecovery: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.appRestoreRecovery, id),
   saveRecovery: (snapshot: Record<string, unknown>) =>
@@ -86,6 +87,9 @@ contextBridge.exposeInMainWorld('appAPI', {
   saveSettings: (settings: Record<string, unknown>) =>
     ipcRenderer.invoke(IPC_CHANNELS.appSaveSettings, settings),
   resetSettings: () => ipcRenderer.invoke(IPC_CHANNELS.appResetSettings),
+  savePersistentState: (state: Record<string, unknown>) =>
+    ipcRenderer.invoke(IPC_CHANNELS.appSavePersistentState, state),
+  clearPersistentState: () => ipcRenderer.invoke(IPC_CHANNELS.appClearPersistentState),
   getSettingsPath: () => ipcRenderer.invoke(IPC_CHANNELS.appGetSettingsPath),
   getSettingsDisplayPath: () => ipcRenderer.invoke(IPC_CHANNELS.appGetSettingsDisplayPath),
   getSystemLocale: () => ipcRenderer.invoke(IPC_CHANNELS.appGetSystemLocale),

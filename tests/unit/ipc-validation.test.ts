@@ -5,6 +5,7 @@ import {
   parseFileName,
   parseFiniteNumber,
   parseResourceRootPaths,
+  parsePersistentStatePatch,
   parseSettingsPatch,
   requireArgumentCount,
 } from '../../src/main/ipc-validation';
@@ -129,5 +130,13 @@ describe('IPC request validation', () => {
       uiZoom: 200,
       splitRatio: 20,
     });
+  });
+
+  it('accepts only versioned persistent-state fields', () => {
+    expect(
+      parsePersistentStatePatch({ schemaVersion: 1, defaultOpenPath: '/notes', recentPaths: [] }),
+    ).toMatchObject({ schemaVersion: 1, defaultOpenPath: '/notes' });
+    expect(() => parsePersistentStatePatch({ schemaVersion: 2 })).toThrow('IPC_INVALID_ARGUMENT');
+    expect(() => parsePersistentStatePatch({ locale: 'zh_Hans' })).toThrow('IPC_INVALID_ARGUMENT');
   });
 });

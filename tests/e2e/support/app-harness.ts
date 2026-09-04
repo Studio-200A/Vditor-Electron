@@ -4,7 +4,8 @@ import type { Page } from '@playwright/test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import type { AppSettings } from '../../../src/main/services/app-state';
+import type { AppSettings, PersistentAppState } from '../../../src/main/services/app-state';
+import { PersistentStateStore } from '../../../src/main/services/persistent-state-store';
 import { SettingsStore } from '../../../src/main/services/settings-store';
 
 export const projectRoot = path.resolve(__dirname, '../../..');
@@ -22,14 +23,41 @@ export async function launchApp(
   const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-e2e-'));
   const configDir = path.join(testRoot, 'config');
   fs.mkdirSync(configDir);
-  new SettingsStore(configDir).update({
+  const persistentKeys = new Set<keyof PersistentAppState>([
+    'schemaVersion',
+    'defaultOpenPath',
+    'recentPaths',
+    'recentFiles',
+    'workspaceTreeStates',
+    'sidebarWidth',
+    'sidebarVisible',
+    'toolbarVisible',
+    'windowBounds',
+    'windowMaximized',
+    'settingsDialogSize',
+    'session',
+  ]);
+  const preferences = Object.fromEntries(
+    Object.entries(settings).filter(
+      ([key]) => !persistentKeys.has(key as keyof PersistentAppState),
+    ),
+  );
+  const persistentState = Object.fromEntries(
+    Object.entries(settings).filter(([key]) => persistentKeys.has(key as keyof PersistentAppState)),
+  );
+  const settingsStore = new SettingsStore(configDir);
+  settingsStore.update({
     locale: 'en_US',
     systemTheme: false,
     restoreTabs: false,
     restoreWorkspace: false,
     autoSave: false,
-    ...settings,
+    ...preferences,
   } as Partial<AppSettings>);
+  const stateStore = new PersistentStateStore(configDir, settingsStore.getLegacyPersistentState());
+  if (Object.keys(persistentState).length) {
+    await stateStore.updateOrThrow(persistentState as Partial<PersistentAppState>);
+  }
   const startupPaths = Object.entries(startupFiles).map(([name, content]) => {
     const filePath = path.join(testRoot, name);
     fs.writeFileSync(filePath, content);
@@ -82,6 +110,25 @@ export function readSettings(testRoot: string): Record<string, unknown> {
 }
 
 export function readSetting(testRoot: string, section: string, key: string): unknown {
+  const persistentKeys = new Set([
+    'defaultOpenPath',
+    'recentPaths',
+    'recentFiles',
+    'workspaceTreeStates',
+    'sidebarWidth',
+    'sidebarVisible',
+    'toolbarVisible',
+    'windowBounds',
+    'windowMaximized',
+    'settingsDialogSize',
+    'session',
+  ]);
+  if (persistentKeys.has(key)) {
+    const state = JSON.parse(
+      fs.readFileSync(path.join(testRoot, 'config', 'state.json'), 'utf8'),
+    ) as Record<string, unknown>;
+    return state[key];
+  }
   return (readSettings(testRoot)[section] as Record<string, unknown>)[key];
 }
 

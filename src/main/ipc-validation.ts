@@ -2,6 +2,7 @@ import * as path from 'node:path';
 import {
   AppSettings,
   DEFAULT_SETTINGS,
+  PersistentAppState,
   WORKSPACE_READ_DEPTH_MAX,
   WORKSPACE_READ_DEPTH_MIN,
 } from './services/app-state';
@@ -401,6 +402,40 @@ export function parseSettingsPatch(value: unknown): Partial<AppSettings> {
     if (!(rawKey in DEFAULT_SETTINGS)) invalidIpcArgument();
     const key = rawKey as keyof AppSettings;
     patch[key] = parseSettingValue(key, rawValue) as never;
+  }
+  return patch;
+}
+
+const PERSISTENT_STATE_KEYS = [
+  'schemaVersion',
+  'defaultOpenPath',
+  'recentPaths',
+  'recentFiles',
+  'workspaceTreeStates',
+  'sidebarWidth',
+  'sidebarVisible',
+  'toolbarVisible',
+  'windowBounds',
+  'windowMaximized',
+  'settingsDialogSize',
+  'session',
+] as const satisfies readonly (keyof PersistentAppState)[];
+
+export function parsePersistentStatePatch(value: unknown): Partial<PersistentAppState> {
+  if (!isRecord(value) || Object.keys(value).length > PERSISTENT_STATE_KEYS.length)
+    invalidIpcArgument();
+  const patch: Partial<PersistentAppState> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (!(PERSISTENT_STATE_KEYS as readonly string[]).includes(key)) invalidIpcArgument();
+    if (key === 'schemaVersion') {
+      if (item !== 1) invalidIpcArgument();
+      patch.schemaVersion = 1;
+      continue;
+    }
+    patch[key as Exclude<keyof PersistentAppState, 'schemaVersion'>] = parseSettingValue(
+      key as keyof AppSettings,
+      item,
+    ) as never;
   }
   return patch;
 }

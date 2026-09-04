@@ -74,7 +74,7 @@ Node's `path` implementation varies with the host platform, and some `fs` operat
 
 ### Implemented and Linux-tested
 
-- Platform data/config/recovery paths are centralized in `src/main/app-paths.ts`.
+- Platform data/config/recovery paths are centralized in `src/main/app-paths.ts`; every platform uses the resolved configuration directory for both preference-only `config.toml` and versioned `state.json`.
 - Workspace directory links that resolve through `realpath` are classified as inside or outside the workspace. Internal links use the target's workspace depth; outside and cyclic links remain visible but cannot expand.
 - Workspace monitoring does not follow symlinks and uses the selected 7–12 directory depth.
 - `.lnk` and Finder alias are intentionally treated as ordinary files. Supporting them requires a separate product and security decision.

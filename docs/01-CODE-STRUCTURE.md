@@ -13,7 +13,7 @@
 
 **定位：** 本地优先（local-first）的 Markdown 桌面编辑器，基于 Electron 承载浏览器窗口，Vditor 3.11.3 提供 Markdown 编辑与渲染核心能力。
 
-**核心功能：** 多标签页 Markdown 编辑、三种编辑模式（IR/SV/WYSIWYG）、分栏预览、文件树侧栏、文档大纲、查找替换、图片插入与压缩、HTML/PDF 导出、TOML 配置持久化、三语国际化（英/简/繁）。
+**核心功能：** 多标签页 Markdown 编辑、三种编辑模式（IR/SV/WYSIWYG）、分栏预览、文件树侧栏、文档大纲、查找替换、图片插入与压缩、HTML/PDF 导出、TOML 偏好与版本化 JSON 状态持久化、三语国际化（英/简/繁）。
 
 **开发阶段：** 0.2.5 渲染层架构重构中。批次 1-4 已完成 TypeScript 组合入口、基础 UI、AppStore、标签表现与文档安全命令边界。批次 5 Pt.2 正在迁移编辑器域：Vditor runtime、自动保存 timer、recovery runtime、共享 toolbar、Split View、outline、find、图片 runtime 和激活协调已分别有明确 controller；DocumentController 与 shell 仍保留文件 identity、保存交易、外部变化分类和 recovery 安全动作的语义所有权。0.2.0 的文件安全、恢复、watcher、冲突与跨平台边界继续作为不可改变的行为基线。精确的批次状态、手测、首轮失败及重跑证据只记录在 [`docs/15-0.2.5-EXECUTION-TRACKER.md`](15-0.2.5-EXECUTION-TRACKER.md)，本地图不维护实时测试总数。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
 
@@ -92,8 +92,9 @@ Vditor-Electron/
 │   │       ├── file-watch-service.ts # 工作区结构与打开文档内容 watcher 的所有权、稳定读取和清理
 │   │       ├── safe-file-writer.ts # 同目录临时文件、同步、替换与失败清理
 │   │       ├── recovery-store.ts  # 私有恢复快照的校验、原子写入、读取与清理
-│   │       ├── settings-store.ts  # TOML 配置读写、加载校验、深合并、原子保存
-│   │       └── app-state.ts       # AppSettings 接口与默认值定义
+│   │       ├── settings-store.ts  # 仅用户偏好的 TOML 读写、加载校验、深合并、原子保存
+│   │       ├── persistent-state-store.ts # 版本化 state.json 白名单、迁移、串行原子写入
+│   │       └── app-state.ts       # AppSettings / PersistentAppState 接口与默认值定义
 ├── src/renderer/                  # 渲染进程（TypeScript 入口 + legacy JavaScript + HTML + CSS）
 │   ├── main.ts                    # 应用组合入口（esbuild bundle → dist/renderer/main.js）
 │   ├── pure-functions.ts          # 纯函数入口（esbuild bundle → dist/renderer/pure-functions.js）
@@ -198,7 +199,8 @@ Vditor-Electron/
    └── 成功 → queueOpenFiles(extractOpenFilePaths(process.argv))
 2. app.whenReady() 回调：
    ├── registerAppProtocol(localResourcePolicy, allowSvgImages) // 注册 app:// 与受控 local-file://
-   ├── new SettingsStore(configDir)       // 加载 TOML 配置
+   ├── new SettingsStore(configDir)       // 加载 preference-only TOML 配置
+   ├── new PersistentStateStore(configDir, legacyState) // 加载 state.json，首次迁移旧 TOML 状态
    ├── registerRemoteSvgImagePolicy()     // 主窗口 HTTP(S) SVG 图片请求策略
    ├── new RecoveryStore(recoveryDir)      // 初始化私有恢复快照存储
    ├── new FileManagerService()           // 初始化文件服务
@@ -220,7 +222,7 @@ Vditor-Electron/
 
 ```typescript
 const options: BrowserWindowConstructorOptions = {
-  width: normalBounds.width,       // 从 settings.windowBounds 恢复，默认 1200px
+  width: normalBounds.width,       // 从 state.windowBounds 恢复，默认 1200px
   height: normalBounds.height,     // 默认 800px
   minWidth: 760,
   minHeight: 520,
@@ -239,7 +241,7 @@ const options: BrowserWindowConstructorOptions = {
 };
 ```
 
-**窗口尺寸持久化：** 每次 `move` 和 `resize` 事件（带 400ms 防抖）调用 `persistNormalWindowBounds()`，保存到 `settingsStore`。最大化状态通过 `windowMaximized` 字段恢复。Linux 平台的 unmaximize 后有额外的延迟位置修复（100/350/800/1400ms）。
+**窗口尺寸持久化：** 每次 `move` 和 `resize` 事件（带 400ms 防抖）调用 `persistNormalWindowBounds()`，保存到 `PersistentStateStore` 的 `state.json`。最大化状态通过同一 state 的 `windowMaximized` 字段恢复。Linux 平台的 unmaximize 后有额外的延迟位置修复（100/350/800/1400ms）。
 
 ### 4.3 应用生命周期
 
@@ -371,9 +373,12 @@ webPreferences: {
 | -------------------------------- | ---------------------------- | ------------ | ---------------------- | ------------------------------------------- |
 | `platform`                       | _(process.platform)_         | 属性         | —                      | `string`                                    |
 | `getSettings()`                  | `app:getSettings`            | invoke       | 无                     | `AppSettings`                               |
+| `getPersistentState()`           | `app:getPersistentState`     | invoke       | 无                     | `PersistentAppState`                        |
 | `getDefaultSettings()`           | `app:getDefaultSettings`     | invoke       | 无                     | `AppSettings`                               |
 | `saveSettings(settings)`         | `app:saveSettings`           | invoke       | `Partial<AppSettings>` | `AppSettings`                               |
 | `resetSettings()`                | `app:resetSettings`          | invoke       | 无                     | `AppSettings`                               |
+| `savePersistentState(state)`     | `app:savePersistentState`    | invoke       | 白名单状态 patch       | `PersistentAppState`                        |
+| `clearPersistentState()`         | `app:clearPersistentState`   | invoke       | 无                     | `PersistentAppState`                        |
 | `getSettingsPath()`              | `app:getSettingsPath`        | invoke       | 无                     | `string`                                    |
 | `getSettingsDisplayPath()`       | `app:getSettingsDisplayPath` | invoke       | 无                     | `string`                                    |
 | `getSystemLocale()`              | `app:getSystemLocale`        | invoke       | 无                     | `string`                                    |
@@ -482,7 +487,7 @@ const state = {
 
 ```
 
-持久化策略：每次标签/工作区状态变更调用 `persistSession()`，由 `documents/session-snapshot.ts` 显式投影为仅含 schema v1、workspace、active path 和可恢复文件路径的 settings-session DTO；读取时先验证并兼容无版本的旧配置，再通过 `saveSettings({ session })` 写入 TOML。恢复快照由 `documents/recovery-snapshot.ts` 按 RecoveryStore schema v2 投影并在恢复 IPC 返回后验证，DOM、Vditor、observer、timer 和队列句柄均不能跨这两个边界。
+持久化策略：`config.toml` 仅写入明确用户偏好；每次标签/工作区状态变更调用 `persistSession()`，由 `documents/session-snapshot.ts` 显式投影为仅含 schema v1、workspace、active path 和可恢复文件路径的 state DTO，并经 `savePersistentState({ session })` 写入同目录的 `state.json`。recent、确认过的 dialog directory、工作区展开及窗口/UI 恢复也走该受限 state API。主进程只接受白名单字段，损坏或未知版本 JSON 使用默认 state 并记录诊断；首次升级迁移旧 TOML，已有有效 state 不会被覆盖。恢复快照仍由 `documents/recovery-snapshot.ts` 按 RecoveryStore schema v2 投影，DOM、Vditor、observer、timer 和队列句柄均不能跨任一持久化边界。
 
 恢复运行时状态属于各 `tab`：`fileIdentity`、`contentRevision`、`pendingEditorContent`、`recoverySnapshotId`、防抖 timer、`recoveryRevision` 与 `recoveryState`。外部变更状态包含 `expectedSavedContent`、`externalConflict`、`externalChangeIgnored` 和独立的 `externalFileState`（`deleted` / `reappeared` / `unreadable`）；文件不可访问时冻结的重建剪贴板正文也只存在运行时标签状态中。文档 watcher 的实际句柄、timer 和 binding generation 仅由主进程 `FileWatchService` 持有。它们都不进入 session；脏标签只将经过白名单投影的恢复快照经 `app:saveRecovery` 写入私有目录。
 

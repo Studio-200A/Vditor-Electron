@@ -31,6 +31,7 @@ import {
   parseOptionalBoolean,
   parseOptionalInteger,
   parseOptionalText,
+  parsePersistentStatePatch,
   parseResourceRootPaths,
   parseSettingsPatch,
   parseText,
@@ -42,6 +43,7 @@ import { FileManagerService } from './services/file-manager';
 import { FileWatchService } from './services/file-watch-service';
 import { RecoveryStore } from './services/recovery-store';
 import { SettingsStore } from './services/settings-store';
+import { PersistentStateStore } from './services/persistent-state-store';
 import { WindowCloseConfirmation } from './services/window-close-confirmation';
 import {
   AppSettings,
@@ -53,6 +55,7 @@ import {
 let mainWindow: BrowserWindow | null = null;
 let fileManager: FileManagerService;
 let settingsStore: SettingsStore;
+let persistentStateStore: PersistentStateStore;
 let recoveryStore: RecoveryStore;
 let fileWatchService: FileWatchService;
 const windowCloseConfirmation = new WindowCloseConfirmation<BrowserWindow>();
@@ -80,6 +83,12 @@ function isWindowMaximized(): boolean {
   return windowMaximizedState;
 }
 
+function saveWindowState(state: Parameters<PersistentStateStore['updateOrThrow']>[0]): void {
+  void persistentStateStore.updateOrThrow(state).catch((error: unknown) => {
+    console.error('Failed to persist window state:', error);
+  });
+}
+
 function registerRemoteSvgImagePolicy(): void {
   const shouldBlock = (
     details: Pick<
@@ -105,7 +114,7 @@ function registerRemoteSvgImagePolicy(): void {
 
 function persistWindowMaximized(maximized: boolean): void {
   windowMaximizedState = maximized;
-  settingsStore.set('windowMaximized', maximized);
+  saveWindowState({ windowMaximized: maximized });
 }
 
 function persistNormalWindowBounds(): void {
@@ -114,11 +123,13 @@ function persistNormalWindowBounds(): void {
   const bounds = mainWindow.getBounds();
   if (isMaximizedLikeBounds(bounds)) return;
   boundsBeforeMaximize = { ...bounds };
-  settingsStore.set('windowBounds', {
-    x: bounds.x,
-    y: bounds.y,
-    width: bounds.width,
-    height: bounds.height,
+  saveWindowState({
+    windowBounds: {
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+    },
   });
 }
 
@@ -136,8 +147,10 @@ function isMaximizedLikeBounds(bounds: Electron.Rectangle): boolean {
   return aligned && bounds.width >= workArea.width * 0.9 && bounds.height >= workArea.height * 0.9;
 }
 
-function initialWindowBounds(settings: AppSettings): Electron.Rectangle {
-  const saved = settings.windowBounds;
+function initialWindowBounds(
+  state: import('./services/app-state').PersistentAppState,
+): Electron.Rectangle {
+  const saved = state.windowBounds;
   const display =
     saved.x !== undefined && saved.y !== undefined
       ? screen.getDisplayMatching({
@@ -166,7 +179,7 @@ function initialWindowBounds(settings: AppSettings): Electron.Rectangle {
     width,
     height,
   };
-  settingsStore.set('windowBounds', repaired);
+  saveWindowState({ windowBounds: repaired });
   return repaired;
 }
 
@@ -199,7 +212,7 @@ function toggleWindowMaximized(): void {
     mainWindow.unmaximize();
   } else {
     boundsBeforeMaximize = mainWindow.getBounds();
-    settingsStore.set('windowBounds', { ...boundsBeforeMaximize });
+    saveWindowState({ windowBounds: { ...boundsBeforeMaximize } });
     persistWindowMaximized(true);
     mainWindow.maximize();
   }
@@ -273,7 +286,8 @@ function updateApplicationMenu(settings = settingsStore.getAll()): void {
 
 function createWindow(): void {
   const settings = settingsStore.getAll();
-  const normalBounds = initialWindowBounds(settings);
+  const persistentState = persistentStateStore.getAll();
+  const normalBounds = initialWindowBounds(persistentState);
   const options: Electron.BrowserWindowConstructorOptions = {
     width: normalBounds.width,
     height: normalBounds.height,
@@ -312,9 +326,9 @@ function createWindow(): void {
     event.preventDefault();
     if (settingsStore.get('devToolsEnabled')) createdWindow.webContents.toggleDevTools();
   });
-  windowMaximizedState = settings.windowMaximized;
+  windowMaximizedState = persistentState.windowMaximized;
   boundsBeforeMaximize = { ...normalBounds };
-  if (settings.windowMaximized) mainWindow.maximize();
+  if (persistentState.windowMaximized) mainWindow.maximize();
   mainWindow.once('ready-to-show', () => mainWindow?.show());
   mainWindow.on('enter-full-screen', () => send(IPC_CHANNELS.windowFullscreenChanged, true));
   mainWindow.on('leave-full-screen', () => send(IPC_CHANNELS.windowFullscreenChanged, false));
@@ -333,7 +347,7 @@ function createWindow(): void {
   mainWindow.on('close', (event) => {
     if (!mainWindow) return;
     if (!windowMaximizedState) persistNormalWindowBounds();
-    settingsStore.set('windowMaximized', windowMaximizedState);
+    saveWindowState({ windowMaximized: windowMaximizedState });
     if (!windowCloseConfirmation.isConfirmed(mainWindow)) {
       event.preventDefault();
       send(IPC_CHANNELS.appRequestClose);
@@ -587,6 +601,10 @@ function registerIpcHandlers(): void {
     requireArgumentCount(args, 0);
     return settingsStore.getAll();
   });
+  handleTrusted(IPC_CHANNELS.appGetPersistentState, (_event, ...args) => {
+    requireArgumentCount(args, 0);
+    return persistentStateStore.getAll();
+  });
   handleTrusted(IPC_CHANNELS.appGetRecoveryCandidates, (_event, ...args) => {
     requireArgumentCount(args, 0);
     return recoveryStore.listCandidates();
@@ -639,6 +657,14 @@ function registerIpcHandlers(): void {
     const settings = settingsStore.reset();
     updateApplicationMenu(settings);
     return settings;
+  });
+  handleTrusted(IPC_CHANNELS.appSavePersistentState, async (_event, ...args) => {
+    requireArgumentCount(args, 1);
+    return persistentStateStore.updateOrThrow(parsePersistentStatePatch(args[0]));
+  });
+  handleTrusted(IPC_CHANNELS.appClearPersistentState, async (_event, ...args) => {
+    requireArgumentCount(args, 0);
+    return persistentStateStore.clearOrThrow();
   });
   handleTrusted(IPC_CHANNELS.appGetSettingsPath, (_event, ...args) => {
     requireArgumentCount(args, 0);
@@ -789,6 +815,15 @@ if (!ownsSingleInstanceLock) {
   void app.whenReady().then(() => {
     registerAppProtocol(localResourcePolicy, () => settingsStore.get('allowSvgImages'));
     settingsStore = new SettingsStore(applicationPaths.configDir);
+    persistentStateStore = new PersistentStateStore(
+      applicationPaths.configDir,
+      settingsStore.getLegacyPersistentState(),
+    );
+    if (
+      persistentStateStore.migratedFromToml &&
+      !settingsStore.removeLegacyPersistentStateFromDisk()
+    )
+      console.error('Failed to remove migrated application state from config.toml.');
     registerRemoteSvgImagePolicy();
     recoveryStore = new RecoveryStore(applicationPaths.recoveryDir);
     fileManager = new FileManagerService();

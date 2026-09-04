@@ -19,6 +19,19 @@
   const getPreferredCodeThemeImpl = PURE.getPreferredCodeTheme;
   const AppStore = PURE.AppStore;
   const store = new AppStore();
+  const PERSISTENT_STATE_KEYS = new Set([
+    'defaultOpenPath',
+    'recentPaths',
+    'recentFiles',
+    'workspaceTreeStates',
+    'sidebarWidth',
+    'sidebarVisible',
+    'toolbarVisible',
+    'windowBounds',
+    'windowMaximized',
+    'settingsDialogSize',
+    'session',
+  ]);
   const state = {
     get tabs() {
       return store.getState().documents;
@@ -1576,8 +1589,26 @@
   }
 
   function queueSettingsSave(settings, { throwOnFailure = false } = {}) {
+    const persistentState = {};
+    const preferences = {};
+    Object.entries(settings).forEach(([key, value]) => {
+      if (PERSISTENT_STATE_KEYS.has(key)) persistentState[key] = value;
+      else preferences[key] = value;
+    });
     const previous = settingsSaveQueue;
-    const queued = previous.catch(() => undefined).then(() => window.appAPI.saveSettings(settings));
+    const queued = previous
+      .catch(() => undefined)
+      .then(async () => {
+        if (Object.keys(preferences).length) {
+          const savedPreferences = await window.appAPI.saveSettings(preferences);
+          state.settings = { ...state.settings, ...savedPreferences };
+        }
+        if (Object.keys(persistentState).length) {
+          const savedState = await window.appAPI.savePersistentState(persistentState);
+          state.settings = { ...state.settings, ...savedState };
+        }
+        return state.settings;
+      });
     settingsSaveQueue = queued.catch(() => undefined);
     if (throwOnFailure) return queued;
     return queued.catch((error) => {
@@ -4015,7 +4046,10 @@
     $('#settingsForm [name="workspaceReadDepth"]').oninput = syncWorkspaceReadDepthValue;
     $('#resetSettings').onclick = async () => {
       if (await confirmDialog({ message: t('confirm.resetSettings') })) {
-        await settingsController.reset(() => window.appAPI.resetSettings());
+        await settingsController.reset(async () => ({
+          ...(await window.appAPI.resetSettings()),
+          ...(await window.appAPI.getPersistentState()),
+        }));
         applyLocale(state.settings.locale);
         openSettings();
       }
@@ -4342,6 +4376,10 @@
       await window.appAPI.getSettings(),
       await window.appAPI.getDefaultSettings(),
     );
+    state.settings = {
+      ...state.settings,
+      ...(await window.appAPI.getPersistentState()),
+    };
     applyLocale(state.settings.locale);
     setupEvents();
     const minimumSidebarWidth = sidebarMinimumWidth();
