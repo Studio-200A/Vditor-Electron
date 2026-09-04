@@ -10,6 +10,10 @@ export interface RecoveryRuntimeControllerOptions<TTab extends RecoveryRuntimeTa
   readonly saveSnapshot: (tab: TTab) => Promise<void>;
   readonly discardSnapshot: (id: string) => Promise<void>;
   readonly onFailure: (operation: 'save' | 'discard') => void;
+  readonly updateRecoveryState?: (
+    tab: TTab,
+    updates: Pick<TTab, 'recoverySnapshotId' | 'recoveryRevision'>,
+  ) => void;
   readonly delay?: number;
 }
 
@@ -20,6 +24,9 @@ export class RecoveryRuntimeController<TTab extends RecoveryRuntimeTab> {
   private readonly discardSnapshot: (id: string) => Promise<void>;
   private readonly onFailure: (operation: 'save' | 'discard') => void;
   private readonly delay: number;
+  private readonly updateRecoveryState: NonNullable<
+    RecoveryRuntimeControllerOptions<TTab>['updateRecoveryState']
+  >;
   private readonly timers = new Map<TTab, number>();
   private readonly operations = new Map<TTab, Promise<void>>();
 
@@ -29,6 +36,8 @@ export class RecoveryRuntimeController<TTab extends RecoveryRuntimeTab> {
     this.discardSnapshot = options.discardSnapshot;
     this.onFailure = options.onFailure;
     this.delay = options.delay ?? 500;
+    this.updateRecoveryState =
+      options.updateRecoveryState ?? ((tab, updates) => Object.assign(tab, updates));
   }
 
   schedule(tab: TTab): void {
@@ -40,7 +49,11 @@ export class RecoveryRuntimeController<TTab extends RecoveryRuntimeTab> {
     if (!tab.modified) return;
 
     const id = this.ensureSnapshotId(tab);
-    const revision = ++tab.recoveryRevision;
+    const revision = tab.recoveryRevision + 1;
+    this.updateRecoveryState(tab, {
+      recoverySnapshotId: tab.recoverySnapshotId,
+      recoveryRevision: revision,
+    });
     const timer = window.setTimeout(() => {
       if (this.timers.get(tab) !== timer) return;
       this.timers.delete(tab);
@@ -56,16 +69,32 @@ export class RecoveryRuntimeController<TTab extends RecoveryRuntimeTab> {
   async discard(tab: TTab): Promise<void> {
     this.cancelTimer(tab);
     const id = tab.recoverySnapshotId;
-    tab.recoverySnapshotId = null;
-    tab.recoveryRevision++;
+    this.updateRecoveryState(tab, {
+      recoverySnapshotId: id,
+      recoveryRevision: tab.recoveryRevision + 1,
+    });
     if (!id) return;
-    await this.queue(tab, 'discard', () => this.discardSnapshot(id));
+    let discarded = false;
+    await this.queue(tab, 'discard', async () => {
+      await this.discardSnapshot(id);
+      discarded = true;
+    });
+    if (discarded && tab.recoverySnapshotId === id) {
+      this.updateRecoveryState(tab, {
+        recoverySnapshotId: null,
+        recoveryRevision: tab.recoveryRevision + 1,
+      });
+    }
   }
 
   async preserveUnavailable(tab: TTab): Promise<void> {
     this.cancelTimer(tab);
     const id = this.ensureSnapshotId(tab);
-    const revision = ++tab.recoveryRevision;
+    const revision = tab.recoveryRevision + 1;
+    this.updateRecoveryState(tab, {
+      recoverySnapshotId: tab.recoverySnapshotId,
+      recoveryRevision: revision,
+    });
     await this.queue(tab, 'save', async () => {
       if (tab.recoverySnapshotId !== id || tab.recoveryRevision !== revision) return;
       await this.saveSnapshot(tab);
@@ -74,7 +103,10 @@ export class RecoveryRuntimeController<TTab extends RecoveryRuntimeTab> {
 
   private ensureSnapshotId(tab: TTab): string {
     const id = tab.recoverySnapshotId || this.createSnapshotId();
-    tab.recoverySnapshotId = id;
+    this.updateRecoveryState(tab, {
+      recoverySnapshotId: id,
+      recoveryRevision: tab.recoveryRevision,
+    });
     return id;
   }
 

@@ -33,6 +33,7 @@ describe('EditorController', () => {
   let preserveTableScrollDuringInput: ReturnType<typeof vi.fn>;
   let scrollContainers: ReturnType<typeof vi.fn>;
   let installScrollEnhancement: ReturnType<typeof vi.fn>;
+  let updateDocument: ReturnType<typeof vi.fn>;
   let controller: EditorController<TestTab>;
   let tab: TestTab;
 
@@ -48,6 +49,9 @@ describe('EditorController', () => {
     preserveTableScrollDuringInput = vi.fn(() => vi.fn());
     scrollContainers = vi.fn(() => []);
     installScrollEnhancement = vi.fn(() => null);
+    updateDocument = vi.fn((target: TestTab, updates: Partial<TestTab>) =>
+      Object.assign(target, updates),
+    );
     class FakeVditor {
       constructor(_host: HTMLElement, options: { after?: () => void }) {
         queueMicrotask(() => options.after?.());
@@ -99,6 +103,7 @@ describe('EditorController', () => {
       onModeChanged: () => {},
       readContent: () => editorContent,
       readRuntimeContent,
+      updateDocument,
     });
   });
 
@@ -457,6 +462,11 @@ describe('EditorController', () => {
       modified: true,
       pendingEditorContent: false,
     });
+    expect(updateDocument).toHaveBeenCalledWith(tab, {
+      content: 'recovered',
+      savedContent: 'saved',
+      modified: true,
+    });
   });
 
   it('keeps an already dirty tab dirty when initialization reports current content', () => {
@@ -478,6 +488,11 @@ describe('EditorController', () => {
       modified: true,
       contentRevision: 1,
       pendingEditorContent: false,
+    });
+    expect(updateDocument).toHaveBeenCalledWith(tab, {
+      content: 'changed',
+      modified: true,
+      contentRevision: 1,
     });
   });
 });

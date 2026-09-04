@@ -14,6 +14,37 @@ export type Subscriber<T> = (state: T) => void;
 export type Unsubscribe = () => void;
 export type Selector<T, R> = (state: T) => R;
 
+function selectorSnapshot(value: unknown, depth = 3): unknown {
+  if (!value || typeof value !== 'object' || depth === 0) return value;
+  if (Array.isArray(value)) return value.map((entry) => selectorSnapshot(entry, depth - 1));
+  if (value instanceof Set) return [...value].map((entry) => selectorSnapshot(entry, depth - 1));
+  if (value instanceof Map)
+    return [...value.entries()].map(([key, entry]) => [
+      selectorSnapshot(key, depth - 1),
+      selectorSnapshot(entry, depth - 1),
+    ]);
+  if (Object.getPrototypeOf(value) !== Object.prototype) return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
+      key,
+      selectorSnapshot(entry, depth - 1),
+    ]),
+  );
+}
+
+function selectorValueChanged(previous: unknown, current: unknown): boolean {
+  if (Object.is(previous, current)) return false;
+  if (!previous || typeof previous !== 'object' || !current || typeof current !== 'object')
+    return true;
+  const previousSnapshot = previous as Record<string, unknown>;
+  const currentSnapshot = current as Record<string, unknown>;
+  const keys = Object.keys(previousSnapshot);
+  return (
+    keys.length !== Object.keys(currentSnapshot).length ||
+    keys.some((key) => selectorValueChanged(previousSnapshot[key], currentSnapshot[key]))
+  );
+}
+
 export class AppStore {
   private _state: AppState;
   private _subscribers = new Set<Subscriber<AppState>>();
@@ -49,11 +80,11 @@ export class AppStore {
     selector: Selector<AppState, R>,
     subscriber: (value: R) => void,
   ): Unsubscribe {
-    let previousValue = selector(this._state);
+    let previousSnapshot = selectorSnapshot(selector(this._state));
     const unsubscribe = this.subscribe((state) => {
       const newValue = selector(state);
-      if (newValue !== previousValue) {
-        previousValue = newValue;
+      if (selectorValueChanged(previousSnapshot, selectorSnapshot(newValue))) {
+        previousSnapshot = selectorSnapshot(newValue);
         subscriber(newValue);
       }
     });
@@ -117,7 +148,13 @@ export class AppStore {
   updateDocument(id: string, updates: Partial<DocumentState>): void {
     this._updateState((state) => ({
       ...state,
-      documents: state.documents.map((doc) => (doc.id === id ? { ...doc, ...updates } : doc)),
+      documents: state.documents.map((doc) => {
+        if (doc.id !== id) return doc;
+        // Controllers can retain a tab reference across awaited file operations.
+        // Preserve that identity while keeping all document mutations on this API.
+        Object.assign(doc, updates);
+        return doc;
+      }),
     }));
   }
 
@@ -125,7 +162,7 @@ export class AppStore {
     this._updateState((state) => ({
       ...state,
       documents: state.documents.map((doc) =>
-        doc.id === id ? { ...doc, runtime: { ...doc.runtime, ...updates } } : doc,
+        doc.id === id ? (Object.assign(doc.runtime, updates), doc) : doc,
       ),
     }));
   }
@@ -228,7 +265,7 @@ export class AppStore {
   setRecoveryState(id: string, recoveryState: RecoveryState | null): void {
     this.updateDocument(id, {
       recoveryState,
-      recoverySnapshotId: recoveryState?.snapshotId ?? null,
+      ...(recoveryState === null ? { recoverySnapshotId: null } : {}),
     });
   }
 

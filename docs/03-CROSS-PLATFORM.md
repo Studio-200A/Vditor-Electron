@@ -10,6 +10,8 @@ The version-independent file-safety contract, including the remaining non-atomic
 
 The current development and validation platform is Linux. Cross-platform work is scheduled to begin after the 0.2.5 renderer refactor and after Windows/macOS test environments are available. Until then, Linux tests may prevent platform-agnostic regressions, but must not be reported as Windows or macOS validation.
 
+Linux full-suite evidence for the in-progress 0.2.5 renderer review is retained in [`docs/15-0.2.5-EXECUTION-TRACKER.md`](15-0.2.5-EXECUTION-TRACKER.md). A Linux retry after a resource-sensitive Electron E2E result is still Linux-only evidence and does not satisfy any Windows or macOS row.
+
 ## 2. Product and architecture boundaries
 
 - Keep ordinary Markdown files as the source of truth. Do not introduce a platform-specific document format.

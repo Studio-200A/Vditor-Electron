@@ -86,4 +86,13 @@ describe('RecoveryRuntimeController', () => {
 
     expect(onFailure).toHaveBeenCalledWith('discard');
   });
+
+  it('keeps the recovery snapshot ID when discard fails so cleanup can retry', async () => {
+    discardSnapshot.mockRejectedValueOnce(new Error('disk unavailable'));
+    tab.recoverySnapshotId = 'recovery-1';
+
+    await controller.discard(tab);
+
+    expect(tab.recoverySnapshotId).toBe('recovery-1');
+  });
 });

@@ -1,4 +1,4 @@
-import type { DocumentState, RecoveryState } from './types.js';
+import type { DocumentState } from './types.js';
 
 export const SESSION_SNAPSHOT_VERSION = 1;
 export const RECOVERY_SNAPSHOT_VERSION = 1;
@@ -33,11 +33,7 @@ export interface RecoveryDocumentSnapshot {
   readonly baseDir: string;
   readonly mode: string;
   readonly recoverySnapshotId: string;
-  readonly recoveryState: {
-    readonly snapshotId: string;
-    readonly content: string;
-    readonly mode: string;
-  } | null;
+  readonly recoveryState: DocumentState['recoveryState'];
 }
 
 export function toSessionSnapshot(document: DocumentState): SessionDocumentSnapshot {
@@ -60,7 +56,7 @@ export function toSessionSnapshot(document: DocumentState): SessionDocumentSnaps
 }
 
 export function toRecoverySnapshot(document: DocumentState): RecoveryDocumentSnapshot | null {
-  if (!document.recoveryState) return null;
+  if (!document.recoveryState || !document.recoverySnapshotId) return null;
 
   return {
     version: RECOVERY_SNAPSHOT_VERSION,
@@ -74,7 +70,7 @@ export function toRecoverySnapshot(document: DocumentState): RecoveryDocumentSna
     lineEnding: document.lineEnding,
     baseDir: document.baseDir,
     mode: document.mode,
-    recoverySnapshotId: document.recoverySnapshotId!,
+    recoverySnapshotId: document.recoverySnapshotId,
     recoveryState: document.recoveryState,
   };
 }
@@ -105,13 +101,9 @@ export function restoreDocumentState(snapshot: unknown): Omit<DocumentState, 'ru
   };
 }
 
-export function restoreRecoveryState(snapshot: unknown): RecoveryState | null {
+export function restoreRecoveryState(snapshot: unknown): DocumentState['recoveryState'] {
   if (!isRecoveryDocumentSnapshot(snapshot) || !snapshot.recoveryState) return null;
-  return {
-    snapshotId: snapshot.recoveryState.snapshotId,
-    content: snapshot.recoveryState.content,
-    mode: snapshot.recoveryState.mode as DocumentState['mode'],
-  };
+  return snapshot.recoveryState;
 }
 
 function isSessionDocumentSnapshot(value: unknown): value is SessionDocumentSnapshot {
@@ -152,10 +144,8 @@ function isRecoveryDocumentSnapshot(value: unknown): value is RecoveryDocumentSn
     typeof snapshot.mode === 'string' &&
     typeof snapshot.recoverySnapshotId === 'string' &&
     (snapshot.recoveryState === null ||
-      (typeof snapshot.recoveryState === 'object' &&
-        snapshot.recoveryState !== null &&
-        typeof (snapshot.recoveryState as Record<string, unknown>).snapshotId === 'string' &&
-        typeof (snapshot.recoveryState as Record<string, unknown>).content === 'string' &&
-        typeof (snapshot.recoveryState as Record<string, unknown>).mode === 'string'))
+      snapshot.recoveryState === 'unchanged' ||
+      snapshot.recoveryState === 'changed' ||
+      snapshot.recoveryState === 'unavailable')
   );
 }

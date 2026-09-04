@@ -135,4 +135,48 @@ describe('DocumentController integration', () => {
     expect(store.getDocument(document!.id)).toBeUndefined();
     expect(lifecycle.slice(-4)).toEqual(['confirmed', 'runtime-disposed', 'removed', 'closed']);
   });
+
+  it('keeps a runtime separate while document commands update the opened tab', async () => {
+    const store = new AppStore();
+    const controller = new DocumentController<DocumentTab>({
+      fileBridge: {
+        fileIdentity: async () => 'identity:/notes/note.md',
+        readFile: async () => ({ content: '# Disk', encoding: 'utf-8' }),
+        dirname: async () => '/notes',
+      },
+      findDocumentByIdentity: (identity) =>
+        store.getState().documents.find((doc) => doc.fileIdentity === identity) || null,
+      createDocument: (input) => {
+        const document = createDocument({ id: 'document-1', ...input });
+        store.addDocument(document);
+        return document;
+      },
+      prepareDocumentResources: async () => undefined,
+      onExistingDocument: () => undefined,
+      onDocumentOpened: async () => undefined,
+      onDocumentNotCreated: async () => undefined,
+      readDocumentContent: (document) => document.runtime.vditor?.getValue() || document.content,
+    });
+
+    const document = await controller.openPath('/notes/note.md');
+    expect(document).not.toBeNull();
+    expect(Object.keys(document!)).not.toContain('vditor');
+    expect(document!.runtime.vditor).not.toBeNull();
+
+    store.setExternalConflict(document!.id, {
+      kind: 'modified',
+      path: '/notes/note.md',
+      identity: document!.fileIdentity,
+      content: '# Changed',
+      encoding: 'utf-8',
+      detectedAt: 1,
+      version: 1,
+    });
+    store.updateContent(document!.id, '# Local');
+
+    expect(store.getDocument(document!.id)).toBe(document);
+    expect(document!.runtime.host).toBeInstanceOf(HTMLElement);
+    expect(document!.externalConflict?.identity).toBe('identity:/notes/note.md');
+    expect(document!.modified).toBe(true);
+  });
 });

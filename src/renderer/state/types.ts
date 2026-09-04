@@ -34,14 +34,27 @@ export interface DocumentState extends DocumentIdentity {
 }
 
 export interface ExternalConflict {
-  readonly diskContent: string;
+  readonly kind: 'modified';
+  readonly path: string;
+  /** Canonical identity captured when the conflicting disk version was read. */
+  readonly identity: string | null;
+  readonly content?: string;
+  readonly encoding: string;
   readonly detectedAt: number;
+  readonly version: number;
 }
 
 export interface ExternalFileState {
-  readonly exists: boolean;
-  readonly readable: boolean;
-  readonly content: string | null;
+  readonly kind: 'deleted' | 'reappeared' | 'unreadable';
+  readonly path: string;
+  /** Canonical identity captured when this unavailable state was classified. */
+  readonly identity: string | null;
+  readonly content?: string;
+  readonly encoding?: string;
+  readonly error?: string;
+  readonly clipboardContent?: string;
+  readonly detectedAt: number;
+  readonly version: number;
 }
 
 export interface EditorRuntime {
@@ -52,6 +65,7 @@ export interface EditorRuntime {
   readonly lineObserver: MutationObserver | null;
   readonly lineResizeObserver: ResizeObserver | null;
   readonly lineNumberFrame: number | null;
+  readonly whitespaceFrame: number | null;
   readonly bottomSpacerObserver: ResizeObserver | null;
   readonly outlineCollapsed: Set<string>;
   readonly resourceObserver: MutationObserver | null;
@@ -80,11 +94,7 @@ export interface DocumentTab extends DocumentState {
   readonly runtime: EditorRuntime;
 }
 
-export interface RecoveryState {
-  readonly snapshotId: string;
-  readonly content: string;
-  readonly mode: EditMode;
-}
+export type RecoveryState = 'unchanged' | 'changed' | 'unavailable';
 
 export interface AppState {
   readonly documents: readonly DocumentTab[];

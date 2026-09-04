@@ -84,6 +84,43 @@ describe('ImageController', () => {
     expect(onError).toHaveBeenCalledWith('Image save failed: disk full');
   });
 
+  it('does not insert into an editor replaced while upload I/O is pending', async () => {
+    let releaseWrite!: () => void;
+    const original = { insertMD: vi.fn() };
+    const replacement = { insertMD: vi.fn() };
+    const tab = { filePath: '/notes/note.md', vditor: original };
+    const controller = new ImageController({
+      fileBridge: {
+        dirname: vi.fn().mockResolvedValue('/notes'),
+        writeBinaryFile: vi.fn(
+          () =>
+            new Promise<void>((resolve) => {
+              releaseWrite = resolve;
+            }),
+        ),
+        relative: vi.fn().mockResolvedValue('assets/photo.png'),
+      },
+      getAssetsDirectory: () => './assets',
+      getMaximumWidth: () => 0,
+      getQuality: () => 0.8,
+      onError: vi.fn(),
+      formatError: String,
+      saveFirstMessage: () => 'Save first',
+      uploadFailedMessage: String,
+    });
+
+    const upload = controller.upload(tab, [
+      new File(['image'], 'photo.png', { type: 'image/png' }),
+    ]);
+    await vi.waitFor(() => expect(releaseWrite).toBeTypeOf('function'));
+    tab.vditor = replacement;
+    releaseWrite();
+
+    await expect(upload).resolves.toBeNull();
+    expect(original.insertMD).not.toHaveBeenCalled();
+    expect(replacement.insertMD).not.toHaveBeenCalled();
+  });
+
   it('sanitizes only unsafe filename characters', () => {
     expect(sanitizeImageFileName('photo name?.png')).toBe('photo_name_.png');
   });

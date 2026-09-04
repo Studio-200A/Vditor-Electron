@@ -11,7 +11,24 @@ export interface DocumentCloseCallbacks<TDocument extends ClosableDocument> {
 
 /** Coordinates the required close order without owning editor runtime details. */
 export class DocumentCloseController {
+  private readonly closing = new Map<string, Promise<boolean>>();
+
   async close<TDocument extends ClosableDocument>(
+    document: TDocument,
+    callbacks: DocumentCloseCallbacks<TDocument>,
+  ): Promise<boolean> {
+    const existing = this.closing.get(document.id);
+    if (existing) return existing;
+    const closing = this.closeOnce(document, callbacks);
+    this.closing.set(document.id, closing);
+    try {
+      return await closing;
+    } finally {
+      if (this.closing.get(document.id) === closing) this.closing.delete(document.id);
+    }
+  }
+
+  private async closeOnce<TDocument extends ClosableDocument>(
     document: TDocument,
     callbacks: DocumentCloseCallbacks<TDocument>,
   ): Promise<boolean> {

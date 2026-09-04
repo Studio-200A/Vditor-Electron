@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AppStore } from '../../../../src/renderer/state/store';
 import type {
   DocumentTab,
@@ -170,6 +170,7 @@ describe('AppStore', () => {
 
       const updated = store.getDocument(doc.id);
       expect(updated?.title).toBe('Updated Title');
+      expect(updated).toBe(doc);
     });
 
     it('should update document runtime', () => {
@@ -179,6 +180,34 @@ describe('AppStore', () => {
 
       const updated = store.getDocument(doc.id);
       expect(updated?.runtime.ready).toBe(true);
+      expect(updated?.runtime).toBe(doc.runtime);
+    });
+
+    it('keeps external file-safety decisions on the canonical document', () => {
+      const doc = createMockDocumentTab();
+      store.addDocument(doc);
+      store.setExternalConflict(doc.id, {
+        kind: 'modified',
+        path: '/test/file.md',
+        identity: 'file:///test/file.md',
+        content: '# Changed',
+        encoding: 'utf-8',
+        detectedAt: 1,
+        version: 2,
+      });
+      store.setExternalFileState(doc.id, {
+        kind: 'reappeared',
+        path: '/test/file.md',
+        identity: 'file:///test/file.md',
+        content: '# Reappeared',
+        encoding: 'utf-8',
+        detectedAt: 2,
+        version: 3,
+      });
+
+      expect(store.getDocument(doc.id)).toBe(doc);
+      expect(doc.externalConflict?.identity).toBe('file:///test/file.md');
+      expect(doc.externalFileState?.identity).toBe('file:///test/file.md');
     });
 
     it('should get active document', () => {
@@ -321,7 +350,15 @@ describe('AppStore', () => {
     it('should set external conflict', () => {
       const doc = createMockDocumentTab();
       store.addDocument(doc);
-      const conflict = { diskContent: 'disk content', detectedAt: Date.now() };
+      const conflict = {
+        kind: 'modified' as const,
+        path: '/test/file.md',
+        identity: 'file:///test/file.md',
+        content: 'disk content',
+        encoding: 'utf-8',
+        detectedAt: Date.now(),
+        version: 1,
+      };
       store.setExternalConflict(doc.id, conflict);
 
       const updated = store.getDocument(doc.id);
@@ -331,7 +368,15 @@ describe('AppStore', () => {
     it('should clear external conflict', () => {
       const doc = createMockDocumentTab();
       store.addDocument(doc);
-      const conflict = { diskContent: 'disk content', detectedAt: Date.now() };
+      const conflict = {
+        kind: 'modified' as const,
+        path: '/test/file.md',
+        identity: 'file:///test/file.md',
+        content: 'disk content',
+        encoding: 'utf-8',
+        detectedAt: Date.now(),
+        version: 1,
+      };
       store.setExternalConflict(doc.id, conflict);
       store.setExternalConflict(doc.id, null);
 
@@ -342,7 +387,15 @@ describe('AppStore', () => {
     it('should set external file state', () => {
       const doc = createMockDocumentTab();
       store.addDocument(doc);
-      const fileState = { exists: true, readable: true, content: 'content' };
+      const fileState = {
+        kind: 'reappeared' as const,
+        path: '/test/file.md',
+        identity: 'file:///test/file.md',
+        content: 'content',
+        encoding: 'utf-8',
+        detectedAt: Date.now(),
+        version: 1,
+      };
       store.setExternalFileState(doc.id, fileState);
 
       const updated = store.getDocument(doc.id);
@@ -363,11 +416,8 @@ describe('AppStore', () => {
     it('should set recovery state', () => {
       const doc = createMockDocumentTab();
       store.addDocument(doc);
-      const recoveryState = {
-        snapshotId: 'snapshot-1',
-        content: 'recovery content',
-        mode: 'wysiwyg' as const,
-      };
+      const recoveryState = 'unchanged' as const;
+      store.updateDocument(doc.id, { recoverySnapshotId: 'snapshot-1' });
       store.setRecoveryState(doc.id, recoveryState);
 
       const updated = store.getDocument(doc.id);
@@ -378,11 +428,8 @@ describe('AppStore', () => {
     it('should clear recovery state', () => {
       const doc = createMockDocumentTab();
       store.addDocument(doc);
-      const recoveryState = {
-        snapshotId: 'snapshot-1',
-        content: 'recovery content',
-        mode: 'wysiwyg' as const,
-      };
+      const recoveryState = 'changed' as const;
+      store.updateDocument(doc.id, { recoverySnapshotId: 'snapshot-1' });
       store.setRecoveryState(doc.id, recoveryState);
       store.setRecoveryState(doc.id, null);
 
@@ -454,6 +501,49 @@ describe('AppStore', () => {
 
       store.updateLocale('zh_Hans');
       expect(callCount).toBe(0);
+    });
+
+    it('notifies a document selector when a canonical document changes in place', () => {
+      const document = createMockDocumentTab();
+      store.addDocument(document);
+      let selectedTitle = '';
+      store.subscribeWithSelector(
+        (state) => state.documents.find((item) => item.id === document.id) ?? null,
+        (selected) => {
+          selectedTitle = selected?.title ?? '';
+        },
+      );
+
+      store.updateDocument(document.id, { title: 'Renamed' });
+
+      expect(selectedTitle).toBe('Renamed');
+    });
+
+    it('notifies a document selector when its runtime changes in place', () => {
+      const document = createMockDocumentTab();
+      store.addDocument(document);
+      let isReady = false;
+      store.subscribeWithSelector(
+        (state) => state.documents.find((item) => item.id === document.id) ?? null,
+        (selected) => {
+          isReady = selected?.runtime.ready ?? false;
+        },
+      );
+
+      store.updateDocumentRuntime(document.id, { ready: true });
+
+      expect(isReady).toBe(true);
+    });
+
+    it('notifies a document collection selector when nested runtime changes', () => {
+      const document = createMockDocumentTab();
+      store.addDocument(document);
+      const subscriber = vi.fn();
+      store.subscribeWithSelector((state) => state.documents, subscriber);
+
+      store.updateDocumentRuntime(document.id, { ready: true });
+
+      expect(subscriber).toHaveBeenCalledWith([document]);
     });
   });
 });

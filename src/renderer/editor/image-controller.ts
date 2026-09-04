@@ -51,12 +51,14 @@ export class ImageController {
   }
 
   async upload(tab: ImageUploadTab, files: File[]): Promise<string | null> {
-    if (!tab.filePath) {
+    const filePath = tab.filePath;
+    const vditor = tab.vditor;
+    if (!filePath) {
       this.onError(this.saveFirstMessage());
       return 'Document must be saved first';
     }
     try {
-      const documentDirectory = await this.fileBridge.dirname(tab.filePath);
+      const documentDirectory = await this.fileBridge.dirname(filePath);
       const assetsDirectory = this.getAssetsDirectory().replace(/^\.\//, '');
       const destinationDirectory = `${documentDirectory}/${assetsDirectory}`;
       const markdown: string[] = [];
@@ -67,7 +69,10 @@ export class ImageController {
         const relativePath = await this.fileBridge.relative(documentDirectory, destination);
         markdown.push(`![${file.name}](${encodeURI(relativePath)})`);
       }
-      tab.vditor?.insertMD(markdown.join('\n'));
+      // Upload I/O can outlive an editor rebuild or Save As. Never insert into
+      // a replacement editor after writing assets for the original document.
+      if (tab.filePath !== filePath || tab.vditor !== vditor) return null;
+      vditor?.insertMD(markdown.join('\n'));
       return null;
     } catch (error) {
       const message = this.formatError(error);

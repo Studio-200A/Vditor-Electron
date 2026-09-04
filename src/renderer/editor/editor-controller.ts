@@ -24,6 +24,11 @@ export interface EditorRuntimeTab {
   editorRuntimeGeneration?: number;
 }
 
+type EditorDocumentUpdates = Pick<
+  EditorRuntimeTab,
+  'content' | 'savedContent' | 'modified' | 'contentRevision' | 'mode'
+>;
+
 export interface EditorControllerOptions<TTab extends EditorRuntimeTab> {
   readonly adapter: {
     editorScrollContainer(host: HTMLElement, mode: EditMode): HTMLElement | null;
@@ -44,6 +49,8 @@ export interface EditorControllerOptions<TTab extends EditorRuntimeTab> {
   readonly onModeChanged: (tab: TTab) => void;
   readonly readContent: (tab: TTab) => string;
   readonly readRuntimeContent: (tab: TTab) => string;
+  /** Document fields remain owned by DocumentController/AppStore, not editor runtime. */
+  readonly updateDocument?: (tab: TTab, updates: Partial<EditorDocumentUpdates>) => void;
 }
 
 export interface DocumentAnchorNavigationHandlers {
@@ -73,6 +80,7 @@ export class EditorController<TTab extends EditorRuntimeTab> {
   private readonly onModeChanged: EditorControllerOptions<TTab>['onModeChanged'];
   private readonly readContent: EditorControllerOptions<TTab>['readContent'];
   private readonly readRuntimeContent: EditorControllerOptions<TTab>['readRuntimeContent'];
+  private readonly updateDocument: NonNullable<EditorControllerOptions<TTab>['updateDocument']>;
   private readonly autoSaveTimers = new Map<TTab, number>();
   private readonly modeTransitionFrames = new Map<TTab, number>();
   private readonly modeTransitionTimers = new Map<TTab, number>();
@@ -95,6 +103,7 @@ export class EditorController<TTab extends EditorRuntimeTab> {
     this.onModeChanged = options.onModeChanged;
     this.readContent = options.readContent;
     this.readRuntimeContent = options.readRuntimeContent;
+    this.updateDocument = options.updateDocument ?? ((tab, updates) => Object.assign(tab, updates));
   }
 
   ensure(tab: TTab): boolean {
@@ -135,12 +144,12 @@ export class EditorController<TTab extends EditorRuntimeTab> {
 
   applyInput(tab: TTab, value: string): boolean {
     const changed = value !== tab.content;
-    if (changed) {
-      tab.pendingEditorContent = false;
-      tab.contentRevision++;
-    }
-    tab.content = value;
-    tab.modified = value !== tab.savedContent;
+    if (changed) tab.pendingEditorContent = false;
+    this.updateDocument(tab, {
+      content: value,
+      modified: value !== tab.savedContent,
+      ...(changed ? { contentRevision: tab.contentRevision + 1 } : {}),
+    });
     return changed;
   }
 
@@ -194,7 +203,7 @@ export class EditorController<TTab extends EditorRuntimeTab> {
   }
 
   applyRecoveryContent(tab: TTab, content: string): boolean {
-    tab.content = content;
+    this.updateDocument(tab, { content });
     if (!tab.ready) {
       tab.pendingEditorContent = true;
       return false;
@@ -263,11 +272,14 @@ export class EditorController<TTab extends EditorRuntimeTab> {
     const wasPendingModified = tab.modified;
     if (hadPendingContent) this.applyPendingContent(tab);
     const content = this.currentContent(tab);
-    tab.content = content;
-    tab.savedContent =
+    const nextSavedContent =
       wasModified || hadPendingContent || wasPendingModified ? savedContent : content;
-    tab.modified =
-      wasModified || wasPendingModified || hadPendingContent || content !== tab.savedContent;
+    this.updateDocument(tab, {
+      content,
+      savedContent: nextSavedContent,
+      modified:
+        wasModified || wasPendingModified || hadPendingContent || content !== nextSavedContent,
+    });
   }
 
   captureScroll(tab: TTab): EditorScrollPosition | null {
@@ -327,7 +339,7 @@ export class EditorController<TTab extends EditorRuntimeTab> {
   synchronizeMode(tab: TTab): void {
     const mode = tab.vditor?.getCurrentMode();
     if (!mode) return;
-    tab.mode = mode;
+    this.updateDocument(tab, { mode });
     this.onModeChanged(tab);
   }
 
@@ -397,14 +409,14 @@ export class EditorController<TTab extends EditorRuntimeTab> {
   }
 
   rebuild(tab: TTab, mode?: EditMode): Error | null {
-    if (tab.vditor) tab.content = this.readRuntimeContent(tab);
+    if (tab.vditor) this.updateDocument(tab, { content: this.readRuntimeContent(tab) });
     tab.ready = false;
     tab.host.dataset.editorReady = 'false';
     this.onAvailabilityChanged(tab);
     tab.pendingScroll = this.captureScroll(tab);
     const rebuildError = this.destroy(tab, false);
     tab.host.innerHTML = '';
-    if (mode) tab.mode = mode;
+    if (mode) this.updateDocument(tab, { mode });
     if (tab.id === this.getActiveDocumentId() && !this.ensure(tab)) {
       return new Error('The editor could not be initialized after the document changed.');
     }

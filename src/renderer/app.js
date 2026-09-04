@@ -43,6 +43,44 @@
     workspaceRevision: 0,
     toolbarWrapHeight: 0,
   };
+  const RUNTIME_TAB_FIELDS = [
+    'vditor',
+    'ready',
+    'host',
+    'toolbar',
+    'lineObserver',
+    'lineResizeObserver',
+    'lineNumberFrame',
+    'whitespaceFrame',
+    'bottomSpacerObserver',
+    'outlineCollapsed',
+    'resourceObserver',
+    'splitResizer',
+    'pendingAnchor',
+    'pendingEditorContent',
+    'pendingScroll',
+    'editorRuntimeGeneration',
+  ];
+
+  // Legacy collaborators still receive a tab-shaped object during the migration.
+  // Keep runtime handles non-enumerable and physically separate from document data.
+  function linkRuntimeTab(tab) {
+    for (const field of RUNTIME_TAB_FIELDS) {
+      Object.defineProperty(tab, field, {
+        configurable: true,
+        enumerable: false,
+        get: () => tab.runtime[field],
+        set: (value) => {
+          tab.runtime[field] = value;
+        },
+      });
+    }
+    return tab;
+  }
+
+  function updateTabDocument(tab, updates) {
+    store.updateDocument(tab.id, updates);
+  }
   const tabController = new PURE.TabController({
     tabBar: $('#tabBar'),
     addTab: $('#addTab'),
@@ -98,19 +136,19 @@
     onExistingDocument: (tab, { filePath, fileIdentity, activate, pendingAnchor }) => {
       if (!tab.filePath) {
         editorController.beginExternalChange(tab);
-        tab.externalConflict = {
+        store.setExternalConflict(tab.id, {
           kind: 'modified',
           path: filePath,
           identity: fileIdentity,
           detectedAt: Date.now(),
           version: (tab.externalConflict?.version || 0) + 1,
-        };
-        tab.externalChangeIgnored = false;
+        });
+        store.setExternalChangeIgnored(tab.id, false);
         renderTabs();
       }
       if (activate) switchTab(tab.id);
       if (pendingAnchor) {
-        tab.pendingAnchor = pendingAnchor;
+        store.updateDocumentRuntime(tab.id, { pendingAnchor });
         requestAnimationFrame(() => scrollToPendingAnchor(tab));
       }
     },
@@ -170,6 +208,7 @@
         return tab.content;
       }
     },
+    updateDocument: (tab, updates) => updateTabDocument(tab, updates),
   });
   const recoveryRuntimeController = new PURE.RecoveryRuntimeController({
     createSnapshotId: recoveryId,
@@ -182,6 +221,7 @@
           : 'Unable to remove a recovery snapshot.',
       );
     },
+    updateRecoveryState: (tab, updates) => updateTabDocument(tab, updates),
   });
   const recoveryBannerController = new PURE.RecoveryBannerController({
     banner: $('#recoveryBanner'),
@@ -593,7 +633,7 @@
     const filePath = tab.filePath;
     const fileIdentity = await window.fileAPI.fileIdentity(filePath);
     if (!state.tabs.includes(tab) || tab.filePath !== filePath) return;
-    tab.fileIdentity = fileIdentity;
+    updateTabDocument(tab, { fileIdentity });
     await window.fileAPI.watchDocument(filePath, true);
     if (!state.tabs.includes(tab) || tab.filePath !== filePath || tab.fileIdentity !== fileIdentity)
       await releaseDocumentWatch(filePath, fileIdentity);
@@ -1036,7 +1076,8 @@
           if (editorController.isCurrent(tab, runtimeGeneration)) onEditorInput(tab, value);
         },
         blur: (value) => {
-          if (editorController.isCurrent(tab, runtimeGeneration)) tab.content = value;
+          if (editorController.isCurrent(tab, runtimeGeneration))
+            updateTabDocument(tab, { content: value });
         },
       },
     });
@@ -1234,7 +1275,7 @@
       (filePath
         ? fileName(filePath)
         : t('tab.untitled', { number: untitledNumber ?? ++state.untitledCounters.file }));
-    const tab = {
+    const tab = linkRuntimeTab({
       id: uid(),
       filePath,
       title,
@@ -1247,24 +1288,30 @@
       expectedSavedContent,
       fileIdentity,
       contentRevision: 0,
-      pendingEditorContent: false,
       mode,
-      vditor: null,
-      ready: false,
-      toolbar: null,
-      bottomSpacerObserver: null,
-      outlineCollapsed: new Set(),
-      resourceObserver: null,
-      splitResizer: null,
       externalConflict: null,
       externalChangeIgnored: false,
       externalFileState: null,
       recoverySnapshotId,
       recoveryState,
       recoveryRevision: 0,
-      pendingAnchor,
-      host: document.createElement('section'),
-    };
+      runtime: {
+        vditor: null,
+        ready: false,
+        host: document.createElement('section'),
+        toolbar: null,
+        lineObserver: null,
+        lineResizeObserver: null,
+        lineNumberFrame: null,
+        whitespaceFrame: null,
+        bottomSpacerObserver: null,
+        outlineCollapsed: new Set(),
+        resourceObserver: null,
+        splitResizer: null,
+        pendingAnchor,
+        pendingEditorContent: false,
+      },
+    });
     tab.host.className = 'editor-host';
     tab.host.dataset.tabId = tab.id;
     tab.host.addEventListener(
@@ -1486,7 +1533,9 @@
     queuedIdentity = null,
     selectedDestination = null,
   ) {
-    if (!tab) return false;
+    // A queued autosave can begin after close removed this document from the
+    // Store. Do not let that stale transaction write its former file binding.
+    if (!tab || !state.tabs.includes(tab)) return false;
     const previousPath = tab.filePath;
     const previousIdentity = tab.fileIdentity;
     let destination = selectedDestination || tab.filePath;
@@ -1546,7 +1595,7 @@
         const diskVersion = await window.fileAPI.readFile(destination);
         if (diskVersion.content !== tab.expectedSavedContent) {
           editorController.beginExternalChange(tab);
-          tab.externalConflict = {
+          store.setExternalConflict(tab.id, {
             kind: 'modified',
             path: destination,
             identity: destinationIdentity,
@@ -1554,8 +1603,8 @@
             encoding: diskVersion.encoding || tab.encoding,
             detectedAt: Date.now(),
             version: (tab.externalConflict?.version || 0) + 1,
-          };
-          tab.externalChangeIgnored = false;
+          });
+          store.setExternalChangeIgnored(tab.id, false);
           renderTabs();
           if (tab.id === state.activeId) updateActiveUI();
           return false;
@@ -1595,6 +1644,12 @@
       } else {
         expectedAbsent = true;
       }
+      if (
+        !state.tabs.includes(tab) ||
+        tab.filePath !== previousPath ||
+        tab.fileIdentity !== previousIdentity
+      )
+        return false;
       const result = await window.fileAPI.writeDocument(
         destination,
         diskContent,
@@ -1612,7 +1667,7 @@
       if (result.error) {
         if (result.error === 'external-change') {
           editorController.beginExternalChange(tab);
-          tab.externalConflict = {
+          store.setExternalConflict(tab.id, {
             kind: 'modified',
             path: destination,
             identity: destinationIdentity,
@@ -1620,8 +1675,8 @@
             encoding: result.encoding || tab.encoding,
             detectedAt: Date.now(),
             version: (tab.externalConflict?.version || 0) + 1,
-          };
-          tab.externalChangeIgnored = false;
+          });
+          store.setExternalChangeIgnored(tab.id, false);
           renderTabs();
           if (tab.id === state.activeId) updateActiveUI();
           return false;
@@ -1645,23 +1700,25 @@
       )
         return false;
       const previousBaseDir = tab.baseDir;
-      tab.filePath = destination;
-      tab.fileIdentity = destinationIdentity;
-      tab.title = fileName(destination);
-      tab.savedContent = content;
-      tab.expectedSavedContent = result.expectedContent;
-      tab.modified = tab.content !== tab.savedContent;
-      tab.externalConflict = null;
-      tab.externalChangeIgnored = false;
-      tab.externalFileState = null;
-      tab.encoding = 'utf-8';
-      tab.baseDir = destinationBaseDir;
+      updateTabDocument(tab, {
+        filePath: destination,
+        fileIdentity: destinationIdentity,
+        title: fileName(destination),
+        savedContent: content,
+        expectedSavedContent: result.expectedContent,
+        modified: tab.content !== content,
+        externalConflict: null,
+        externalChangeIgnored: false,
+        externalFileState: null,
+        encoding: 'utf-8',
+        baseDir: destinationBaseDir,
+      });
       await releaseDocumentWatch(previousPath, previousIdentity);
       await syncLocalResourceRoots();
       await watchTabDocument(tab);
       if (tab.contentRevision === savedRevision) {
         await discardRecoverySnapshot(tab);
-        tab.recoveryState = null;
+        store.setRecoveryState(tab.id, null);
       } else {
         scheduleRecoverySnapshot(tab);
       }
@@ -1706,6 +1763,7 @@
 
   async function preserveUnavailableTab(tab, kind, filePath, error) {
     const fileIdentity = tab.fileIdentity || (await window.fileAPI.fileIdentity(filePath));
+    if (!state.tabs.includes(tab)) return;
     if (
       tab.externalFileState?.kind === kind &&
       tab.externalFileState.identity === fileIdentity &&
@@ -1715,11 +1773,11 @@
     editorController.beginExternalChange(tab);
     const editorContent = currentContent(tab);
     if (editorContent.trim() || tab.modified || (!tab.content && !tab.savedContent))
-      tab.content = editorContent;
-    else if (!tab.content.trim()) tab.content = tab.savedContent;
-    tab.externalConflict = null;
-    tab.externalChangeIgnored = false;
-    tab.externalFileState = {
+      updateTabDocument(tab, { content: editorContent });
+    else if (!tab.content.trim()) updateTabDocument(tab, { content: tab.savedContent });
+    store.setExternalConflict(tab.id, null);
+    store.setExternalChangeIgnored(tab.id, false);
+    store.setExternalFileState(tab.id, {
       kind,
       path: filePath,
       identity: fileIdentity,
@@ -1727,7 +1785,7 @@
       clipboardContent: tab.externalFileState?.clipboardContent ?? recreateClipboardSnapshot(tab),
       detectedAt: Date.now(),
       version: (tab.externalFileState?.version || 0) + 1,
-    };
+    });
     await recoveryRuntimeController.preserveUnavailable(tab);
   }
 
@@ -1739,9 +1797,14 @@
       return;
     }
     for (const candidate of candidates) {
-      const snapshot = PURE.fromRecoveryStoreSnapshot(
-        await window.appAPI.restoreRecovery(candidate.id),
-      );
+      let snapshot;
+      try {
+        snapshot = PURE.fromRecoveryStoreSnapshot(
+          await window.appAPI.restoreRecovery(candidate.id),
+        );
+      } catch (_) {
+        continue;
+      }
       if (!snapshot) continue;
       if (snapshot.diskState !== 'unchanged') {
         const baseDir = snapshot.filePath ? await window.fileAPI.dirname(snapshot.filePath) : '';
@@ -1765,16 +1828,18 @@
           ? state.tabs.find((tab) => tab.fileIdentity === fileIdentity)
           : null;
         if (existing) {
-          existing.content = snapshot.content;
-          existing.savedContent = snapshot.savedContent;
-          existing.expectedSavedContent = snapshot.expectedSavedContent;
-          existing.modified = existing.content !== existing.savedContent;
-          existing.encoding = snapshot.encoding;
-          existing.lineEnding = snapshot.lineEnding;
-          existing.mode = snapshot.mode;
-          existing.recoverySnapshotId = snapshot.id;
-          existing.recoveryState = 'unchanged';
-          existing.contentRevision++;
+          updateTabDocument(existing, {
+            content: snapshot.content,
+            savedContent: snapshot.savedContent,
+            expectedSavedContent: snapshot.expectedSavedContent,
+            modified: snapshot.content !== snapshot.savedContent,
+            encoding: snapshot.encoding,
+            lineEnding: snapshot.lineEnding,
+            mode: snapshot.mode,
+            recoverySnapshotId: snapshot.id,
+            recoveryState: 'unchanged',
+            contentRevision: existing.contentRevision + 1,
+          });
           editorController.applyRecoveryContent(existing, snapshot.content);
           continue;
         }
@@ -1826,13 +1891,13 @@
     recoveryBannerController.render(tab);
     $('#saveFile').disabled = false;
     const content = currentContent(tab);
-    tab.content = content;
+    updateTabDocument(tab, { content });
     document.title = `${tab.title} - Vditor Desktop`;
     $('#windowTitle').textContent = `${tab.title} - Vditor Desktop`;
     $('#statusPath').textContent = tab.filePath || '';
     $('#statusPath').title = tab.filePath || '';
     const currentMode = tab.vditor && tab.ready ? tab.vditor.getCurrentMode() : tab.mode;
-    tab.mode = currentMode;
+    updateTabDocument(tab, { mode: currentMode });
     $('#statusMode').textContent = currentMode.toUpperCase();
     $('#statusMode').setAttribute('aria-disabled', 'false');
     syncStatusModeMenu(currentMode);
@@ -1993,14 +2058,16 @@
       (item) => item === tab || (conflictIdentity && tabFileIdentity(item) === conflictIdentity),
     );
     for (const item of relatedTabs) {
-      item.content = conflict.content;
-      item.savedContent = conflict.content;
-      item.expectedSavedContent = conflict.content;
-      item.modified = false;
-      item.encoding = conflict.encoding || item.encoding;
-      item.lineEnding = detectLineEnding(conflict.content);
-      item.externalConflict = null;
-      item.externalChangeIgnored = false;
+      updateTabDocument(item, {
+        content: conflict.content,
+        savedContent: conflict.content,
+        expectedSavedContent: conflict.content,
+        modified: false,
+        encoding: conflict.encoding || item.encoding,
+        lineEnding: detectLineEnding(conflict.content),
+        externalConflict: null,
+        externalChangeIgnored: false,
+      });
       editorController.applyExternalContent(item, conflict.content);
     }
     renderTabs();
@@ -2039,15 +2106,17 @@
       (item) => item === tab || (fileStateIdentity && tabFileIdentity(item) === fileStateIdentity),
     );
     for (const item of relatedTabs) {
-      item.content = fileState.content;
-      item.savedContent = fileState.content;
-      item.expectedSavedContent = fileState.content;
-      item.modified = false;
-      item.encoding = fileState.encoding || item.encoding;
-      item.lineEnding = detectLineEnding(fileState.content);
-      item.externalConflict = null;
-      item.externalChangeIgnored = false;
-      item.externalFileState = null;
+      updateTabDocument(item, {
+        content: fileState.content,
+        savedContent: fileState.content,
+        expectedSavedContent: fileState.content,
+        modified: false,
+        encoding: fileState.encoding || item.encoding,
+        lineEnding: detectLineEnding(fileState.content),
+        externalConflict: null,
+        externalChangeIgnored: false,
+        externalFileState: null,
+      });
       editorController.applyExternalContent(item, fileState.content);
       await discardRecoverySnapshot(item);
     }
@@ -2063,16 +2132,18 @@
     const previousPath = tab.filePath;
     const previousIdentity = tab.fileIdentity;
     editorController.cancelAutoSave(tab);
-    tab.filePath = null;
-    tab.fileIdentity = null;
-    tab.baseDir = '';
-    tab.title = t('tab.untitled', { number: ++state.untitledCounters.file });
-    tab.savedContent = '';
-    tab.expectedSavedContent = '';
-    tab.modified = tab.content !== '';
-    tab.externalConflict = null;
-    tab.externalChangeIgnored = false;
-    tab.externalFileState = null;
+    updateTabDocument(tab, {
+      filePath: null,
+      fileIdentity: null,
+      baseDir: '',
+      title: t('tab.untitled', { number: ++state.untitledCounters.file }),
+      savedContent: '',
+      expectedSavedContent: '',
+      modified: tab.content !== '',
+      externalConflict: null,
+      externalChangeIgnored: false,
+      externalFileState: null,
+    });
     await releaseDocumentWatch(previousPath, previousIdentity);
     await syncLocalResourceRoots();
     scheduleRecoverySnapshot(tab);
@@ -2138,7 +2209,7 @@
 
   function ignoreExternalChange(tab) {
     if (!tab?.externalConflict) return;
-    tab.externalChangeIgnored = true;
+    store.setExternalChangeIgnored(tab.id, true);
     renderTabs();
     if (tab.id === state.activeId) updateExternalChangeBanner(tab);
     showMessage(t('external.ignored', { name: tab.title }));
@@ -2585,10 +2656,12 @@
           throw new Error('The rename destination changed before the operation completed.');
         for (const { tab, nextPath, fileIdentity, baseDir } of tabPlans) {
           const previousBaseDir = tab.baseDir;
-          tab.filePath = nextPath;
-          tab.fileIdentity = fileIdentity;
-          tab.title = fileName(nextPath);
-          tab.baseDir = baseDir;
+          updateTabDocument(tab, {
+            filePath: nextPath,
+            fileIdentity,
+            title: fileName(nextPath),
+            baseDir,
+          });
           if (previousBaseDir !== tab.baseDir) editorRebuilds.add(tab);
         }
         state.settings.recentFiles = settingsPlan.recentFiles;
@@ -3229,7 +3302,7 @@
     applyLiveVditorSettings(changedSettings);
     if (shouldRebuildEditors) {
       state.tabs.forEach((tab) => {
-        tab.mode = openModes.get(tab.id) || tab.mode;
+        updateTabDocument(tab, { mode: openModes.get(tab.id) || tab.mode });
         rebuildEditor(tab);
       });
     }
@@ -3531,9 +3604,9 @@
       });
       if (decision === 'reappeared') {
         editorController.beginExternalChange(tab);
-        tab.externalConflict = null;
-        tab.externalChangeIgnored = false;
-        tab.externalFileState = {
+        store.setExternalConflict(tab.id, null);
+        store.setExternalChangeIgnored(tab.id, false);
+        store.setExternalFileState(tab.id, {
           kind: 'reappeared',
           path: change.path,
           identity: documentIdentity,
@@ -3542,28 +3615,32 @@
           clipboardContent: tab.externalFileState.clipboardContent,
           detectedAt: Date.now(),
           version: tab.externalFileState.version + 1,
-        };
+        });
         continue;
       }
       if (decision === 'matches-baseline') {
-        tab.externalConflict = null;
-        tab.externalChangeIgnored = false;
+        store.setExternalConflict(tab.id, null);
+        store.setExternalChangeIgnored(tab.id, false);
         continue;
       }
       if (decision === 'reload-clean-document') {
         if (typeof change.content !== 'string') continue;
-        tab.lineEnding = detectLineEnding(change.content);
-        tab.content = tab.savedContent = tab.expectedSavedContent = change.content;
-        tab.encoding = change.encoding || tab.encoding;
-        tab.externalConflict = null;
-        tab.externalChangeIgnored = false;
+        updateTabDocument(tab, {
+          lineEnding: detectLineEnding(change.content),
+          content: change.content,
+          savedContent: change.content,
+          expectedSavedContent: change.content,
+          encoding: change.encoding || tab.encoding,
+          externalConflict: null,
+          externalChangeIgnored: false,
+        });
         editorController.applyExternalContent(tab, change.content);
         if (tab.id === state.activeId) updateActiveUI();
         showMessage(t('external.reloaded', { name: tab.title }));
         continue;
       }
       editorController.beginExternalChange(tab);
-      tab.externalConflict = {
+      store.setExternalConflict(tab.id, {
         kind: 'modified',
         path: change.path,
         identity: documentIdentity,
@@ -3571,8 +3648,8 @@
         encoding: change.encoding || tab.encoding,
         detectedAt: Date.now(),
         version: (tab.externalConflict?.version || 0) + 1,
-      };
-      tab.externalChangeIgnored = false;
+      });
+      store.setExternalChangeIgnored(tab.id, false);
     }
     renderTabs();
     updateExternalChangeBanner(activeTab());
@@ -4475,6 +4552,7 @@
 
   window.__vditorDesktopLegacyBootstrap = init;
   window.__vditorDesktopLegacyDispose = () => {
+    state.tabs.forEach((tab) => editorController.destroy(tab));
     findController.dispose();
     outlineController.dispose();
     toolbarController.dispose();

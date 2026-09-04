@@ -48,4 +48,29 @@ describe('DocumentCloseController', () => {
     expect(disposeRuntime).not.toHaveBeenCalled();
     expect(removeDocument).not.toHaveBeenCalled();
   });
+
+  it('deduplicates concurrent close requests for one document', async () => {
+    const controller = new DocumentCloseController();
+    let confirm!: (value: boolean) => void;
+    const confirmClose = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          confirm = resolve;
+        }),
+    );
+    const disposeRuntime = vi.fn(async () => {});
+    const removeDocument = vi.fn();
+    const afterClose = vi.fn(async () => {});
+    const callbacks = { confirmClose, disposeRuntime, removeDocument, afterClose };
+
+    const first = controller.close({ id: 'one' }, callbacks);
+    const second = controller.close({ id: 'one' }, callbacks);
+    confirm(true);
+
+    await expect(Promise.all([first, second])).resolves.toEqual([true, true]);
+    expect(confirmClose).toHaveBeenCalledTimes(1);
+    expect(disposeRuntime).toHaveBeenCalledTimes(1);
+    expect(removeDocument).toHaveBeenCalledTimes(1);
+    expect(afterClose).toHaveBeenCalledTimes(1);
+  });
 });

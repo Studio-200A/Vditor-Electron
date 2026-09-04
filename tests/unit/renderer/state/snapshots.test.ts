@@ -81,11 +81,7 @@ describe('snapshots', () => {
     it('should create a recovery snapshot when recovery state exists', () => {
       const doc = createMockDocumentState({
         recoverySnapshotId: 'snapshot-1',
-        recoveryState: {
-          snapshotId: 'snapshot-1',
-          content: 'recovery content',
-          mode: 'wysiwyg',
-        },
+        recoveryState: 'unchanged',
       });
       const snapshot = toRecoverySnapshot(doc);
 
@@ -101,6 +97,12 @@ describe('snapshots', () => {
       const snapshot = toRecoverySnapshot(doc);
 
       expect(snapshot).toBeNull();
+    });
+
+    it('should reject a recovery state without a snapshot identity', () => {
+      const doc = createMockDocumentState({ recoveryState: 'changed' });
+
+      expect(toRecoverySnapshot(doc)).toBeNull();
     });
   });
 
@@ -178,19 +180,12 @@ describe('snapshots', () => {
     it('should restore recovery state from valid recovery snapshot', () => {
       const doc = createMockDocumentState({
         recoverySnapshotId: 'snapshot-1',
-        recoveryState: {
-          snapshotId: 'snapshot-1',
-          content: 'recovery content',
-          mode: 'wysiwyg',
-        },
+        recoveryState: 'changed',
       });
       const snapshot = toRecoverySnapshot(doc);
       const restored = restoreRecoveryState(snapshot);
 
-      expect(restored).not.toBeNull();
-      expect(restored?.snapshotId).toBe('snapshot-1');
-      expect(restored?.content).toBe('recovery content');
-      expect(restored?.mode).toBe('wysiwyg');
+      expect(restored).toBe('changed');
     });
 
     it('should return null for invalid snapshot', () => {
@@ -202,11 +197,7 @@ describe('snapshots', () => {
     it('should return null for snapshot with wrong version', () => {
       const doc = createMockDocumentState({
         recoverySnapshotId: 'snapshot-1',
-        recoveryState: {
-          snapshotId: 'snapshot-1',
-          content: 'recovery content',
-          mode: 'wysiwyg',
-        },
+        recoveryState: 'unchanged',
       });
       const snapshot = toRecoverySnapshot(doc);
       const invalidSnapshot = { ...snapshot, version: 999 };
@@ -217,14 +208,10 @@ describe('snapshots', () => {
     it('should return null for snapshot with invalid recovery state', () => {
       const doc = createMockDocumentState({
         recoverySnapshotId: 'snapshot-1',
-        recoveryState: {
-          snapshotId: 'snapshot-1',
-          content: 'recovery content',
-          mode: 'wysiwyg',
-        },
+        recoveryState: 'unchanged',
       });
       const snapshot = toRecoverySnapshot(doc);
-      const invalidSnapshot = { ...snapshot, recoveryState: { invalid: 'state' } };
+      const invalidSnapshot = { ...snapshot, recoveryState: 'invalid' };
 
       expect(restoreRecoveryState(invalidSnapshot)).toBeNull();
     });
@@ -252,18 +239,12 @@ describe('snapshots', () => {
     it('should preserve recovery state through recovery snapshot round-trip', () => {
       const original = createMockDocumentState({
         recoverySnapshotId: 'snapshot-1',
-        recoveryState: {
-          snapshotId: 'snapshot-1',
-          content: 'recovery content',
-          mode: 'ir',
-        },
+        recoveryState: 'unavailable',
       });
       const snapshot = toRecoverySnapshot(original);
       const restored = restoreRecoveryState(snapshot);
 
-      expect(restored?.snapshotId).toBe(original.recoveryState?.snapshotId);
-      expect(restored?.content).toBe(original.recoveryState?.content);
-      expect(restored?.mode).toBe(original.recoveryState?.mode);
+      expect(restored).toBe(original.recoveryState);
     });
   });
 });
