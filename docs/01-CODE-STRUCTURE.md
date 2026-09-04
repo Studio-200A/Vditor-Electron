@@ -1,8 +1,8 @@
 # Vditor-Electron Code Structure World Map
 
 - **生成时间：** 2026-09-04
-- **基于的工作区：** `dev-0.2.5` 当前工作区实现（批次 8 已完成，批次 9 尚未开始）
-- **文档版本：** v1.19
+- **基于的工作区：** `dev-0.2.5` 当前工作区实现（批次 8、8.1 已完成，批次 9 尚未开始）
+- **文档版本：** v1.20
 - **对应 package.json 版本号：** 0.2.0（开发中 0.2.5）
 
 ---
@@ -15,7 +15,7 @@
 
 **核心功能：** 多标签页 Markdown 编辑、三种编辑模式（IR/SV/WYSIWYG）、分栏预览、文件树侧栏、文档大纲、查找替换、图片插入与压缩、HTML/PDF 导出、TOML 偏好与版本化 JSON 状态持久化、三语国际化（英/简/繁）。
 
-**开发阶段：** 0.2.5 渲染层架构重构中。批次 8 已完成工作区、设置、菜单、窗口和导出域迁移，批次 9 将移除 legacy `app.js` 并收口测试。Vditor runtime、自动保存 timer、recovery runtime、共享 toolbar、Split View、outline、find、图片 runtime 和激活协调均已有明确 controller；DocumentController 与 shell 仍保留文件 identity、保存交易、外部变化分类和 recovery 安全动作的语义所有权。0.2.0 的文件安全、恢复、watcher、冲突与跨平台边界继续作为不可改变的行为基线。精确的批次状态、手测、首轮失败及重跑证据只记录在 [`docs/15-0.2.5-EXECUTION-TRACKER.md`](15-0.2.5-EXECUTION-TRACKER.md)，本地图不维护实时测试总数。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
+**开发阶段：** 0.2.5 渲染层架构重构中。批次 8 已完成工作区、设置、菜单、窗口和导出域迁移；批次 8.1 已校正 Vditor adapter 的完整类型 facade 与防漂移证据；批次 9 将移除 legacy `app.js` 并收口测试。Vditor runtime、自动保存 timer、recovery runtime、共享 toolbar、Split View、outline、find、图片 runtime 和激活协调均已有明确 controller；DocumentController 与 shell 仍保留文件 identity、保存交易、外部变化分类和 recovery 安全动作的语义所有权。0.2.0 的文件安全、恢复、watcher、冲突与跨平台边界继续作为不可改变的行为基线。精确的批次状态、手测、首轮失败及重跑证据只记录在 [`docs/15-0.2.5-EXECUTION-TRACKER.md`](15-0.2.5-EXECUTION-TRACKER.md)，本地图不维护实时测试总数。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
 
 ---
 
@@ -105,7 +105,8 @@ Vditor-Electron/
 │   ├── types/                     # renderer TypeScript 类型声明
 │   │   ├── bridges.d.ts           # window.appAPI / window.fileAPI 类型
 │   │   ├── vditor.d.ts            # Vditor 构造器与选项最小类型
-│   │   ├── adapter.d.ts           # window.VditorDesktopAdapter 接口
+│   │   ├── adapter.d.ts           # 67 个 VditorDesktopAdapter facade 的严格类型契约
+│   │   └── adapter-contract.ts    # 编译期调用契约和运行时导出键 manifest
 │   │   └── locales.d.ts           # window.VditorDesktopLocales 类型
 │   ├── core/                      # renderer 基础模块
 │   │   ├── controller.ts          # Controller 接口（init / dispose）
@@ -644,6 +645,8 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 ### 7.8 Vditor 适配器（`src/renderer/vditor-adapter.js`）
 
 **设计意图：** 将 Vditor 3.11.x 的私有 DOM 选择器和非公开行为集中于此文件，使 `app.js` 仅依赖语义化的适配器 API，降低 Vditor 升级时的审计面。
+
+`src/renderer/types/adapter.d.ts` 是该冻结 facade 的 TypeScript 边界：它逐项声明当前 67 个公开成员的参数、可空性和返回结构，但不描述或导出 selector、Range workaround 等私有实现。`src/renderer/types/adapter-contract.ts` 由 renderer strict typecheck 纳入，覆盖每个公开成员的有效调用及关键无效调用；其中的键 manifest 由 adapter DOM 单测与运行时冻结对象精确比对。修改 adapter 导出表时，必须同时更新这两份类型证据与单测，而 controller 仍只能消费语义 API。
 
 以下为 `window.VditorDesktopAdapter` 冻结对象导出的 API，按职能分组。
 
@@ -1458,6 +1461,7 @@ build:assets:
 | `npm run format:check` | Prettier 格式检查（只检查不修改） |
 | `npm run lint` | ESLint 检查 `src/`、`scripts/`、`tests/`、`*.config.*` |
 | `npm run typecheck` | `tsc --noEmit` 主进程类型检查 |
+| `npm run typecheck:renderer` | `tsc -p tsconfig.renderer.json --noEmit`；strict renderer 类型检查，包含 adapter 调用契约 |
 | `npm run check:vditor` | `scripts/check-vditor-version.js` 校验 package.json / lock / node_modules / 主源码版本一致 |
 | `npm test` | `vitest run` 运行全部单元测试 |
 | `npm run test:watch` | `vitest` 监听模式运行单元测试 |
@@ -1670,7 +1674,7 @@ flowchart TB
 | `tests/unit/window-close-confirmation.test.ts` | `src/main/services/window-close-confirmation.ts` | 关闭确认仅对原窗口有效，替换窗口不能继承确认，以及关闭窗口时的状态清理 |
 | `tests/unit/settings-store.test.ts` | `src/main/services/settings-store.ts`   | 首次加载返回默认值、TOML 部分深合并与默认值、未知字段丢弃、`set` 持久化（含 TOML 段结构验证）、`update` 多字段快照（含 `workspaceTreeStates` 数组和 `workspaceReadDepth` 边界）、设置对话框尺寸持久化（`window.settingsDialog`）、`getAll` 返回克隆副本、`reset` 重置内存和磁盘                                                                                                                                                                                                                                                               |
 | `tests/unit/recovery-store.test.ts` | `src/main/services/recovery-store.ts` | 私有目录/文件权限、候选元数据不含正文、原子写入与显式清理、损坏/未知 schema/超限快照移除，以及 `unchanged` / `changed` / `unavailable` 三种磁盘状态 |
-| `tests/unit/vditor-adapter.test.ts` | `src/renderer/vditor-adapter.js`        | 冻结的 selectors 对象、`validateHost` 成功（toolbar 通过 `mountedToolbar` 参数提供）、代码主题亮/暗分界点（`ant-design` 前为 dark 组）、DOM 漂移检测（缺少 source 节点时 `valid: false`）、SV divider 创建与 pane 语义可见性、列表 `marker`/`padding` 解析、动态尾部留白写入全部 Vditor 表面、SVG 开关热更新的图片原始来源与缓存隔离、hash anchor 到标题索引（IR 内部链接 + 元素 id + slug）、原生大纲 snapshot、标题间普通块时的准确目标节点及 SV preview 外层滚动容器、跨多 span 文本节点的匹配与选区                                                                                                                                                                                                   |
+| `tests/unit/vditor-adapter.test.ts` | `src/renderer/vditor-adapter.js` 与 adapter 类型 manifest | 冻结的 selectors 对象、运行时 67 个导出键与声明 manifest 的精确一致性、`validateHost` 成功（toolbar 通过 `mountedToolbar` 参数提供）、代码主题亮/暗分界点（`ant-design` 前为 dark 组）、DOM 漂移检测（缺少 source 节点时 `valid: false`）、SV divider 创建与 pane 语义可见性、列表 `marker`/`padding` 解析、动态尾部留白写入全部 Vditor 表面、SVG 开关热更新的图片原始来源与缓存隔离、hash anchor 到标题索引（IR 内部链接 + 元素 id + slug）、原生大纲 snapshot、标题间普通块时的准确目标节点及 SV preview 外层滚动容器、跨多 span 文本节点的匹配与选区 |
 | `tests/unit/renderer-shell.test.ts` | 渲染器壳（HTML/CSS/JS/preload）静态结构 | 标题栏 / 菜单 / 窗口控件 DOM；en/zh_Hans/zh_Hant 键完整性对等；Linux 发布脚本；自动隐藏滚动条样式；第二实例文件转发；确认对话框（未保存变更可拖动、无调整尺寸手柄）；设置对话框 8 方向调整手柄；空标签恢复；查找替换控件带 SVG；文件树无 draggable；折叠/展开/中间省略；链接目录斜体下划线与 SVG 资产；设置面板分类；关于面板；UI/编辑器/预览缩放；状态栏三态主题控件与无旧 checkbox；CSP img-src/connect-src；大纲无标题态；Monokai Pro Light / Dark 主题；亮/暗代码主题分离；字体子分组；工作区头部；编辑文本宽度范围；无过时占位符/工具栏设置项；适配器脚本加载顺序；设置路径页脚/重置当前页 |
 | `tests/unit/renderer/editor-controller.test.ts`、`editor-options.test.ts`、`editor-runtime-coordinator.test.ts` | 编辑器实例、构造选项与 tab 激活协调 | generation、幂等 destroy、rebuild 正文/滚动恢复、auto-save cleanup、pending content、constructor-only 设置、快速切换的 stale rAF 拒绝与 toolbar hand-off |
 | `tests/unit/renderer/split-view-controller.test.ts`、`toolbar-controller.test.ts`、`outline-controller.test.ts`、`find-controller.test.ts` | Split View、共享工具栏、大纲与查找 UI | divider/行号/缩进、observer/listener/timer cleanup、toolbar owner 交接、outline stale refresh、find reveal 与窗口快捷键 |

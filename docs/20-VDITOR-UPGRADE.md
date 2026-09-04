@@ -6,8 +6,9 @@ Vditor Desktop 不修改 `node_modules/vditor` 的源码，但工具栏合并、
 
 - 公开 API 和初始化选项位于 `src/renderer/app.js`。
 - JavaScript 使用的非公开 DOM 选择器和结构判断集中在 `src/renderer/vditor-adapter.js`。
+- `src/renderer/types/adapter.d.ts` 是冻结 `window.VditorDesktopAdapter` facade 的严格类型边界；`src/renderer/types/adapter-contract.ts` 覆盖全部公开成员的编译期调用，并提供给单测比对的导出键 manifest。升级若增删或改签名，必须在同一改动中同步 runtime facade、声明、manifest 和契约测试；不得用宽泛类型或 overload 掩盖差异。
 - Vditor 外观覆盖仍集中在 `src/renderer/styles/app.css` 的 Vditor integration 区段，它是升级时的第二检查面。
-- `tests/unit/vditor-adapter.test.ts` 验证适配层自身。
+- `tests/unit/vditor-adapter.test.ts` 验证适配层自身，并将运行时冻结对象的 67 个导出键与类型 manifest 精确比对。
 - Electron E2E 中的 `Vditor DOM integration contract` 验证真实 Vditor 构建产物。
 - Vditor 3.11.3 的模式切换仍会操作内部 `outline` 工具项；adapter 保留该项作为不可见占位，并通过应用专用 data attribute 和 CSS `display: none !important` 隐藏入口。升级时须验证三种模式切换正常，且原生 outline 控制不出现。
 - 同一私有切换路径会在 SV 中隐藏并禁用 `outdent` / `indent`；adapter 为它们设置应用专用稳定占位标记，CSS 保持按钮可见且应用捕获层处理 source-selection 缩进。升级时须确认 WYSIWYG/IR → SV 没有延迟二次工具栏重排，且 SV 缩进与反缩进仍可用。
@@ -30,7 +31,7 @@ Vditor Desktop 不修改 `node_modules/vditor` 的源码，但工具栏合并、
 2. 使用精确版本安装：`npm install --save-exact vditor@<version>`。
 3. 同步 `src/main/index.ts` 中关于页版本号。
 4. 检查目标包 `dist/index.css`、工具栏、SV、IR、WYSIWYG 和 preview DOM 变化。
-5. 先运行 `npm run check:vditor`，再运行 `npm run check:all`。
+5. 先运行 `npm run check:vditor` 和 `npm run typecheck:renderer`，再运行 `npm run check:all`。
 6. 手工验证三种编辑模式、统一工具栏和状态栏模式菜单、主题菜单、列表缩进、工具栏与 `Ctrl/Cmd+Alt+7/8/9` 模式切换后的文档位置（SV 以源码区为准）及状态栏同步、SV 行号/灰点/滚动、查找匹配定位、原生 outline 入口持续隐藏、Desktop 大纲跳转，以及 WYSIWYG/IR 长表格的横向滚动保留和光标可见性。
 7. 仅在所有契约测试和人工检查通过后合并升级。
 
