@@ -1016,15 +1016,15 @@ function rememberRecent(filePath) {
 
 ### 10.1 逻辑组件清单
 
-#### 标题栏与窗口控制（`app.js` 的 `updateMaximizedState()` / `setupEvents()`，`index.html:15-86`）
+#### 标题栏与窗口控制（`ui/window-controller.ts`，`index.html:15-86`）
 
 - **职责：** 自定义标题栏（Windows/Linux）、应用菜单挂载点、新建/打开/保存快捷按钮、标签栏、最小化/最大化/关闭按钮、macOS 隐藏式标题栏
-- **实现：** `updateMaximizedState()`、窗口按钮 `onclick`
+- **实现：** `WindowController` 绑定最小化/最大化/关闭和标题栏双击命令，订阅 fullscreen/maximized 状态并在 `dispose()` 取消 bridge 订阅；`app.js` 仅提供显示状态投影回调。
 
-#### 应用菜单（`app.js` 的 `setupAppMenus()`，`index.html:17-25`）
+#### 应用菜单（`ui/menu-controller.ts`，`index.html:17-25`）
 
 - **职责：** Windows/Linux 平台在标题栏挂载自定义下拉菜单（File 菜单含编辑模式 / 布局 / 设置 / 退出）
-- **实现：** `setupAppMenus()` 构建 popup DOM、`handleMenu(action, value)` 路由到功能函数
+- **实现：** `MenuController` 构建 popup DOM、checked/disabled 状态和 hover/blur cleanup；它只分发命名应用命令，不直接写 Store。`app.js` 的组合层提供当前菜单状态和命令实现。
 - **空状态：** 无文档时编辑模式菜单项 disabled 且不展开；布局中的显示工具栏仍可切换默认模式 toolbar 预览的显隐
 - **macOS：** 使用 `src/main/menu.ts` 的原生 Menu，通过 `menu:action` IPC 与渲染器同步
 
@@ -1138,10 +1138,10 @@ function rememberRecent(filePath) {
 - **实现：** `showConfirmDialog({ title, message, detail, actions, draggable })` 直接返回由操作按钮结果兑现的 `Promise<string>`。
 - **受限拖动交互：** 未保存变更、移到回收站和关闭 HTML 过滤确认框启用 `draggable`；拖动仅从标题栏开始，位置限制在模态窗口可用范围内，关闭后回到居中位置，不提供尺寸调整手柄或持久化位置。通用 `.confirm-content` 统一禁止文字和图标选中，按钮仍可操作。
 
-#### 右键菜单（`app.js` 的 `showContextMenu()` / `showEditorContextMenu()`，`#contextMenu`）
+#### 右键菜单（`ui/context-menu-controller.ts` / `app.js` 的 `showEditorContextMenu()`，`#contextMenu`）
 
 - **职责：** 文件树节点、工作区根目录和编辑区真实可编辑表面的共享上下文菜单；编辑区提供剪切、复制、粘贴、纯文本粘贴、删除、当前上下文选择，以及 WYSIWYG / IR 表格行列操作。撤销/重做继续使用快捷键和 Vditor 工具栏。
-- **菜单互斥：** 右键菜单显示前通过共享关闭回调收回自定义主菜单，避免主菜单与 sidebar/编辑区上下文菜单同时显示。
+- **菜单互斥：** `ContextMenuController` 拥有共享 popup DOM、位置约束、状态交接和 cleanup，并通过 MenuController 的关闭命令收回自定义主菜单；编辑器特有 selection/table action 仍由 editor/Vditor 语义路径提供。
 
 ### 10.2 逻辑组件嵌套关系
 

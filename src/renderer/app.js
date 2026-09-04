@@ -468,6 +468,19 @@
       outlineController.onRuntimeChanged();
     },
   });
+  const windowController = new PURE.WindowController({
+    appAPI: window.appAPI,
+    titlebar: $('#windowTitlebar'),
+    minimize: $('#windowMinimize'),
+    maximize: $('#windowMaximize'),
+    close: $('#windowClose'),
+    onFullscreenChanged: (fullscreen) => {
+      $('#app').classList.toggle('fullscreen', fullscreen);
+      if (!fullscreen) $('#app').classList.remove('fullscreen-menu-visible');
+      state.tabs.forEach((tab) => scheduleSplitLineNumbers(tab));
+    },
+    onMaximizedChanged: (maximized) => updateMaximizedState(maximized),
+  });
   const DEFAULT_TOOLBAR = [
     'emoji',
     'headings',
@@ -516,6 +529,9 @@
   let editorSelectionActive = false;
   let pendingTableCellSelection = null;
   let contextMenuState = null;
+  const contextMenuController = new PURE.ContextMenuController($('#contextMenu'), () =>
+    closeAppMenu(),
+  );
 
   function t(key, params = {}) {
     return translateImpl(LOCALES, state.locale, key, params);
@@ -2342,54 +2358,13 @@
   }
 
   function closeContextMenu() {
-    const menu = $('#contextMenu');
-    if (!menu) return;
-    menu.classList.add('hidden');
-    menu.replaceChildren();
+    contextMenuController.close();
     contextMenuState = null;
   }
 
   function showContextMenu(event, items, menuState = null) {
-    const menu = $('#contextMenu');
-    closeAppMenu();
-    closeContextMenu();
     contextMenuState = menuState;
-    items.forEach((item) => {
-      if (item.separator) {
-        menu.appendChild(document.createElement('hr'));
-        return;
-      }
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.dataset.contextAction = item.id || '';
-      button.disabled = Boolean(item.disabled);
-      const label = document.createElement('span');
-      label.textContent = item.label;
-      button.appendChild(label);
-      if (item.shortcut) {
-        const shortcut = document.createElement('small');
-        shortcut.textContent = item.shortcut;
-        button.appendChild(shortcut);
-      }
-      button.addEventListener('pointerdown', (pointerEvent) => {
-        pointerEvent.preventDefault();
-        pointerEvent.stopPropagation();
-      });
-      button.addEventListener('mousedown', (mouseEvent) => mouseEvent.preventDefault());
-      button.addEventListener('click', (clickEvent) => {
-        clickEvent.stopPropagation();
-        const savedState = contextMenuState;
-        closeContextMenu();
-        if (!button.disabled) void item.action?.(savedState);
-      });
-      menu.appendChild(button);
-    });
-    menu.style.visibility = 'hidden';
-    menu.classList.remove('hidden');
-    const margin = 6;
-    menu.style.left = `${Math.max(margin, Math.min(event.clientX, window.innerWidth - menu.offsetWidth - margin))}px`;
-    menu.style.top = `${Math.max(margin, Math.min(event.clientY, window.innerHeight - menu.offsetHeight - margin))}px`;
-    menu.style.visibility = '';
+    contextMenuController.show(event, items, menuState);
   }
 
   function editorShortcut(key) {
@@ -3563,7 +3538,7 @@
     if (handlers[action]) handlers[action]();
   }
 
-  function setupAppMenus() {
+  function setupLegacyAppMenus() {
     $$('.app-menu-popup').forEach((popup) => popup.remove());
     if (appMenuCloseHandler) document.removeEventListener('click', appMenuCloseHandler);
     if (appMenuBlurHandler) window.removeEventListener('blur', appMenuBlurHandler);
@@ -3740,6 +3715,93 @@
     state.settings.toolbarVisible = state.settings.toolbarVisible === false;
     $('#app').classList.toggle('toolbar-hidden', !state.settings.toolbarVisible);
     queueSettingsSave({ toolbarVisible: state.settings.toolbarVisible });
+  }
+
+  const menuController = new PURE.MenuController({
+    menuBar: $('#appMenuBar'),
+    titlebar: $('#windowTitlebar'),
+    toggleSidebar: $('#toggleSidebar'),
+    translate: t,
+    onPopupCreated: (popup) => setupAutoHideScrollbar(popup),
+    getMenu: (name) => {
+      if (name !== 'main') return [];
+      const run = (action, value) => () => handleMenu(action, value);
+      const currentEditorMode = () => {
+        const tab = activeTab();
+        return tab?.vditor && tab.ready
+          ? tab.vditor.getCurrentMode()
+          : tab?.mode || state.settings.editMode;
+      };
+      return [
+        { label: 'menu.new', action: run('new'), shortcut: 'Ctrl+N' },
+        { label: 'menu.open', action: run('open'), shortcut: 'Ctrl/⌘+Alt+O' },
+        { label: 'menu.openFolder', action: run('open-folder'), shortcut: 'Ctrl/⌘+Alt+K' },
+        null,
+        { label: 'menu.save', action: run('save'), shortcut: 'Ctrl+S' },
+        { label: 'menu.saveAs', action: run('save-as'), shortcut: 'Ctrl+Shift+S' },
+        null,
+        { label: 'menu.exportHtml', action: run('export-html') },
+        { label: 'menu.exportPdf', action: run('export-pdf') },
+        ...(state.tabs.length
+          ? [{ label: 'menu.closeTab', action: run('close-tab'), shortcut: 'Ctrl+W' }]
+          : []),
+        null,
+        {
+          label: 'menu.editMode',
+          disabled: () => !activeTab(),
+          children: [
+            {
+              label: 'menu.editModeWysiwyg',
+              action: run('mode', 'wysiwyg'),
+              checked: () => currentEditorMode() === 'wysiwyg',
+            },
+            {
+              label: 'menu.editModeIr',
+              action: run('mode', 'ir'),
+              checked: () => currentEditorMode() === 'ir',
+            },
+            {
+              label: 'menu.editModeSv',
+              action: run('mode', 'sv'),
+              checked: () => currentEditorMode() === 'sv',
+            },
+          ],
+        },
+        {
+          label: 'menu.layout',
+          keepOpen: true,
+          children: [
+            {
+              label: 'menu.layoutToolbar',
+              action: () => setLayoutPart('toolbar'),
+              checked: () => state.settings.toolbarVisible !== false,
+            },
+            {
+              label: 'menu.layoutSidebar',
+              action: () => toggleSidebar(),
+              shortcut: 'Ctrl/⌘+Alt+B',
+              checked: () => state.settings.sidebarVisible,
+            },
+            {
+              label: 'menu.layoutStatusbar',
+              action: () => $('#app').classList.toggle('statusbar-hidden'),
+              checked: () => !$('#app').classList.contains('statusbar-hidden'),
+            },
+          ],
+        },
+        null,
+        { label: 'menu.settings', action: run('settings'), shortcut: 'Ctrl+,' },
+        null,
+        { label: 'menu.quit', action: run('quit'), shortcut: 'Ctrl+Q' },
+      ];
+    },
+  });
+
+  function setupAppMenus() {
+    // Retain the old renderer implementation only until batch 9 removes the legacy shell.
+    void setupLegacyAppMenus;
+    menuController.init();
+    closeAppMenu = () => menuController.close();
   }
 
   function syncTopControlsWidth() {
@@ -3938,15 +4000,10 @@
 
   function setupEvents() {
     setupAppMenus();
+    windowController.init();
     window.appAPI.onOpenFiles((paths) => void openPaths(paths));
-    $('#windowMinimize').onclick = () => window.appAPI.minimize();
-    $('#windowMaximize').onclick = () => window.appAPI.maximize();
-    $('#windowClose').onclick = () => window.appAPI.closeWindow();
     $('#confirmModal').onclick = (event) => {
       if (event.target === $('#confirmModal')) closeConfirmDialog('cancel');
-    };
-    $('#windowTitlebar').ondblclick = (event) => {
-      if (!event.target.closest('button')) window.appAPI.maximize();
     };
     $('#newFile').onclick = newTab;
     $('#addTab').onclick = newTab;
@@ -4316,14 +4373,6 @@
     window.appAPI.onSystemThemeChanged((theme) => {
       if (state.settings.systemTheme) void applyTheme(mapSystemTheme(theme));
     });
-    window.appAPI.onFullscreenChanged((fullscreen) => {
-      $('#app').classList.toggle('fullscreen', fullscreen);
-      if (!fullscreen) $('#app').classList.remove('fullscreen-menu-visible');
-      state.tabs.forEach((tab) => scheduleSplitLineNumbers(tab));
-    });
-    window.appAPI.onMaximizedChanged((maximized) => {
-      updateMaximizedState(maximized);
-    });
     window.fileAPI.onChanged(handleExternalChange);
     window.appAPI.onRequestClose(async () => {
       const unresolvedFileState = state.tabs.find((tab) => tab.externalFileState);
@@ -4428,6 +4477,9 @@
   window.__vditorDesktopLegacyDispose = () => {
     settingsWindow.dispose();
     localizationController.dispose();
+    windowController.dispose();
+    contextMenuController.dispose();
+    menuController.dispose();
     workspaceController.dispose();
     state.tabs.forEach((tab) => editorController.destroy(tab));
     findController.dispose();
