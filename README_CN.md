@@ -31,10 +31,9 @@ Vditor Desktop 把 [Vditor](https://github.com/Vanessa219/vditor)——**最好�
 - [不打扰写作的工作区](#不打扰写作的工作区)
 - [尽心保护你和你的内容](#尽心保护你和你的内容)
 - [主题与语言](#主题与语言)
-- [安装与运行](#安装与运行)
 - [常用快捷键](#常用快捷键)
 - [配置与数据目录](#配置与数据目录)
-- [构建与测试](#构建与测试)
+- [安装与运行](#安装与运行)
 - [开源项目](#开源项目)
 - [免责声明](#免责声明)
 - [许可证](#许可证)
@@ -61,7 +60,7 @@ Vditor Desktop 把 [Vditor](https://github.com/Vanessa219/vditor)——**最好�
 
 可以通过统一工具栏或“视图 → 编辑模式”切换模式。分栏预览提供源码行号、可配置 Tab 空格数、可选的空白字符灰点、可拖动的分隔线以及自动隐藏的预览滚动条。
 
-## 不打扰写作的工作区
+## <u>不打扰写作</u>的工作区
 
 大多数时候你不是在“管理一个编辑器”，只是在写东西。Vditor Desktop 尽量让周围这些工具在你没用到之前保持安静。
 
@@ -76,7 +75,7 @@ Vditor Desktop 把 [Vditor](https://github.com/Vanessa219/vditor)——**最好�
 
 目录重命名/删除和工作区级资源限制仍属于后续工作；重要文档请保留备份。
 
-## 尽心保护你和你的内容
+## <u>尽心保护</u>你和你的内容
 
 Vditor Desktop 把你的写作当作需要保护的内容，而不是可以随时覆盖的数据。在简洁的 Markdown 工作流背后，我们加入了多重保护设计，尽量避免异常退出、其他软件修改文件或文件系统变化时，你的内容被悄悄带走：
 
@@ -95,55 +94,18 @@ Vditor Desktop 把你的写作当作需要保护的内容，而不是可以随�
 
 内置应用主题：
 
-- 浅色
-- 深色
-- Claude Light
-- Claude Dark
-- Monokai Pro Light，包含独立的 H1–H6 标题配色
-- Monokai Pro Dark，包含独立的 H1–H6 标题配色
+- **浅色**
+- **深色**
+- **Claude Light**
+- **Claude Dark**
+- **Monokai Pro Light**，包含独立的 H1–H6 标题配色
+- **Monokai Pro Dark**，包含独立的 H1–H6 标题配色
 
-可在设置中分别选择浅色与深色应用主题，状态栏主题模式菜单可选择固定浅色、固定深色或跟随系统；常驻图标会显示当前模式。应用主题只改变应用自身的颜色；内容主题和代码块预览主题仍由 Vditor 控制，并分别保留用户在浅色/深色环境中的最后选择。需要时可以启用多平台排版预览。
-
-界面目前支持 English（`en_US`）、简体中文（`zh_Hans`）、繁體中文（`zh_Hant`）以及跟随系统语言。
-
-## 安装与运行
-
-### 从源码运行
-
-源码开发需要 Node.js 22.x（22.22.2 及以上）、24.x（24.15.0 及以上）或 26+，以及 npm。当前依赖不支持 Node.js 23 和 25：
-
-```bash
-git clone https://github.com/Studio-200A/Vditor-Electron.git
-cd Vditor-Electron
-npm ci
-npm start
-```
-
-在 Linux 上，`npm run test:e2e` 会优先复用已解压的 `node_modules/electron/dist` 运行时，再决定是否下载。其他首次启动或打包 Electron 的命令可能会把固定版本 Electron 44.1.0 的运行时下载到 Electron 本地缓存；这一步独立于 `npm ci`，不会修改 lockfile。该运行时要求 macOS 13 或更高版本，Electron 44 也不再提供 Windows 32 位或 Linux ARMv7 预构建程序。本仓库的 Linux 发布脚本目前只生成 x86_64；Windows/macOS 打包和实体机验证仍是独立的平台工作。
-
-构建过程会将 Vditor 的资源复制到本地，运行时不依赖 Vditor CDN。
-
-### Linux 构建
-
-项目可以生成 Linux unpacked 目录、Portable 压缩包和 AppImage：
-
-```bash
-npm run pack                 # release/linux-unpacked
-npm run release:linux       # 全部 Linux 产物
-```
-
-发行命令会生成：
-
-```text
-release/vditor-desktop-x86_64-<版本号>-portable.tar.gz
-release/vditor-desktop-x86_64-<版本号>-portable.AppImage
-```
-
-Portable 压缩包中的 desktop 文件使用 `/path/to/vditor-desktop` 作为安装路径占位符。安装到桌面环境前，请将其替换为实际解压路径。AppImage 添加可执行权限后即可运行。
-
-发行脚本会在打包前校验项目 metadata 以及固定的 AppImage 工具/runtime SHA-256。由于 appimagetool 内置的 advisory 校验器会拒绝本项目稳定的、包含连字符的反向域名 ID，脚本传入 `--no-appstream`；项目自身的 metadata 检查仍会强制 AppStream 和 desktop 引用使用完整且一致的应用 ID。
-
-目前 Linux 是主要开发和验证平台；项目已经包含 Windows 和 macOS 的窗口及数据目录适配，但文件监听（watcher）、权限、路径大小写、打包和发布仍需在实体设备上验证。
+> [!NOTE]
+>
+> 可在设置中分别选择浅色与深色应用主题，状态栏主题模式菜单可选择固定浅色、固定深色或跟随系统；常驻图标会显示当前模式。应用主题只改变应用自身的颜色；内容主题和代码块预览主题仍由 Vditor 控制，并分别保留用户在浅色/深色环境中的最后选择。需要时可以启用多平台排版预览。
+>
+> 界面目前支持 English（`en_US`）、简体中文（`zh_Hans`）、繁體中文（`zh_Hant`）以及跟随系统语言。
 
 ## 常用快捷键
 
@@ -174,11 +136,60 @@ Portable 压缩包中的 desktop 文件使用 `/path/to/vditor-desktop` 作为�
 | Windows | `%APPDATA%\\vditor-desktop\\config.toml`                                                  | `%LOCALAPPDATA%\\vditor-desktop\\chromium\\`                                     | `%LOCALAPPDATA%\\vditor-desktop\\recovery\\`                                     |
 | macOS   | `~/Library/Application Support/com.github.studio-200a.vditor-electron/Config/config.toml` | `~/Library/Application Support/com.github.studio-200a.vditor-electron/Chromium/` | `~/Library/Application Support/com.github.studio-200a.vditor-electron/recovery/` |
 
-TOML 配置文件可直接阅读，按应用、外观、字体、编辑器、预览、文件、工作区、窗口和会话设置分类。外观部分分别保存 `lightTheme` 和 `darkTheme`；状态栏主题模式菜单提供固定浅色、固定深色和跟随系统三种模式，`systemTheme` 记录第三种选择，并根据这两项偏好解析当前主题。Claude 应用主题只定义应用颜色，不替代 Vditor 的内容主题或代码块主题设置。
+> [!NOTE]
+>
+> TOML 配置文件可直接阅读，按应用、外观、字体、编辑器、预览、文件、工作区、窗口和会话设置分类。外观部分分别保存 `lightTheme` 和 `darkTheme`；状态栏主题模式菜单提供固定浅色、固定深色和跟随系统三种模式，`systemTheme` 记录第三种选择，并根据这两项偏好解析当前主题。Claude 应用主题只定义应用颜色，不替代 Vditor 的内容主题或代码块主题设置。
+>
+> 异常恢复快照单独存放在上表所列的私有应用数据目录中；保存或放弃恢复后会删除，且不会被作为本地文档资源提供。
 
-异常恢复快照单独存放在上表所列的私有应用数据目录中；保存或放弃恢复后会删除，且不会被作为本地文档资源提供。
+## 安装与运行
 
-## 构建与测试
+<details>
+<summary>从源码运行</summary>
+
+源码开发需要 Node.js 22.x（22.22.2 及以上）、24.x（24.15.0 及以上）或 26+，以及 npm。当前依赖不支持 Node.js 23 和 25：
+
+```bash
+git clone https://github.com/Studio-200A/Vditor-Electron.git
+cd Vditor-Electron
+npm ci
+npm start
+```
+
+在 Linux 上，`npm run test:e2e` 会优先复用已解压的 `node_modules/electron/dist` 运行时，再决定是否下载。其他首次启动或打包 Electron 的命令可能会把固定版本 Electron 44.1.0 的运行时下载到 Electron 本地缓存；这一步独立于 `npm ci`，不会修改 lockfile。该运行时要求 macOS 13 或更高版本，Electron 44 也不再提供 Windows 32 位或 Linux ARMv7 预构建程序。本仓库的 Linux 发布脚本目前只生成 x86_64；Windows/macOS 打包和实体机验证仍是独立的平台工作。
+
+构建过程会将 Vditor 的资源复制到本地，运行时不依赖 Vditor CDN。
+
+</details>
+
+<details>
+<summary>Linux 构建</summary>
+
+项目可以生成 Linux unpacked 目录、Portable 压缩包和 AppImage：
+
+```bash
+npm run pack                 # release/linux-unpacked
+npm run release:linux       # 全部 Linux 产物
+```
+
+发行命令会生成：
+
+```text
+release/vditor-desktop-x86_64-<版本号>-portable.tar.gz
+release/vditor-desktop-x86_64-<版本号>-portable.AppImage
+```
+
+Portable 压缩包中的 desktop 文件使用 `/path/to/vditor-desktop` 作为安装路径占位符。安装到桌面环境前，请将其替换为实际解压路径。AppImage 添加可执行权限后即可运行。
+
+发行脚本会在打包前校验项目 metadata 以及固定的 AppImage 工具/runtime SHA-256。由于 appimagetool 内置的 advisory 校验器会拒绝本项目稳定的、包含连字符的反向域名 ID，脚本传入 `--no-appstream`；项目自身的 metadata 检查仍会强制 AppStream 和 desktop 引用使用完整且一致的应用 ID。
+
+目前 Linux 是主要开发和验证平台；项目已经包含 Windows 和 macOS 的窗口及数据目录适配，但文件监听（watcher）、权限、路径大小写、打包和发布仍需在实体设备上验证。
+
+
+</details>
+
+<details>
+<summary>构建与测试</summary>
 
 ```bash
 npm run format:check
@@ -190,7 +201,9 @@ npm test
 npm run check:all
 ```
 
-Vditor 依赖固定为 3.11.3。升级前请先阅读 [Vditor 升级说明](docs/06-VDITOR-UPGRADE.md)，并检查适配层边界和 Electron 回归测试。
+Vditor 依赖固定为 3.11.3。参考 [Vditor 升级说明](docs/06-VDITOR-UPGRADE.md)。
+
+</details>
 
 ## 开源项目
 
@@ -235,7 +248,9 @@ Vditor Desktop 的实现离不开以下开源项目。各项目作者保留其�
 
 ## 免责声明
 
-Vditor Desktop 用于本地 Markdown 编辑，软件仍在持续完善。请为重要文件保留备份，并在正式使用导出的内容前先检查一遍。作者及贡献者不对因使用本项目造成的任何文件丢失、损坏、数据错误或其他损失和责任承担责任。
+> [!WARNING]
+>
+> Vditor Desktop 用于本地 Markdown 编辑，软件仍在持续完善。请为重要文件保留备份，并在正式使用导出的内容前先检查一遍。作者及贡献者不对因使用本项目造成的任何文件丢失、损坏、数据错误或其他损失和责任承担责任。
 
 ## 许可证
 

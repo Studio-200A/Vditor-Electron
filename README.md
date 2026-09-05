@@ -31,10 +31,9 @@ Vditor Desktop takes the writing experience of [Vditor](https://github.com/Vanes
 - [A workspace that stays out of the way](#a-workspace-that-stays-out-of-the-way)
 - [Protecting You and Your Content, Thoughtfully](#protecting-you-and-your-content-thoughtfully)
 - [Themes and languages](#themes-and-languages)
-- [Install and run](#install-and-run)
 - [Everyday shortcuts](#everyday-shortcuts)
 - [Configuration and data](#configuration-and-data)
-- [Build and test](#build-and-test)
+- [Install and run](#install-and-run)
 - [Open-source software](#open-source-software)
 - [Disclaimer](#disclaimer)
 - [License](#license)
@@ -61,7 +60,7 @@ Vditor Desktop takes the writing experience of [Vditor](https://github.com/Vanes
 
 Switch modes from the unified toolbar or **View → Editing Mode**. Split Preview includes source line numbers, configurable tab spacing, optional whitespace markers, a resizable divider, and an auto-hiding preview scrollbar.
 
-## A workspace that stays out of the way
+## A workspace that <u>stays out of the way</u>
 
 Most days you're not managing an editor — you're just writing. Vditor Desktop tries to keep the surrounding tools quiet until you actually reach for them.
 
@@ -76,7 +75,7 @@ Most days you're not managing an editor — you're just writing. Vditor Desktop 
 
 Directory renames/deletes and workspace-level resource limits remain planned work; keep backups of important documents.
 
-## Protecting You and Your Content, Thoughtfully
+## <u>Protecting</u> You and Your Content, Thoughtfully
 
 Vditor Desktop treats your writing as something to protect, not something to overwrite. Behind the simple Markdown workflow are several safeguards designed to keep an unexpected exit, a second editor, or a changing file system from silently taking your work away:
 
@@ -95,55 +94,18 @@ Vditor Desktop treats your writing as something to protect, not something to ove
 
 Built-in application themes:
 
-- Light
-- Dark
-- Claude Light
-- Claude Dark
-- Monokai Pro Light, including a dedicated H1–H6 heading palette
-- Monokai Pro Dark, including a dedicated H1–H6 heading palette
+- **Light**
+- **Dark**
+- **Claude Light**
+- **Claude Dark**
+- **Monokai Pro Light**, including a dedicated H1–H6 heading palette
+- **Monokai Pro Dark**, including a dedicated H1–H6 heading palette
 
-Choose light and dark application themes independently in Settings. The status-bar theme-mode menu then offers fixed light, fixed dark, and follow-system modes, with its resident icon showing the current mode. Application themes only change application colors. Content and code-block preview themes remain controlled by Vditor and preserve the user's last selection in each light/dark context. Optional multi-platform typography previews can be enabled when needed.
-
-The interface is localized in English (`en_US`), Simplified Chinese (`zh_Hans`), Traditional Chinese (`zh_Hant`), and system language mode.
-
-## Install and run
-
-### From source
-
-Node.js 22.22.2 or later in the 22.x line, Node.js 24.15.0 or later in the 24.x line, or Node.js 26+ and npm are required for source development. Node.js 23 and 25 are not supported by the current dependency set:
-
-```bash
-git clone https://github.com/Studio-200A/Vditor-Electron.git
-cd Vditor-Electron
-npm ci
-npm start
-```
-
-On Linux, `npm run test:e2e` reuses an already unpacked `node_modules/electron/dist` runtime before requesting a download. Other first commands that launch or package Electron may download the pinned Electron 44.1.0 runtime into Electron's local cache; this is separate from `npm ci` and does not change the lockfile. The runtime requires macOS 13 or later, and Electron 44 does not provide prebuilt Windows 32-bit or Linux ARMv7 binaries. This repository's Linux release script currently targets x86_64; Windows/macOS packaging and native validation remain separate platform work.
-
-The build copies Vditor's bundled assets locally; runtime use does not depend on a Vditor CDN.
-
-### Linux builds
-
-The repository can produce a Linux unpacked application, a portable archive, and an AppImage:
-
-```bash
-npm run pack                 # release/linux-unpacked
-npm run release:linux       # all Linux artifacts
-```
-
-The release command produces:
-
-```text
-release/vditor-desktop-x86_64-<version>-portable.tar.gz
-release/vditor-desktop-x86_64-<version>-portable.AppImage
-```
-
-The portable desktop entry uses `/path/to/vditor-desktop` as an installation-path placeholder. Replace it with the actual extraction path before installing the entry into your desktop environment. The AppImage can be run after making it executable.
-
-The release script verifies the project metadata and the pinned AppImage tool/runtime checksums before packaging. It passes `--no-appstream` to appimagetool because its bundled advisory validator rejects this project's stable hyphenated reverse-domain ID; the project's own metadata check still requires the exact ID in the AppStream and desktop references.
-
-Linux is the primary development and validation platform at present. Windows and macOS-specific window and data-directory adaptations are included, but physical-device watcher, permission, path-case, packaging, and release validation are still pending.
+> [!NOTE]
+>
+> Choose light and dark application themes independently in Settings. The status-bar theme-mode menu then offers fixed light, fixed dark, and follow-system modes, with its resident icon showing the current mode. Application themes only change application colors. Content and code-block preview themes remain controlled by Vditor and preserve the user's last selection in each light/dark context. Optional multi-platform typography previews can be enabled when needed.
+>
+> The interface is localized in English (`en_US`), Simplified Chinese (`zh_Hans`), Traditional Chinese (`zh_Hant`), and system language mode.
 
 ## Everyday shortcuts
 
@@ -174,13 +136,61 @@ Application configuration and Chromium user data are kept separate:
 | Windows  | `%APPDATA%\\vditor-desktop\\config.toml`                                                  | `%LOCALAPPDATA%\\vditor-desktop\\chromium\\`                                     | `%LOCALAPPDATA%\\vditor-desktop\\recovery\\`                                     |
 | macOS    | `~/Library/Application Support/com.github.studio-200a.vditor-electron/Config/config.toml` | `~/Library/Application Support/com.github.studio-200a.vditor-electron/Chromium/` | `~/Library/Application Support/com.github.studio-200a.vditor-electron/recovery/` |
 
-The TOML file is human-readable and grouped by application, appearance, fonts, editor, preview, files, workspace, window, and session settings.
+> [!NOTE]
+>
+> The TOML file is human-readable and grouped by application, appearance, fonts, editor, preview, files, workspace, window, and session settings.
+>
+> The appearance section stores the independently selected `lightTheme` and `darkTheme` values. The status-bar theme-mode menu offers fixed light, fixed dark, and follow-system modes; `systemTheme` records the third choice and resolves the active theme from those two preferences. Claude application themes only define application colors and do not replace Vditor's content or code-block theme settings.
+>
+> Crash-recovery snapshots are stored separately in the private application data directory shown above. They are removed after saving or discarding the recovered document and are never served as local document resources.
 
-The appearance section stores the independently selected `lightTheme` and `darkTheme` values. The status-bar theme-mode menu offers fixed light, fixed dark, and follow-system modes; `systemTheme` records the third choice and resolves the active theme from those two preferences. Claude application themes only define application colors and do not replace Vditor's content or code-block theme settings.
+## Install and run
 
-Crash-recovery snapshots are stored separately in the private application data directory shown above. They are removed after saving or discarding the recovered document and are never served as local document resources.
+<details>
+<summary>From source</summary>
 
-## Build and test
+Node.js 22.22.2 or later in the 22.x line, Node.js 24.15.0 or later in the 24.x line, or Node.js 26+ and npm are required for source development. Node.js 23 and 25 are not supported by the current dependency set:
+
+```bash
+git clone https://github.com/Studio-200A/Vditor-Electron.git
+cd Vditor-Electron
+npm ci
+npm start
+```
+
+On Linux, `npm run test:e2e` reuses an already unpacked `node_modules/electron/dist` runtime before requesting a download. Other first commands that launch or package Electron may download the pinned Electron 44.1.0 runtime into Electron's local cache; this is separate from `npm ci` and does not change the lockfile. The runtime requires macOS 13 or later, and Electron 44 does not provide prebuilt Windows 32-bit or Linux ARMv7 binaries. This repository's Linux release script currently targets x86_64; Windows/macOS packaging and native validation remain separate platform work.
+
+The build copies Vditor's bundled assets locally; runtime use does not depend on a Vditor CDN.
+
+</details>
+
+<details>
+<summary>Linux builds</summary>
+
+The repository can produce a Linux unpacked application, a portable archive, and an AppImage:
+
+```bash
+npm run pack                 # release/linux-unpacked
+npm run release:linux       # all Linux artifacts
+```
+
+The release command produces:
+
+```text
+release/vditor-desktop-x86_64-<version>-portable.tar.gz
+release/vditor-desktop-x86_64-<version>-portable.AppImage
+```
+
+The portable desktop entry uses `/path/to/vditor-desktop` as an installation-path placeholder. Replace it with the actual extraction path before installing the entry into your desktop environment. The AppImage can be run after making it executable.
+
+The release script verifies the project metadata and the pinned AppImage tool/runtime checksums before packaging. It passes `--no-appstream` to appimagetool because its bundled advisory validator rejects this project's stable hyphenated reverse-domain ID; the project's own metadata check still requires the exact ID in the AppStream and desktop references.
+
+Linux is the primary development and validation platform at present. Windows and macOS-specific window and data-directory adaptations are included, but physical-device watcher, permission, path-case, packaging, and release validation are still pending.
+
+</details>
+
+<details>
+<summary>Build and test</summary>
 
 ```bash
 npm run format:check
@@ -192,7 +202,8 @@ npm test
 npm run check:all
 ```
 
-The Vditor dependency is intentionally pinned to 3.11.3. Before upgrading it, read [the Vditor upgrade notes](docs/06-VDITOR-UPGRADE.md) and validate the adapter boundary and Electron regression tests.
+The Vditor dependency is intentionally pinned to 3.11.3. Refer to [the Vditor upgrade notes](docs/06-VDITOR-UPGRADE.md).
+</details>
 
 ## Open-source software
 
@@ -237,7 +248,9 @@ Vditor Desktop is made possible by the following open-source projects. Their aut
 
 ## Disclaimer
 
-Vditor Desktop is provided for local Markdown editing and is still evolving. Use it with backups of important files and review exported content before relying on it. The author and contributors are not responsible for any loss, damage, data corruption, or other liability resulting from the use of this project.
+> [!WARNING]
+>
+> Vditor Desktop is provided for local Markdown editing and is still evolving. Use it with backups of important files and review exported content before relying on it. The author and contributors are not responsible for any loss, damage, data corruption, or other liability resulting from the use of this project.
 
 ## License
 
