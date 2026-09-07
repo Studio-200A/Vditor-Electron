@@ -21,6 +21,14 @@ export { NotificationsController } from './ui/notifications.js';
 export type { ConfirmDialogOptions, DialogAction } from './ui/notifications.js';
 export { TabController } from './documents/tab-controller.js';
 export { EditorController } from './editor/editor-controller.js';
+export { DocumentLinkNavigationController } from './editor/document-link-navigation-controller.js';
+export type {
+  DocumentLink,
+  DocumentLinkAdapter,
+  DocumentLinkNavigationControllerOptions,
+  DocumentLinkNavigationHandlers,
+  DocumentLinkTab,
+} from './editor/document-link-navigation-controller.js';
 export type {
   EditorControllerOptions,
   EditorRuntimeTab,

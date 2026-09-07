@@ -627,7 +627,6 @@
   const VDITOR_INITIALIZATION_SETTINGS = PURE.VDITOR_INITIALIZATION_SETTINGS;
   let closeAppMenu = () => {};
   let settingsSaveTimer;
-  let hoveredDocumentLink = null;
   let hoveredSidebarTooltip = null;
   let editorSelectionActive = false;
   let pendingTableCellSelection = null;
@@ -653,6 +652,18 @@
     syncTopControlsWidth,
     refreshEditorLayout: () => scheduleSplitLineNumbers(activeTab()),
     duration: sidebarTransitionDuration,
+  });
+  const documentLinkNavigationController = new PURE.DocumentLinkNavigationController({
+    adapter: VDITOR,
+    platform: window.appAPI.platform,
+    translate: t,
+    showMessage,
+    showTooltip: showAppTooltip,
+    hideTooltip: hideAppTooltip,
+    resolveMarkdownLink: (sourcePath, href) => window.fileAPI.resolveMarkdownLink(sourcePath, href),
+    openPath: (filePath, activate, fragment) => openPath(filePath, activate, fragment),
+    openExternal: (href) => window.appAPI.openExternal(href),
+    scrollToHeading,
   });
 
   function t(key, params = {}) {
@@ -2829,113 +2840,6 @@
     );
   }
 
-  function documentNavigationTooltip() {
-    return t('link.followWithModifier', {
-      modifier: window.appAPI.platform === 'darwin' ? 'Cmd' : 'Ctrl',
-    });
-  }
-
-  function hasDocumentNavigationModifier(event) {
-    return window.appAPI.platform === 'darwin' ? event.metaKey : event.ctrlKey;
-  }
-
-  function isSupportedExternalLink(href) {
-    try {
-      return ['https:', 'http:', 'mailto:'].includes(new URL(href).protocol);
-    } catch (_) {
-      return false;
-    }
-  }
-
-  function isPotentialRelativeMarkdownLink(href) {
-    const rawPath = href.split('#', 1)[0].trim();
-    if (!rawPath || rawPath.startsWith('/') || rawPath.startsWith('\\')) return false;
-    if (/^[a-z][a-z\d+.-]*:/i.test(rawPath)) return false;
-    try {
-      return /\.(?:md|markdown|mdown|mkd|mkdn)$/i.test(decodeURIComponent(rawPath));
-    } catch (_) {
-      return false;
-    }
-  }
-
-  function documentLinkTarget(tab, target) {
-    const link = VDITOR.documentLink(target, tab.host);
-    if (!link) return null;
-    if (link.href.startsWith('#')) {
-      const headingIndex = VDITOR.headingIndexForAnchor(tab.host, link.href);
-      return headingIndex < 0 ? null : { link, headingIndex };
-    }
-    if (isSupportedExternalLink(link.href)) return { link, headingIndex: null, external: true };
-    return isPotentialRelativeMarkdownLink(link.href)
-      ? { link, headingIndex: null, external: false }
-      : null;
-  }
-
-  function blockUnsupportedDocumentLinkNavigation(tab, event) {
-    const link = VDITOR.documentLink(event.target, tab.host);
-    if (!link || link.kind !== 'link') return false;
-    // The main process protects normal navigations, but javascript: and other
-    // active schemes can execute in the renderer without a will-navigate event.
-    event.preventDefault();
-    event.stopPropagation();
-    VDITOR.expandInstantLinkForEditing(link);
-    return true;
-  }
-
-  async function openRelativeMarkdownLink(tab, href) {
-    if (!tab.filePath) {
-      showMessage(t('message.linkSaveFirst'), true);
-      return;
-    }
-    let resolution;
-    try {
-      resolution = await window.fileAPI.resolveMarkdownLink(tab.filePath, href);
-    } catch (_) {
-      showMessage(t('message.linkTargetMissing'), true);
-      return;
-    }
-    if (resolution.kind !== 'resolved') {
-      const key =
-        resolution.code === 'not-found' ? 'message.linkTargetMissing' : 'message.linkUnsupported';
-      showMessage(t(key), true);
-      return;
-    }
-    await openPath(resolution.filePath, true, resolution.fragment);
-  }
-
-  function setHoveredDocumentLink(target, event) {
-    if (hoveredDocumentLink?.link.element !== target.link.element) {
-      clearHoveredDocumentLink();
-      hoveredDocumentLink = target;
-    }
-    VDITOR.setDocumentLinkHint(
-      target.link,
-      documentNavigationTooltip(),
-      hasDocumentNavigationModifier(event) ? 'pointer' : 'text',
-    );
-    showDocumentLinkTooltip(event);
-  }
-
-  function clearHoveredDocumentLink() {
-    if (!hoveredDocumentLink) return;
-    VDITOR.clearDocumentLinkHint(hoveredDocumentLink.link);
-    hoveredDocumentLink = null;
-    hideAppTooltip();
-  }
-
-  function updateHoveredDocumentLinkCursor(event) {
-    if (!hoveredDocumentLink) return;
-    VDITOR.setDocumentLinkHint(
-      hoveredDocumentLink.link,
-      documentNavigationTooltip(),
-      hasDocumentNavigationModifier(event) ? 'pointer' : 'text',
-    );
-  }
-
-  function showDocumentLinkTooltip(event) {
-    showAppTooltip(documentNavigationTooltip(), event);
-  }
-
   function hideAppTooltip() {
     $('#appTooltip').hidden = true;
   }
@@ -2980,44 +2884,10 @@
   }
 
   function setupDocumentAnchorNavigation(tab) {
-    editorController.attachDocumentAnchorNavigation(tab, {
-      onMouseOver: (event) => {
-        const target = documentLinkTarget(tab, event.target);
-        if (target) setHoveredDocumentLink(target, event);
-      },
-      onMouseOut: (event) => {
-        if (!hoveredDocumentLink || hoveredDocumentLink.link.element.contains(event.relatedTarget))
-          return;
-        clearHoveredDocumentLink();
-      },
-      onMouseMove: (event) => {
-        if (hoveredDocumentLink) showDocumentLinkTooltip(event);
-      },
-      onClick: (event) => {
-        const target = documentLinkTarget(tab, event.target);
-        if (!target) {
-          blockUnsupportedDocumentLinkNavigation(tab, event);
-          return;
-        }
-        setHoveredDocumentLink(target, event);
-        if (hasDocumentNavigationModifier(event) || target.link.kind === 'toc') {
-          event.preventDefault();
-          event.stopPropagation();
-        }
-        if (hasDocumentNavigationModifier(event)) {
-          if (target.headingIndex !== null) scrollToHeading(tab, target.headingIndex);
-          else if (target.external) void window.appAPI.openExternal(target.link.href);
-          else void openRelativeMarkdownLink(tab, target.link.href);
-          return;
-        }
-        if (VDITOR.expandInstantLinkForEditing(target.link)) {
-          event.preventDefault();
-          event.stopPropagation();
-          return;
-        }
-        if (target.link.kind === 'toc') VDITOR.focusDocumentLink(target.link);
-      },
-    });
+    editorController.attachDocumentAnchorNavigation(
+      tab,
+      documentLinkNavigationController.handlersFor(tab),
+    );
   }
 
   async function handleImageUpload(tab, files) {
@@ -3647,8 +3517,16 @@
       (event) => updateEditorSelectionActivity(event.target, true),
       true,
     );
-    document.addEventListener('keydown', updateHoveredDocumentLinkCursor, true);
-    document.addEventListener('keyup', updateHoveredDocumentLinkCursor, true);
+    document.addEventListener(
+      'keydown',
+      (event) => documentLinkNavigationController.updateHoveredCursor(event),
+      true,
+    );
+    document.addEventListener(
+      'keyup',
+      (event) => documentLinkNavigationController.updateHoveredCursor(event),
+      true,
+    );
     document.addEventListener(
       'keydown',
       (event) => {

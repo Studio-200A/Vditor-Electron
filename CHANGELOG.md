@@ -4,6 +4,21 @@
 
 ### Renderer Architecture
 
+#### Batch 9 architecture follow-up (2026-09-07)
+
+The following changes continue the internal 0.2.5 renderer refactor. They preserve the existing user-facing behavior and do not by themselves complete the batch; the remaining composition-layer migration and full validation are tracked in `docs/15-0.2.5-EXECUTION-TRACKER.md`.
+
+- **refactor(app shell):** Added `AppController` as the owner of startup sequencing, window-level shortcuts, Markdown drag-and-drop, open-files/menu IPC subscriptions, partial-initialization rollback, and shutdown cleanup. `main.ts` now validates the required globals and starts the composed application through `window.__vditorDesktopApplication`.
+- **refactor(renderer entry):** Removed the legacy `src/renderer/app.js` entry. `app/app-composition.js` now contains the transitional cross-domain composition, and the asset-copy script removes only a stale `dist/renderer/app.js` left by an incremental build.
+- **refactor(settings persistence):** Moved the serialized preference/state save queue into `settings/settings-persistence.ts`, keeping TOML preference writes separate from versioned `state.json` writes and preserving recoverable versus throwing failure behavior.
+- **refactor(settings dialog):** Moved settings-dialog size bounds, drag/resize listeners, transition cleanup, and window-resize handling into `settings/settings-dialog-layout-controller.ts`.
+- **refactor(recovery restore):** Moved recovery candidate loading, disk-state classification, identity merging, unavailable-tab creation, resource-root synchronization, and watcher registration into `editor/recovery-restore-controller.ts`.
+- **refactor(external changes):** Moved watcher-event routing for clean reloads, conflicts, deletion, unreadable files, and reappearance into `documents/external-file-change-controller.ts`, while leaving document state transitions injected through named callbacks.
+- **refactor(sidebar layout):** Moved sidebar transition state, transform-based FLIP animation, reduced-motion timing, fallback completion, and cleanup into `ui/sidebar-layout-controller.ts`.
+- **refactor(menu cleanup):** Removed the uncalled duplicate `setupLegacyAppMenus()` implementation and its stale listeners; `MenuController` is now the only renderer custom-menu popup owner.
+- **refactor(document links):** Moved document-link classification, Ctrl/Cmd navigation, relative Markdown resolution, unsafe-scheme blocking, modifier hints, and tooltip coordination into `editor/document-link-navigation-controller.ts`; Vditor private DOM access remains behind the adapter.
+- **docs(batch tracker):** Updated the batch 9 execution record with the legacy-entry evidence, current migration status, scoped validation, and the remaining full-check/manual-baseline gate.
+
 - **refactor(renderer build):** Introduced a TypeScript build pipeline for the renderer process using esbuild. Added `tsconfig.renderer.json` (strict mode), `build:renderer` script, and `typecheck:renderer` for independent renderer type checking. The renderer entry point is now `src/renderer/main.ts`, which orchestrates controller initialization and disposal in dependency order.
 - **refactor(composition entry):** Established `src/renderer/main.ts` as the application composition entry with a lifecycle manager that initializes controllers in dependency order and disposes them in reverse order on shutdown or failure. Legacy `app.js` is loaded as a controlled bootstrap module via `window.__vditorDesktopLegacyBootstrap`.
 - **refactor(pure functions):** Extracted pure functions from `app.js` into typed TypeScript modules (`src/renderer/utils/`, `src/renderer/ui/`). These are bundled separately as `dist/renderer/pure-functions.js` and exposed via `window.__vditorDesktopPureFunctions` for use by the legacy `app.js`. Migrated functions include: `escapeHTML`, `fileName`, `stripExtension`, `detectLineEnding`, `isDarkTheme`, `resolveLocale`, `translate`, `formatIpcErrorMessage`, and theme preference validators.

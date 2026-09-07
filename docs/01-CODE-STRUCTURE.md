@@ -1,8 +1,8 @@
 # Vditor-Electron Code Structure World Map
 
-- **生成时间：** 2026-09-04
-- **基于的工作区：** `dev-0.2.5` 当前工作区实现（批次 8、8.1 已完成，批次 9 尚未开始）
-- **文档版本：** v1.21
+- **生成时间：** 2026-09-07
+- **基于的工作区：** `dev-0.2.5` 当前工作区实现（批次 8、8.1 已完成，批次 9 实施中；当前 HEAD `60ab08f`）
+- **文档版本：** v1.22
 - **对应 package.json 版本号：** 0.2.0（开发中 0.2.5）
 
 ---
@@ -15,7 +15,7 @@
 
 **核心功能：** 多标签页 Markdown 编辑、三种编辑模式（IR/SV/WYSIWYG）、分栏预览、文件树侧栏、文档大纲、查找替换、图片插入与压缩、HTML/PDF 导出、TOML 偏好与版本化 JSON 状态持久化、三语国际化（英/简/繁）。
 
-**开发阶段：** 0.2.5 渲染层架构重构中。批次 8 已完成工作区、设置、菜单、窗口和导出域迁移；批次 8.1 已校正 Vditor adapter 的完整类型 facade 与防漂移证据；批次 9 将移除 legacy `app.js` 并收口测试。Vditor runtime、自动保存 timer、recovery runtime、共享 toolbar、Split View、outline、find、图片 runtime 和激活协调均已有明确 controller；DocumentController 与 shell 仍保留文件 identity、保存交易、外部变化分类和 recovery 安全动作的语义所有权。0.2.0 的文件安全、恢复、watcher、冲突与跨平台边界继续作为不可改变的行为基线。精确的批次状态、手测、首轮失败及重跑证据只记录在 [`docs/15-0.2.5-EXECUTION-TRACKER.md`](15-0.2.5-EXECUTION-TRACKER.md)，本地图不维护实时测试总数。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
+**开发阶段：** 0.2.5 渲染层架构重构中。批次 8 已完成工作区、设置、菜单、窗口和导出域迁移；批次 8.1 已校正 Vditor adapter 的完整类型 facade 与防漂移证据；批次 9 已删除 legacy `app.js` 入口并继续收口组合层职责和行为测试。`AppController` 负责启动顺序、窗口级命令、拖放和 IPC 订阅；`app/app-composition.js` 仍是渐进迁移期间的组合层，保存交易、标签命令、设置/session 组合和部分全局事件尚未全部迁出。Vditor runtime、自动保存 timer、recovery runtime、共享 toolbar、Split View、outline、find、图片 runtime、文档链接和激活协调均已有明确 controller；DocumentController 与组合层仍保留文件 identity、保存交易、外部变化和 recovery 安全动作的语义所有权。0.2.0 的文件安全、恢复、watcher、冲突与跨平台边界继续作为不可改变的行为基线。精确的批次状态、手测、首轮失败及重跑证据只记录在 [`docs/15-0.2.5-EXECUTION-TRACKER.md`](15-0.2.5-EXECUTION-TRACKER.md)，本地图不维护实时测试总数。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
 
 ---
 
@@ -30,7 +30,7 @@
 
 ### 前端框架
 
-**无框架，原生 DOM。** 渲染进程不引入 React、Vue 或任何 UI 框架；0.2.0 阶段所有 UI 逻辑集中在单一 IIFE 控制器（`src/renderer/app.js`）中。0.2.5 开始引入 TypeScript 组合入口（`src/renderer/main.ts`），逐步将职责从 `app.js` 迁移到类型安全的模块。
+**无框架，原生 DOM。** 渲染进程不引入 React、Vue 或任何 UI 框架；0.2.0 阶段所有 UI 逻辑集中在单一 IIFE 控制器（`src/renderer/app.js`）中。0.2.5 现在由 `src/renderer/main.ts` 校验全局能力并启动 `src/renderer/app/app-composition.js` 暴露的 `AppController`，职责按域逐步迁移到类型安全的模块。
 
 ### 编辑器引擎
 
@@ -99,11 +99,13 @@ Vditor-Electron/
 │   │       ├── persistent-state-store.ts # 版本化 state.json 白名单、迁移、串行原子写入
 │   │       ├── window-close-confirmation.ts # 按 BrowserWindow 绑定的关闭确认状态
 │   │       └── app-state.ts       # AppSettings / PersistentAppState 接口与默认值定义
-├── src/renderer/                  # 渲染进程（TypeScript 入口 + legacy JavaScript + HTML + CSS）
-│   ├── main.ts                    # 应用组合入口（esbuild bundle → dist/renderer/main.js）
+├── src/renderer/                  # 渲染进程（TypeScript 入口 + 组合 JavaScript + HTML + CSS）
+│   ├── main.ts                    # 全局 API 校验与 AppController 启动（esbuild bundle → dist/renderer/main.js）
 │   ├── pure-functions.ts          # 纯函数入口（esbuild bundle → dist/renderer/pure-functions.js）
 │   ├── index.html                 # 应用壳 HTML（标题栏、侧栏、编辑区、对话框）
-│   ├── app.js                     # [legacy] 集中式应用控制器，由 main.ts 通过 bootstrap 调用
+│   ├── app/                        # 应用壳与跨域组合（批次 9 渐进收口）
+│   │   ├── app-controller.ts      # 启动阶段、窗口级快捷键、Markdown drop、open-files/menu IPC 与 cleanup
+│   │   └── app-composition.js     # controller 实例装配、跨域 callback 和尚未迁出的组合交易
 │   ├── vditor-adapter.js          # Vditor 私有 DOM 适配层（集中选择器与结构假设）
 │   ├── locales.js                 # 三语字典（en_US / zh_Hans / zh_Hant）
 │   ├── types/                     # renderer TypeScript 类型声明
@@ -128,6 +130,7 @@ Vditor-Electron/
 │   │   ├── window-controller.ts   # WindowController（标题栏窗口控制按钮与状态订阅）
 │   │   ├── menu-controller.ts     # MenuController（Windows/Linux 自定义主菜单 popup DOM）
 │   │   ├── context-menu-controller.ts # ContextMenuController（共享右键菜单 popup 与互斥交接）
+│   │   ├── sidebar-layout-controller.ts # SidebarLayoutController（侧栏过渡、FLIP、fallback 与 cleanup）
 │   │   └── localization-controller.ts # LocalizationController（运行时 locale 解析与 DOM 刷新）
 │   ├── state/                     # 应用状态管理（批次 3 建立）
 │   │   ├── types.ts               # 核心状态类型（EditMode、DocumentIdentity、DocumentState、EditorRuntime、DocumentTab、AppState 等）
@@ -140,6 +143,7 @@ Vditor-Electron/
 │   │   ├── document-save-controller.ts # 文档/identity 两级保存队列
 │   │   ├── document-close-controller.ts # 确认、runtime 释放、Store 删除顺序
 │   │   ├── external-change-controller.ts # watcher 正文的纯分类
+│   │   ├── external-file-change-controller.ts # watcher 事件路由与外部文件状态协作
 │   │   ├── recovery-snapshot.ts   # RecoveryStore schema v2 投影/恢复验证
 │   │   └── session-snapshot.ts    # settings session schema v1 的白名单投影/验证
 │   ├── editor/                    # 批次 5 编辑器 runtime 与 UI 域迁移
@@ -152,13 +156,16 @@ Vditor-Electron/
 │   │   ├── find-controller.ts     # find widget、快捷键与 reveal timer
 │   │   ├── image-controller.ts    # 图片写入/插入与相对资源 runtime
 │   │   ├── recovery-runtime-controller.ts # recovery debounce 与串行 save/discard
-│   │   └── recovery-banner-controller.ts # recovery banner 渲染与动作路由
+│   │   ├── recovery-banner-controller.ts # recovery banner 渲染与动作路由
+│   │   └── document-link-navigation-controller.ts # 文档链接分类、modifier 导航与安全 scheme 拦截
 │   ├── workspace/                 # 批次 8 工作区域迁移
 │   │   ├── workspace-controller.ts # 工作区根路径、revision、watcher 刷新 timer 与 dispose
 │   │   └── explorer-controller.ts  # application-owned 文件树 DOM、懒加载展开与展开状态
 │   ├── settings/                  # 批次 8 设置域迁移
 │   │   ├── settings-controller.ts  # AppStore.settings 唯一写入入口与 classifySettingsChange 分类
-│   │   └── settings-window.ts      # 设置 modal enter/exit 动画、close timer 与 dispose
+│   │   ├── settings-window.ts      # 设置 modal enter/exit 动画、close timer 与 dispose
+│   │   ├── settings-persistence.ts # TOML 偏好/state.json 持久化队列与失败语义
+│   │   └── settings-dialog-layout-controller.ts # 设置窗口尺寸、拖动、resize listener 与 cleanup
 │   ├── export/                    # 批次 8 导出域迁移
 │   │   └── export-controller.ts    # HTML/PDF 导出事务顺序与资源重写
 │   ├── styles/
@@ -435,7 +442,7 @@ webPreferences: {
 
 ### 5.4 事件订阅清理机制
 
-`on()` 函数返回 `() => ipcRenderer.removeListener(channel, listener)` 形式的取消订阅函数，但 `app.js` 当前未调用这些返回值——因应用为单窗口生命周期，页面卸载时自动释放。
+`on()` 函数返回 `() => ipcRenderer.removeListener(channel, listener)` 形式的取消订阅函数。窗口级 open-files/menu 订阅由 `AppController` 持有并在 dispose 时释放；组合层其他 bridge 订阅由相应 controller 或其注入的 cleanup 回调持有，不能依赖页面卸载来掩盖重复注册。
 
 ---
 
@@ -451,9 +458,9 @@ webPreferences: {
 1. Vditor 全局构建（通过 <script src="app://app/vditor/dist/index.min.js">）
 2. locales.js（window.VditorDesktopLocales）
 3. vditor-adapter.js（window.VditorDesktopAdapter）
-4. pure-functions.js（window.__vditorDesktopPureFunctions）
-5. app.js（IIFE，暴露 window.__vditorDesktopLegacyBootstrap = init）
-6. main.js（esbuild bundle，调用 legacy bootstrap 完成初始化）
+4. pure-functions.js（window.__vditorDesktopPureFunctions，包含 AppController 与各 typed controller）
+5. app/app-composition.js（组合 IIFE，实例化并暴露 `window.__vditorDesktopApplication`）
+6. main.js（esbuild bundle，校验全局 API 后启动 application controller）
 ```
 
 `index.html` 的 CSP 允许 `self`、`app:` 和 Vditor 3.11.3 MathJax 同步 loader 所需的精确 SHA-256 hash；不允许脚本 `unsafe-inline` 或 `unsafe-eval`。`style-src 'unsafe-inline'` 是 Vditor 初始化时写入运行时 style 属性的兼容例外。升级 Vditor 或变更 MathJax 时，必须同时复核该 hash 和真实 MathJax 渲染。
@@ -461,20 +468,20 @@ webPreferences: {
 `main.js`（`src/renderer/main.ts`）：
 
 1. 校验 `Vditor`、`VditorDesktopAdapter`、`fileAPI`、`appAPI` 均可用
-2. 创建 `LifecycleManager` 实例
-3. 注册并初始化 `LegacyAppController`（调用 `window.__vditorDesktopLegacyBootstrap`）
-4. 注册 `beforeunload` 事件，触发 `lifecycle.dispose()`
+2. 取得 `window.__vditorDesktopApplication` 并调用其 `init()`
+3. `AppController` 按设置 → locale → UI → workspace → session → recovery → 收尾 → ready 顺序启动，拥有窗口级快捷键、Markdown drop、open-files/menu IPC 订阅和 cleanup
+4. 初始化失败或 `beforeunload` 时由 `AppController` 按资源逆序 dispose；组合层的领域 controller 由其注入的 `dispose` 回调释放
 
 文档域的渐进迁移位于 `src/renderer/documents/`：`TabController` 只负责标签栏表现；`DocumentController` 通过注入的最小 file bridge 串行化 canonical identity 的打开、保存命令、关闭命令和外部变化分类，在读取完成后复核去重，并保留未命名标签的目标路径碰撞回调；资源根准备、标签创建、watch 注册、保存交易和 UI 收敛交回明确的领域回调；其内部组合 `DocumentSaveController` 的文档/identity 两级队列与 `DocumentCloseController` 的确认→runtime 释放→Store 删除顺序。关闭控制器合并同一 document ID 的并发请求，避免确认、runtime 释放和 watcher 清理重复执行。它们都不查询或拼接标签 DOM。
 
-编辑器域的渐进迁移位于 `src/renderer/editor/`：`EditorController` 是每个 tab 的 Vditor 实例、rebuild、销毁、模式同步、滚动恢复、自动保存 debounce timer、mode shortcut/document-anchor listener、outline observer、表格 composition-scroll cleanup、编辑面滚动条增强与底部 spacer `ResizeObserver` 的 lifecycle owner。它在每次创建/销毁递增 runtime generation，`app.js` 传给 Vditor 的 `after`、`input` 与 `blur` 回调只在 generation 仍是当前实例时运行；冲突、不可用、关闭和 rebuild 均经其 `cancelAutoSave()` 释放 timer，并在 destroy 时断开 spacer/outline observer、表格补偿和滚动条 listener/timer，取消 mode-transition rAF/timer。outline observer、表格补偿与滚动条增强每次 Vditor rebuild 后重新注册；mode shortcut 和 document-anchor listener 则在 rebuild 时保留，因为 host 未替换，并在 tab close 时才释放。anchor navigation 的本地化 tooltip、外链和相对文件业务决定仍由 shell 提供 callback。`prepareModeTransition()` 在 Vditor 同步切换 mode 后安排状态同步与滚动恢复，且旧 runtime 不会再执行延迟回调。`rebuild()` 在 destroy 前经注入的 adapter-backed reader 捕获 Vditor 当前正文，`reconcileInitializedContent()` 再在 `after` 阶段保留 rebuild 前的 dirty/pending recovery saved baseline，并以 Vditor 正文更新 runtime 内容与 modified 状态。外部变化分类和文档状态仍由 DocumentController/app shell 所有；它们只能调用 EditorController 的 `beginExternalChange()` 取消保存，或在批准 reload 后调用 `applyExternalContent()` 取消保存并经 Vditor 注入正文。恢复状态、banner 和 DTO 同样仍属 document/shell；它们通过 `applyRecoveryContent()` 立即注入现有 runtime，或保留 `pendingEditorContent` 并由 `applyPendingContent()` 在 Vditor `after` 阶段消费。`RecoveryRuntimeController` 拥有每个 tab 的 500ms recovery snapshot debounce timer 与 recovery-store 串行队列；它以 snapshot ID 和 revision 拒绝过期保存，在关闭或保存后取消 timer 并按顺序 discard，失败仅报告给 shell，不改变文档 recovery/file-safety 状态。`EditorRuntimeCoordinator` 处理标签激活后的 editor runtime 顺序：归还旧 toolbar、设置 active document/host、ensure editor、仅在活动 ID 未变时执行 spacer/anchor rAF、交接 toolbar、刷新 split/outline/find，再持久化 session；它不修改文档 identity、保存基线或 watcher。`editor-options.ts` 集中 Vditor 3.11.3 的 constructor-only settings、离线资源、locale、relative-resource base 和回调接线，只有 `VDITOR_INITIALIZATION_SETTINGS` 内的设置可请求 rebuild。`ImageController` 通过窄 file bridge 处理图片压缩、写入和相对 Markdown 插入；`ImageRuntimeController` 拥有每个 tab 的 adapter-backed relative-resource observer、host resource base 和 SVG policy reload，不查询私有 DOM。`ToolbarController` 负责共享 mount 的前一 owner 归还、active/preview toolbar 交接、pending skeleton、preview controls 禁用与双 rAF wrap-height 测量，dispose 时取消待执行帧。`SplitViewController` 拥有 SV divider 的 20–80% 比例归一化、拖动时布局通知、source-only / preview-only / both 宿主 class、divider 可见性、行号/空白符 observer 与 rAF runtime、source scroll/自动隐藏滚动条/自动缩进 listener、特殊列表缩进 Range，以及 window pointer listener cleanup；关闭或 rebuild 时会反向释放全部 tab-scoped runtime。divider、pane、行号/空白符 canvas、source/list Range 与 keydown 的 Vditor 私有结构只经 adapter 的语义回调完成。`OutlineController` 仅拥有 Desktop outline 的 DOM 和单个防抖 refresh timer；tab/runtime 切换会取消旧 timer 后立即按新 active tab 渲染。它通过 adapter 的语义 snapshot/scroll 回调工作，不持有文件或 Vditor 私有 DOM。`FindController` 拥有 find widget 的 query/matches/index、120ms reveal timer 和 window capture-phase F3/Enter/Escape listener；tab 切换只调用其 `onRuntimeChanged()`，关闭应用时由 controller dispose 取消 timer、listener 和 CSS highlights。
+编辑器域的渐进迁移位于 `src/renderer/editor/`：`EditorController` 是每个 tab 的 Vditor 实例、rebuild、销毁、模式同步、滚动恢复、自动保存 debounce timer、mode shortcut/document-anchor listener、outline observer、表格 composition-scroll cleanup、编辑面滚动条增强与底部 spacer `ResizeObserver` 的 lifecycle owner。它在每次创建/销毁递增 runtime generation，`app/app-composition.js` 传给 Vditor 的 `after`、`input` 与 `blur` 回调只在 generation 仍是当前实例时运行；冲突、不可用、关闭和 rebuild 均经其 `cancelAutoSave()` 释放 timer，并在 destroy 时断开 spacer/outline observer、表格补偿和滚动条 listener/timer，取消 mode-transition rAF/timer。outline observer、表格补偿与滚动条增强每次 Vditor rebuild 后重新注册；mode shortcut 和 document-anchor listener 则在 rebuild 时保留，因为 host 未替换，并在 tab close 时才释放。`DocumentLinkNavigationController` 负责链接分类、modifier 导航、危险 scheme 拦截和 hint/tooltip 协作；`EditorController` 仍拥有 anchor listener 生命周期。`prepareModeTransition()` 在 Vditor 同步切换 mode 后安排状态同步与滚动恢复，且旧 runtime 不会再执行延迟回调。`rebuild()` 在 destroy 前经注入的 adapter-backed reader 捕获 Vditor 当前正文，`reconcileInitializedContent()` 再在 `after` 阶段保留 rebuild 前的 dirty/pending recovery saved baseline，并以 Vditor 正文更新 runtime 内容与 modified 状态。外部变化分类和文档状态仍由 DocumentController/组合层所有；它们只能调用 EditorController 的 `beginExternalChange()` 取消保存，或在批准 reload 后调用 `applyExternalContent()` 取消保存并经 Vditor 注入正文。恢复状态、banner 和 DTO 同样仍属 document/组合层；它们通过 `applyRecoveryContent()` 立即注入现有 runtime，或保留 `pendingEditorContent` 并由 `applyPendingContent()` 在 Vditor `after` 阶段消费。`RecoveryRuntimeController` 拥有每个 tab 的 500ms recovery snapshot debounce timer 与 recovery-store 串行队列；它以 snapshot ID 和 revision 拒绝过期保存，在关闭或保存后取消 timer 并按顺序 discard，失败仅报告给组合层，不改变文档 recovery/file-safety 状态。`EditorRuntimeCoordinator` 处理标签激活后的 editor runtime 顺序：归还旧 toolbar、设置 active document/host、ensure editor、仅在活动 ID 未变时执行 spacer/anchor rAF、交接 toolbar、刷新 split/outline/find，再持久化 session；它不修改文档 identity、保存基线或 watcher。`editor-options.ts` 集中 Vditor 3.11.3 的 constructor-only settings、离线资源、locale、relative-resource base 和回调接线，只有 `VDITOR_INITIALIZATION_SETTINGS` 内的设置可请求 rebuild。`ImageController` 通过窄 file bridge 处理图片压缩、写入和相对 Markdown 插入；`ImageRuntimeController` 拥有每个 tab 的 adapter-backed relative-resource observer、host resource base 和 SVG policy reload，不查询私有 DOM。`ToolbarController` 负责共享 mount 的前一 owner 归还、active/preview toolbar 交接、pending skeleton、preview controls 禁用与双 rAF wrap-height 测量，dispose 时取消待执行帧。`SplitViewController` 拥有 SV divider 的 20–80% 比例归一化、拖动时布局通知、source-only / preview-only / both 宿主 class、divider 可见性、行号/空白符 observer 与 rAF runtime、source scroll/自动隐藏滚动条/自动缩进 listener、特殊列表缩进 Range，以及 window pointer listener cleanup；关闭或 rebuild 时会反向释放全部 tab-scoped runtime。divider、pane、行号/空白符 canvas、source/list Range 与 keydown 的 Vditor 私有结构只经 adapter 的语义回调完成。`OutlineController` 仅拥有 Desktop outline 的 DOM 和单个防抖 refresh timer；tab/runtime 切换会取消旧 timer 后立即按新 active tab 渲染。它通过 adapter 的语义 snapshot/scroll 回调工作，不持有文件或 Vditor 私有 DOM。`FindController` 拥有 find widget 的 query/matches/index、120ms reveal timer 和 window capture-phase F3/Enter/Escape listener；tab 切换只调用其 `onRuntimeChanged()`，关闭应用时由 controller dispose 取消 timer、listener 和 CSS highlights。
 
-`init()` 函数（`src/renderer/app.js`，由 `LegacyAppController` 调用）：
+`AppController.start()` 触发的组合初始化（`src/renderer/app/app-composition.js`）：
 
 1. 设置 `body.dataset.platform`
 2. 加载 `settings` 和 `defaultSettings`
 3. 应用国际化：`applyLocale(locale)`
-4. 绑定所有 DOM 事件：`setupEvents()`
+4. 绑定应用壳事件：`setupEvents()`；窗口级快捷键、drag/drop 和 IPC 订阅由 `AppController` 接管
 5. 恢复侧栏宽度和可见性；侧栏在显示时先作为 transform overlay 滑入，结束后才让 Vditor 缩窄，隐藏时同样在滑出结束后再释放编辑区宽度；拖动右缘时仅实时更新侧栏和应用 chrome，活动 Vditor host 宽度冻结到 mouseup 后再统一落位
 6. 应用演示设置（CSS 变量、缩放）
 7. 解析并应用主题
@@ -489,9 +496,9 @@ webPreferences: {
 
 ### 6.3 状态管理
 
-`src/renderer/state/` 提供 typed `AppStore`、文档状态/运行时类型与旧状态快照工具。`AppStore` 现在是打开文档集合、`activeDocumentId`、`workspacePath` 及其 revision 的 source of truth：legacy `app.js` 通过只读访问器读取它，并只经具名命令改变这些域。文档更新保留 canonical tab/runtime 对象身份供 await 中的控制器复核；`subscribeWithSelector()` 以有限嵌套快照观察 document 与 runtime 更新，而不是替换已注册 tab。
+`src/renderer/state/` 提供 typed `AppStore`、文档状态/运行时类型与旧状态快照工具。`AppStore` 现在是打开文档集合、`activeDocumentId`、`workspacePath` 及其 revision 的 source of truth：`app/app-composition.js` 通过只读访问器读取它，并只经具名命令改变这些域。文档更新保留 canonical tab/runtime 对象身份供 await 中的控制器复核；`subscribeWithSelector()` 以有限嵌套快照观察 document 与 runtime 更新，而不是替换已注册 tab。
 
-批次 4 的 `src/renderer/documents/` 保留文档安全边界：`TabController` 只渲染标签；`DocumentController` 负责新建、canonical-identity 打开、当前正文读取及 workspace 发起的 `transitionBindings()` 文档路径绑定提交；`DocumentSaveController` 拥有文档 ID 和 canonical identity 两级队列；`DocumentCloseController` 固定确认→runtime 释放→Store 删除顺序；`ExternalChangeController` 纯函数分类 watcher 正文。批次 5 的 `src/renderer/editor/` 已拥有 Vditor 正文读写、auto-save timer、recovery snapshot debounce/串行队列、tab 激活 runtime 协调及 editor-owned UI lifecycle。批次 8 的 `src/renderer/workspace/` 中，`WorkspaceController` 拥有根路径、revision、workspace watcher 刷新 timer 与 dispose；`ExplorerController` 只拥有 application-owned 文件树 DOM、懒加载展开、展开状态和 explorer 菜单意图，不直接写 document 状态或操作 Vditor。shell 仍组合保存交易、外部变化与 recovery 的安全动作，并仅经这些 controller 的命名 API 操作 runtime；它不重新拥有 timer、Vditor 私有 DOM 或第二条文档生命周期。其他应用壳层状态仍在 `app.js` 的 `state` 闭包对象中：
+批次 4 的 `src/renderer/documents/` 保留文档安全边界：`TabController` 只渲染标签；`DocumentController` 负责新建、canonical-identity 打开、当前正文读取及 workspace 发起的 `transitionBindings()` 文档路径绑定提交；`DocumentSaveController` 拥有文档 ID 和 canonical identity 两级队列；`DocumentCloseController` 固定确认→runtime 释放→Store 删除顺序；`ExternalChangeController` 纯函数分类 watcher 正文。批次 5 的 `src/renderer/editor/` 已拥有 Vditor 正文读写、auto-save timer、recovery snapshot debounce/串行队列、tab 激活 runtime 协调及 editor-owned UI lifecycle。批次 8 的 `src/renderer/workspace/` 中，`WorkspaceController` 拥有根路径、revision、workspace watcher 刷新 timer 与 dispose；`ExplorerController` 只拥有 application-owned 文件树 DOM、懒加载展开、展开状态和 explorer 菜单意图，不直接写 document 状态或操作 Vditor。组合层仍组装保存交易、外部变化与 recovery 的安全动作，并仅经这些 controller 的命名 API 操作 runtime；它不重新拥有已迁移 controller 的 timer、Vditor 私有 DOM 或第二条文档生命周期。其他应用壳层状态仍在 `app/app-composition.js` 的 `state` 闭包对象中：
 
 批次 8 的 `src/renderer/settings/` 中，`SettingsController` 是 `AppStore.settings` 与 `defaultSettings` 的唯一写入入口，串行化经窄 `saveSettings` bridge 的保存和重置结果；`classifySettingsChange()` 将展示、主题、locale、workspace watcher、live Vditor setter 与 constructor-only rebuild 明确分类。`SettingsWindow` 拥有 modal enter/exit rAF、close timer 和 dispose。`ui/LocalizationController` 解析三种支持语言，刷新 application-owned DOM，并同步 NotificationsController、菜单、标签和大纲；它不直接操作 Vditor 私有 DOM。设置桥返回兼容的完整 settings shape 时，shell 只合并本次提交的 preference keys，避免 TOML 默认值覆盖已加载的 `state.json` 状态。运行时 locale E2E 覆盖 `en_US`、`zh_Hans`、`zh_Hant` 对菜单、确认 dialog、空态、设置保存通知和已展开 workspace tree 的同步更新。主题和展示热应用仍经既有语义函数及 Vditor public setter 完成。
 
@@ -524,7 +531,7 @@ const state = {
 
 ### 7.1 初始化配置
 
-每个标签页的 Vditor 实例通过 `editorOptions(tab)` 构建（`src/renderer/app.js`）：
+每个标签页的 Vditor 实例通过 `editorOptions(tab)` 构建（`src/renderer/app/app-composition.js`，由 `EditorController` 接管 runtime）：
 
 ```javascript
 {
@@ -582,7 +589,7 @@ const state = {
 
 ### 7.3 工具栏定制
 
-默认工具栏（`src/renderer/app.js`）：
+默认工具栏（`src/renderer/app/app-composition.js`，由 `ToolbarController` 接管共享 mount 生命周期）：
 
 ```javascript
 const DEFAULT_TOOLBAR = [
@@ -670,7 +677,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 
 ### 7.8 Vditor 适配器（`src/renderer/vditor-adapter.js`）
 
-**设计意图：** 将 Vditor 3.11.x 的私有 DOM 选择器和非公开行为集中于此文件，使 `app.js` 仅依赖语义化的适配器 API，降低 Vditor 升级时的审计面。
+**设计意图：** 将 Vditor 3.11.x 的私有 DOM 选择器和非公开行为集中于此文件，使 `app/app-composition.js` 及各 editor controller 仅依赖语义化的适配器 API，降低 Vditor 升级时的审计面。
 
 `src/renderer/types/adapter.d.ts` 是该冻结 facade 的 TypeScript 边界：它逐项声明当前 67 个公开成员的参数、可空性和返回结构，但不描述或导出 selector、Range workaround 等私有实现。`src/renderer/types/adapter-contract.ts` 由 renderer strict typecheck 纳入，覆盖每个公开成员的有效调用及关键无效调用；其中的键 manifest 由 adapter DOM 单测与运行时冻结对象精确比对。修改 adapter 导出表时，必须同时更新这两份类型证据与单测，而 controller 仍只能消费语义 API。
 
@@ -872,7 +879,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 ### 8.3 错误处理机制
 
 - `ipcMain.handle` 抛出的异常通过 IPC 框架返回给渲染器为 Promise rejection
-- `app.js` 通过 `try/catch` 捕获所有 `window.fileAPI` 调用，在状态栏显示 `message.xxx...Failed` 消息
+- `app/app-composition.js` 通过 `try/catch` 捕获组合层 `window.fileAPI` 调用，在状态栏显示 `message.xxx...Failed` 消息；领域 controller 通过注入 bridge 接口返回可恢复结果
 - `app.saveSettings` 不捕获异常；若 `saveSettings` 调用失败，错误冒泡到调用方
 - `app.openExternal` 对非法协议主动 `throw new Error`，渲染器捕获并在 UI 提示
 
@@ -1055,28 +1062,28 @@ function rememberRecent(filePath) {
 
 ## 10. UI 组件体系
 
-本项目没有 UI 框架。批次 4 已建立 `src/renderer/documents/` 的标签/文档生命周期控制器；工作区、设置、菜单、窗口和导出已有对应 controller，legacy `app.js` 目前主要负责组合及尚未迁出的应用壳事件。以下列出各逻辑组件的职责与实现位置。
+本项目没有 UI 框架。批次 4 已建立 `src/renderer/documents/` 的标签/文档生命周期控制器；工作区、设置、菜单、窗口、导出、侧栏和文档链接已有对应 controller。`app/app-composition.js` 目前主要负责跨域组合及尚未迁出的保存、标签、设置/session 和应用壳事件。以下列出各逻辑组件的职责与实现位置。
 
 ### 10.1 逻辑组件清单
 
 #### 标题栏与窗口控制（`ui/window-controller.ts`，`index.html:15-86`）
 
 - **职责：** 自定义标题栏（Windows/Linux）、应用菜单挂载点、新建/打开/保存快捷按钮、标签栏、最小化/最大化/关闭按钮、macOS 隐藏式标题栏
-- **实现：** `WindowController` 绑定最小化/最大化/关闭和标题栏双击命令，订阅 fullscreen/maximized 状态并在 `dispose()` 取消 bridge 订阅；`app.js` 仅提供显示状态投影回调。
+- **实现：** `WindowController` 绑定最小化/最大化/关闭和标题栏双击命令，订阅 fullscreen/maximized 状态并在 `dispose()` 取消 bridge 订阅；`app/app-composition.js` 仅提供显示状态投影回调。
 
 #### 应用菜单（`ui/menu-controller.ts`，`index.html:17-25`）
 
 - **职责：** Windows/Linux 平台在标题栏挂载自定义下拉菜单（File 菜单含编辑模式 / 布局 / 设置 / 退出）
-- **实现：** `MenuController` 构建 popup DOM、checked/disabled 状态和 hover/blur cleanup；它只分发命名应用命令，不直接写 Store。`app.js` 的组合层提供当前菜单状态和命令实现。
+- **实现：** `MenuController` 构建 popup DOM、checked/disabled 状态和 hover/blur cleanup；它只分发命名应用命令，不直接写 Store。`app/app-composition.js` 的组合层提供当前菜单状态和命令实现；旧 `setupLegacyAppMenus()` 已删除。
 - **空状态：** 无文档时编辑模式菜单项 disabled 且不展开；布局中的显示工具栏仍可切换默认模式 toolbar 预览的显隐
 - **macOS：** 使用 `src/main/menu.ts` 的原生 Menu，通过 `menu:action` IPC 与渲染器同步
 
 #### 标签栏（`documents/tab-controller.ts`，`index.html:64-66`）
 
 - **职责：** 渲染标签按钮列表、支持拖拽重排序、中键关闭、脏标记显示、外部冲突标记
-- **实现：** `TabController` 只拥有 tab-bar DOM、Pointer Events 与延迟 drag-reset timer；`dispose()` 会取消其 animation frame 和 timer。`app.js` 的过渡 `renderTabs()` 仅投影标签视图模型并把 activate/close/reorder 命令转交到文档域。控制器不访问文件 bridge、watcher 或 Vditor。
+- **实现：** `TabController` 只拥有 tab-bar DOM、Pointer Events 与延迟 drag-reset timer；`dispose()` 会取消其 animation frame 和 timer。`app/app-composition.js` 的过渡 `renderTabs()` 仅投影标签视图模型并把 activate/close/reorder 命令转交到文档域。控制器不访问文件 bridge、watcher 或 Vditor。
 
-#### 编辑区（`app.js` 的 `ensureEditor()` 及相关编辑器生命周期函数，`index.html:141-213`）
+#### 编辑区（`app/app-composition.js` 的 `ensureEditor()` 及 `EditorController`，`index.html:141-213`）
 
 - **职责：** 承载所有标签页的 Vditor 编辑器 host、无标签时的 toolbar 预览 host、空状态引导、外部变更与异常恢复横幅、查找替换组件
 - **实现：** `ensureEditor()`、`switchTab()` 切换 active 类；编辑器重建和三种模式切换均保存主滚动容器的位置，跨模式按文档滚动进度恢复，SV 始终以源码区为准
@@ -1084,10 +1091,10 @@ function rememberRecent(filePath) {
 #### 查找替换（`editor/find-controller.ts`，`index.html:153-206`）
 
 - **职责：** 全文查找、逐条匹配、CSS Highlights API 高亮、替换单个/全部
-- **实现：** `FindController` 拥有 find widget DOM、打开/关闭/切换快捷键、匹配计数、reveal timer 与 dispose；查找高亮和替换经 adapter 的 `textMatches` / `revealTextMatch` / `replaceTextMatch` 完成。`app.js` 仅在组合层注入活动 tab、模式与 adapter 依赖。
+- **实现：** `FindController` 拥有 find widget DOM、打开/关闭/切换快捷键、匹配计数、reveal timer 与 dispose；查找高亮和替换经 adapter 的 `textMatches` / `revealTextMatch` / `replaceTextMatch` 完成。`app/app-composition.js` 仅在组合层注入活动 tab、模式与 adapter 依赖。
 - **替换路径：** `replaceTextMatch()` 经 Vditor 原生编辑/input 路径替换单个匹配，保留选区、undo 历史和模式状态（不再使用 `setValue()` 全文回写）。
 
-#### 侧栏（`app.js` 的 `toggleSidebar()`，`index.html:115-139`）
+#### 侧栏（`ui/sidebar-layout-controller.ts` + `app/app-composition.js` 的 `toggleSidebar()`，`index.html:115-139`）
 
 - **职责：** 左侧可折叠面板，包含文件树视图和大纲视图
 - **实现：** `toggleSidebar()` 以 `sidebar-opening` / `sidebar-closing` / `sidebar-hiding` 表达过渡目标。显示时保持 `.collapsed` 并以绝对定位的完整宽度 sidebar 从左侧 transform 滑入，结束后才回归 flex 布局；隐藏时保持原 flex 占位并 transform 滑出，结束后才添加 `.collapsed`。因此长 Vditor 文档不会在动画每帧重排。`#tabBar`、共享 Vditor toolbar mount 和编辑区（含 Vditor host）在这段时间以 FLIP transform 平滑跟随最终位置，最终 flex 落位时移除 transform；编辑区只用已知 sidebar 宽度计算位移，绝不为测量目标而临时展开 sidebar。Files/Outline tabs 的容器保持静态阴影，使用 clip-path 使可见空间与顶部布局平滑收放，而其按钮使用 opacity + transform 进入/退出；titlebar file actions 采用同样的内容动画，避免动画 width、padding 或 gap。空状态过渡中 `.main-area` 临时使用编辑背景；`#vditorToolbarMount::before` 绘制不参与布局、随 mount FLIP 移动且覆盖 toolbar 与暴露区域的连续表面，真实 toolbar/skeleton 在其上层保留原始边界。隐藏工具栏时 `#windowTitlebar::after` 绘制等价的 2px 阴影边并位于所有 titlebar 子项之下。最终 flex 宽度提交后直接稳定呈现；不缩放文字，也不为渐变复制长文档 DOM。减少动态效果时直接安全落位。
@@ -1095,27 +1102,27 @@ function rememberRecent(filePath) {
 - **状态与清理：** 稳定态根据 `.collapsed` 判断可见性，过渡中以 `state.settings.sidebarVisible` 作为目标状态，重复操作可反向而不会重启动画。`transitionend` 仅接受 sidebar 自身的 `transform`，220ms timeout 为事件缺失回退；完成后清理过渡类、取消 Web Animations、同步顶部宽度，并只调度一次 SV 行号/空白标记更新。`prefers-reduced-motion` 同时缩短 transition 和 keyframe animation。
 - **提示：** `setupSidebarTooltips()` 通过事件委托读取 sidebar 内的 `data-tooltip`，与 Markdown 链接共用独立的 `#appTooltip`；文件名、工作区路径和图标操作不再依赖浏览器原生 `title` 提示。
 
-#### 文件树（`workspace/explorer-controller.ts` + `app.js` 命令回调，`index.html:127-131`）
+#### 文件树（`workspace/explorer-controller.ts` + `app/app-composition.js` 命令回调，`index.html:127-131`）
 
 - **职责：** 懒加载工作区目录树、文件展开状态持久化、文件名原生末尾省略；文件/目录条目右键菜单提供重命名、回收站和在管理器中显示，空白树区域菜单提供切换工作区、新建与打开工作区。
-- **实现：** `ExplorerController` 拥有 application-owned 文件树 DOM（私有 `appendDirectory()` 懒加载）、展开状态和条目/空白区菜单意图，不直接写 document 状态或操作 Vditor；`app.js` 注入 `createExplorerItem()`、`nextUntitledNumber()`、`renameExplorerItem()` 等命令回调并实现 `showWorkspaceTreeMenu()` 的文件桥接操作。`.tree-name` 使用 `overflow: hidden`、`text-overflow: ellipsis` 和 `white-space: nowrap`，保持完整名称作为 DOM 文本及 `data-tooltip`，不在 resize 或树刷新时执行脚本测宽。新建文件自动创建并打开 `Untitled x.md`，新建目录自动创建 `Untitled x`。文件和目录分别编号；文件还避开当前目录已有 Markdown 文件和已打开标签，目录只避开当前目录已有目录。首次保存或另存为后直接调用 `refreshTree()`，避免自身保存事件被抑制时遗漏新文件。
+- **实现：** `ExplorerController` 拥有 application-owned 文件树 DOM（私有 `appendDirectory()` 懒加载）、展开状态和条目/空白区菜单意图，不直接写 document 状态或操作 Vditor；`app/app-composition.js` 注入 `createExplorerItem()`、`nextUntitledNumber()`、`renameExplorerItem()` 等命令回调并实现 `showWorkspaceTreeMenu()` 的文件桥接操作。`.tree-name` 使用 `overflow: hidden`、`text-overflow: ellipsis` 和 `white-space: nowrap`，保持完整名称作为 DOM 文本及 `data-tooltip`，不在 resize 或树刷新时执行脚本测宽。新建文件自动创建并打开 `Untitled x.md`，新建目录自动创建 `Untitled x`。文件和目录分别编号；文件还避开当前目录已有 Markdown 文件和已打开标签，目录只避开当前目录已有目录。首次保存或另存为后直接调用 `refreshTree()`，避免自身保存事件被抑制时遗漏新文件。
 - **过滤：** 仅显示 `fileExplorer.visibleExtensions` 中的扩展名，隐藏以 `.` 开头的文件
 - **资源边界：** `workspaceReadDepth` 在 Files & Session 中以 7–12 滑块持久化（默认 7）。根目录深度为 0，`appendDirectory()` 不读取超过该边界的后代，恢复展开状态同样受限；边界目录显示不可选中的本地化提示，语言切换时文件树会重建。可由 `realpath` 解析的目录链接会携带目标、相对工作区深度与工作区内外状态：内部目标可展开、外部目标灰色不可展开、循环目标被阻止；链接名称使用斜体和下划线，目录图标切换为 Lucide `folder-symlink`。工作区 watcher 使用相同深度且不跟随链接，资源错误只发送一次降级事件并关闭失效 watcher，手动浏览和刷新仍可用。`FileManagerService.listDir()` 会跳过读取过程中消失、失效或无权限的单个条目，不让一个损坏链接阻断整棵树。
 
-#### 文档大纲（`editor/outline-controller.ts` + `app.js` 回调，`index.html:133-136`）
+#### 文档大纲（`editor/outline-controller.ts` + `app/app-composition.js` 回调，`index.html:133-136`）
 
 - **职责：** 以 Vditor 原生语义收集当前可见编辑/预览内容的直接标题，构建可折叠层次树，点击跳转并平滑滚动到对应位置
-- **实现：** `OutlineController` 拥有大纲 DOM、折叠状态渲染与 300ms 防抖 `schedule()` 刷新；`app.js` 的 `renderOutline()` 委托其 `render()`，并注入 adapter `outlineSnapshot()` 的 snapshot 与 `scrollToOutlineHeading()` 滚动回调。`scrollToOutlineHeading()` 使用同一 snapshot 对应的标题节点和实际滚动容器，SV 两侧标题数量一致时同步滚动源码与预览。
+- **实现：** `OutlineController` 拥有大纲 DOM、折叠状态渲染与 300ms 防抖 `schedule()` 刷新；`app/app-composition.js` 的 `renderOutline()` 委托其 `render()`，并注入 adapter `outlineSnapshot()` 的 snapshot 与 `scrollToOutlineHeading()` 滚动回调。`scrollToOutlineHeading()` 使用同一 snapshot 对应的标题节点和实际滚动容器，SV 两侧标题数量一致时同步滚动源码与预览。
 
-#### 状态栏（`app.js`，`index.html:217-266`）
+#### 状态栏（`app/app-composition.js`，`index.html:217-266`）
 
 - **职责：** 显示当前文件路径、状态消息、编辑模式（IR/SV/WYSIWYG）、词字符行数、编码、行结尾、三态主题模式、设置快捷入口、版本号；编辑模式文本和主题图标可展开快捷菜单
 - **实现：** `updateActiveUI()` 汇总状态，`toggleStatusModeMenu()` / `selectStatusMode()` 通过适配器复用 Vditor 的原生模式切换；`toggleStatusThemeMenu()` / `selectStatusThemeMode()` 管理太阳、月亮、显示器三种主题模式
 
-#### 设置对话框（`settings/settings-window.ts` + `settings/settings-controller.ts` + `app.js` 面板逻辑，`index.html:249-end`）
+#### 设置对话框（`settings/settings-window.ts` + `settings/settings-controller.ts` + `settings/settings-dialog-layout-controller.ts` + `app/app-composition.js` 面板逻辑，`index.html:249-end`）
 
 - **职责：** 模态对话框，包含 6 个面板（Appearance/Fonts/Editor/Preview/Files & Session/About），支持拖拽移动和 8 方向拖拽调整大小，保存后按设置类型热应用或重建编辑器
-- **实现：** `SettingsWindow` 拥有 modal enter/exit rAF、close timer 和 `dispose()`；`SettingsController` 是 `AppStore.settings` / `defaultSettings` 的唯一写入入口，串行化 `savePatch()` / `reset()` 经窄 `saveSettings` bridge 的保存；`app.js` 的 `openSettings()`、`saveSettings()`、`setupSettingsDrag()`、`restoreSettingsCardSize()` 负责面板渲染、拖拽和 `classifySettingsChange()` 结果的热应用/重建分发
+- **实现：** `SettingsWindow` 拥有 modal enter/exit rAF、close timer 和 `dispose()`；`SettingsDialogLayoutController` 拥有尺寸边界、拖动、resize listener 和 cleanup；`SettingsController` 是 `AppStore.settings` / `defaultSettings` 的唯一写入入口，串行化 `savePatch()` / `reset()` 经窄 `saveSettings` bridge 的保存；`app/app-composition.js` 的 `openSettings()`、`saveSettings()` 负责面板渲染和 `classifySettingsChange()` 结果的热应用/重建分发。
 - **图标：** 左侧 6 个分类按钮使用由 `lucide-static` 构建生成的 `assets/symbolic/settings-*.svg`；状态栏设置入口使用 `assets/symbolic/settings.svg`，设置目录入口使用 `assets/symbolic/settings-files.svg`。这些 SVG 不再作为手工下载的源码资源维护。
 
 ##### Appearance 面板
@@ -1175,13 +1182,13 @@ function rememberRecent(filePath) {
 - "查看源码" 按钮（GitHub 链接）
 - 底部 "Restore defaults" 按钮（重置所有设置，仅此面板显示）
 
-#### 确认对话框（`app.js` 的 `showConfirmDialog()`，`index.html` 中的 `#confirmModal`）
+#### 确认对话框（`app/app-composition.js` 的 `showConfirmDialog()`，`index.html` 中的 `#confirmModal`）
 
 - **职责：** 通用确认对话框，支持自定义标题/消息/操作按钮列表，返回 Promise
 - **实现：** `showConfirmDialog({ title, message, detail, actions, draggable })` 直接返回由操作按钮结果兑现的 `Promise<string>`。
 - **受限拖动交互：** 未保存变更、移到回收站和关闭 HTML 过滤确认框启用 `draggable`；拖动仅从标题栏开始，位置限制在模态窗口可用范围内，关闭后回到居中位置，不提供尺寸调整手柄或持久化位置。通用 `.confirm-content` 统一禁止文字和图标选中，按钮仍可操作。
 
-#### 右键菜单（`ui/context-menu-controller.ts` / `app.js` 的 `showEditorContextMenu()`，`#contextMenu`）
+#### 右键菜单（`ui/context-menu-controller.ts` / `app/app-composition.js` 的 `showEditorContextMenu()`，`#contextMenu`）
 
 - **职责：** 文件树节点、工作区根目录和编辑区真实可编辑表面的共享上下文菜单；编辑区提供剪切、复制、粘贴、纯文本粘贴、删除、当前上下文选择，以及 WYSIWYG / IR 表格行列操作。撤销/重做继续使用快捷键和 Vditor 工具栏。
 - **菜单互斥：** `ContextMenuController` 拥有共享 popup DOM、位置约束、状态交接和 cleanup，并通过 MenuController 的关闭命令收回自定义主菜单；编辑器特有 selection/table action 仍由 editor/Vditor 语义路径提供。
@@ -1304,7 +1311,7 @@ function rememberRecent(filePath) {
 
 ### 11.5 响应式 / 平台差异
 
-- **Linux：** `body[data-platform='linux']` 取消窗口圆角/阴影，背景直接应用（`app.js` 设置 `backgroundColor` 为当前主题色以避免透明间隙）
+- **Linux：** `body[data-platform='linux']` 取消窗口圆角/阴影，背景直接应用（`app/app-composition.js` 设置 `backgroundColor` 为当前主题色以避免透明间隙）
 - **Windows：** `transparent: true` 实现无边框悬浮效果
 - **macOS：** 保留 `frame: true` + `hiddenInset` titleBarStyle，使用原生红绿灯按钮
 - **全屏模式：** `#app.fullscreen` 移除内边距和圆角
@@ -1398,7 +1405,7 @@ build:assets:
 
 `app://` 协议先校验受信任的 `app://app` host、端口、凭据和 URI 编码，再将解码后的路径限制在固定的资源根目录内（`startsWith(path.resolve(allowedRoot) + sep)`）；`/` 与 `/index.html` 是唯一允许的顶层 renderer 页面，其他 bundled asset 只能作为子资源加载。
 
-`local-file://` 使用固定 `root` authority；POSIX、Windows drive 和 UNC 路径均把完整的绝对路径编码进 pathname，不能把盘符拼进 authority。`src/main/local-resource.ts` 的 `LocalResourcePolicy` 维护当前工作区根和打开文档父目录，打开、关闭、另存、重命名和工作区切换时由 `app.js` 通过 `file:setResourceRoots` 串行同步。主进程先做 URL 词法拒绝，再对注册目录和目标文件分别执行规范化、`realpath`、目录边界与 `stat` 检查；配置、Chromium user data 和 recovery 目录始终是私有边界，符号链接不能逃出受控根。授权后只响应当前预览需要的 PNG/JPEG/GIF/APNG/AVIF/WEBP，使用准确图片 `Content-Type`、`X-Content-Type-Options: nosniff` 和 `Cache-Control: no-store`；SVG 仅在 `allowSvgImages` 开关开启后以 `image/svg+xml` 返回，其他主动/未知扩展名、缺失和未授权目标统一返回中性的 404。拒绝日志只记录分类，不记录 URL、真实路径或正文。
+`local-file://` 使用固定 `root` authority；POSIX、Windows drive 和 UNC 路径均把完整的绝对路径编码进 pathname，不能把盘符拼进 authority。`src/main/local-resource.ts` 的 `LocalResourcePolicy` 维护当前工作区根和打开文档父目录，打开、关闭、另存、重命名和工作区切换时由 `app/app-composition.js` 通过 `file:setResourceRoots` 串行同步。主进程先做 URL 词法拒绝，再对注册目录和目标文件分别执行规范化、`realpath`、目录边界与 `stat` 检查；配置、Chromium user data 和 recovery 目录始终是私有边界，符号链接不能逃出受控根。授权后只响应当前预览需要的 PNG/JPEG/GIF/APNG/AVIF/WEBP，使用准确图片 `Content-Type`、`X-Content-Type-Options: nosniff` 和 `Cache-Control: no-store`；SVG 仅在 `allowSvgImages` 开关开启后以 `image/svg+xml` 返回，其他主动/未知扩展名、缺失和未授权目标统一返回中性的 404。拒绝日志只记录分类，不记录 URL、真实路径或正文。
 
 主窗口的 `session.webRequest` 在 SVG 开关关闭时仅处理 HTTP(S) `image` 请求：URL pathname 以 `.svg` 结尾的请求在发送前取消，无扩展名资源则在响应 `Content-Type: image/svg+xml` 时取消；开启后不改写远程响应。Renderer CSP 只允许 bundled `app:`/`self` 脚本和 Vditor 3.11.3 内置 MathJax `tex-svg-full.js` 的精确 SHA-256 hash，未放行 `unsafe-inline` 或 `unsafe-eval`；MathJax 通过 Vditor 的同步 loader 将该固定文件作为内联脚本插入。`style-src` 暂保留 `unsafe-inline`，因为 Vditor 3.11.3 在创建编辑器时生成运行时 style 属性；移除它会破坏编辑器布局。Markdown XSS sanitize 与 SVG 渲染开关均默认开启安全限制，用户改变时须经过本地化风险确认；其余层是纵深防御，不能使不受信任 HTML 或 SVG 变得安全。升级 Vditor 时必须复核该脚本 hash 与 MathJax 渲染回归。
 
@@ -1431,7 +1438,7 @@ build:assets:
 }
 ```
 
-**渲染进程类型检查：** `tsconfig.renderer.json`（`module: ES2022`、`moduleResolution: bundler`、`strict: true`、`noEmit: true`）覆盖 `src/renderer/**/*.ts` 与 `src/shared/**/*.ts`，包含 adapter 调用契约（`types/adapter-contract.ts`）；由 `npm run typecheck:renderer` 执行。legacy JavaScript（`app.js`、`vditor-adapter.js`、`locales.js`）不参与 TypeScript 编译，esbuild 打包 TypeScript 入口。
+**渲染进程类型检查：** `tsconfig.renderer.json`（`module: ES2022`、`moduleResolution: bundler`、`strict: true`、`noEmit: true`）覆盖 `src/renderer/**/*.ts` 与 `src/shared/**/*.ts`，包含 adapter 调用契约（`types/adapter-contract.ts`）；由 `npm run typecheck:renderer` 执行。组合 JavaScript（`app/app-composition.js`、`vditor-adapter.js`、`locales.js`）不参与 TypeScript 编译，esbuild 打包 `main.ts` 与 `pure-functions.ts`。
 
 ### 13.2 构建工具配置
 
@@ -1578,10 +1585,10 @@ app://app/vditor/dist/index.min.js  →  Vditor 全局
 app://app/locales.js               →  window.VditorDesktopLocales
 app://app/vditor-adapter.js        →  window.VditorDesktopAdapter
 app://app/pure-functions.js        →  window.__vditorDesktopPureFunctions
-app://app/app.js                   →  IIFE 暴露 window.__vditorDesktopLegacyBootstrap
-app://app/main.js                  →  esbuild bundle：校验全局 API 并调用 legacy bootstrap
+app://app/app/app-composition.js   →  IIFE 暴露 window.__vditorDesktopApplication
+app://app/main.js                  →  esbuild bundle：校验全局 API 并启动 application controller
   ↓
-legacy bootstrap (init()):
+AppController.start() / composition callbacks:
   getSettings() / getPersistentState() / getDefaultSettings() # IPC invoke
   applyLocale() → setupEvents() → applyTheme()
   restoreWorkspace() → setWorkspace(folder)  # fileAPI.watch + listDir
@@ -1597,7 +1604,7 @@ legacy bootstrap (init()):
 ```
 用户操作（鼠标/键盘/菜单）
   ↓
-app.js 事件处理器
+AppController / domain controller / app-composition.js 事件处理器
   ↓
 window.fileAPI.xxx(...）         # contextBridge 跨进程调用
   ↓
@@ -1607,9 +1614,9 @@ index.ts ipcMain.handle('file:xxx', handler)
   ↓
 FileManagerService.xxx(...)      # fs.promises.readFile / readdir / rename / ...
   ↓
-返回结果 → preload ipcRenderer → app.js Promise
+返回结果 → preload ipcRenderer → controller/composition Promise
   ↓
-app.js 更新 state.tabs / tab.content / fileIdentity → DOM 更新（renderTabs / updateActiveUI）
+DocumentController/AppStore 更新 document state → TabController / updateActiveUI 更新 DOM
 ```
 
 ```
@@ -1617,9 +1624,9 @@ app.js 更新 state.tabs / tab.content / fileIdentity → DOM 更新（renderTab
   ↓
 mainWindow.webContents.send('xxx:yyy', payload)
   ↓
-preload.ts ipcRenderer.on() → 取消订阅函数传给 app.js
+preload.ts ipcRenderer.on() → 取消订阅函数传给 AppController 或对应 domain controller
   ↓
-handleMenu / handleExternalChange / applyTheme 等
+AppController / ExternalFileChangeController / composition callbacks
 ```
 
 ### 14.3 模块依赖关系图
@@ -1648,8 +1655,9 @@ flowchart TB
         AppAPI[appAPI\nsettings + theme + window + export]
     end
 
-    subgraph renderer[渲染进程 / index.html + app.js]
-        Controller["app.js controller\n\(tabs / workspace / settings / themes\)"]
+    subgraph renderer[渲染进程 / index.html + app-composition.js]
+        Controller["AppController + composition\n\(startup / commands / domain wiring\)"]
+        Domains["Typed domain controllers\n\(documents / editor / workspace / settings / UI\)"]
         Adapter[vditor-adapter.js\nVditorDesktopAdapter]
         Locales[locales.js\nVditorDesktopLocales]
         HTML["index.html\n\(DOM 壳层\)"]
@@ -1669,11 +1677,12 @@ flowchart TB
     IPCContract --> IPC
     preload -->|contextBridge| Controller
 
-    Controller -->|"new Vditor\(\)"| Vditor
-    Controller --> Adapter
+    Controller --> Domains
+    Domains -->|"new Vditor\(\)"| Vditor
+    Domains --> Adapter
     Controller --> Locales
     Adapter --> Vditor
-    Controller --> FileAPI
+    Domains --> FileAPI
     Controller --> AppAPI
 
     IPC --> FileManager
@@ -1696,7 +1705,7 @@ flowchart TB
 - 主进程模块（`app-paths.ts` / `protocol.ts` / `services/*` / `menu.ts`）只在 `index.ts` 启动和注册阶段引用，运行时由 `ipcMain.handle` 回调驱动，不直接调用渲染器。
 - `preload.ts` 是唯一被 `contextBridge` 允许的通道，渲染器通过 `window.fileAPI` / `window.appAPI` 访问所有主进程能力。
 - `ipc-contract.ts` 让 main、preload 和菜单共用通道名称；`ipc-guard.ts` 在每个 renderer IPC 入口校验当前主窗口的可信顶层 `app://app` frame；`ipc-validation.ts` 在副作用前解析高风险参数并返回稳定错误码。
-- 渲染器内部的 `app.js` 同时依赖 `VditorDesktopAdapter`（Vditor 私有 DOM 隔离）和 `VditorDesktopLocales`（国际化字典）两个全局脚本挂载点。
+- 渲染器内部的 `app/app-composition.js` 与 typed domain controllers 依赖 `VditorDesktopAdapter`（Vditor 私有 DOM 隔离）和 `VditorDesktopLocales`（国际化字典）两个全局脚本挂载点；只有 adapter 文件保存私有 selector 和结构假设。
 - `FileWatchService` 持有一个工作区结构 watcher、每个打开文档的内容 watcher 和仅用于已打开文档外部改名恢复的 fingerprint；事件通过 `mainWindow.webContents.send('file:changed')` 推送渲染器，并以 `scope` 区分树刷新和正文比较。`file:resolveRenamedDocument` 仅返回当前工作区内与既有 fingerprint 匹配的路径，不能作为任意文件搜索能力。
 
 ---
@@ -1739,9 +1748,12 @@ flowchart TB
 | `tests/unit/renderer/strings.test.ts`、`line-ending.test.ts` | renderer 纯函数工具 | escapeHTML / fileName / stripExtension；detectLineEnding 的 CRLF / LF 判定 |
 | `tests/unit/renderer/theme.test.ts`、`theme-controller.test.ts`、`localization.test.ts` | 主题与本地化纯函数 | isDarkTheme 与主题常量；resolveEffectiveTheme / resolveThemeMode / 亮暗主题校验 / code / content theme 解析；resolveLocale / translate / formatIpcErrorMessage 与稳定错误码 |
 | `tests/unit/renderer/notifications.test.ts`、`window-and-menu-controller.test.ts` | 通知与窗口/菜单控制器 | 状态消息、临时通知与确认对话框的计时、locale 切换与清理；窗口控件绑定与 dispose、菜单 checked 状态与命名命令分发、右键菜单互斥交接 |
+| `tests/unit/renderer/app-controller.test.ts` | `src/renderer/app/app-controller.ts` | 启动顺序、部分初始化失败回收、beforeunload、窗口快捷键、Markdown drop、open-files/menu 订阅和迟到回调清理 |
+| `tests/unit/renderer/document-link-navigation-controller.test.ts` | `src/renderer/editor/document-link-navigation-controller.ts` | 相对 Markdown/片段导航、危险 scheme 拦截、modifier hint、tooltip 清理和注入 bridge 协作 |
+| `tests/unit/renderer/sidebar-layout-controller.test.ts` | `src/renderer/ui/sidebar-layout-controller.ts` | 侧栏过渡、反向切换、FLIP/fallback timer、布局同步和 dispose |
 | `tests/unit/renderer/tab-controller.test.ts` | 标签栏控制器 | 从 view model 渲染标题/脏标记/attention/active 态、primary/close/中键点击路由、替换旧标签 DOM、dispose 取消 drag-reset timer |
-| `tests/unit/renderer/settings-controller.test.ts`、`settings-window.test.ts` | 设置保存分类与设置窗口 | classifySettingsChange 将展示/constructor-only 设置分开；SettingsController 加载保存后保持 Store；SettingsWindow 单一 close timer 与按需 presentation |
-| `tests/unit/renderer/workspace-controller.test.ts` | 工作区与文件树 | 根路径/revision/watch 刷新与持久化、不可用工作区路径路由到 document-binding owner、未信任名称按 text 渲染与展开回调、绑定提交失败恢复、ExplorerController 懒加载 |
+| `tests/unit/renderer/settings-controller.test.ts`、`settings-window.test.ts`、`settings-persistence.test.ts`、`settings-dialog-layout-controller.test.ts` | 设置保存分类、持久化与设置窗口 | classifySettingsChange 将展示/constructor-only 设置分开；SettingsController 加载保存后保持 Store；SettingsPersistence 分离 TOML 偏好与 state.json 队列；SettingsWindow/SettingsDialogLayoutController 负责动画、尺寸拖动和 cleanup |
+| `tests/unit/renderer/workspace-controller.test.ts`、`external-file-change-controller.test.ts` | 工作区、文件树与 watcher 事件路由 | 根路径/revision/watch 刷新与持久化、不可用工作区路径路由到 document-binding owner、未信任名称按 text 渲染与展开回调、绑定提交失败恢复、ExplorerController 懒加载，以及外部删除/重出现/冲突/干净重载路由 |
 | `tests/unit/renderer/export-controller.test.ts` | 导出事务 | 对话框前快照 HTML、确认路径后写可移植输出、PDF 资源规范化与嵌入、无活动文档时不导出 |
 
 ### 15.2 E2E 测试（Playwright Electron，按行为域拆分）
@@ -1889,7 +1901,7 @@ flowchart TB
 | `src/main/services/file-identity.ts` | 单元测试已覆盖 Linux 与注入路径模型       | Windows/macOS 实际卷大小写、Unicode 规范化、junction/Finder alias 和平台原生 identity 语义仍待实体机验证 |
 | `src/main/services/file-watch-service.ts` | 单元测试已覆盖 revision、ready/reconciliation 和 cleanup | 真实 Windows/macOS watcher 事件来源、合并时序、权限/占用反馈仍待实体机验证 |
 | `src/renderer/vditor-adapter.js`    | 单元测试与 E2E 均有                        | 覆盖 DOM 结构、链接交互、IR 展开切换和相对图片（含 Vditor 提前转换的 `app://app/` 路径）；仍缺少 `observeRelativeImageSources` / `withOriginalImageSources` / `toolbarButton` 选择器注入防御 / `isRelativeImageSource` 边界输入的单元测试 |
-| `src/renderer/app.js`               | 仅 E2E + `renderer-shell` 源代码字符串断言 | 无模块化后的单元行为测试                                                                                                                                                      |
+| `src/renderer/app/app-composition.js` | 组合层通过各 domain controller 与 E2E 间接覆盖 | 保存交易、标签命令、设置/session 组合和部分壳事件仍待按职责迁移；不再存在 `src/renderer/app.js` 旧入口源码字符串断言 |
 | `src/renderer/locales.js`           | `renderer-shell` 键完整性对等测试          | 无占位符参数替换 / 三语言字典完整性的独立单元测试                                                                                                                             |
 
 ---
@@ -1907,7 +1919,7 @@ flowchart TB
 
 ### 16.2 架构风险点
 
-1. **`app.js` 集中度仍然偏高**：批次 4–8 已把文档生命周期、编辑器 runtime、工作区、设置、菜单、窗口、导出、查找替换和大纲 DOM 迁入独立 controller；legacy shell 仍组合保存交易、外部变化与 recovery 安全动作、侧栏过渡、状态栏、对话框和拖拽，批次 9 计划移除 `app.js` 收口。
+1. **`app/app-composition.js` 集中度仍然偏高**：批次 4–8 及批次 9 续接工作已把文档生命周期部分命令、编辑器 runtime、工作区、设置、菜单、窗口、导出、侧栏、文档链接、查找替换和大纲 DOM 迁入独立 controller；组合层仍承担保存交易、标签命令、设置/session 组合、状态栏、对话框和部分全局事件，批次 9 仍在收口。
 
 2. **IPC handler 仍集中在 `src/main/index.ts`**：当前仓库没有 `src/main/ipc/` 实现目录，所有 handler 由 `registerIpcHandlers()` 注册；这仍是 0.2.5 的拆分候选，但不应为此预先创建空模块。
 
@@ -1919,7 +1931,7 @@ flowchart TB
 
 6. **非展示设置仍会触发全标签重建**：`saveSettings()` 已将主题、内容/代码主题、缩放和滚动条等展示设置分类为热应用；仍会对影响 Vditor 初始化契约的设置重建标签，分类边界和编辑状态保护属于 0.2.5 范围。
 
-7. **部分 Vditor 私有 DOM 知识泄漏到 `app.js`**：`app.js` 直接访问 `VDITOR.selectors` 和部分未通过 adapter 暴露的 DOM 查询，削弱了适配器边界。
+7. **部分 Vditor 私有 DOM 知识需继续审计**：`app/app-composition.js` 仍包含 editor 组合回调和少量 adapter 语义调用；新的 controller 不得重新引入 `VDITOR.selectors` 或未通过 adapter 暴露的 DOM 查询。
 
 8. **Windows/Linux 无原生菜单**：仅 macOS 使用 `Menu.buildFromTemplate`，其他平台完全依赖渲染器自定义菜单，原生集成度不对称。
 
@@ -1936,7 +1948,7 @@ flowchart TB
 
 **P2（架构）：**
 3. 将 `index.ts` 中的 IPC handler 分拆到职责明确的模块，保持 `src/main/ipc/` 只在确有边界时建立，不创建空壳目录
-4. 按批次 9 计划移除 legacy `app.js`：把剩余保存交易、外部变化与 recovery 安全动作、侧栏过渡、状态栏、对话框和拖拽迁入既有领域 controller，保持无框架的原生 DOM 架构
+4. 按批次 9 继续收口 `app/app-composition.js`：把剩余保存交易、标签命令、设置/session 组合、状态栏、对话框和应用壳事件迁入既有领域 controller，保持无框架的原生 DOM 架构；`src/renderer/app.js` 已删除，不得恢复。
 5. 继续完善设置分类：仅影响展示的设置走现有 `applyPresentationSettings()`，影响 Vditor 初始化契约的设置重建时保护 undo、选区和滚动状态
 6. 将剩余 Vditor 私有 DOM 查询（当前 toolbar mount 兼容逻辑）收回 `vditor-adapter.js`
 
