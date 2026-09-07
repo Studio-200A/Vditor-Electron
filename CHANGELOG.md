@@ -10,7 +10,7 @@
 
 #### Batch 9 architecture follow-up (2026-09-07)
 
-The following changes continue the internal 0.2.5 renderer refactor. They preserve the existing user-facing behavior and do not by themselves complete the batch; the remaining composition-layer migration and full validation are tracked in `docs/15-0.2.5-EXECUTION-TRACKER.md`.
+The following changes complete the internal 0.2.5 renderer refactor. They preserve the existing user-facing behavior; batch 9 is now closed with full unit/E2E validation and user manual testing recorded in `docs/15-0.2.5-EXECUTION-TRACKER.md`.
 
 - **refactor(app shell):** Added `AppController` as the owner of startup sequencing, window-level shortcuts, Markdown drag-and-drop, open-files/menu IPC subscriptions, partial-initialization rollback, and shutdown cleanup. `main.ts` now validates the required globals and starts the composed application through `window.__vditorDesktopApplication`.
 - **refactor(renderer entry):** Removed the legacy `src/renderer/app.js` entry. `app/app-composition.js` now contains the transitional cross-domain composition, and the asset-copy script removes only a stale `dist/renderer/app.js` left by an incremental build.
@@ -29,7 +29,7 @@ The following changes continue the internal 0.2.5 renderer refactor. They preser
 - **fix(find and replace):** Preserve allowed SVG images during native WYSIWYG replacements by restoring original image URLs while Vditor serializes the changed block.
 - **fix(document links):** Show a text cursor, rather than a navigation affordance, for blocked link schemes while preserving any author-supplied title.
 - **improve(tabs):** Use the themed application tooltip for document-tab paths, consistent with sidebar files.
-- **docs(batch tracker):** Updated the batch 9 execution record with the legacy-entry evidence, current migration status, scoped validation, and the remaining full-check/manual-baseline gate.
+- **docs(batch tracker):** Updated the batch 9 execution record with the legacy-entry evidence, final migration status, scoped validation, and the completed full-check/manual-baseline gate.
 
 - **refactor(renderer build):** Introduced a TypeScript build pipeline for the renderer process using esbuild. Added `tsconfig.renderer.json` (strict mode), `build:renderer` script, and `typecheck:renderer` for independent renderer type checking. The renderer entry point is now `src/renderer/main.ts`, which orchestrates controller initialization and disposal in dependency order.
 - **refactor(composition entry):** Established `src/renderer/main.ts` as the application composition entry with a lifecycle manager that initializes controllers in dependency order and disposes them in reverse order on shutdown or failure. Legacy `app.js` is loaded as a controlled bootstrap module via `window.__vditorDesktopLegacyBootstrap`.

@@ -1,8 +1,8 @@
 # Vditor-Electron Code Structure World Map
 
 - **生成时间：** 2026-09-07
-- **基于的工作区：** `dev-0.2.5` 当前工作区实现（批次 8、8.1 已完成；批次 9 的用户 `check:all` 首轮 E2E 150/152，通过两项精确重跑收口；当前 HEAD `6863306`）
-- **文档版本：** v1.23
+- **基于的工作区：** `dev-0.2.5` 当前工作区实现（批次 0–9 已完成，批次 9 用户全量测试与手测通过；当前 HEAD `16b087b`）
+- **文档版本：** v1.24
 - **对应 package.json 版本号：** 0.2.0（开发中 0.2.5）
 
 ---
@@ -15,7 +15,7 @@
 
 **核心功能：** 多标签页 Markdown 编辑、三种编辑模式（IR/SV/WYSIWYG）、分栏预览、文件树侧栏、文档大纲、查找替换、图片插入与压缩、HTML/PDF 导出、TOML 偏好与版本化 JSON 状态持久化、三语国际化（英/简/繁）。
 
-**开发阶段：** 0.2.5 渲染层架构重构中。批次 8 已完成工作区、设置、菜单、窗口和导出域迁移；批次 8.1 已校正 Vditor adapter 的完整类型 facade 与防漂移证据；批次 9 已删除 legacy `app.js` 入口并收口组合层职责和行为测试。`AppController` 负责启动顺序、窗口级命令、拖放和 IPC 订阅；`app/app-composition.js` 仍是渐进迁移期间的组合层，保存交易、标签命令、设置/session 组合和部分全局事件尚未全部迁出。Vditor runtime、自动保存 timer、recovery runtime、共享 toolbar、Split View、outline、find、图片 runtime、文档链接、激活协调和应用主题协调均已有明确 controller；DocumentController 与组合层仍保留文件 identity、保存交易、外部变化和 recovery 安全动作的语义所有权。0.2.0 的文件安全、恢复、watcher、冲突与跨平台边界继续作为不可改变的行为基线。精确的批次状态、手测、首轮失败及重跑证据只记录在 [`docs/15-0.2.5-EXECUTION-TRACKER.md`](15-0.2.5-EXECUTION-TRACKER.md)，本地图不维护实时测试总数。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
+**开发阶段：** 0.2.5 渲染层架构重构主体已完成（批次 0–9 收口）。批次 8 完成工作区、设置、菜单、窗口和导出域迁移；批次 8.1 校正 Vditor adapter 的完整类型 facade 与防漂移证据并完成复审；批次 9 已删除 legacy `app.js` 入口、收口组合层职责和行为测试，用户全量测试与手测通过。`AppController` 负责启动顺序、窗口级命令、拖放和 IPC 订阅；`app/app-composition.js` 仍是迁移后的组合层，仅承担保存交易、标签命令、设置/session 组合和部分全局事件的协调，各领域 runtime、自动保存 timer、recovery、共享 toolbar、Split View、outline、find、图片 runtime、文档链接、激活协调、应用 shell 资源和主题协调均已有明确 controller；DocumentController 与组合层仍保留文件 identity、保存交易、外部变化和 recovery 安全动作的语义所有权。0.2.0 的文件安全、恢复、watcher、冲突与跨平台边界继续作为不可改变的行为基线。批次 10（文档、性能与包体、Linux 发布候选）与批次 11（最终独立审查）尚未开始。精确的批次状态、手测、首轮失败及重跑证据只记录在 [`docs/15-0.2.5-EXECUTION-TRACKER.md`](15-0.2.5-EXECUTION-TRACKER.md)，本地图不维护实时测试总数。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
 
 ---
 
@@ -103,9 +103,11 @@ Vditor-Electron/
 │   ├── main.ts                    # 全局 API 校验与 AppController 启动（esbuild bundle → dist/renderer/main.js）
 │   ├── pure-functions.ts          # 纯函数入口（esbuild bundle → dist/renderer/pure-functions.js）
 │   ├── index.html                 # 应用壳 HTML（标题栏、侧栏、编辑区、对话框）
-│   ├── app/                        # 应用壳与跨域组合（批次 9 渐进收口）
+│   ├── app/                        # 应用壳与跨域组合（批次 9 收口后剩余组合交易）
 │   │   ├── app-controller.ts      # 启动阶段、窗口级快捷键、Markdown drop、open-files/menu IPC 与 cleanup
-│   │   └── app-composition.js     # controller 实例装配、跨域 callback 和尚未迁出的组合交易
+│   │   ├── application-shell-controller.ts # application-owned DOM 属性/listener、observer、timer/rAF、bridge subscription 与 tab-wheel cleanup
+│   │   ├── session-restore-controller.ts # session DTO 投影、workspace/document 恢复交易与恢复收尾
+│   │   └── app-composition.js     # controller 实例装配、跨域 callback 和剩余组合交易
 │   ├── vditor-adapter.js          # Vditor 私有 DOM 适配层（集中选择器与结构假设）
 │   ├── locales.js                 # 三语字典（en_US / zh_Hans / zh_Hant）
 │   ├── types/                     # renderer TypeScript 类型声明
@@ -131,6 +133,8 @@ Vditor-Electron/
 │   │   ├── window-controller.ts   # WindowController（标题栏窗口控制按钮与状态订阅）
 │   │   ├── menu-controller.ts     # MenuController（Windows/Linux 自定义主菜单 popup DOM）
 │   │   ├── context-menu-controller.ts # ContextMenuController（共享右键菜单 popup 与互斥交接）
+│   │   ├── status-menu-controller.ts # StatusMenuController（状态栏模式/主题弹出菜单与 listener cleanup）
+│   │   ├── app-tooltip-controller.ts # AppTooltipController（共享 #appTooltip 与 sidebar/tabBar 委托 hover）
 │   │   ├── sidebar-layout-controller.ts # SidebarLayoutController（侧栏过渡、FLIP、fallback 与 cleanup）
 │   │   └── localization-controller.ts # LocalizationController（运行时 locale 解析与 DOM 刷新）
 │   ├── state/                     # 应用状态管理（批次 3 建立）
@@ -142,7 +146,10 @@ Vditor-Electron/
 │   │   ├── document-controller.ts # 新建、打开、canonical identity 去重和正文读取边界
 │   │   ├── document-binding-transition.ts # 文档路径绑定迁移的命令/结果类型契约
 │   │   ├── document-save-controller.ts # 文档/identity 两级保存队列
+│   │   ├── document-save-external-workflow-controller.ts # 普通/自动/另存的 safe-write 交易与冲突/重载/重建动作
 │   │   ├── document-close-controller.ts # 确认、runtime 释放、Store 删除顺序
+│   │   ├── document-tab-workflow-controller.ts # 多文件打开最终激活、新建 untitled 与 activation 分发
+│   │   ├── document-watch-controller.ts # watcher ready/reconciliation 的 stale-result release 与 rebind
 │   │   ├── external-change-controller.ts # watcher 正文的纯分类
 │   │   ├── external-file-change-controller.ts # watcher 事件路由与外部文件状态协作
 │   │   ├── recovery-snapshot.ts   # RecoveryStore schema v2 投影/恢复验证
@@ -157,18 +164,22 @@ Vditor-Electron/
 │   │   ├── find-controller.ts     # find widget、快捷键与 reveal timer
 │   │   ├── image-controller.ts    # 图片写入/插入与相对资源 runtime
 │   │   ├── recovery-runtime-controller.ts # recovery debounce 与串行 save/discard
+│   │   ├── recovery-restore-controller.ts # recovery 候选加载、磁盘分类、identity 合并与不可用标签创建
 │   │   ├── recovery-banner-controller.ts # recovery banner 渲染与动作路由
 │   │   └── document-link-navigation-controller.ts # 文档链接分类、modifier 导航与安全 scheme 拦截
 │   ├── workspace/                 # 批次 8 工作区域迁移
 │   │   ├── workspace-controller.ts # 工作区根路径、revision、watcher 刷新 timer 与 dispose
-│   │   └── explorer-controller.ts  # application-owned 文件树 DOM、懒加载展开与展开状态
+│   │   ├── explorer-controller.ts  # application-owned 文件树 DOM、懒加载展开与展开状态
+│   │   └── explorer-file-transaction-controller.ts # 创建/改名/删除文件系统交易与 binding 迁移
 │   ├── settings/                  # 批次 8 设置域迁移
 │   │   ├── settings-controller.ts  # AppStore.settings 唯一写入入口与 classifySettingsChange 分类
 │   │   ├── settings-window.ts      # 设置 modal enter/exit 动画、close timer 与 dispose
 │   │   ├── settings-persistence.ts # TOML 偏好/state.json 持久化队列与失败语义
+│   │   ├── settings-runtime-controller.ts # 设置表单同步、风险确认、debounced live save 与分类分发
 │   │   └── settings-dialog-layout-controller.ts # 设置窗口尺寸、拖动、resize listener 与 cleanup
 │   ├── export/                    # 批次 8 导出域迁移
-│   │   └── export-controller.ts    # HTML/PDF 导出事务顺序与资源重写
+│   │   ├── export-controller.ts    # HTML/PDF 导出事务顺序与资源重写
+│   │   └── export-html.ts          # Vditor HTML snapshot、local-file URL 可移植化与 PDF 本地图片嵌入
 │   ├── styles/
 │   │   ├── app.css                # 应用样式文件（布局、通用组件、共享语义变量；:root 默认主题变量）
 │   │   └── themes/                # 主题样式文件（批次 2 剩余拆分）
@@ -1746,16 +1757,19 @@ flowchart TB
 | `tests/unit/renderer/split-view-controller.test.ts`、`toolbar-controller.test.ts`、`outline-controller.test.ts`、`find-controller.test.ts` | Split View、共享工具栏、大纲与查找 UI | divider/行号/缩进、observer/listener/timer cleanup、toolbar owner 交接、outline stale refresh、find reveal 与窗口快捷键 |
 | `tests/unit/renderer/image-controller.test.ts`、`recovery-runtime-controller.test.ts`、`recovery-banner-controller.test.ts` | 图片与 recovery editor runtime | 图片文件名/写入边界、资源 observer、recovery debounce 替换、串行 save/discard、不可用文件保存、非致命 I/O 失败、三种 recovery banner 状态与动作路由 |
 | `tests/unit/renderer/document-controller.test.ts`、`document-controller.integration.test.ts`、`document-save-controller.test.ts`、`document-close-controller.test.ts`、`external-change-controller.test.ts` | 文档生命周期命令 | canonical identity、保存队列、关闭顺序、外部变化分类，以及与 editor runtime 的安全组合边界 |
+| `tests/unit/renderer/document-tab-workflow-controller.test.ts`、`document-watch-controller.test.ts`、`document-save-external-workflow-controller.test.ts`、`external-file-change-controller.test.ts` | 文档工作流与外部变化安全 | 多文件打开最终激活/新建 untitled/打开失败、watcher stale-result release 与 rebind、safe-write 交易与冲突/重载/重建动作、watcher 事件路由与外部状态协作 |
 | `tests/unit/renderer/state/store.test.ts`、`state/snapshots.test.ts`、`session-snapshot.test.ts`、`recovery-snapshot.test.ts` | AppStore 与版本化快照 DTO | 文档/活动标签受控状态、session/recovery 白名单投影、恢复输入验证和运行时句柄隔离 |
 | `tests/unit/renderer/disposables.test.ts`、`dom.test.ts`、`lifecycle.test.ts` | renderer core 基础设施 | DisposableBag 逆序/幂等清理、清理失败容忍及 listener/timer/observer 封装；requiredElement/optionalElement；LifecycleManager 注册顺序 init、逆序 dispose、init 失败回收已初始化控制器 |
 | `tests/unit/renderer/strings.test.ts`、`line-ending.test.ts` | renderer 纯函数工具 | escapeHTML / fileName / stripExtension；detectLineEnding 的 CRLF / LF 判定 |
 | `tests/unit/renderer/theme.test.ts`、`theme-controller.test.ts`、`theme-coordinator.test.ts`、`localization.test.ts` | 主题与本地化纯函数与主题协调器 | isDarkTheme 与主题常量；resolveEffectiveTheme / resolveThemeMode / 亮暗主题校验 / code / content theme 解析；ThemeCoordinator 联动 content/code theme、状态栏同步与 Vditor setTheme 应用；resolveLocale / translate / formatIpcErrorMessage 与稳定错误码 |
 | `tests/unit/renderer/notifications.test.ts`、`window-and-menu-controller.test.ts` | 通知与窗口/菜单控制器 | 状态消息、临时通知与确认对话框的计时、locale 切换与清理；窗口控件绑定与 dispose、菜单 checked 状态与命名命令分发、右键菜单互斥交接 |
 | `tests/unit/renderer/app-controller.test.ts` | `src/renderer/app/app-controller.ts` | 启动顺序、部分初始化失败回收、beforeunload、窗口快捷键、Markdown drop、open-files/menu 订阅和迟到回调清理 |
+| `tests/unit/renderer/application-shell-controller.test.ts`、`session-restore-controller.test.ts`、`recovery-restore-controller.test.ts` | 应用 shell 资源与会话恢复 | 重复 init/dispose、property handler/listener/observer/timer 清理；session DTO 捕获/恢复/激活与 unavailable 投影；recovery 候选加载、磁盘分类、identity 合并与不可用标签 |
+| `tests/unit/renderer/export-html.test.ts`、`status-menu-controller.test.ts`、`app-tooltip-controller.test.ts`、`explorer-file-transaction-controller.test.ts` | 导出、状态栏菜单、tooltip 与文件树交易 | HTML snapshot/资源可移植化；status popup 命令/dismiss/dispose；tooltip 委托与清理；创建/改名/删除交易与 binding 迁移 |
 | `tests/unit/renderer/document-link-navigation-controller.test.ts` | `src/renderer/editor/document-link-navigation-controller.ts` | 相对 Markdown/片段导航、危险 scheme 拦截、modifier hint、tooltip 清理和注入 bridge 协作 |
 | `tests/unit/renderer/sidebar-layout-controller.test.ts` | `src/renderer/ui/sidebar-layout-controller.ts` | 侧栏过渡、反向切换、FLIP/fallback timer、布局同步和 dispose |
 | `tests/unit/renderer/tab-controller.test.ts` | 标签栏控制器 | 从 view model 渲染标题/脏标记/attention/active 态、primary/close/中键点击路由、替换旧标签 DOM、dispose 取消 drag-reset timer |
-| `tests/unit/renderer/settings-controller.test.ts`、`settings-window.test.ts`、`settings-persistence.test.ts`、`settings-dialog-layout-controller.test.ts` | 设置保存分类、持久化与设置窗口 | classifySettingsChange 将展示/constructor-only 设置分开；SettingsController 加载保存后保持 Store；SettingsPersistence 分离 TOML 偏好与 state.json 队列；SettingsWindow/SettingsDialogLayoutController 负责动画、尺寸拖动和 cleanup |
+| `tests/unit/renderer/settings-controller.test.ts`、`settings-window.test.ts`、`settings-persistence.test.ts`、`settings-runtime-controller.test.ts`、`settings-dialog-layout-controller.test.ts` | 设置保存分类、持久化与设置窗口 | classifySettingsChange 将展示/constructor-only 设置分开；SettingsController 加载保存后保持 Store；SettingsPersistence 分离 TOML 偏好与 state.json 队列；SettingsRuntimeController 表单同步/风险确认/live save 分发；SettingsWindow/SettingsDialogLayoutController 负责动画、尺寸拖动和 cleanup |
 | `tests/unit/renderer/workspace-controller.test.ts`、`external-file-change-controller.test.ts` | 工作区、文件树与 watcher 事件路由 | 根路径/revision/watch 刷新与持久化、不可用工作区路径路由到 document-binding owner、未信任名称按 text 渲染与展开回调、绑定提交失败恢复、ExplorerController 懒加载，以及外部删除/重出现/冲突/干净重载路由 |
 | `tests/unit/renderer/export-controller.test.ts` | 导出事务 | 对话框前快照 HTML、确认路径后写可移植输出、PDF 资源规范化与嵌入、无活动文档时不导出 |
 
@@ -1903,8 +1917,8 @@ flowchart TB
 | `src/main/services/file-manager.ts` | 单元测试较完善                             | 已覆盖 `exists()`、空目录 `listDir`、创建/重命名目标冲突、路径逃逸、safe writer 基线和失败回滚；Windows/macOS 的权限、占用和目录级 no-replace 原生语义仍见 [`docs/03-CROSS-PLATFORM.md` §9](03-CROSS-PLATFORM.md#9-020-batch-7-deferred-platform-validation) |
 | `src/main/services/file-identity.ts` | 单元测试已覆盖 Linux 与注入路径模型       | Windows/macOS 实际卷大小写、Unicode 规范化、junction/Finder alias 和平台原生 identity 语义仍待实体机验证 |
 | `src/main/services/file-watch-service.ts` | 单元测试已覆盖 revision、ready/reconciliation 和 cleanup | 真实 Windows/macOS watcher 事件来源、合并时序、权限/占用反馈仍待实体机验证 |
-| `src/renderer/vditor-adapter.js`    | 单元测试与 E2E 均有                        | 覆盖 DOM 结构、链接交互、IR 展开切换和相对图片（含 Vditor 提前转换的 `app://app/` 路径）；仍缺少 `observeRelativeImageSources` / `withOriginalImageSources` / `toolbarButton` 选择器注入防御 / `isRelativeImageSource` 边界输入的单元测试 |
-| `src/renderer/app/app-composition.js` | 组合层通过各 domain controller 与 E2E 间接覆盖 | 保存交易、标签命令、设置/session 组合和部分壳事件仍待按职责迁移；不再存在 `src/renderer/app.js` 旧入口源码字符串断言 |
+| `src/renderer/vditor-adapter.js`    | 单元测试与 E2E 均有                        | 覆盖 DOM 结构、链接交互、IR 展开切换、相对图片（含 Vditor 提前转换的 `app://app/` 路径）、`withOriginalImageSources` 替换恢复、`setDocumentLinkCursor` 不抑制标题、68 个导出键 manifest；仍缺少 `observeRelativeImageSources` 观察者回调直接单测与 `toolbarButton` 选择器注入防御 |
+| `src/renderer/app/app-composition.js` | 组合层通过各 domain controller 与 E2E 间接覆盖 | 剩余保存交易、标签命令、设置/session 组合和部分壳事件属过渡期组合协调；不再存在 `src/renderer/app.js` 旧入口源码字符串断言 |
 | `src/renderer/locales.js`           | `renderer-shell` 键完整性对等测试          | 无占位符参数替换 / 三语言字典完整性的独立单元测试                                                                                                                             |
 
 ---
@@ -1922,7 +1936,7 @@ flowchart TB
 
 ### 16.2 架构风险点
 
-1. **`app/app-composition.js` 集中度仍然偏高**：批次 4–8 及批次 9 续接工作已把文档生命周期部分命令、编辑器 runtime、工作区、设置、菜单、窗口、导出、侧栏、文档链接、查找替换和大纲 DOM 迁入独立 controller；组合层仍承担保存交易、标签命令、设置/session 组合、状态栏、对话框和部分全局事件，批次 9 仍在收口。
+1. **`app/app-composition.js` 集中度仍然偏高**：批次 4–8 及批次 9 已把文档生命周期命令、编辑器 runtime、工作区、设置、菜单、窗口、导出、侧栏、文档链接、查找替换、大纲 DOM、应用 shell 资源、session 恢复和主题协调迁入独立 controller；组合层仍承担保存交易、标签命令、设置/session 组合、状态栏、对话框和部分全局事件的协调，批次 9 已收口、剩余组合交易属于过渡期遗留而非未完成迁移。
 
 2. **IPC handler 仍集中在 `src/main/index.ts`**：当前仓库没有 `src/main/ipc/` 实现目录，所有 handler 由 `registerIpcHandlers()` 注册；这仍是 0.2.5 的拆分候选，但不应为此预先创建空模块。
 
@@ -1951,7 +1965,7 @@ flowchart TB
 
 **P2（架构）：**
 3. 将 `index.ts` 中的 IPC handler 分拆到职责明确的模块，保持 `src/main/ipc/` 只在确有边界时建立，不创建空壳目录
-4. 按批次 9 继续收口 `app/app-composition.js`：把剩余保存交易、标签命令、设置/session 组合、状态栏、对话框和应用壳事件迁入既有领域 controller，保持无框架的原生 DOM 架构；`src/renderer/app.js` 已删除，不得恢复。
+4. 批次 9 已收口 `app/app-composition.js`；剩余保存交易、标签命令、设置/session 组合、状态栏、对话框和应用壳事件的进一步迁入既有领域 controller 属于后续迭代的架构演进，保持无框架的原生 DOM 架构；`src/renderer/app.js` 已删除，不得恢复。
 5. 继续完善设置分类：仅影响展示的设置走现有 `applyPresentationSettings()`，影响 Vditor 初始化契约的设置重建时保护 undo、选区和滚动状态
 6. 将剩余 Vditor 私有 DOM 查询（当前 toolbar mount 兼容逻辑）收回 `vditor-adapter.js`
 
