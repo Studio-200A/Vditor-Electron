@@ -442,12 +442,21 @@
     applyIndent: (tab, type, range) => VDITOR.applySplitListIndent(tab.host, type, range),
   });
   let resourceRootsQueue = Promise.resolve();
-  let settingsSaveQueue = Promise.resolve();
   const LOCALES = window.VditorDesktopLocales || {};
   const notifications = new PURE.NotificationsController(translateImpl, LOCALES, 'en_US');
   const settingsController = new PURE.SettingsController({
     store,
     save: (patch) => queueSettingsSave(patch, { throwOnFailure: true }),
+  });
+  const settingsPersistence = new PURE.SettingsPersistence({
+    persistentKeys: PERSISTENT_STATE_KEYS,
+    savePreferences: (settings) => window.appAPI.saveSettings(settings),
+    savePersistentState: (settings) => window.appAPI.savePersistentState(settings),
+    getCurrent: () => state.settings,
+    setCurrent: (settings) => {
+      state.settings = settings;
+    },
+    onFailure: (error) => console.error('Unable to persist settings.', error),
   });
   const settingsWindow = new PURE.SettingsWindow({
     modal: $('#settingsModal'),
@@ -1677,38 +1686,7 @@
   }
 
   function queueSettingsSave(settings, { throwOnFailure = false } = {}) {
-    const persistentState = {};
-    const preferences = {};
-    Object.entries(settings).forEach(([key, value]) => {
-      if (PERSISTENT_STATE_KEYS.has(key)) persistentState[key] = value;
-      else preferences[key] = value;
-    });
-    const previous = settingsSaveQueue;
-    const queued = previous
-      .catch(() => undefined)
-      .then(async () => {
-        if (Object.keys(preferences).length) {
-          const savedPreferences = await window.appAPI.saveSettings(preferences);
-          // The settings bridge returns an AppSettings-shaped snapshot for compatibility, but its
-          // persistent-state fields are defaults after the TOML/state.json split. Only merge the
-          // preference keys that this request actually wrote so current state.json data survives.
-          const confirmedPreferences = Object.fromEntries(
-            Object.keys(preferences).map((key) => [key, savedPreferences[key]]),
-          );
-          state.settings = { ...state.settings, ...confirmedPreferences };
-        }
-        if (Object.keys(persistentState).length) {
-          const savedState = await window.appAPI.savePersistentState(persistentState);
-          state.settings = { ...state.settings, ...savedState };
-        }
-        return state.settings;
-      });
-    settingsSaveQueue = queued.catch(() => undefined);
-    if (throwOnFailure) return queued;
-    return queued.catch((error) => {
-      console.error('Unable to persist settings.', error);
-      return state.settings;
-    });
+    return settingsPersistence.save(settings, throwOnFailure);
   }
 
   async function performSaveTab(

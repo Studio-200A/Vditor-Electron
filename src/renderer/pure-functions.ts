@@ -138,6 +138,7 @@ export type {
   ExplorerSettings,
 } from './workspace/explorer-controller.js';
 export { SettingsController, classifySettingsChange } from './settings/settings-controller.js';
+export { SettingsPersistence } from './settings/settings-persistence.js';
 export type {
   SettingsChange,
   SettingsControllerOptions,
