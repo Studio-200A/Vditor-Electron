@@ -4110,7 +4110,6 @@
   function setupEvents() {
     setupAppMenus();
     windowController.init();
-    window.appAPI.onOpenFiles((paths) => void openPaths(paths));
     $('#confirmModal').onclick = (event) => {
       if (event.target === $('#confirmModal')) closeConfirmDialog('cancel');
     };
@@ -4281,91 +4280,6 @@
       closeStatusThemeMenu();
       clearHoveredDocumentLink();
     });
-    document.addEventListener('keydown', (event) => {
-      if (pendingTableCellSelection?.event === event) {
-        const { selection } = pendingTableCellSelection;
-        pendingTableCellSelection = null;
-        if (!event.defaultPrevented)
-          VDITOR.selectTableCellContents(selection.cell, selection.editor);
-      }
-      if (event.key === 'Escape' && !$('#contextMenu').classList.contains('hidden')) {
-        event.preventDefault();
-        closeContextMenu();
-        return;
-      }
-      if (event.key === 'Escape' && !$('#confirmModal').classList.contains('hidden')) {
-        event.preventDefault();
-        closeConfirmDialog('cancel');
-        return;
-      }
-      if (event.key === 'Escape' && !$('#statusModeMenu').classList.contains('hidden')) {
-        event.preventDefault();
-        closeStatusModeMenu();
-        $('#statusMode').focus({ preventScroll: true });
-        return;
-      }
-      if (event.key === 'Escape' && !$('#statusThemeMenu').classList.contains('hidden')) {
-        event.preventDefault();
-        closeStatusThemeMenu();
-        $('#statusThemeMode').focus({ preventScroll: true });
-        return;
-      }
-      if (event.key === 'Escape' && !$('#settingsModal').classList.contains('hidden')) {
-        event.preventDefault();
-        void closeSettings();
-        return;
-      }
-      if (event.key === 'Alt' && $('#app').classList.contains('fullscreen')) {
-        event.preventDefault();
-        $('#app').classList.toggle('fullscreen-menu-visible');
-        return;
-      }
-      if (event.key === 'Escape') $('#app').classList.remove('fullscreen-menu-visible');
-      if (event.key === 'F11') {
-        event.preventDefault();
-        window.appAPI.toggleFullscreen();
-        return;
-      }
-      // Vditor 3.11.3 consumes its editor shortcuts before this document listener.
-      // Do not run an application command for the same editor gesture.
-      if (event.defaultPrevented) return;
-      if (!(event.ctrlKey || event.metaKey)) return;
-      const key = event.key.toLowerCase();
-      if (key === 'a') {
-        if (selectEditorContextOrAll(event)) return;
-        if (!keepsNativeSelectAll(event.target)) event.preventDefault();
-        return;
-      }
-      if (key === 's') {
-        event.preventDefault();
-        saveTab(activeTab(), event.shiftKey);
-      } else if (key === 'o' && event.altKey && !event.shiftKey) {
-        event.preventDefault();
-        chooseFiles();
-      } else if (key === 'k' && event.altKey && !event.shiftKey) {
-        event.preventDefault();
-        chooseFolder();
-      } else if (key === 'n') {
-        event.preventDefault();
-        newTab();
-      } else if (key === 'b' && event.altKey && !event.shiftKey) {
-        event.preventDefault();
-        toggleSidebar();
-      } else if (key === 'f') {
-        event.preventDefault();
-        findController.open();
-      } else if (key === ',') {
-        event.preventDefault();
-        openSettings();
-      } else if (key === 'w') {
-        event.preventDefault();
-        const tab = activeTab();
-        if (tab) closeTab(tab.id);
-      } else if (key === 'q') {
-        event.preventDefault();
-        window.appAPI.closeWindow();
-      }
-    });
     const resize = $('#sidebarResize');
     let resizing = false;
     let resizeMinimum = 0;
@@ -4477,7 +4391,6 @@
     setupAutoHideScrollbar($('#tabBar'));
     setupTabWheelScrolling($('#tabBar'));
     setupAutoHideScrollbar($('.confirm-content'));
-    window.appAPI.onMenuAction(handleMenu);
     window.appAPI.onSystemThemeChanged((theme) => {
       if (state.settings.systemTheme) void applyTheme(mapSystemTheme(theme));
     });
@@ -4508,26 +4421,56 @@
       }
       window.appAPI.closeConfirmed();
     });
-    document.body.addEventListener('dragover', (event) => event.preventDefault());
-    document.body.addEventListener('drop', async (event) => {
-      event.preventDefault();
-      const paths = Array.from(event.dataTransfer.files)
-        .map((file) => window.fileAPI.getDroppedPath(file))
-        .filter(Boolean);
-      const markdown = paths.filter((filePath) =>
-        /\.(md|markdown|mdown|mkd|mkdn)$/i.test(filePath),
-      );
-      if (markdown.length) await openPaths(markdown);
-      else if (paths.length) showMessage(t('message.dropMarkdownOnly'), true);
-    });
   }
 
-  async function init() {
-    if (typeof Vditor === 'undefined' || !VDITOR || !window.fileAPI || !window.appAPI) {
-      document.body.innerHTML =
-        '<div class="fatal"><h1>Application resources failed to load</h1><p>Please run npm run build again.</p></div>';
-      return;
+  function beforeAppShortcut(event) {
+    if (pendingTableCellSelection?.event === event) {
+      const { selection } = pendingTableCellSelection;
+      pendingTableCellSelection = null;
+      if (!event.defaultPrevented) VDITOR.selectTableCellContents(selection.cell, selection.editor);
     }
+    if (event.key === 'Escape' && !$('#contextMenu').classList.contains('hidden')) {
+      event.preventDefault();
+      closeContextMenu();
+      return true;
+    }
+    if (event.key === 'Escape' && !$('#confirmModal').classList.contains('hidden')) {
+      event.preventDefault();
+      closeConfirmDialog('cancel');
+      return true;
+    }
+    if (event.key === 'Escape' && !$('#statusModeMenu').classList.contains('hidden')) {
+      event.preventDefault();
+      closeStatusModeMenu();
+      $('#statusMode').focus({ preventScroll: true });
+      return true;
+    }
+    if (event.key === 'Escape' && !$('#statusThemeMenu').classList.contains('hidden')) {
+      event.preventDefault();
+      closeStatusThemeMenu();
+      $('#statusThemeMode').focus({ preventScroll: true });
+      return true;
+    }
+    if (event.key === 'Escape' && !$('#settingsModal').classList.contains('hidden')) {
+      event.preventDefault();
+      void closeSettings();
+      return true;
+    }
+    if (event.key === 'Alt' && $('#app').classList.contains('fullscreen')) {
+      event.preventDefault();
+      $('#app').classList.toggle('fullscreen-menu-visible');
+      return true;
+    }
+    if (event.key === 'Escape') $('#app').classList.remove('fullscreen-menu-visible');
+    if (event.key === 'F11') {
+      event.preventDefault();
+      window.appAPI.toggleFullscreen();
+      return true;
+    }
+    return false;
+  }
+
+  async function loadInitialSettings() {
     document.body.dataset.platform = window.appAPI.platform;
     settingsController.load(
       await window.appAPI.getSettings(),
@@ -4537,7 +4480,9 @@
       ...state.settings,
       ...(await window.appAPI.getPersistentState()),
     };
-    applyLocale(state.settings.locale);
+  }
+
+  async function initializeAppUI() {
     setupEvents();
     const minimumSidebarWidth = sidebarMinimumWidth();
     state.settings.sidebarWidth = Math.max(
@@ -4559,30 +4504,41 @@
     const info = await window.appAPI.getInfo();
     $('#statusVersion').textContent = `v${info.app}`;
     $('#versionInfo').textContent = `Version ${info.app} · Electron ${info.electron}`;
-    const session = PURE.fromPersistedSessionSnapshot(state.settings.session);
+  }
+
+  let sessionToRestore = null;
+
+  async function restoreWorkspaceSession() {
+    // Workspace restoration can persist a new session; retain the original tab snapshot.
+    sessionToRestore = PURE.fromPersistedSessionSnapshot(state.settings.session);
+    const session = sessionToRestore;
     if (state.settings.restoreWorkspace && session?.workspacePath) {
       if (await window.fileAPI.exists(session.workspacePath))
         await setWorkspace(session.workspacePath);
       else await setWorkspace('');
     }
+  }
+
+  async function restoreDocumentSession() {
+    const session = sessionToRestore;
     if (state.settings.restoreTabs && session?.openFiles?.length) {
       await openPaths(session.openFiles);
       const active = state.tabs.find((tab) => tab.filePath === session.activeFilePath);
       if (active) switchTab(active.id);
     }
-    await restoreRecoverySnapshots();
+    sessionToRestore = null;
+  }
+
+  async function finishAppRestoration() {
     if (!state.tabs.length) {
       createToolbarPreview();
       updateActiveUI();
     }
     syncTopControlsWidth();
     await persistSession();
-    document.body.dataset.appReady = 'true';
-    window.appAPI.rendererReady();
   }
 
-  window.__vditorDesktopLegacyBootstrap = init;
-  window.__vditorDesktopLegacyDispose = () => {
+  function disposeAppDomains() {
     settingsWindow.dispose();
     localizationController.dispose();
     windowController.dispose();
@@ -4594,5 +4550,49 @@
     outlineController.dispose();
     toolbarController.dispose();
     tabController.dispose();
-  };
+  }
+
+  window.__vditorDesktopApplication = new PURE.AppController({
+    document,
+    window,
+    startup: {
+      loadSettings: loadInitialSettings,
+      applyLocale: () => applyLocale(state.settings.locale),
+      initializeUI: initializeAppUI,
+      restoreWorkspace: restoreWorkspaceSession,
+      restoreSession: restoreDocumentSession,
+      restoreRecovery: restoreRecoverySnapshots,
+      finishRestoration: finishAppRestoration,
+      dispose: disposeAppDomains,
+    },
+    commands: {
+      beforeShortcut: beforeAppShortcut,
+      selectAll: (event) => {
+        if (selectEditorContextOrAll(event)) return;
+        if (!keepsNativeSelectAll(event.target)) event.preventDefault();
+      },
+      save: (saveAs) => void saveTab(activeTab(), saveAs),
+      openFiles: () => void chooseFiles(),
+      openFolder: () => void chooseFolder(),
+      newDocument: () => void newTab(),
+      toggleSidebar: () => toggleSidebar(),
+      find: () => findController.open(),
+      settings: openSettings,
+      closeDocument: () => {
+        const tab = activeTab();
+        if (tab) void closeTab(tab.id);
+      },
+      closeWindow: () => window.appAPI.closeWindow(),
+      openPaths,
+      menu: handleMenu,
+      rejectDrop: () => showMessage(t('message.dropMarkdownOnly'), true),
+    },
+    bridge: {
+      onOpenFiles: (callback) => window.appAPI.onOpenFiles(callback),
+      onMenuAction: (callback) => window.appAPI.onMenuAction(callback),
+      getDroppedPath: (file) => window.fileAPI.getDroppedPath(file),
+      rendererReady: () => window.appAPI.rendererReady(),
+    },
+    reportError: (error) => showMessage(ipcErrorMessage(error), true),
+  });
 })();

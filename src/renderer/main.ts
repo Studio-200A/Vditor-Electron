@@ -1,29 +1,8 @@
 import type { Controller } from './core/controller.js';
-import { LifecycleManager } from './core/lifecycle.js';
 
 declare global {
   interface Window {
-    __vditorDesktopLegacyBootstrap?: () => Promise<void>;
-    __vditorDesktopLegacyDispose?: () => void;
-  }
-}
-
-class LegacyAppController implements Controller {
-  private bootstrap: (() => Promise<void>) | undefined;
-
-  constructor() {
-    this.bootstrap = window.__vditorDesktopLegacyBootstrap;
-  }
-
-  async init(): Promise<void> {
-    if (!this.bootstrap) {
-      throw new Error('Legacy bootstrap not available');
-    }
-    await this.bootstrap();
-  }
-
-  dispose(): void {
-    window.__vditorDesktopLegacyDispose?.();
+    __vditorDesktopApplication?: Controller;
   }
 }
 
@@ -48,21 +27,13 @@ async function main(): Promise<void> {
     return;
   }
 
-  const lifecycle = new LifecycleManager();
-
-  const handleDispose = (): void => {
-    lifecycle.dispose();
-  };
-
   try {
-    await lifecycle.registerAndInit('legacy-app', new LegacyAppController());
+    const application = window.__vditorDesktopApplication;
+    if (!application) throw new Error('Application composition not available');
+    await application.init();
   } catch (error) {
     console.error('[main] Failed to initialize:', error);
-    handleDispose();
-    return;
   }
-
-  window.addEventListener('beforeunload', handleDispose, { once: true });
 }
 
 if (document.readyState === 'loading') {

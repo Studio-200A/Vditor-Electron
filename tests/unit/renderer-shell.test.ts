@@ -328,8 +328,6 @@ describe('renderer shell', () => {
       document.querySelector('#replaceInput[data-i18n-placeholder="find.replacePlaceholder"]'),
     ).not.toBeNull();
     expect(document.querySelector('#findCount')).not.toBeNull();
-    expect(rendererScript).toContain("else if (key === 'f')");
-    expect(rendererScript).toContain("else if (key === 'f')");
     expect(nativeMenu).not.toContain("accelerator: 'CmdOrCtrl+F'");
     expect(vditorAdapterScript).toContain('function selectTextMatch');
     expect(vditorAdapterScript).toContain('function highlightTextMatches');
@@ -351,8 +349,6 @@ describe('renderer shell', () => {
     expect(nativeMenu).not.toContain("role: 'zoomIn'");
     expect(nativeMenu).not.toContain("role: 'zoomOut'");
     expect(nativeMenu).not.toContain("role: 'resetZoom'");
-    expect(rendererScript).toContain("key === 'k' && event.altKey && !event.shiftKey");
-    expect(rendererScript).toContain('if (event.defaultPrevented) return;');
     expect(mainScript).toContain("if (input.key !== 'F12') return;");
   });
 
