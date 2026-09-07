@@ -84,6 +84,7 @@ export type {
   TabViewModel,
 } from './documents/tab-controller.js';
 export { DocumentController } from './documents/document-controller.js';
+export { ExternalFileChangeController } from './documents/external-file-change-controller.js';
 export type { DocumentBindingTransition } from './documents/document-binding-transition.js';
 export type {
   DocumentControllerOptions,

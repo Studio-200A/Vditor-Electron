@@ -189,6 +189,66 @@
     onDocumentNotCreated: () => syncLocalResourceRoots(),
     readDocumentContent: (tab) => editorController.currentContent(tab),
   });
+  const externalFileChangeController = new PURE.ExternalFileChangeController({
+    fileIdentity: (filePath) => window.fileAPI.fileIdentity(filePath),
+    findTabsByIdentity: (identity) => state.tabs.filter((tab) => tabFileIdentity(tab) === identity),
+    classify: (input) => documentController.classifyExternalChange(input),
+    handleWorkspaceChange: async (change) => {
+      if (change.event === 'rename') await reconcileExternallyRenamedDocument(change);
+      await workspaceController.handleWatcherEvent(change);
+    },
+    preserveUnavailable: (tab, kind, filePath, error) =>
+      preserveUnavailableTab(tab, kind, filePath, error),
+    beginExternalChange: (tab) => editorController.beginExternalChange(tab),
+    clearExternalConflict: (tab) => store.setExternalConflict(tab.id, null),
+    setExternalChangeIgnored: (tab, ignored) => store.setExternalChangeIgnored(tab.id, ignored),
+    setReappeared: (tab, external) => {
+      store.setExternalFileState(tab.id, {
+        kind: 'reappeared',
+        path: external.path,
+        identity: external.identity,
+        content: external.content,
+        encoding: external.encoding,
+        clipboardContent: tab.externalFileState.clipboardContent,
+        detectedAt: Date.now(),
+        version: tab.externalFileState.version + 1,
+      });
+    },
+    reloadCleanDocument: (tab, content, encoding) => {
+      updateTabDocument(tab, {
+        lineEnding: detectLineEnding(content),
+        content,
+        savedContent: content,
+        expectedSavedContent: content,
+        encoding,
+        externalConflict: null,
+        externalChangeIgnored: false,
+      });
+      editorController.applyExternalContent(tab, content);
+    },
+    createConflict: (tab, external) => {
+      store.setExternalConflict(tab.id, {
+        kind: 'modified',
+        path: external.path,
+        identity: external.identity,
+        content: external.content,
+        encoding: external.encoding,
+        detectedAt: Date.now(),
+        version: (tab.externalConflict?.version || 0) + 1,
+      });
+    },
+    isActive: (tab) => tab.id === state.activeId,
+    onReloaded: (tab) => {
+      updateActiveUI();
+      showMessage(t('external.reloaded', { name: tab.title }));
+    },
+    finish: () => {
+      renderTabs();
+      updateExternalChangeBanner(activeTab());
+      updateExternalFileStateBanner(activeTab());
+      void persistSession();
+    },
+  });
   const editorController = new PURE.EditorController({
     adapter: {
       editorScrollContainer: (host, mode) => VDITOR.editorScrollContainer(host, mode),
@@ -3218,90 +3278,7 @@
   }
 
   async function handleExternalChange(change) {
-    if (
-      !['add', 'change', 'unlink', 'addDir', 'unlinkDir', 'unreadable', 'watch-error'].includes(
-        change.event,
-      )
-    )
-      return;
-    if (change.scope === 'workspace') {
-      if (change.event === 'rename') await reconcileExternallyRenamedDocument(change);
-      await workspaceController.handleWatcherEvent(change);
-      return;
-    }
-    const documentIdentity = change.identity || (await window.fileAPI.fileIdentity(change.path));
-    const tabs = state.tabs.filter((tab) => tabFileIdentity(tab) === documentIdentity);
-    for (const tab of tabs) {
-      if (change.event === 'unlink') {
-        await preserveUnavailableTab(tab, 'deleted', change.path);
-        continue;
-      }
-      if (change.event === 'unreadable') {
-        await preserveUnavailableTab(tab, 'unreadable', change.path, change.error);
-        continue;
-      }
-      if (typeof change.content !== 'string') continue;
-      const decision = documentController.classifyExternalChange({
-        hasUnavailableState: Boolean(tab.externalFileState),
-        expectedSavedContent: tab.expectedSavedContent,
-        modified: tab.modified,
-        externalChangeIgnored: tab.externalChangeIgnored,
-        hasFilePath: Boolean(tab.filePath),
-        content: change.content,
-      });
-      if (decision === 'reappeared') {
-        editorController.beginExternalChange(tab);
-        store.setExternalConflict(tab.id, null);
-        store.setExternalChangeIgnored(tab.id, false);
-        store.setExternalFileState(tab.id, {
-          kind: 'reappeared',
-          path: change.path,
-          identity: documentIdentity,
-          content: change.content,
-          encoding: change.encoding || tab.encoding,
-          clipboardContent: tab.externalFileState.clipboardContent,
-          detectedAt: Date.now(),
-          version: tab.externalFileState.version + 1,
-        });
-        continue;
-      }
-      if (decision === 'matches-baseline') {
-        store.setExternalConflict(tab.id, null);
-        store.setExternalChangeIgnored(tab.id, false);
-        continue;
-      }
-      if (decision === 'reload-clean-document') {
-        if (typeof change.content !== 'string') continue;
-        updateTabDocument(tab, {
-          lineEnding: detectLineEnding(change.content),
-          content: change.content,
-          savedContent: change.content,
-          expectedSavedContent: change.content,
-          encoding: change.encoding || tab.encoding,
-          externalConflict: null,
-          externalChangeIgnored: false,
-        });
-        editorController.applyExternalContent(tab, change.content);
-        if (tab.id === state.activeId) updateActiveUI();
-        showMessage(t('external.reloaded', { name: tab.title }));
-        continue;
-      }
-      editorController.beginExternalChange(tab);
-      store.setExternalConflict(tab.id, {
-        kind: 'modified',
-        path: change.path,
-        identity: documentIdentity,
-        content: change.content,
-        encoding: change.encoding || tab.encoding,
-        detectedAt: Date.now(),
-        version: (tab.externalConflict?.version || 0) + 1,
-      });
-      store.setExternalChangeIgnored(tab.id, false);
-    }
-    renderTabs();
-    updateExternalChangeBanner(activeTab());
-    updateExternalFileStateBanner(activeTab());
-    persistSession();
+    await externalFileChangeController.handle(change);
   }
 
   function handleMenu(action, value) {
