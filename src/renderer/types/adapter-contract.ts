@@ -4,6 +4,7 @@ import type { VditorDesktopAdapter } from './adapter.js';
 export const ADAPTER_PUBLIC_KEYS = [
   'editorParts',
   'mountedToolbar',
+  'createRebuildSnapshot',
   'ensureSplitResizer',
   'splitViewVisibility',
   'toolbarContext',
@@ -37,6 +38,7 @@ export const ADAPTER_PUBLIC_KEYS = [
   'scrollContainers',
   'activeEditor',
   'editorScrollContainer',
+  'installCustomCaret',
   'preserveTableScrollDuringInput',
   'isEditableTarget',
   'captureEditorSelection',
@@ -83,6 +85,7 @@ export function verifyAdapterCallContract(adapter: VditorDesktopAdapter, host: H
 
   adapter.ensureSplitResizer(host);
   adapter.mountedToolbar(host);
+  adapter.createRebuildSnapshot(host);
   adapter.splitViewVisibility(host, 'sv');
   adapter.toolbarContext(host);
   adapter.toolbarButton(toolbar, 'edit-mode');
@@ -114,6 +117,11 @@ export function verifyAdapterCallContract(adapter: VditorDesktopAdapter, host: H
   adapter.scrollContainers(host);
   adapter.activeEditor(host, 'ir');
   adapter.editorScrollContainer(host, 'ir');
+  adapter.installCustomCaret(
+    host,
+    () => 'ir',
+    () => 'bar',
+  );
   adapter.preserveTableScrollDuringInput(host, () => 'ir');
   adapter.isEditableTarget(host, 'ir', host);
   adapter.restoreEditorSelection(adapter.captureEditorSelection(host, 'ir', host, 0, 0));

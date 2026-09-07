@@ -11,6 +11,8 @@ describe('Vditor DOM compatibility adapter', () => {
   beforeEach(() => {
     const dom = new JSDOM('', { runScripts: 'outside-only' });
     window = dom.window;
+    window.requestAnimationFrame = (callback) => window.setTimeout(callback, 0);
+    window.cancelAnimationFrame = (frame) => window.clearTimeout(frame);
     window.eval(fs.readFileSync(path.resolve('src/renderer/vditor-adapter.js'), 'utf8'));
     adapter = (window as any).VditorDesktopAdapter;
   });
@@ -52,6 +54,30 @@ describe('Vditor DOM compatibility adapter', () => {
     expect(adapter.scrollContainers(host).length).toBeGreaterThanOrEqual(4);
   });
 
+  it('keeps an inert visual snapshot over an active host until the rebuilt editor is ready', () => {
+    const host = createHost();
+    host.classList.add('active');
+    window.document.body.append(host);
+    const parts = adapter.editorParts(host);
+    parts.source.scrollTop = 120;
+    parts.instantRendering.querySelector<HTMLElement>('.vditor-reset')!.scrollLeft = 36;
+
+    const release = adapter.createRebuildSnapshot(host);
+    const snapshot = window.document.querySelector('.editor-rebuild-snapshot');
+    expect(snapshot).not.toBeNull();
+    expect(snapshot).not.toBe(host);
+    expect(snapshot?.classList.contains('active')).toBe(false);
+    expect(snapshot?.getAttribute('aria-hidden')).toBe('true');
+    const snapshotParts = adapter.editorParts(snapshot);
+    expect(snapshotParts.source.scrollTop).toBe(120);
+    expect(
+      snapshotParts.instantRendering.querySelector<HTMLElement>('.vditor-reset')!.scrollLeft,
+    ).toBe(36);
+
+    release();
+    expect(window.document.querySelector('.editor-rebuild-snapshot')).toBeNull();
+  });
+
   it('applies one bottom spacer to every Vditor editing surface', () => {
     const host = createHost();
     const parts = adapter.editorParts(host);
@@ -61,6 +87,122 @@ describe('Vditor DOM compatibility adapter', () => {
       expect(editor.style.getPropertyValue('--editor-bottom')).toBe('242px'),
     );
     expect(adapter.setEditorBottomSpacer(host, Number.NaN)).toBe(false);
+  });
+
+  it('owns a custom-caret proxy and removes it with its listeners', () => {
+    const host = createHost();
+    window.document.body.append(host);
+    const editor = adapter.editorParts(host).instantRendering.querySelector('.vditor-reset')!;
+    editor.setAttribute('tabindex', '0');
+    const range = window.document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(true);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    Object.defineProperty(range, 'getClientRects', {
+      value: () => [{ left: 20, top: 30, bottom: 50, height: 20 }],
+    });
+    const cleanup = adapter.installCustomCaret(
+      host,
+      () => 'ir',
+      () => 'block',
+    );
+
+    expect(window.document.querySelectorAll('[data-vditor-desktop-caret="true"]')).toHaveLength(1);
+    expect(host.dataset.vditorDesktopCustomCaret).toBe('true');
+    cleanup();
+
+    expect(window.document.querySelector('[data-vditor-desktop-caret="true"]')).toBeNull();
+    expect(host.dataset.vditorDesktopCustomCaret).toBeUndefined();
+  });
+
+  it('cancels a pending caret move and redraws from current viewport geometry on scroll', () => {
+    const frames = new Map<number, FrameRequestCallback>();
+    let nextFrame = 0;
+    window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+      nextFrame += 1;
+      frames.set(nextFrame, callback);
+      return nextFrame;
+    }) as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = ((frame: number) => {
+      frames.delete(frame);
+    }) as typeof window.cancelAnimationFrame;
+    const cancelAnimation = vi.fn();
+    Object.defineProperty(window.HTMLElement.prototype, 'animate', {
+      configurable: true,
+      value: vi.fn(() => ({ cancel: cancelAnimation })),
+    });
+
+    const host = createHost();
+    window.document.body.append(host);
+    const editor = adapter.editorParts(host).instantRendering.querySelector('.vditor-reset')!;
+    const editorViewport = {
+      bottom: 400,
+      height: 400,
+      left: 0,
+      right: 600,
+      top: 0,
+      width: 600,
+    };
+    Object.defineProperty(host, 'getBoundingClientRect', { value: () => editorViewport });
+    Object.defineProperty(editor, 'getBoundingClientRect', { value: () => editorViewport });
+    editor.setAttribute('tabindex', '0');
+    Object.defineProperty(window.document, 'hasFocus', { configurable: true, value: () => true });
+    editor.focus();
+    const range = window.document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(true);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    let top = 30;
+    Object.defineProperty(range, 'getClientRects', {
+      value: () => [{ left: 20, top, bottom: top + 20, height: 20 }],
+    });
+    const cleanup = adapter.installCustomCaret(
+      host,
+      () => 'ir',
+      () => 'bar',
+    );
+    const runFrames = () => {
+      while (frames.size) {
+        const queued = [...frames.values()];
+        frames.clear();
+        queued.forEach((callback) => callback(0));
+      }
+    };
+
+    host.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+    runFrames();
+    top = 60;
+    window.document.dispatchEvent(new window.Event('selectionchange'));
+    runFrames();
+    expect(cancelAnimation).not.toHaveBeenCalled();
+
+    top = 200;
+    editor.scrollTop = 20;
+    editor.dispatchEvent(new window.Event('scroll'));
+    expect(cancelAnimation).toHaveBeenCalledTimes(1);
+    expect(
+      window.document.querySelector<HTMLElement>('[data-vditor-desktop-caret="true"]')?.style
+        .translate,
+    ).toBe('0px -20px');
+    const [scrollFrame] = frames.values();
+    frames.clear();
+    scrollFrame!(0);
+    expect(frames).toHaveLength(0);
+    const caret = window.document.querySelector<HTMLElement>('[data-vditor-desktop-caret="true"]');
+    expect(caret?.style.top).toBe('200px');
+    expect(caret?.classList.contains('is-blinking')).toBe(true);
+
+    top = 450;
+    editor.scrollTop = 500;
+    editor.dispatchEvent(new window.Event('scroll'));
+    expect(caret?.style.display).toBe('none');
+    const [outOfViewScrollFrame] = frames.values();
+    frames.clear();
+    outOfViewScrollFrame!(0);
+    expect(caret?.style.display).toBe('none');
+    cleanup();
   });
 
   it('owns the SV divider structure and reports pane visibility semantically', () => {

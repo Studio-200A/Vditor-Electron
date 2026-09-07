@@ -59,7 +59,8 @@ export function classifySettingsChange(
   if (changedKeys.some((key) => THEME_KEYS.has(key))) impacts.add('theme');
   if (changedKeys.includes('locale')) impacts.add('locale');
   if (changedKeys.includes('workspaceReadDepth')) impacts.add('workspace-watch');
-  if (changedKeys.includes('previewMode')) impacts.add('live-editor');
+  if (changedKeys.some((key) => key === 'previewMode' || key === 'caretStyle'))
+    impacts.add('live-editor');
   const shouldRebuildEditor = changedKeys.some((key) => initializationSettings.has(key));
   if (shouldRebuildEditor) impacts.add('rebuild-editor');
   return { changedKeys, impacts, shouldRebuildEditor };

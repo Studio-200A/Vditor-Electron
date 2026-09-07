@@ -1,4 +1,5 @@
 export type AdapterEditMode = 'wysiwyg' | 'ir' | 'sv';
+export type CaretStyle = 'underline' | 'bar' | 'block';
 export type SplitListAction = 'indent' | 'outdent';
 
 export interface EditorParts {
@@ -108,6 +109,7 @@ export interface ClipboardContent {
 export interface VditorDesktopAdapter {
   editorParts(host: HTMLElement | null | undefined): EditorParts;
   mountedToolbar(mount: HTMLElement | null | undefined): HTMLElement | null;
+  createRebuildSnapshot(host: HTMLElement | null | undefined): () => void;
   ensureSplitResizer(host: HTMLElement | null | undefined): HTMLElement | null;
   splitViewVisibility(
     host: HTMLElement | null | undefined,
@@ -175,6 +177,11 @@ export interface VditorDesktopAdapter {
     host: HTMLElement | null | undefined,
     mode: AdapterEditMode,
   ): HTMLElement | null;
+  installCustomCaret(
+    host: HTMLElement | null | undefined,
+    getMode: () => AdapterEditMode,
+    getStyle: () => CaretStyle,
+  ): () => void;
   preserveTableScrollDuringInput(
     host: HTMLElement | null | undefined,
     getMode: () => AdapterEditMode,

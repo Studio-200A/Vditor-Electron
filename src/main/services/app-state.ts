@@ -1,5 +1,6 @@
 export const WORKSPACE_READ_DEPTH_MIN = 7;
 export const WORKSPACE_READ_DEPTH_MAX = 12;
+export type CaretStyle = 'underline' | 'bar' | 'block';
 
 export function normalizeWorkspaceReadDepth(value: unknown): number {
   const depth =
@@ -34,6 +35,7 @@ export interface AppSettings {
   previewZoom: number;
   scrollbarMode: 'always' | 'auto' | 'hidden';
   editMode: 'wysiwyg' | 'ir' | 'sv';
+  caretStyle: CaretStyle;
   previewMode: 'both' | 'editor';
   placeholder: string;
   typewriterMode: boolean;
@@ -166,6 +168,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   previewZoom: 100,
   scrollbarMode: 'auto',
   editMode: 'ir',
+  caretStyle: 'bar',
   previewMode: 'both',
   placeholder: '',
   typewriterMode: false,

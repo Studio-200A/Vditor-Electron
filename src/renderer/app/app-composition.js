@@ -394,10 +394,13 @@
   const editorController = new PURE.EditorController({
     adapter: {
       editorScrollContainer: (host, mode) => VDITOR.editorScrollContainer(host, mode),
+      createRebuildSnapshot: (host) => VDITOR.createRebuildSnapshot(host),
       setBottomSpacer: (host, height) => VDITOR.setEditorBottomSpacer(host, height),
       observeOutlineChanges: (host, callback) => VDITOR.observeOutlineChanges(host, callback),
       preserveTableScrollDuringInput: (host, getMode) =>
         VDITOR.preserveTableScrollDuringInput(host, getMode),
+      installCustomCaret: (host, getMode, getStyle) =>
+        VDITOR.installCustomCaret(host, getMode, getStyle),
       scrollContainers: (host) => VDITOR.scrollContainers(host),
       installScrollEnhancement: setupAutoHideScrollbar,
     },
@@ -410,7 +413,7 @@
       if (contextMenuState?.tab === tab) closeContextMenu();
       imageRuntimeController.detach(tab);
       splitViewController.dispose(tab);
-      restoreEditorToolbar(tab);
+      if (_disposeTabResources) restoreEditorToolbar(tab);
     },
     onCreationFailure: (tab, error) => {
       const message = error instanceof Error ? error.message : String(error);
@@ -420,6 +423,8 @@
     onModeChanged: (tab) => {
       if (tab.id === state.activeId) updateActiveUI();
       scheduleSplitLineNumbers(tab);
+      if (!tab.toolbarPreview)
+        editorController.installCustomCaret(tab, () => state.settings.caretStyle);
     },
     readContent: (tab) => {
       try {
@@ -1356,10 +1361,13 @@
   }
 
   function applyLiveVditorSettings(changedSettings) {
-    if (!changedSettings.includes('previewMode')) return;
+    if (!changedSettings.includes('previewMode') && !changedSettings.includes('caretStyle')) return;
     state.tabs.forEach((tab) => {
-      if (!tab.vditor || !tab.ready) return;
-      tab.vditor.setPreviewMode(state.settings.previewMode);
+      if (!tab.vditor || !tab.ready || tab.toolbarPreview) return;
+      if (changedSettings.includes('previewMode'))
+        tab.vditor.setPreviewMode(state.settings.previewMode);
+      if (changedSettings.includes('caretStyle'))
+        editorController.installCustomCaret(tab, () => state.settings.caretStyle);
     });
   }
 
@@ -1465,6 +1473,7 @@
           if (!editorController.isCurrent(tab, runtimeGeneration)) return;
           const contract = VDITOR.validateHost(tab.host);
           if (!contract.valid) {
+            editorController.releaseRebuildSnapshot(tab);
             tab.ready = false;
             tab.host.dataset.editorReady = 'false';
             console.error('Unsupported Vditor DOM contract:', contract.missing);
@@ -1482,6 +1491,8 @@
           editorController.preserveTableScrollDuringInput(tab);
           editorController.reconcileInitializedContent(tab, wasModified);
           tab.ready = true;
+          if (!tab.toolbarPreview)
+            editorController.installCustomCaret(tab, () => state.settings.caretStyle);
           tab.toolbar = VDITOR.editorParts(tab.host).toolbar;
           VDITOR.hideNativeOutlineControl(tab.toolbar);
           VDITOR.keepSplitToolbarActionsAvailable(tab.toolbar);
@@ -1511,7 +1522,7 @@
           setupSplitEditorEnhancements(tab);
           scheduleSplitLineNumbers(tab);
           editorController.scheduleFocus(tab);
-          restoreEditorScroll(tab);
+          restoreEditorScroll(tab, () => editorController.releaseRebuildSnapshot(tab));
           requestAnimationFrame(() => scrollToPendingAnchor(tab));
         },
         input: (value) => {
@@ -1592,8 +1603,8 @@
     return editorController.ensure(tab);
   }
 
-  function restoreEditorScroll(tab) {
-    editorController.restoreScroll(tab, () => scheduleSplitLineNumbers(tab));
+  function restoreEditorScroll(tab, afterSettled) {
+    editorController.restoreScroll(tab, () => scheduleSplitLineNumbers(tab), afterSettled);
   }
 
   function synchronizeVditorMode(tab) {
@@ -2787,6 +2798,7 @@
       // Keeping the editor focused avoids Vditor 3.11.3's expensive blur
       // serialization path for a long document. Limit the resize state to
       // application chrome so it cannot invalidate the editor's DOM tree.
+      document.documentElement.dataset.sidebarResizing = 'true';
       resizeChrome.forEach((element) => element.classList.add('sidebar-resizing'));
     };
     resize.onmousedown = (event) => {
@@ -2816,10 +2828,14 @@
         pendingSidebarWidth = null;
         restoreFrozenEditorHost();
         frozenEditorHost = null;
+        delete document.documentElement.dataset.sidebarResizing;
         resizeChrome.forEach((element) => element.classList.remove('sidebar-resizing'));
         syncTopControlsWidth();
         resources.animationFrame(
-          requestAnimationFrame(() => scheduleSplitLineNumbers(activeTab())),
+          requestAnimationFrame(() => {
+            scheduleSplitLineNumbers(activeTab());
+            window.dispatchEvent(new Event('vditor-desktop-editor-layout-settled'));
+          }),
         );
         queueSettingsSave({ sidebarWidth: state.settings.sidebarWidth });
       }

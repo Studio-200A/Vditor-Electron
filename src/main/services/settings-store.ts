@@ -41,6 +41,7 @@ type SettingsDocument = {
   editor: Pick<
     AppSettings,
     | 'editMode'
+    | 'caretStyle'
     | 'previewMode'
     | 'placeholder'
     | 'typewriterMode'
@@ -283,6 +284,7 @@ export class SettingsStore {
       ]),
       editor: pick(settings, [
         'editMode',
+        'caretStyle',
         'previewMode',
         'placeholder',
         'typewriterMode',

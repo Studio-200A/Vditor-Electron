@@ -98,9 +98,22 @@ describe('SettingsStore', () => {
     expect(contents).toContain('[appearance]');
     expect(contents).toContain('editorZoom = 125');
     expect(contents).toContain('[editor.toolbarConfig]');
+    expect(contents).toContain('caretStyle = "bar"');
     expect(contents).not.toContain('[window');
     expect(contents).not.toContain('[session]');
     expect(fs.existsSync(path.join(configDir, 'settings.json'))).toBe(false);
+  });
+
+  it('uses the default caret style when older TOML files omit it', () => {
+    fs.writeFileSync(
+      path.join(configDir, 'config.toml'),
+      TOML.stringify({ editor: { editMode: 'sv' } }),
+    );
+
+    const store = new SettingsStore(configDir);
+    expect(store.get('caretStyle')).toBe('bar');
+    store.set('caretStyle', 'block');
+    expect(new SettingsStore(configDir).get('caretStyle')).toBe('block');
   });
 
   it('reports strict persistence failures without changing in-memory settings', () => {
@@ -194,8 +207,10 @@ describe('SettingsStore', () => {
   it('resets both memory and the settings file', () => {
     const store = new SettingsStore(configDir);
     store.set('locale', 'zh_Hans');
+    store.set('caretStyle', 'block');
 
     expect(store.reset()).toEqual(DEFAULT_SETTINGS);
     expect(new SettingsStore(configDir).get('locale')).toBe(DEFAULT_SETTINGS.locale);
+    expect(new SettingsStore(configDir).get('caretStyle')).toBe('bar');
   });
 });

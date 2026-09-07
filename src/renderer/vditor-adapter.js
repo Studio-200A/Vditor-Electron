@@ -49,6 +49,28 @@
     return mount?.querySelector(selectors.toolbar) || null;
   }
 
+  function createRebuildSnapshot(host) {
+    if (!host?.classList.contains('active') || !host.parentElement) return () => {};
+    const snapshot = host.cloneNode(true);
+    snapshot.classList.remove('active');
+    snapshot.classList.add('editor-rebuild-snapshot');
+    snapshot.setAttribute('aria-hidden', 'true');
+    snapshot.removeAttribute('data-vditor-desktop-custom-caret');
+    snapshot.querySelectorAll('[id]').forEach((node) => node.removeAttribute('id'));
+    host.parentElement.append(snapshot);
+    // cloneNode() deliberately excludes scroll offsets. Apply every descendant's
+    // position in the same task before the snapshot can paint over the old editor.
+    const sourceElements = [host, ...host.querySelectorAll('*')];
+    const snapshotElements = [snapshot, ...snapshot.querySelectorAll('*')];
+    sourceElements.forEach((source, index) => {
+      const clone = snapshotElements[index];
+      if (!clone || (!source.scrollTop && !source.scrollLeft)) return;
+      clone.scrollTop = source.scrollTop;
+      clone.scrollLeft = source.scrollLeft;
+    });
+    return () => snapshot.remove();
+  }
+
   function ensureSplitResizer(host) {
     const { content, preview } = editorParts(host);
     if (!content || !preview) return null;
@@ -586,6 +608,260 @@
     // In Vditor 3.11.x rendered modes scroll their private .vditor-reset child,
     // while SV scrolls its editor element directly.
     return mode === 'sv' ? editor : editor.querySelector(selectors.reset) || editor;
+  }
+
+  function installCustomCaret(host, getMode, getStyle) {
+    if (!host || typeof getMode !== 'function' || typeof getStyle !== 'function') return () => {};
+    const caret = document.createElement('div');
+    const caretLayer = host.parentElement || document.body;
+    caret.className = 'vditor-desktop-custom-caret';
+    caret.setAttribute('aria-hidden', 'true');
+    caret.dataset.vditorDesktopCaret = 'true';
+    caretLayer.append(caret);
+    host.dataset.vditorDesktopCustomCaret = 'true';
+    let frame = null;
+    let animation = null;
+    let isComposing = false;
+    let previousRect = null;
+    let disposed = false;
+    let hasUserInteraction = false;
+    let pendingScrollOffsetX = 0;
+    let pendingScrollOffsetY = 0;
+    const scrollPositions = new WeakMap();
+
+    const reducedMotion = () =>
+      Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+    const hide = () => {
+      caret.style.display = 'none';
+      caret.classList.remove('is-blinking');
+    };
+    const restartBlink = () => {
+      if (reducedMotion()) return;
+      caret.classList.remove('is-blinking');
+      // Restart from a visible phase after every editing/navigation action, as native carets do.
+      void caret.offsetWidth;
+      caret.classList.add('is-blinking');
+    };
+    const caretRect = (range, editor) => {
+      const rects =
+        typeof range.getClientRects === 'function' ? Array.from(range.getClientRects()) : [];
+      const rect = rects.at(-1) || range.getBoundingClientRect?.();
+      if (rect?.height) return rect;
+      const container = elementForNode(range.startContainer);
+      const fallback =
+        container && container !== editor && editor.contains(container)
+          ? container.getBoundingClientRect()
+          : null;
+      return fallback?.height ? fallback : null;
+    };
+    const followingCharacterWidth = (range) => {
+      if (range.startContainer.nodeType !== Node.TEXT_NODE) return null;
+      const text = range.startContainer.textContent || '';
+      const character = Array.from(text.slice(range.startOffset))[0];
+      if (!character) return null;
+      const characterRange = range.cloneRange();
+      characterRange.setEnd(range.startContainer, range.startOffset + character.length);
+      const rects = Array.from(characterRange.getClientRects());
+      const rect = rects.at(-1) || characterRange.getBoundingClientRect();
+      return rect.width > 0 ? rect.width : null;
+    };
+    const isInEditorViewport = (rect, mode) => {
+      const viewportCandidates = [host, editorScrollContainer(host, mode)];
+      const right = Number.isFinite(rect.right) ? rect.right : rect.left + (rect.width || 0);
+      return viewportCandidates.every((viewport) => {
+        const viewportRect = viewport?.getBoundingClientRect?.();
+        return (
+          viewportRect &&
+          rect.bottom > viewportRect.top &&
+          rect.top < viewportRect.bottom &&
+          right > viewportRect.left &&
+          rect.left < viewportRect.right
+        );
+      });
+    };
+    const caretLayerOffset = () => {
+      if (caretLayer === document.body) return { left: 0, top: 0 };
+      const rect = caretLayer.getBoundingClientRect();
+      return { left: rect.left, top: rect.top };
+    };
+    const render = (animate, shouldRestartBlink = animate) => {
+      frame = null;
+      if (disposed || !hasUserInteraction || isComposing || document.visibilityState === 'hidden') {
+        hide();
+        return;
+      }
+      const style = getStyle();
+      if (!['underline', 'bar', 'block'].includes(style)) {
+        hide();
+        return;
+      }
+      const mode = getMode();
+      const editor = editableContent(host, mode);
+      const range = selectionRangeIn(editor);
+      const isWindowFocused = document.hasFocus();
+      if (
+        !editor ||
+        !range ||
+        !range.collapsed ||
+        (isWindowFocused && !host.matches(':focus-within'))
+      ) {
+        hide();
+        return;
+      }
+      const rect = caretRect(range, editor);
+      if (!rect) {
+        hide();
+        return;
+      }
+      if (!isInEditorViewport(rect, mode)) {
+        hide();
+        return;
+      }
+      if (!isWindowFocused && style !== 'block') {
+        hide();
+        return;
+      }
+      const height = Math.max(1, rect.height);
+      const width =
+        style === 'underline'
+          ? 8
+          : style === 'block'
+            ? followingCharacterWidth(range) || Math.max(8, height * 0.55)
+            : 2;
+      caret.dataset.style = style;
+      caret.toggleAttribute('data-unfocused', !isWindowFocused);
+      const layerOffset = caretLayerOffset();
+      caret.style.width = `${width}px`;
+      caret.style.height = `${style === 'underline' ? 2 : height}px`;
+      caret.style.left = `${rect.left - layerOffset.left}px`;
+      caret.style.top = `${(style === 'underline' ? rect.bottom - 2 : rect.top) - layerOffset.top}px`;
+      pendingScrollOffsetX = 0;
+      pendingScrollOffsetY = 0;
+      caret.style.translate = '';
+      caret.style.display = 'block';
+      host.dataset.vditorDesktopCustomCaret = 'true';
+      if (animate && previousRect && !reducedMotion()) {
+        const dx = previousRect.left - rect.left;
+        const dy = previousRect.top - rect.top;
+        if (dx || dy) {
+          animation?.cancel();
+          animation = caret.animate(
+            [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0, 0)' }],
+            { duration: 120, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' },
+          );
+        }
+      }
+      if (shouldRestartBlink && isWindowFocused) restartBlink();
+      else if (!shouldRestartBlink) caret.classList.remove('is-blinking');
+      previousRect = { left: rect.left, top: rect.top };
+    };
+    const schedule = (animate = true, afterVditorFrame = true, shouldRestartBlink = animate) => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      // Vditor completes keyboard and input selection updates after its own frame work.
+      // Measure on the following frame so the visual proxy compares stable old/new geometry.
+      frame = window.requestAnimationFrame(() => {
+        if (afterVditorFrame) {
+          frame = window.requestAnimationFrame(() => render(animate, shouldRestartBlink));
+          return;
+        }
+        render(animate, shouldRestartBlink);
+      });
+    };
+    const onSelectionChange = () => {
+      if (hasUserInteraction) schedule(true);
+    };
+    const onScroll = (event) => {
+      // Range geometry is already viewport-relative after a native scroll. Keep no
+      // previous move transform alive, or it offsets the new fixed-position caret.
+      animation?.cancel();
+      animation = null;
+      const scroller = event.target instanceof HTMLElement ? event.target : null;
+      const previous = scroller ? scrollPositions.get(scroller) : null;
+      if (scroller) {
+        const current = { left: scroller.scrollLeft, top: scroller.scrollTop };
+        scrollPositions.set(scroller, current);
+        if (previous && caret.style.display === 'block') {
+          pendingScrollOffsetX += previous.left - current.left;
+          pendingScrollOffsetY += previous.top - current.top;
+          const layerOffset = caretLayerOffset();
+          const left =
+            layerOffset.left + (Number.parseFloat(caret.style.left) || 0) + pendingScrollOffsetX;
+          const top =
+            layerOffset.top + (Number.parseFloat(caret.style.top) || 0) + pendingScrollOffsetY;
+          const width = Number.parseFloat(caret.style.width) || 0;
+          const height = Number.parseFloat(caret.style.height) || 0;
+          if (
+            isInEditorViewport({ left, top, right: left + width, bottom: top + height }, getMode())
+          )
+            caret.style.translate = `${pendingScrollOffsetX}px ${pendingScrollOffsetY}px`;
+          else hide();
+        }
+      }
+      schedule(false, false, true);
+    };
+    const onUserInteraction = () => {
+      hasUserInteraction = true;
+      schedule(true);
+    };
+    const onInput = () => {
+      if (hasUserInteraction) schedule(true);
+    };
+    const onCompositionStart = () => {
+      hasUserInteraction = true;
+      isComposing = true;
+      hide();
+    };
+    const onCompositionEnd = () => {
+      isComposing = false;
+      schedule(false);
+    };
+    const onVisibilityChange = () => schedule(false);
+    const onWindowBlur = () => schedule(false);
+    const onWindowFocus = () => schedule(false);
+    const onEditorLayoutSettled = () => schedule(false, false, true);
+    const motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    document.addEventListener('selectionchange', onSelectionChange);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('blur', onWindowBlur);
+    window.addEventListener('focus', onWindowFocus);
+    window.addEventListener('vditor-desktop-editor-layout-settled', onEditorLayoutSettled);
+    host.addEventListener('focusin', onSelectionChange);
+    host.addEventListener('focusout', onSelectionChange);
+    host.addEventListener('pointerdown', onUserInteraction, true);
+    host.addEventListener('keydown', onUserInteraction, true);
+    host.addEventListener('input', onInput, true);
+    host.addEventListener('compositionstart', onCompositionStart, true);
+    host.addEventListener('compositionend', onCompositionEnd, true);
+    const scrollers = scrollContainers(host);
+    scrollers.forEach((scroller) => {
+      scrollPositions.set(scroller, { left: scroller.scrollLeft, top: scroller.scrollTop });
+      scroller.addEventListener('scroll', onScroll, true);
+    });
+    motionQuery?.addEventListener?.('change', onVisibilityChange);
+    // Vditor 3.11.3 exposes a programmatic, provisional selection while opening a document.
+    // Keep the native caret until an editor-originated interaction establishes the real position.
+    return () => {
+      disposed = true;
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      animation?.cancel();
+      document.removeEventListener('selectionchange', onSelectionChange);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('blur', onWindowBlur);
+      window.removeEventListener('focus', onWindowFocus);
+      window.removeEventListener('vditor-desktop-editor-layout-settled', onEditorLayoutSettled);
+      host.removeEventListener('focusin', onSelectionChange);
+      host.removeEventListener('focusout', onSelectionChange);
+      host.removeEventListener('pointerdown', onUserInteraction, true);
+      host.removeEventListener('keydown', onUserInteraction, true);
+      host.removeEventListener('input', onInput, true);
+      host.removeEventListener('compositionstart', onCompositionStart, true);
+      host.removeEventListener('compositionend', onCompositionEnd, true);
+      scrollers.forEach((scroller) => scroller.removeEventListener('scroll', onScroll, true));
+      motionQuery?.removeEventListener?.('change', onVisibilityChange);
+      hide();
+      host.removeAttribute('data-vditor-desktop-custom-caret');
+      caret.remove();
+    };
   }
 
   function preserveTableScrollDuringInput(host, getMode) {
@@ -1560,6 +1836,7 @@
   window.VditorDesktopAdapter = Object.freeze({
     editorParts,
     mountedToolbar,
+    createRebuildSnapshot,
     ensureSplitResizer,
     splitViewVisibility,
     toolbarContext,
@@ -1593,6 +1870,7 @@
     scrollContainers,
     activeEditor,
     editorScrollContainer,
+    installCustomCaret,
     preserveTableScrollDuringInput,
     isEditableTarget,
     captureEditorSelection,

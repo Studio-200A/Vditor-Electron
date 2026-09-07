@@ -227,6 +227,34 @@ test('caps sidebar resizing at two thirds of the application width', async () =>
   }
 });
 
+test('hides the custom caret until a sidebar resize layout settles', async () => {
+  const running = await launchApp({ editMode: 'ir', sidebarVisible: true, caretStyle: 'bar' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    const editor = page.locator('.editor-host.active .vditor-ir .vditor-reset');
+    await editor.fill('Caret remains in the editor');
+    await editor.click();
+    await page.keyboard.press('End');
+    const caret = page.locator('[data-vditor-desktop-caret="true"]');
+    await expect(caret).toBeVisible();
+
+    const resizeBox = await page.locator('#sidebarResize').boundingBox();
+    if (!resizeBox) throw new Error('Sidebar resize geometry is unavailable.');
+    await page.mouse.move(resizeBox.x + resizeBox.width / 2, resizeBox.y + 20);
+    await page.mouse.down();
+    await expect(page.locator('html')).toHaveAttribute('data-sidebar-resizing', 'true');
+    await expect(caret).toBeHidden();
+    await page.mouse.move(resizeBox.x + 80, resizeBox.y + 20);
+    await page.mouse.up();
+
+    await expect(page.locator('html')).not.toHaveAttribute('data-sidebar-resizing');
+    await expect(caret).toBeVisible();
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('keeps the editor width stable until a sidebar opens', async () => {
   const running = await launchApp({ sidebarVisible: false });
   try {
@@ -1355,6 +1383,7 @@ test('preserves the editor scroll position when an initialization setting rebuil
     await page.locator('[name="typewriterMode"]').check();
     await page.locator('#saveSettings').click();
     await expect(page.locator('#settingsModal')).toBeHidden();
+    await expect(page.locator('#vditorToolbarMount .vditor-toolbar')).toBeVisible();
     await expect
       .poll(() =>
         page
@@ -1362,6 +1391,7 @@ test('preserves the editor scroll position when an initialization setting rebuil
           .evaluate((node) => Math.max(node.scrollTop, node.parentElement?.scrollTop || 0)),
       )
       .toBeGreaterThan(300);
+    await expect(page.locator('.editor-rebuild-snapshot')).toHaveCount(0);
   } finally {
     await closeApp(running);
   }

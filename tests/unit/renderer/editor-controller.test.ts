@@ -31,6 +31,8 @@ describe('EditorController', () => {
   let setBottomSpacer: ReturnType<typeof vi.fn>;
   let observeOutlineChanges: ReturnType<typeof vi.fn>;
   let preserveTableScrollDuringInput: ReturnType<typeof vi.fn>;
+  let installCustomCaret: ReturnType<typeof vi.fn>;
+  let createRebuildSnapshot: ReturnType<typeof vi.fn>;
   let scrollContainers: ReturnType<typeof vi.fn>;
   let installScrollEnhancement: ReturnType<typeof vi.fn>;
   let updateDocument: ReturnType<typeof vi.fn>;
@@ -47,6 +49,8 @@ describe('EditorController', () => {
     setBottomSpacer = vi.fn();
     observeOutlineChanges = vi.fn(() => ({ disconnect: vi.fn() }));
     preserveTableScrollDuringInput = vi.fn(() => vi.fn());
+    installCustomCaret = vi.fn(() => vi.fn());
+    createRebuildSnapshot = vi.fn(() => vi.fn());
     scrollContainers = vi.fn(() => []);
     installScrollEnhancement = vi.fn(() => null);
     updateDocument = vi.fn((target: TestTab, updates: Partial<TestTab>) =>
@@ -89,9 +93,11 @@ describe('EditorController', () => {
     controller = new EditorController({
       adapter: {
         editorScrollContainer: () => null,
+        createRebuildSnapshot,
         setBottomSpacer,
         observeOutlineChanges,
         preserveTableScrollDuringInput,
+        installCustomCaret,
         scrollContainers,
         installScrollEnhancement,
       },
@@ -124,6 +130,28 @@ describe('EditorController', () => {
 
     expect(readRuntimeContent).toHaveBeenCalledWith(tab);
     expect(tab.content).toBe('latest runtime content');
+  });
+
+  it('keeps an active editor snapshot until the rebuilt runtime releases it', () => {
+    const releaseSnapshot = vi.fn();
+    createRebuildSnapshot.mockReturnValue(releaseSnapshot);
+    tab.host.classList.add('active');
+    controller.ensure(tab);
+
+    controller.rebuild(tab);
+    expect(createRebuildSnapshot).toHaveBeenCalledWith(tab.host);
+    expect(releaseSnapshot).not.toHaveBeenCalled();
+
+    controller.releaseRebuildSnapshot(tab);
+    expect(releaseSnapshot).toHaveBeenCalledOnce();
+  });
+
+  it('releases a rebuild snapshot immediately when no scroll restoration is pending', () => {
+    const afterSettled = vi.fn();
+
+    controller.restoreScroll(tab, vi.fn(), afterSettled);
+
+    expect(afterSettled).toHaveBeenCalledOnce();
   });
 
   it('destroys a runtime once and clears its ownership', () => {
@@ -198,6 +226,19 @@ describe('EditorController', () => {
     expect(secondScrollCleanup).not.toHaveBeenCalled();
   });
 
+  it('releases the custom caret when the editor runtime is destroyed', () => {
+    const firstCleanup = vi.fn();
+    const secondCleanup = vi.fn();
+    installCustomCaret.mockReturnValueOnce(firstCleanup).mockReturnValueOnce(secondCleanup);
+
+    controller.installCustomCaret(tab, () => 'bar');
+    controller.installCustomCaret(tab, () => 'block');
+    controller.destroy(tab);
+
+    expect(firstCleanup).toHaveBeenCalledTimes(1);
+    expect(secondCleanup).toHaveBeenCalledTimes(1);
+  });
+
   it('reports a destruction failure after clearing runtime ownership', () => {
     controller.ensure(tab);
     destroyed.mockImplementationOnce(() => {
@@ -215,9 +256,11 @@ describe('EditorController', () => {
     controller = new EditorController({
       adapter: {
         editorScrollContainer: () => null,
+        createRebuildSnapshot,
         setBottomSpacer,
         observeOutlineChanges,
         preserveTableScrollDuringInput,
+        installCustomCaret,
         scrollContainers,
         installScrollEnhancement,
       },
@@ -252,6 +295,17 @@ describe('EditorController', () => {
     vi.useRealTimers();
   });
 
+  it('removes the custom caret before Vditor changes editing modes', () => {
+    const cleanup = vi.fn();
+    installCustomCaret.mockReturnValue(cleanup);
+    controller.installCustomCaret(tab, () => 'bar');
+    controller.ensure(tab);
+    tab.ready = true;
+
+    expect(controller.prepareModeTransition(tab, 'sv', vi.fn())).toBe(true);
+    expect(cleanup).toHaveBeenCalledOnce();
+  });
+
   it('rejects delayed scroll restoration after the runtime generation changes', () => {
     vi.useFakeTimers();
     const scroller = document.createElement('div');
@@ -264,9 +318,11 @@ describe('EditorController', () => {
     controller = new EditorController({
       adapter: {
         editorScrollContainer: () => scroller,
+        createRebuildSnapshot,
         setBottomSpacer,
         observeOutlineChanges,
         preserveTableScrollDuringInput,
+        installCustomCaret,
         scrollContainers,
         installScrollEnhancement,
       },
@@ -282,12 +338,14 @@ describe('EditorController', () => {
     controller.ensure(tab);
     tab.pendingScroll = { mode: 'ir', scrollTop: 30, scrollLeft: 10, progress: 0.3 };
     const afterRestore = vi.fn();
+    const afterSettled = vi.fn();
 
-    controller.restoreScroll(tab, afterRestore);
+    controller.restoreScroll(tab, afterRestore, afterSettled);
     tab.editorRuntimeGeneration = (tab.editorRuntimeGeneration ?? 0) + 1;
     vi.runAllTimers();
 
     expect(afterRestore).toHaveBeenCalledTimes(1);
+    expect(afterSettled).not.toHaveBeenCalled();
     vi.useRealTimers();
   });
 

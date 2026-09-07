@@ -31,6 +31,17 @@ describe('classifySettingsChange', () => {
     expect(change.shouldRebuildEditor).toBe(false);
   });
 
+  it('applies caret-style changes to live editors without rebuilding them', () => {
+    const change = classifySettingsChange(
+      settings,
+      { ...settings, caretStyle: 'block' },
+      VDITOR_INITIALIZATION_SETTINGS,
+    );
+
+    expect(change.impacts).toContain('live-editor');
+    expect(change.shouldRebuildEditor).toBe(false);
+  });
+
   it('identifies constructor-only settings independently from live preview settings', () => {
     const rebuild = classifySettingsChange(
       settings,

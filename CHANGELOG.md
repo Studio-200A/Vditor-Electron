@@ -6,8 +6,9 @@
 
 - **build(Electron downloads):** Configured npm installation and electron-builder to retrieve pinned Electron binaries from the npmmirror registry instead of Electron's official release host.
 
-### Toolbar UX
+### UX
 
+- **feat(custom caret)**: Underline, Bar and Block style custom caret.
 - **fix(toolbar/sidebar cohesion):** Files and Outline now belong to the sidebar. With the editor toolbar visible they form the sidebar-aligned top navigation beside it; when the toolbar is hidden they become the first sidebar-content navigation row, with no leftover toolbar slot. The selected view remains stable across layout changes.
 - **fix(titlebar/sidebar transition):** Titlebar file actions and window controls remain fixed and operable while the sidebar transitions. The titlebar shadow appears only when the editor toolbar is hidden; on sidebar close the Vditor toolbar immediately fills the released area, while the sidebar navigation remains painted with the moving sidebar.
 - **fix(sidebar sizing):** The sidebar's rendered and draggable maximum is now two thirds of the current application width, while persisted values remain safely validated and are clamped to the live window.
@@ -87,23 +88,42 @@
 
 ### Editor Runtime
 
+- **fix(editor rebuild):** Initialization-only settings now preserve a non-interactive snapshot of the active editor, including its scroll position, until replacement Vditor content is ready and the scroll position is restored. The existing shared toolbar remains mounted until its replacement takes over, eliminating the visible empty toolbar, document flash, and jump-to-top during live settings saves.
+
 - **refactor(editor runtime):** Began the editor-domain migration with typed `EditorController`, `SplitViewController`, `OutlineController`, and `FindController` ownership. Vditor runtime generations now reject callbacks from rebuilt or closed instances; Desktop outline rendering, find state, SV divider pointer lifecycle, and their deferred refresh cleanup no longer live in the application shell. Find replacement uses the selected editor range and Vditor input path, preserving undo and mode state instead of resetting the document value.
+
 - **refactor(editor construction and toolbar):** Moved Vditor constructor-only options, image upload/compression, and shared toolbar hand-off/wrap-height lifecycle into typed editor modules. Existing offline resources, supported toolbar show/hide behavior, image Markdown insertion, and Vditor undo paths remain unchanged.
+
 - **refactor(editor tab runtime):** Moved tab activation's editor-runtime coordination into `EditorRuntimeCoordinator`. It now owns toolbar hand-off, host activation, editor initialization, deferred spacer/anchor work, outline/find refresh, and session persistence ordering; stale animation-frame work is rejected after a newer tab becomes active.
+
 - **refactor(recovery):** Moved per-tab recovery snapshot debounce timers and serialized recovery-store operations out of the renderer shell into the editor runtime domain without changing recovery payloads or file-safety decisions.
+
 - **refactor(external changes):** Centralized external-content runtime application behind EditorController so clean reloads and conflict resolution always cancel stale auto-save work before replacing Vditor content.
+
 - **refactor(recovery):** Moved recovery-content injection and pending-runtime hand-off behind EditorController, preserving recovery banners and document safety state while removing direct shell-to-Vditor writes.
+
 - **refactor(editor startup):** Moved initialized editor-content reconciliation into EditorController so recovery and dirty-tab save baselines remain stable across Vditor rebuilds.
+
 - **refactor(editor rebuild):** Moved pre-rebuild Vditor content capture into EditorController, keeping runtime teardown and content preservation in one lifecycle owner.
+
 - **refactor(editor layout):** Moved bottom-spacer ResizeObserver ownership and cleanup into EditorController while retaining the existing half-height editor layout behavior.
+
 - **refactor(editor mode):** Moved Vditor mode-transition scheduling into EditorController so rebuild and close cancel stale mode-sync and scroll-restore callbacks.
+
 - **refactor(editor shortcuts):** Moved per-tab Vditor mode-shortcut listener ownership into EditorController, preserving it through rebuilds and releasing it when the tab closes.
+
 - **refactor(editor outline):** Moved per-tab Vditor outline observer ownership into EditorController, replacing it on rebuild and releasing it with the editor runtime.
+
 - **refactor(editor table scroll):** Moved Vditor table composition-scroll cleanup into EditorController, replacing it with each editor runtime and releasing it on rebuild or close.
+
 - **refactor(editor scrollbars):** Moved editor-surface auto-hide scrollbar enhancements into EditorController, releasing their listeners and timers on rebuild or close.
+
 - **refactor(editor links):** Moved document-anchor navigation listener ownership into EditorController, retaining listeners across rebuilds and removing them when tabs close.
+
 - **refactor(recovery banner):** Moved recovery-banner rendering and action listener lifecycle into a dedicated controller while preserving existing save, save-as, discard, snapshot, and file-safety command paths.
+
 - **refactor(editor toolbar handlers):** Moved Vditor toolbar click and mousedown listener lifecycle into EditorController, replacing handlers with each runtime and releasing them before rebuild or close.
+
 - **refactor(editor focus):** Moved delayed post-initialization focus into EditorController so rebuild and close cancel stale focus callbacks and only the active tab receives focus.
 
 ### Bug Fixes

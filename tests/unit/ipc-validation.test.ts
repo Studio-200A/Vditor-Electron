@@ -49,6 +49,7 @@ describe('IPC request validation', () => {
       parseSettingsPatch({
         locale: 'zh_Hans',
         editMode: 'sv',
+        caretStyle: 'block',
         workspaceReadDepth: 12,
         toolbarConfig: { hide: true, pin: false },
         session: { workspacePath: '', activeFilePath: null, openFiles: [] },
@@ -56,6 +57,7 @@ describe('IPC request validation', () => {
     ).toEqual({
       locale: 'zh_Hans',
       editMode: 'sv',
+      caretStyle: 'block',
       workspaceReadDepth: 12,
       toolbarConfig: { hide: true, pin: false },
       session: { schemaVersion: 1, workspacePath: '', activeFilePath: null, openFiles: [] },
@@ -66,6 +68,7 @@ describe('IPC request validation', () => {
     for (const patch of [
       { unknownSetting: true },
       { editMode: 'source' },
+      { caretStyle: 'beam' },
       { workspaceReadDepth: 99 },
       { toolbarConfig: { hide: true, unsafe: true } },
       { recentFiles: [{ path: 'relative.md', title: 'relative', openedAt: 1 }] },

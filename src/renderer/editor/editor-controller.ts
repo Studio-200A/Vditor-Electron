@@ -32,9 +32,15 @@ type EditorDocumentUpdates = Pick<
 export interface EditorControllerOptions<TTab extends EditorRuntimeTab> {
   readonly adapter: {
     editorScrollContainer(host: HTMLElement, mode: EditMode): HTMLElement | null;
+    createRebuildSnapshot(host: HTMLElement): () => void;
     setBottomSpacer(host: HTMLElement, height: number): void;
     observeOutlineChanges(host: HTMLElement, callback: () => void): { disconnect(): void };
     preserveTableScrollDuringInput(host: HTMLElement, getMode: () => EditMode): () => void;
+    installCustomCaret(
+      host: HTMLElement,
+      getMode: () => EditMode,
+      getStyle: () => 'underline' | 'bar' | 'block',
+    ): () => void;
     scrollContainers(host: HTMLElement): HTMLElement[];
     installScrollEnhancement(element: HTMLElement): (() => void) | null;
   };
@@ -87,6 +93,8 @@ export class EditorController<TTab extends EditorRuntimeTab> {
   private readonly modeShortcutCleanups = new Map<TTab, () => void>();
   private readonly outlineObservers = new Map<TTab, { disconnect(): void }>();
   private readonly tableCompositionScrollCleanups = new Map<TTab, () => void>();
+  private readonly customCaretCleanups = new Map<TTab, () => void>();
+  private readonly rebuildSnapshotCleanups = new Map<TTab, () => void>();
   private readonly scrollEnhancementCleanups = new Map<TTab, Array<() => void>>();
   private readonly documentAnchorNavigationCleanups = new Map<TTab, () => void>();
   private readonly contextMenuCleanups = new Map<TTab, () => void>();
@@ -256,6 +264,28 @@ export class EditorController<TTab extends EditorRuntimeTab> {
     );
   }
 
+  installCustomCaret(tab: TTab, getStyle: () => 'underline' | 'bar' | 'block'): void {
+    this.suspendCustomCaret(tab);
+    this.customCaretCleanups.set(
+      tab,
+      this.adapter.installCustomCaret(
+        tab.host,
+        () => tab.vditor?.getCurrentMode() ?? tab.mode,
+        getStyle,
+      ),
+    );
+  }
+
+  suspendCustomCaret(tab: TTab): void {
+    this.customCaretCleanups.get(tab)?.();
+    this.customCaretCleanups.delete(tab);
+  }
+
+  releaseRebuildSnapshot(tab: TTab): void {
+    this.rebuildSnapshotCleanups.get(tab)?.();
+    this.rebuildSnapshotCleanups.delete(tab);
+  }
+
   installScrollEnhancements(tab: TTab, excludedElement: HTMLElement | null): void {
     this.clearScrollEnhancements(tab);
     const cleanups = this.adapter
@@ -297,9 +327,12 @@ export class EditorController<TTab extends EditorRuntimeTab> {
     };
   }
 
-  restoreScroll(tab: TTab, afterRestore: () => void): void {
+  restoreScroll(tab: TTab, afterRestore: () => void, afterSettled: () => void = () => {}): void {
     const saved = tab.pendingScroll;
-    if (!saved) return;
+    if (!saved) {
+      afterSettled();
+      return;
+    }
     const generation = tab.editorRuntimeGeneration;
     const restore = (): void => {
       const mode = tab.vditor?.getCurrentMode() ?? tab.mode;
@@ -331,6 +364,7 @@ export class EditorController<TTab extends EditorRuntimeTab> {
           return;
         restore();
         tab.pendingScroll = null;
+        afterSettled();
       }, 80);
     };
     restoreUntilStable();
@@ -338,13 +372,14 @@ export class EditorController<TTab extends EditorRuntimeTab> {
 
   synchronizeMode(tab: TTab): void {
     const mode = tab.vditor?.getCurrentMode();
-    if (!mode) return;
+    if (!mode || mode === tab.mode) return;
     this.updateDocument(tab, { mode });
     this.onModeChanged(tab);
   }
 
   prepareModeTransition(tab: TTab, targetMode: EditMode, afterRestore: () => void): boolean {
     if (!tab.vditor || !tab.ready || targetMode === tab.vditor.getCurrentMode()) return false;
+    this.suspendCustomCaret(tab);
     tab.pendingScroll = this.captureScroll(tab);
     this.cancelModeTransition(tab);
     // Vditor 3.11.3 updates its mode synchronously. Sync on the next frame, then
@@ -410,6 +445,9 @@ export class EditorController<TTab extends EditorRuntimeTab> {
 
   rebuild(tab: TTab, mode?: EditMode): Error | null {
     if (tab.vditor) this.updateDocument(tab, { content: this.readRuntimeContent(tab) });
+    this.releaseRebuildSnapshot(tab);
+    if (tab.host.classList.contains('active'))
+      this.rebuildSnapshotCleanups.set(tab, this.adapter.createRebuildSnapshot(tab.host));
     tab.ready = false;
     tab.host.dataset.editorReady = 'false';
     this.onAvailabilityChanged(tab);
@@ -418,6 +456,7 @@ export class EditorController<TTab extends EditorRuntimeTab> {
     tab.host.innerHTML = '';
     if (mode) this.updateDocument(tab, { mode });
     if (tab.id === this.getActiveDocumentId() && !this.ensure(tab)) {
+      this.releaseRebuildSnapshot(tab);
       return new Error('The editor could not be initialized after the document changed.');
     }
     return rebuildError;
@@ -430,6 +469,8 @@ export class EditorController<TTab extends EditorRuntimeTab> {
     this.disconnectOutlineObserver(tab);
     this.tableCompositionScrollCleanups.get(tab)?.();
     this.tableCompositionScrollCleanups.delete(tab);
+    this.suspendCustomCaret(tab);
+    if (disposeTabResources) this.releaseRebuildSnapshot(tab);
     this.clearScrollEnhancements(tab);
     this.toolbarHandlerCleanups.get(tab)?.();
     this.cancelFocus(tab);

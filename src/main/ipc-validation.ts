@@ -362,6 +362,8 @@ function parseSettingValue(key: keyof AppSettings, value: unknown): AppSettings[
       return parseEnum(value, ['always', 'auto', 'hidden']);
     case 'editMode':
       return parseEnum(value, ['wysiwyg', 'ir', 'sv']);
+    case 'caretStyle':
+      return parseEnum(value, ['underline', 'bar', 'block']);
     case 'previewMode':
       return parseEnum(value, ['both', 'editor']);
     case 'tabSize': {

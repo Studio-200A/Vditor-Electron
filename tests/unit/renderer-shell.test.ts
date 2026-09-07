@@ -142,7 +142,9 @@ describe('renderer shell', () => {
       /\.window-controls button\s*\{[^}]*transition:[^}]*color 0\.16s ease[^}]*background-color 0\.16s ease/s,
     );
     expect(css).toMatch(/\.window-titlebar\s*\{[^}]*background:\s*var\(--sidebar-surface\)/s);
-    expect(css).toMatch(/#app\.toolbar-hidden \.window-titlebar\s*\{[^}]*box-shadow:\s*none/s);
+    expect(css).toMatch(
+      /#app\.toolbar-hidden \.window-titlebar\s*\{[^}]*box-shadow:\s*var\(--top-surface-shadow\)/s,
+    );
     expect(document.querySelector('#toolbarSkeleton[aria-hidden="true"]')).not.toBeNull();
     expect(css).toContain(".vditor-toolbar-mount[data-toolbar-pending='true'] .toolbar-skeleton");
     expect(css).toMatch(
@@ -518,7 +520,7 @@ describe('renderer shell', () => {
       /\.vditor-toolbar-mount > \.vditor-toolbar\s*\{[^}]*background:\s*var\(--sidebar-surface\)/s,
     );
     expect(css).toMatch(
-      /\.toolbar-sidebar-tabs\.sidebar-tabs\s*\{[^}]*background:\s*var\(--sidebar-surface\)/s,
+      /#app:not\(\.toolbar-hidden\) \.toolbar-sidebar-tabs\s*\{[^}]*background:\s*var\(--sidebar-surface\)/s,
     );
     expect(css).toMatch(/\.document-tab:hover\s*\{[^}]*background:\s*var\(--hover\)/s);
     expect(css).toMatch(/\.document-tab\.active:hover\s*\{[^}]*background:\s*var\(--hover\)/s);
@@ -638,18 +640,18 @@ describe('renderer shell', () => {
     expect(document.querySelector('[name="showWhitespace"]')).not.toBeNull();
     expect(document.querySelector('[name="autoIndent"]')).not.toBeNull();
     expect(css).toMatch(
-      /\.editor-host\.vditor:not\(\.active\)\s*\{[^}]*display:\s*none !important/s,
+      /\.editor-host\.vditor:not\(\.active\):not\(\.editor-rebuild-snapshot\)\s*\{[^}]*display:\s*none !important/s,
     );
     expect(css).not.toContain('.sv-whitespace-dot');
   });
 
   it('assigns stable theme-aware boundaries to each top toolbar surface', () => {
     expect(css).toContain('--top-surface-shadow:');
-    expect(css).toMatch(/\.sidebar-tabs\s*\{[^}]*box-shadow:\s*var\(--top-surface-shadow\)/s);
-    expect(css).toMatch(/\.titlebar\s*\{[^}]*border-bottom:\s*0;[^}]*box-shadow:\s*none/s);
     expect(css).toMatch(
-      /\.toolbar-sidebar-tabs\s*\{[^}]*border-bottom:\s*1px solid var\(--border\)[^}]*box-shadow:\s*var\(--top-surface-shadow\)/s,
+      /#app:not\(\.toolbar-hidden\) \.toolbar-sidebar-tabs\s*\{[^}]*box-shadow:\s*var\(--top-surface-shadow\)/s,
     );
+    expect(css).toMatch(/\.titlebar\s*\{[^}]*border-bottom:\s*0;[^}]*box-shadow:\s*none/s);
+    expect(css).toMatch(/\.sidebar-tabs\s*\{[^}]*border-bottom:\s*1px solid var\(--border\)/s);
     expect(css).toMatch(
       /\.vditor-toolbar-mount > \.vditor-toolbar\s*\{[^}]*border-bottom:\s*1px solid var\(--border\)[^}]*box-shadow:\s*var\(--top-surface-shadow\)/s,
     );

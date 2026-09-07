@@ -463,7 +463,7 @@ test('keeps the empty outline message below controls and non-selectable in fulls
     await page.keyboard.press('F11');
     await expect(page.locator('#app')).toHaveClass(/fullscreen/);
     await expect(page.locator('#windowTitlebar')).toBeHidden();
-    const tabsBox = await page.locator('header.titlebar .toolbar-sidebar-tabs').boundingBox();
+    const tabsBox = await page.locator('#sidebar .toolbar-sidebar-tabs').boundingBox();
     const emptyBox = await empty.boundingBox();
     if (!tabsBox || !emptyBox) throw new Error('Fullscreen outline controls have no bounds');
     expect(emptyBox.y).toBeGreaterThanOrEqual(tabsBox.y + tabsBox.height - 1);

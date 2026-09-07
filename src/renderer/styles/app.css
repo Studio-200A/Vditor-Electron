@@ -1137,7 +1137,12 @@ button.primary.danger {
 .editor-host.active {
   display: block;
 }
-.editor-host.vditor:not(.active) {
+.editor-host.editor-rebuild-snapshot {
+  z-index: 1;
+  display: flex !important;
+  pointer-events: none;
+}
+.editor-host.vditor:not(.active):not(.editor-rebuild-snapshot) {
   display: none !important;
 }
 .editor-host.vditor.active {
@@ -1183,6 +1188,56 @@ button.primary.danger {
   font-size: var(--source-size);
   line-height: 1.5;
   padding-left: 52px;
+}
+.editor-host[data-vditor-desktop-custom-caret='true'] .vditor-sv,
+.editor-host[data-vditor-desktop-custom-caret='true'] .vditor-ir,
+.editor-host[data-vditor-desktop-custom-caret='true'] .vditor-wysiwyg {
+  caret-color: transparent;
+}
+.vditor-desktop-custom-caret {
+  position: fixed;
+  z-index: 1000;
+  display: none;
+  pointer-events: none;
+  background: var(--text);
+  border-radius: 1px;
+}
+.editor-area > .vditor-desktop-custom-caret {
+  /* Share the editor area's clipping boundary so a fixed overlay can never
+     paint above the toolbar or status bar while a selection scrolls offscreen. */
+  position: absolute;
+}
+html[data-sidebar-resizing='true'] .vditor-desktop-custom-caret {
+  display: none !important;
+}
+.vditor-desktop-custom-caret.is-blinking {
+  animation: vditor-desktop-caret-blink 1.1s steps(1, end) infinite;
+}
+.vditor-desktop-custom-caret[data-style='block'] {
+  /* White difference-inverts both the editor background and the covered glyph. */
+  background: #fff;
+  mix-blend-mode: difference;
+}
+.vditor-desktop-custom-caret[data-style='block'][data-unfocused] {
+  box-sizing: border-box;
+  border: 2px solid var(--text);
+  background: transparent;
+  mix-blend-mode: normal;
+}
+@keyframes vditor-desktop-caret-blink {
+  0%,
+  48% {
+    opacity: 1;
+  }
+  49%,
+  100% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vditor-desktop-custom-caret.is-blinking {
+    animation: none;
+  }
 }
 .editor-host .vditor-preview > .vditor-reset::after {
   content: '';

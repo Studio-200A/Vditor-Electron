@@ -34,7 +34,7 @@ describe('PersistentStateStore', () => {
     expect(existing.getAll().defaultOpenPath).toBe('/notes');
   });
 
-  it('uses safe defaults for corrupt or unsupported state without blocking startup', () => {
+  it('uses safe defaults for corrupt or unsupported state while preserving valid fields', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     try {
       fs.writeFileSync(path.join(configDir, 'state.json'), '{broken');
@@ -53,7 +53,7 @@ describe('PersistentStateStore', () => {
         new PersistentStateStore(configDir, DEFAULT_PERSISTENT_APP_STATE).getAll(),
       ).toMatchObject({
         defaultOpenPath: '/notes',
-        sidebarWidth: DEFAULT_PERSISTENT_APP_STATE.sidebarWidth,
+        sidebarWidth: 900,
       });
       expect(error).toHaveBeenCalled();
     } finally {

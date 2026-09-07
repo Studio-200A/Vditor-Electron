@@ -109,6 +109,54 @@ test('keeps Vditor formatting shortcuts from invoking application commands', asy
   }
 });
 
+test('keeps one custom caret proxy across all editor modes and releases it on tab close', async () => {
+  const running = await launchApp({ editMode: 'ir', caretStyle: 'block' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    await expect(page.locator('.editor-host.active')).toHaveAttribute(
+      'data-vditor-desktop-custom-caret',
+      'true',
+    );
+    const editorFor = (mode: 'wysiwyg' | 'ir' | 'sv') =>
+      page.locator(
+        `.editor-host.active .${mode === 'sv' ? 'vditor-sv' : `vditor-${mode} .vditor-reset`}`,
+      );
+    const activate = async (mode: 'wysiwyg' | 'ir' | 'sv') => {
+      if (mode !== 'ir') {
+        await page.locator('#vditorToolbarMount button[data-type="edit-mode"]').click();
+        await page.locator(`#vditorToolbarMount button[data-mode="${mode}"]`).click();
+      }
+      const editor = editorFor(mode);
+      await expect(editor).toBeVisible();
+      await expect(page.locator('.editor-host.active')).toHaveAttribute(
+        'data-vditor-desktop-custom-caret',
+        'true',
+      );
+      await editor.fill('caret target');
+      await editor.click();
+      await page.keyboard.press('End');
+      await expect.poll(() => page.locator('[data-vditor-desktop-caret="true"]').count()).toBe(1);
+      const caret = page.locator('[data-vditor-desktop-caret="true"]');
+      await expect(caret).toHaveAttribute('data-style', 'block');
+      await expect(caret).toHaveCSS('position', 'absolute');
+      expect(await caret.evaluate((node) => node.parentElement?.id)).toBe('editorArea');
+      await expect(caret).toHaveClass(/is-blinking/);
+      await page.keyboard.press('ArrowLeft');
+      await expect(caret).toHaveClass(/is-blinking/);
+    };
+
+    await activate('ir');
+    await activate('wysiwyg');
+    await activate('sv');
+    await page.locator('.document-tab.active b').click();
+    await page.locator('#confirmActions [data-action="discard"]').click();
+    await expect(page.locator('[data-vditor-desktop-caret="true"]')).toHaveCount(0);
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('switches among all three modes from the View > Editing Mode submenu', async () => {
   const running = await launchApp({ editMode: 'ir' });
   try {

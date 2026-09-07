@@ -134,6 +134,64 @@ describe('SplitViewController', () => {
     vi.unstubAllGlobals();
   });
 
+  it('defers expensive split decoration refreshes until source scrolling stops', () => {
+    const host = document.createElement('section');
+    const source = document.createElement('div');
+    const tab = { host, splitResizer: null as HTMLElement | null };
+    const refreshLineNumbers = vi.fn();
+    const syncScroll = vi.fn();
+    const queuedFrames = new Map<number, FrameRequestCallback>();
+    let frameId = 0;
+    vi.useFakeTimers();
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frameId += 1;
+      queuedFrames.set(frameId, callback);
+      return frameId;
+    });
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => queuedFrames.delete(id));
+    const controller = new SplitViewController({
+      getContent: () => null,
+      getSource: () => source,
+      ensureResizer: () => null,
+      getVisibility: () => null,
+      getRatio: () => 50,
+      setRatio: () => {},
+      persistRatio: () => {},
+      onLayoutChanged: () => {},
+      refreshLineNumbers,
+      shouldDeferLineNumberResize: () => false,
+      syncScroll,
+      installScrollEnhancement: () => null,
+      installAutoIndent: () => null,
+      captureIndentSelection: () => null,
+      applyIndent: () => false,
+    });
+    const flushFrames = () => {
+      const callbacks = [...queuedFrames.values()];
+      queuedFrames.clear();
+      callbacks.forEach((callback) => callback(0));
+    };
+
+    try {
+      controller.scheduleLineNumbers(tab);
+      flushFrames();
+      expect(refreshLineNumbers).toHaveBeenCalledTimes(1);
+
+      source.dispatchEvent(new Event('scroll'));
+      expect(syncScroll).toHaveBeenCalledTimes(1);
+      expect(refreshLineNumbers).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(79);
+      expect(refreshLineNumbers).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(1);
+      flushFrames();
+      expect(refreshLineNumbers).toHaveBeenCalledTimes(2);
+    } finally {
+      controller.dispose(tab);
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('replaces line-number observers and disconnects the active observer on disposal', () => {
     const host = document.createElement('section');
     const source = document.createElement('div');

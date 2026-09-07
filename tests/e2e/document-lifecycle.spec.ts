@@ -719,7 +719,7 @@ test('saves trusted tab content while the rebuilt editor is not ready', async ()
     await page.locator('#appMenuBar [data-menu="main"]').click();
     await page.locator('.app-menu-popup button.has-submenu', { hasText: 'Editing Mode' }).hover();
     await page.locator('.app-menu-popup.submenu button', { hasText: 'WYSIWYG' }).click();
-    await expect(page.locator('.editor-host.active')).toHaveAttribute(
+    await expect(page.locator('.editor-host.active:not(.editor-rebuild-snapshot)')).toHaveAttribute(
       'data-editor-ready',
       'false',
       {
@@ -739,7 +739,9 @@ test('saves trusted tab content while the rebuilt editor is not ready', async ()
         timeout: 3000,
       },
     );
-    await expect(page.locator('.editor-host.active .vditor-wysiwyg')).toBeVisible();
+    await expect(
+      page.locator('.editor-host.active:not(.editor-rebuild-snapshot) .vditor-wysiwyg'),
+    ).toBeVisible();
   } finally {
     await closeApp(running);
   }
@@ -774,20 +776,20 @@ test('keeps the shared toolbar out of the editor while a rebuilt editor is not r
     await page.locator('.app-menu-popup button.has-submenu', { hasText: 'Editing Mode' }).hover();
     await page.locator('.app-menu-popup.submenu button', { hasText: 'WYSIWYG' }).click();
 
-    const activeHost = page.locator('.editor-host.active');
+    const activeHost = page.locator('.editor-host.active:not(.editor-rebuild-snapshot)');
     await expect(activeHost).toHaveAttribute('data-editor-ready', 'false', { timeout: 100 });
     const pendingToolbar = activeHost.locator(':scope > .vditor-toolbar');
     await expect(pendingToolbar).toHaveCount(1, { timeout: 500 });
     await expect(pendingToolbar).toBeHidden();
     await expect(pendingToolbar).toHaveCSS('pointer-events', 'none');
-    await expect(page.locator('#vditorToolbarMount > .vditor-toolbar')).toHaveCount(0);
+    await expect(page.locator('#vditorToolbarMount > .vditor-toolbar')).toBeVisible();
     await expect(page.locator('#vditorToolbarMount')).toBeVisible();
     await expect(page.locator('#vditorToolbarMount')).toHaveAttribute(
       'data-toolbar-pending',
-      'true',
+      'false',
     );
-    await expect(page.locator('#vditorToolbarMount')).toHaveAttribute('aria-busy', 'true');
-    await expect(page.locator('#toolbarSkeleton')).toBeVisible();
+    await expect(page.locator('#vditorToolbarMount')).toHaveAttribute('aria-busy', 'false');
+    await expect(page.locator('#toolbarSkeleton')).toBeHidden();
     await expect(page.locator('#toolbarSkeleton button, #toolbarSkeleton [tabindex]')).toHaveCount(
       0,
     );

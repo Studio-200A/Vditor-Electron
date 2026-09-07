@@ -26,6 +26,7 @@ export interface SplitViewControllerOptions<TTab extends SplitViewTab> {
 
 interface SplitRuntime {
   lineNumberFrame: number | null;
+  scrollIdleTimer: number | null;
   lineObserver: MutationObserver | null;
   lineResizeObserver: ResizeObserver | null;
   scrollSource: HTMLElement | null;
@@ -157,6 +158,7 @@ export class SplitViewController<TTab extends SplitViewTab> {
       runtime.lineObserver?.disconnect();
       runtime.lineResizeObserver?.disconnect();
       if (runtime.lineNumberFrame !== null) cancelAnimationFrame(runtime.lineNumberFrame);
+      if (runtime.scrollIdleTimer !== null) clearTimeout(runtime.scrollIdleTimer);
       if (runtime.scrollSource && runtime.onScroll)
         runtime.scrollSource.removeEventListener('scroll', runtime.onScroll);
       runtime.scrollEnhancementCleanup?.();
@@ -187,6 +189,7 @@ export class SplitViewController<TTab extends SplitViewTab> {
     if (!runtime) {
       runtime = {
         lineNumberFrame: null,
+        scrollIdleTimer: null,
         lineObserver: null,
         lineResizeObserver: null,
         scrollSource: null,
@@ -209,7 +212,13 @@ export class SplitViewController<TTab extends SplitViewTab> {
     runtime.onScroll = source
       ? () => {
           this.syncScroll(tab);
-          this.scheduleLineNumbers(tab);
+          if (runtime.scrollIdleTimer !== null) clearTimeout(runtime.scrollIdleTimer);
+          // Canvas redraw measures every source Range. Its transform has already
+          // followed this scroll synchronously, so wait for scrolling to settle.
+          runtime.scrollIdleTimer = window.setTimeout(() => {
+            runtime.scrollIdleTimer = null;
+            this.scheduleLineNumbers(tab);
+          }, 80);
         }
       : null;
     if (source && runtime.onScroll) source.addEventListener('scroll', runtime.onScroll);
