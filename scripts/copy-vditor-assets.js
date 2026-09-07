@@ -122,5 +122,8 @@ function copyRendererAssets(src, dest) {
 }
 
 copyRendererAssets(RendererSrc, RendererDest);
+// `app.js` was the pre-0.2.5 legacy renderer entry. It can survive incremental
+// local builds after its source is removed, so remove only this known stale output.
+fs.rmSync(path.join(RendererDest, 'app.js'), { force: true });
 copyLucideIconAssets();
 console.log('Renderer assets copied successfully.');

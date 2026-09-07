@@ -157,7 +157,7 @@ export class EditorController<TTab extends EditorRuntimeTab> {
     if (!tab.vditor) return false;
     // Vditor exposes setValue during its synchronous after callback, before the
     // tab can be marked ready. Recovery content must be applied at that point
-    // rather than leaving a direct private instance mutation in app.js.
+    // rather than leaving a direct private instance mutation in the application composition.
     tab.vditor.setValue(content, clearStack);
     return true;
   }

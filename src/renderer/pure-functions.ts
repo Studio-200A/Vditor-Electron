@@ -1,5 +1,6 @@
 export { escapeHTML, fileName, stripExtension } from './utils/strings.js';
 export { AppController } from './app/app-controller.js';
+export { ExportHtmlBuilder } from './export/export-html.js';
 export { detectLineEnding } from './utils/line-ending.js';
 export { ALL_THEMES, DARK_THEMES, isDarkTheme, LIGHT_THEMES, THEME_MODES } from './ui/theme.js';
 export {

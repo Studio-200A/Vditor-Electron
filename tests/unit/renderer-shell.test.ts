@@ -11,7 +11,6 @@ describe('renderer shell', () => {
   let claudeDarkCss: string;
   let monokaiDarkCss: string;
   let monokaiLightCss: string;
-  let rendererScript: string;
   let mainScript: string;
   let preloadScript: string;
   let vditorAdapterScript: string;
@@ -39,7 +38,6 @@ describe('renderer shell', () => {
       path.resolve('src/renderer/styles/themes/monokai-pro-light.css'),
       'utf8',
     );
-    rendererScript = fs.readFileSync(path.resolve('src/renderer/app.js'), 'utf8');
     mainScript = fs.readFileSync(path.resolve('src/main/index.ts'), 'utf8');
     preloadScript = fs.readFileSync(path.resolve('src/main/preload.ts'), 'utf8');
     vditorAdapterScript = fs.readFileSync(path.resolve('src/renderer/vditor-adapter.js'), 'utf8');
@@ -180,7 +178,6 @@ describe('renderer shell', () => {
       "trafficLightPosition: process.platform === 'darwin' ? { x: 14, y: 9 }",
     );
     expect(preloadScript).toContain('platform: process.platform');
-    expect(rendererScript).toContain('document.body.dataset.platform = window.appAPI.platform');
     expect(css).toMatch(
       /body\[data-platform='darwin'\] \.app-menu-bar\s*\{[^}]*padding-left:\s*78px/s,
     );
@@ -216,8 +213,6 @@ describe('renderer shell', () => {
   });
 
   it('auto-hides sidebar scrollbars and keeps status text unselectable', () => {
-    expect(rendererScript).toContain("setupAutoHideScrollbar($('#fileTree'))");
-    expect(rendererScript).toContain("setupAutoHideScrollbar($('#outlineTree'))");
     expect(css).toMatch(/\.statusbar\s*\{[^}]*user-select:\s*none/s);
     expect(css).toContain("html[data-scrollbar-mode='auto'] .app-scrollbar.scrollbar-visible");
   });
@@ -229,7 +224,6 @@ describe('renderer shell', () => {
     expect(mainScript).toContain('send(IPC_CHANNELS.appOpenFiles, paths)');
     expect(preloadScript).toContain('onOpenFiles: (callback: (paths: string[]) => void)');
     expect(preloadScript).toContain('ipcRenderer.send(IPC_CHANNELS.appRendererReady)');
-    expect(rendererScript).toContain('window.appAPI.rendererReady()');
   });
 
   it('contains a themed application confirmation dialog', () => {
@@ -239,7 +233,6 @@ describe('renderer shell', () => {
     expect(document.querySelector('#confirmActions')).not.toBeNull();
     expect(css).toMatch(/\.confirm-card\s*\{/);
     expect(document.querySelectorAll('.confirm-card [data-settings-resize]')).toHaveLength(0);
-    expect(rendererScript).toContain('notifications.init()');
     expect(css).toMatch(/\.confirm-card\.confirm-card-draggable > header\s*\{[^}]*cursor:\s*move/s);
     expect(css).toMatch(/\.confirm-content\s*\{[^}]*user-select:\s*none/s);
     expect(css).toMatch(/\.modal\s*\{[^}]*inset:\s*14px 20px 28px/s);
@@ -353,8 +346,6 @@ describe('renderer shell', () => {
   });
 
   it('keeps explorer entries non-draggable', () => {
-    expect(rendererScript).not.toContain('text/x-vditor-path');
-    expect(rendererScript).not.toMatch(/row\.draggable\s*=/);
     expect(css).not.toMatch(/\.tree-row\.drop-target/);
   });
 
@@ -369,8 +360,6 @@ describe('renderer shell', () => {
     expect(css).toMatch(
       /\.tree-name\s*\{[^}]*flex:\s*1 1 auto[^}]*text-overflow:\s*ellipsis[^}]*white-space:\s*nowrap/s,
     );
-    expect(rendererScript).not.toContain('function middleEllipsis');
-    expect(rendererScript).not.toContain('data-full-name');
   });
 
   it('labels settings navigation with localized text and category icons', () => {
@@ -418,7 +407,6 @@ describe('renderer shell', () => {
     expect(document.querySelectorAll('#statusThemeMenu [data-theme-mode]')).toHaveLength(3);
     expect(document.querySelector('#statusThemeToggle')).toBeNull();
     expect(document.querySelector('[name="systemTheme"]')).toBeNull();
-    expect(rendererScript).not.toContain('statusThemeToggle');
     expect(localesScript).not.toContain('settings.followSystemTheme');
     expect(localesScript).not.toContain('status.toggleTheme');
     expect(document.querySelector('#statusVersion')).not.toBeNull();
@@ -466,7 +454,6 @@ describe('renderer shell', () => {
     expect(document.querySelector('#outlineTree')).not.toBeNull();
     expect(css).toMatch(/\.outline-row:hover\s*\{[^}]*background:\s*var\(--hover\)/s);
     expect(css).toContain('color-mix(in srgb, var(--text) 78%, var(--muted))');
-    expect(rendererScript).toContain('function scrollHeadingIntoEditor');
     expect(vditorAdapterScript).toContain('sourceHeading: \'[data-type="heading-marker"]\'');
   });
 
@@ -486,12 +473,6 @@ describe('renderer shell', () => {
     expect(document.querySelectorAll('.theme-preview svg')).toHaveLength(6);
     expect(document.querySelector('[name="systemTheme"]')).toBeNull();
     expect(document.querySelector('.settings-right-edge')).not.toBeNull();
-    expect(rendererScript).toContain('validateDarkThemeImpl(state.settings.darkTheme)');
-    expect(rendererScript).toContain('validateLightThemeImpl(state.settings.lightTheme)');
-    expect(rendererScript).toContain('darkThemePreference()');
-    expect(rendererScript).toContain('lightThemePreference()');
-    expect(rendererScript).toContain('function themeModeFromSettings()');
-    expect(rendererScript).toContain('function selectStatusThemeMode(mode)');
     expect(css).toContain("mask-image: url('../assets/symbolic/light-symbolic.svg')");
     expect(css).toContain("mask-image: url('../assets/symbolic/dark-symbolic.svg')");
     expect(css).toContain("mask-image: url('../assets/symbolic/system-symbolic.svg')");
@@ -579,8 +560,6 @@ describe('renderer shell', () => {
     expect(codeThemes.filter((option) => option.dataset.themeTone === 'dark')).toHaveLength(168);
     expect(codeThemes.map((option) => option.value)).toContain('monokai-sublime');
     expect(codeThemes.map((option) => option.value)).toContain('base16/atelier-cave-light');
-    expect(rendererScript).toContain('lightCodeTheme');
-    expect(rendererScript).toContain('darkCodeTheme');
     expect(vditorAdapterScript).toContain("name === 'ant-design'");
     expect(css).toMatch(/\.vditor-toolbar-mount button\[hidden\]\s*\{[^}]*display:\s*none/s);
   });
@@ -696,7 +675,6 @@ describe('renderer shell', () => {
       ),
     ).toEqual(['always', 'auto', 'hidden']);
     expect(localesScript).toContain("'settings.scrollbarMode': '滚动条显示状态'");
-    expect(rendererScript).toContain('document.documentElement.dataset.scrollbarMode');
   });
 
   it('offers an opt-in multi-platform layout preview', () => {
@@ -713,8 +691,6 @@ describe('renderer shell', () => {
   });
 
   it('does not expose the unfinished split-editor heading folding behavior', () => {
-    expect(rendererScript).not.toContain('foldedHeadings');
-    expect(rendererScript).not.toContain('data-folded-heading');
     expect(css).not.toContain('.sv-fold-toggle');
   });
 
@@ -756,9 +732,8 @@ describe('renderer shell', () => {
     const scripts = Array.from(document.querySelectorAll('script')).map((script) => script.src);
     expect(scripts.at(-4)).toContain('vditor-adapter.js');
     expect(scripts.at(-3)).toContain('pure-functions.js');
-    expect(scripts.at(-2)).toContain('app.js');
+    expect(scripts.at(-2)).toContain('app/app-composition.js');
     expect(scripts.at(-1)).toContain('main.js');
-    expect(rendererScript).toContain('window.VditorDesktopAdapter');
   });
 
   it('shows the configuration path and current-page reset in the settings footer', () => {

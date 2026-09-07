@@ -3005,131 +3005,24 @@
     return imageController.upload(tab, files);
   }
 
-  function exportBodySnapshot(tab) {
-    return tab.vditor
-      ? VDITOR.withOriginalImageSources(tab.host, () => tab.vditor.getHTML())
-      : `<pre>${escapeHTML(tab.content)}</pre>`;
-  }
-
-  function portableExportSource(source, sourceBaseUrl, targetBaseUrl) {
-    if (!source || source.startsWith('#')) return source;
-    let resolved;
-    try {
-      resolved = new URL(source, sourceBaseUrl || 'https://vditor-export.invalid/');
-    } catch (_) {
-      return source;
-    }
-    if (resolved.protocol === 'app:') return null;
-    if (resolved.protocol !== 'local-file:') return source;
-    if (!targetBaseUrl) return null;
-    return VDITOR.relativeSourceFromLocalUrl(resolved.href, targetBaseUrl) || null;
-  }
-
-  function portableExportSourceSet(sourceSet, sourceBaseUrl, targetBaseUrl) {
-    return sourceSet
-      .split(',')
-      .map((candidate) => {
-        const trimmed = candidate.trim();
-        if (!trimmed) return '';
-        const [source, ...descriptor] = trimmed.split(/\s+/);
-        const portableSource = portableExportSource(source, sourceBaseUrl, targetBaseUrl);
-        return portableSource === null ? '' : [portableSource, ...descriptor].join(' ');
-      })
-      .filter(Boolean)
-      .join(', ');
-  }
-
-  function normalizeExportBody(body, tab, outputDirectory = tab.baseDir) {
-    const template = document.createElement('template');
-    template.innerHTML = body;
-    const sourceBaseUrl = localResourceBase(tab.baseDir);
-    const targetBaseUrl = localResourceBase(outputDirectory);
-    template.content.querySelectorAll('[src], [href], [poster], [srcset]').forEach((element) => {
-      ['src', 'href', 'poster'].forEach((attribute) => {
-        if (!element.hasAttribute(attribute)) return;
-        const source = element.getAttribute(attribute) || '';
-        const portableSource = portableExportSource(source, sourceBaseUrl, targetBaseUrl);
-        if (portableSource === null) element.removeAttribute(attribute);
-        else if (portableSource !== source) element.setAttribute(attribute, portableSource);
-      });
-      if (!element.hasAttribute('srcset')) return;
-      const sourceSet = element.getAttribute('srcset') || '';
-      const portableSourceSet = portableExportSourceSet(sourceSet, sourceBaseUrl, targetBaseUrl);
-      if (portableSourceSet) element.setAttribute('srcset', portableSourceSet);
-      else element.removeAttribute('srcset');
-    });
-    return template.innerHTML;
-  }
-
-  function imageMimeType(source) {
-    const extension = source.split(/[?#]/, 1)[0].toLowerCase().split('.').pop();
-    return (
-      {
-        apng: 'image/apng',
-        avif: 'image/avif',
-        gif: 'image/gif',
-        jpeg: 'image/jpeg',
-        jpg: 'image/jpeg',
-        png: 'image/png',
-        svg: 'image/svg+xml',
-        webp: 'image/webp',
-      }[extension] || 'application/octet-stream'
-    );
-  }
-
-  function bytesToBase64(bytes) {
-    let binary = '';
-    const chunkSize = 0x8000;
-    for (let offset = 0; offset < bytes.length; offset += chunkSize)
-      binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
-    return btoa(binary);
-  }
-
-  async function embedExportImages(body, tab) {
-    const baseUrl = localResourceBase(tab.baseDir);
-    if (!baseUrl) return body;
-    const template = document.createElement('template');
-    template.innerHTML = body;
-    const images = Array.from(template.content.querySelectorAll('img[src]'));
-    await Promise.all(
-      images.map(async (image) => {
-        const source = image.getAttribute('src') || '';
-        if (!source || source.startsWith('#')) return;
-        let resolved;
-        try {
-          resolved = new URL(source, baseUrl);
-        } catch (_) {
-          return;
-        }
-        if (resolved.protocol !== 'local-file:') return;
-        try {
-          const response = await fetch(resolved.href);
-          if (!response.ok) return;
-          const blob = await response.blob();
-          const bytes = new Uint8Array(await blob.arrayBuffer());
-          const contentType = blob.type.startsWith('image/') ? blob.type : imageMimeType(source);
-          image.setAttribute('src', `data:${contentType};base64,${bytesToBase64(bytes)}`);
-        } catch (_) {
-          // Keep the relative source when a local image cannot be read for PDF export.
-        }
-      }),
-    );
-    return template.innerHTML;
-  }
-
-  function makeExportHTML(tab, body, outputDirectory = tab.baseDir) {
-    const portableBody = normalizeExportBody(body, tab, outputDirectory);
-    return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHTML(stripExtension(tab.title))}</title><style>body{max-width:860px;margin:40px auto;padding:0 24px;font:16px/1.7 system-ui;color:#24292f}pre,code{font-family:ui-monospace,monospace}pre{padding:16px;overflow:auto;background:#f6f8fa}img{max-width:100%}table{border-collapse:collapse}td,th{border:1px solid #d0d7de;padding:6px 12px}</style></head><body>${portableBody}</body></html>`;
-  }
+  const exportHtmlBuilder = new PURE.ExportHtmlBuilder({
+    adapter: VDITOR,
+    createLocalResourceBase: localResourceBase,
+    escapeHTML,
+    stripExtension,
+    fetch: window.fetch.bind(window),
+  });
   const exportController = new PURE.ExportController({
     getActiveDocument: () => activeTab(),
     fileAPI: window.fileAPI,
     appAPI: window.appAPI,
     getDefaultDirectory: () => state.settings.defaultOpenPath || undefined,
-    snapshotBody: exportBodySnapshot,
-    normalizeBody: normalizeExportBody,
-    embedImages: embedExportImages,
-    makeHTML: makeExportHTML,
+    snapshotBody: (tab) => exportHtmlBuilder.snapshotBody(tab),
+    normalizeBody: (body, tab, outputDirectory) =>
+      exportHtmlBuilder.normalizeBody(body, tab, outputDirectory),
+    embedImages: (body, tab) => exportHtmlBuilder.embedImages(body, tab),
+    makeHTML: (tab, body, outputDirectory) =>
+      exportHtmlBuilder.makeHTML(tab, body, outputDirectory),
     defaultFileName: (tab, type) => `${stripExtension(tab.title)}.${type}`,
     rememberConfirmedDirectory: rememberDialogDirectory,
     showExported: (output) => showMessage(t('message.exported', { output })),
