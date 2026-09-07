@@ -1,5 +1,10 @@
 export { escapeHTML, fileName, stripExtension } from './utils/strings.js';
 export { AppController } from './app/app-controller.js';
+export { ApplicationShellController } from './app/application-shell-controller.js';
+export type {
+  ApplicationShellControllerOptions,
+  ApplicationShellResources,
+} from './app/application-shell-controller.js';
 export { ExportHtmlBuilder } from './export/export-html.js';
 export { detectLineEnding } from './utils/line-ending.js';
 export { ALL_THEMES, DARK_THEMES, isDarkTheme, LIGHT_THEMES, THEME_MODES } from './ui/theme.js';
@@ -92,7 +97,21 @@ export type {
   TabViewModel,
 } from './documents/tab-controller.js';
 export { DocumentController } from './documents/document-controller.js';
+export { DocumentTabWorkflowController } from './documents/document-tab-workflow-controller.js';
+export type { DocumentTabWorkflowControllerOptions } from './documents/document-tab-workflow-controller.js';
+export { DocumentWatchController } from './documents/document-watch-controller.js';
+export type {
+  DocumentWatchControllerOptions,
+  WatchedDocument,
+} from './documents/document-watch-controller.js';
 export { ExternalFileChangeController } from './documents/external-file-change-controller.js';
+export { DocumentSaveExternalWorkflowController } from './documents/document-save-external-workflow-controller.js';
+export type {
+  DocumentSaveExternalWorkflowControllerOptions,
+  SaveWorkflowConflict,
+  SaveWorkflowDocument,
+  SaveWorkflowFileState,
+} from './documents/document-save-external-workflow-controller.js';
 export type { DocumentBindingTransition } from './documents/document-binding-transition.js';
 export type {
   DocumentControllerOptions,
@@ -165,6 +184,8 @@ export { MenuController } from './ui/menu-controller.js';
 export type { MenuControllerOptions, MenuItem } from './ui/menu-controller.js';
 export { WindowController } from './ui/window-controller.js';
 export { SidebarLayoutController } from './ui/sidebar-layout-controller.js';
+export { AppTooltipController } from './ui/app-tooltip-controller.js';
 export type { WindowControllerOptions } from './ui/window-controller.js';
+export type { AppTooltipControllerOptions } from './ui/app-tooltip-controller.js';
 export { ExportController } from './export/export-controller.js';
 export type { ExportControllerOptions, ExportDocument } from './export/export-controller.js';
