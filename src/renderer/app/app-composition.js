@@ -625,9 +625,7 @@
   // Keep this list limited to settings that are passed to its constructor and
   // have no safe runtime setter; rebuilding clears Vditor's undo stack.
   const VDITOR_INITIALIZATION_SETTINGS = PURE.VDITOR_INITIALIZATION_SETTINGS;
-  let appMenuCloseHandler;
   let closeAppMenu = () => {};
-  let appMenuBlurHandler;
   let settingsSaveTimer;
   let hoveredDocumentLink = null;
   let hoveredSidebarTooltip = null;
@@ -3338,178 +3336,6 @@
     if (handlers[action]) handlers[action]();
   }
 
-  function setupLegacyAppMenus() {
-    $$('.app-menu-popup').forEach((popup) => popup.remove());
-    if (appMenuCloseHandler) document.removeEventListener('click', appMenuCloseHandler);
-    if (appMenuBlurHandler) window.removeEventListener('blur', appMenuBlurHandler);
-    $('#appMenuBar').dataset.ready = 'true';
-    const run = (action, value) => () => handleMenu(action, value);
-    const currentEditorMode = () => {
-      const tab = activeTab();
-      return tab?.vditor && tab.ready
-        ? tab.vditor.getCurrentMode()
-        : tab?.mode || state.settings.editMode;
-    };
-    const menus = {
-      main: () => [
-        ['menu.new', run('new'), 'Ctrl+N'],
-        ['menu.open', run('open'), 'Ctrl/⌘+Alt+O'],
-        ['menu.openFolder', run('open-folder'), 'Ctrl/⌘+Alt+K'],
-        null,
-        ['menu.save', run('save'), 'Ctrl+S'],
-        ['menu.saveAs', run('save-as'), 'Ctrl+Shift+S'],
-        null,
-        ['menu.exportHtml', run('export-html')],
-        ['menu.exportPdf', run('export-pdf')],
-        ...(state.tabs.length ? [null, ['menu.closeTab', run('close-tab'), 'Ctrl+W']] : []),
-        null,
-        {
-          label: 'menu.editMode',
-          disabled: () => !activeTab(),
-          children: [
-            [
-              'menu.editModeWysiwyg',
-              run('mode', 'wysiwyg'),
-              '',
-              () => currentEditorMode() === 'wysiwyg',
-            ],
-            ['menu.editModeIr', run('mode', 'ir'), '', () => currentEditorMode() === 'ir'],
-            ['menu.editModeSv', run('mode', 'sv'), '', () => currentEditorMode() === 'sv'],
-          ],
-        },
-        {
-          label: 'menu.layout',
-          children: [
-            [
-              'menu.layoutToolbar',
-              () => setLayoutPart('toolbar'),
-              '',
-              () => state.settings.toolbarVisible !== false,
-            ],
-            [
-              'menu.layoutSidebar',
-              () => toggleSidebar(),
-              'Ctrl/⌘+Alt+B',
-              () => state.settings.sidebarVisible,
-            ],
-            [
-              'menu.layoutStatusbar',
-              () => $('#app').classList.toggle('statusbar-hidden'),
-              '',
-              () => !$('#app').classList.contains('statusbar-hidden'),
-            ],
-          ],
-        },
-        null,
-        ['menu.settings', run('settings'), 'Ctrl+,'],
-        null,
-        ['menu.quit', run('quit'), 'Ctrl+Q'],
-      ],
-    };
-    let reopenMenuOnHover = false;
-    const close = () => {
-      $$('.app-menu-popup').forEach((popup) => popup.remove());
-      $$('.app-menu-bar button').forEach((b) => b.classList.remove('active'));
-      $('#windowTitlebar').classList.remove('app-menu-open');
-      reopenMenuOnHover = false;
-    };
-    closeAppMenu = close;
-    const fillPopup = (popup, items) => {
-      items.forEach((item) => {
-        if (!item) {
-          popup.appendChild(document.createElement('hr'));
-          return;
-        }
-        const button = document.createElement('button');
-        if (item.children) {
-          button.className = 'has-submenu';
-          button.disabled = item.disabled ? item.disabled() : false;
-          button.innerHTML = `<span><i class="checkmark"></i>${escapeHTML(t(item.label))}</span>`;
-          const openSubmenu = (event) => {
-            if (button.disabled) return;
-            event.stopPropagation();
-            $$('.app-menu-popup.submenu').forEach((menu) => menu.remove());
-            const submenu = document.createElement('div');
-            submenu.className = 'app-menu-popup submenu';
-            submenu.dataset.keepOpen = item.label === 'menu.layout' ? 'true' : 'false';
-            fillPopup(submenu, item.children);
-            document.body.appendChild(submenu);
-            const rect = button.getBoundingClientRect();
-            submenu.style.left = `${Math.min(rect.right, window.innerWidth - submenu.offsetWidth - 4)}px`;
-            submenu.style.top = `${Math.min(rect.top - 5, window.innerHeight - submenu.offsetHeight - 4)}px`;
-          };
-          button.onmouseenter = openSubmenu;
-          button.onclick = openSubmenu;
-        } else {
-          button.onmouseenter = () => {
-            if (!popup.classList.contains('submenu'))
-              $$('.app-menu-popup.submenu').forEach((menu) => menu.remove());
-          };
-          const disabled = item[4] ? item[4]() : false;
-          const checked = disabled ? null : item[3] ? item[3]() : null;
-          button.disabled = disabled;
-          button._appMenuItem = item;
-          button.innerHTML = `<span><i class="checkmark">${checked === null ? '' : checked ? '✓' : ''}</i>${escapeHTML(t(item[0]))}</span><small>${escapeHTML(item[2] || '')}</small>`;
-          button.onclick = (event) => {
-            event.stopPropagation();
-            item[1]();
-            if (popup.dataset.keepOpen === 'true') {
-              popup.querySelectorAll('button').forEach((menuButton) => {
-                const menuItem = menuButton._appMenuItem;
-                if (!menuItem?.[3]) return;
-                const checkmark = menuButton.querySelector('.checkmark');
-                if (checkmark) checkmark.textContent = menuItem[3]() ? '✓' : '';
-              });
-            } else {
-              close();
-            }
-          };
-        }
-        popup.appendChild(button);
-      });
-      setupAutoHideScrollbar(popup);
-    };
-    const openMenu = (trigger) => {
-      close();
-      trigger.classList.add('active');
-      $('#windowTitlebar').classList.add('app-menu-open');
-      const popup = document.createElement('div');
-      popup.className = 'app-menu-popup';
-      const menu = menus[trigger.dataset.menu];
-      fillPopup(popup, typeof menu === 'function' ? menu() : menu || []);
-      document.body.appendChild(popup);
-      const rect = trigger.getBoundingClientRect();
-      popup.style.left = `${rect.left}px`;
-      popup.style.top = `${rect.bottom}px`;
-    };
-    $$('.app-menu-bar > button[data-menu]').forEach((trigger) => {
-      trigger.onclick = (event) => {
-        event.stopPropagation();
-        if (trigger.classList.contains('active')) close();
-        else openMenu(trigger);
-      };
-      trigger.onmouseenter = () => {
-        const active = $('.app-menu-bar > button.active');
-        if (reopenMenuOnHover || (active && active !== trigger)) {
-          reopenMenuOnHover = false;
-          openMenu(trigger);
-        }
-      };
-    });
-    $('#toggleSidebar').onmouseenter = () => {
-      if ($('.app-menu-bar > button.active')) {
-        close();
-        reopenMenuOnHover = true;
-      }
-    };
-    appMenuCloseHandler = close;
-    document.addEventListener('click', appMenuCloseHandler);
-    appMenuBlurHandler = () => {
-      if ($('.app-menu-popup')) close();
-    };
-    window.addEventListener('blur', appMenuBlurHandler);
-  }
-
   function setLayoutPart(part) {
     if (part !== 'toolbar') return;
     state.settings.toolbarVisible = state.settings.toolbarVisible === false;
@@ -3598,8 +3424,6 @@
   });
 
   function setupAppMenus() {
-    // Retain the old renderer implementation only until batch 9 removes the legacy shell.
-    void setupLegacyAppMenus;
     menuController.init();
     closeAppMenu = () => menuController.close();
   }
