@@ -62,6 +62,7 @@ export type {
   RecoveryRuntimeTab,
 } from './editor/recovery-runtime-controller.js';
 export { RecoveryBannerController } from './editor/recovery-banner-controller.js';
+export { RecoveryRestoreController } from './editor/recovery-restore-controller.js';
 export type {
   RecoveryBannerControllerOptions,
   RecoveryBannerState,

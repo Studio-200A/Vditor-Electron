@@ -253,6 +253,34 @@
     },
     updateRecoveryState: (tab, updates) => updateTabDocument(tab, updates),
   });
+  const recoveryRestoreController = new PURE.RecoveryRestoreController({
+    getCandidates: () => window.appAPI.getRecoveryCandidates(),
+    restore: (id) => window.appAPI.restoreRecovery(id),
+    parse: PURE.fromRecoveryStoreSnapshot,
+    dirname: (filePath) => window.fileAPI.dirname(filePath),
+    fileIdentity: (filePath) => window.fileAPI.fileIdentity(filePath),
+    syncResourceRoots: (roots) => syncLocalResourceRoots(roots),
+    findDocumentByIdentity: (identity) =>
+      state.tabs.find((tab) => tab.fileIdentity === identity) || null,
+    mergeUnchanged: (tab, snapshot) => {
+      updateTabDocument(tab, {
+        content: snapshot.content,
+        savedContent: snapshot.savedContent,
+        expectedSavedContent: snapshot.expectedSavedContent,
+        modified: snapshot.content !== snapshot.savedContent,
+        encoding: snapshot.encoding,
+        lineEnding: snapshot.lineEnding,
+        mode: snapshot.mode,
+        recoverySnapshotId: snapshot.id,
+        recoveryState: 'unchanged',
+        contentRevision: tab.contentRevision + 1,
+      });
+    },
+    applyMergedContent: (tab, content) => editorController.applyRecoveryContent(tab, content),
+    createDocument: (input) => createTab(input),
+    watchDocument: (tab) => watchTabDocument(tab),
+    conflictTitle: (title) => t('recovery.conflictTitle', { title }),
+  });
   const recoveryBannerController = new PURE.RecoveryBannerController({
     banner: $('#recoveryBanner'),
     message: $('#recoveryMessage'),
@@ -2002,76 +2030,7 @@
   }
 
   async function restoreRecoverySnapshots() {
-    let candidates;
-    try {
-      candidates = await window.appAPI.getRecoveryCandidates();
-    } catch (_) {
-      return;
-    }
-    for (const candidate of candidates) {
-      let snapshot;
-      try {
-        snapshot = PURE.fromRecoveryStoreSnapshot(
-          await window.appAPI.restoreRecovery(candidate.id),
-        );
-      } catch (_) {
-        continue;
-      }
-      if (!snapshot) continue;
-      if (snapshot.diskState !== 'unchanged') {
-        const baseDir = snapshot.filePath ? await window.fileAPI.dirname(snapshot.filePath) : '';
-        await syncLocalResourceRoots(baseDir ? [baseDir] : []);
-        const tab = createTab({
-          title: t('recovery.conflictTitle', { title: snapshot.title }),
-          content: snapshot.content,
-          savedContent: '',
-          encoding: snapshot.encoding,
-          baseDir,
-          mode: snapshot.mode,
-          recoverySnapshotId: snapshot.id,
-          recoveryState: snapshot.diskState,
-        });
-        if (tab) await watchTabDocument(tab);
-      } else {
-        const fileIdentity = snapshot.filePath
-          ? await window.fileAPI.fileIdentity(snapshot.filePath)
-          : null;
-        const existing = fileIdentity
-          ? state.tabs.find((tab) => tab.fileIdentity === fileIdentity)
-          : null;
-        if (existing) {
-          updateTabDocument(existing, {
-            content: snapshot.content,
-            savedContent: snapshot.savedContent,
-            expectedSavedContent: snapshot.expectedSavedContent,
-            modified: snapshot.content !== snapshot.savedContent,
-            encoding: snapshot.encoding,
-            lineEnding: snapshot.lineEnding,
-            mode: snapshot.mode,
-            recoverySnapshotId: snapshot.id,
-            recoveryState: 'unchanged',
-            contentRevision: existing.contentRevision + 1,
-          });
-          editorController.applyRecoveryContent(existing, snapshot.content);
-          continue;
-        }
-        const baseDir = snapshot.filePath ? await window.fileAPI.dirname(snapshot.filePath) : '';
-        await syncLocalResourceRoots(baseDir ? [baseDir] : []);
-        const tab = createTab({
-          filePath: snapshot.filePath,
-          content: snapshot.content,
-          savedContent: snapshot.savedContent,
-          encoding: snapshot.encoding,
-          baseDir,
-          mode: snapshot.mode,
-          recoverySnapshotId: snapshot.id,
-          recoveryState: 'unchanged',
-          expectedSavedContent: snapshot.expectedSavedContent,
-          fileIdentity,
-        });
-        if (tab) await watchTabDocument(tab);
-      }
-    }
+    await recoveryRestoreController.restoreAll();
   }
 
   function updateActiveUI(shouldSyncToolbarAvailability = true, shouldSyncTopControlsWidth = true) {
