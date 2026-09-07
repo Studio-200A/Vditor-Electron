@@ -117,7 +117,7 @@ Monokai Pro 主题额外定义了 `--monokai-code-bg`、`--monokai-input-bg` 和
 | Monokai Pro Dark | `#2d2a2e` | `#2d2a2e` | `#272428` | 保留 Monokai 色调，文档画布略深 |
 | Monokai Pro Light | `#faf4f2` | `#ede7e5` | `#faf4f2` | sidebar 略深一档、编辑区暖白，Monokai Pro Dark 的同族浅色 |
 
-`.sidebar`、Windows/Linux 自定义主菜单的触发按钮与下拉菜单、titlebar、共享 Vditor toolbar、Files/Outline tabs、无标签的 `.editor-area` 及其新建/打开操作，以及设置页的 titlebar、导航、footer 和右侧边缘都使用 `--sidebar-surface`；这样顶部 chrome、菜单、空工作区和设置页 chrome 随六套主题呈现同一中性导航壳层色，不与输入控件共用 `--panel` 的白色或近白色表面。`--panel-2` 保留给状态栏等其他次级表面。编辑器宿主、`.vditor-content`、`.vditor-sv`、`.vditor-ir`、`.vditor-wysiwyg`、`.vditor-preview`、`.vditor-reset` 以及 SV 行号栏使用 `--editor-surface`，使行号栏成为文档画布的一部分，仅由右侧边框分隔；设置页具体内容区域也使用编辑区表面。浅色主题的文档画布较导航壳层明亮，深色主题则较暗。标签 hover 一律使用主题的 `--hover`，不使用跨主题固定颜色。
+`.sidebar`、Windows/Linux 自定义主菜单的触发按钮与下拉菜单、titlebar、共享 Vditor toolbar、Files/Outline navigation、无标签的 `.editor-area` 及其新建/打开操作，以及设置页的 titlebar、导航、footer 和右侧边缘都使用 `--sidebar-surface`；这样顶部 chrome、菜单、空工作区和设置页 chrome 随六套主题呈现同一中性导航壳层色，不与输入控件共用 `--panel` 的白色或近白色表面。Files/Outline 实际归属 `#sidebar`：工具栏显示时作为侧栏上缘的顶部导航，隐藏时成为侧栏内容首项；两种状态使用相同 surface、border、hover、active 与 focus 语义。工具栏显示时由 toolbar 的 `--top-surface-shadow` 提供顶部分隔，隐藏时改由稳定的 titlebar 提供该投影，避免两层投影叠加。`--panel-2` 保留给状态栏等其他次级表面。编辑器宿主、`.vditor-content`、`.vditor-sv`、`.vditor-ir`、`.vditor-wysiwyg`、`.vditor-preview`、`.vditor-reset` 以及 SV 行号栏使用 `--editor-surface`，使行号栏成为文档画布的一部分，仅由右侧边框分隔；设置页具体内容区域也使用编辑区表面。浅色主题的文档画布较导航壳层明亮，深色主题则较暗。标签 hover 一律使用主题的 `--hover`，不使用跨主题固定颜色。
 
 ## 5. 六套主题的实际实现
 

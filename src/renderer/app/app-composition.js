@@ -928,7 +928,6 @@
     sidebar: $('#sidebar'),
     toggle: $('#toggleSidebar'),
     menuBar: $('#appMenuBar'),
-    titlebarActions: $('.titlebar-file-actions'),
     animatedElements: [$('#tabBar'), $('#vditorToolbarMount'), $('#editorArea')],
     chromeElements: [$('#tabBar'), $('#vditorToolbarMount')],
     getSidebarWidth: () => Number(state.settings.sidebarWidth),
@@ -941,6 +940,11 @@
     syncTopControlsWidth,
     refreshEditorLayout: () => scheduleSplitLineNumbers(activeTab()),
     duration: sidebarTransitionDuration,
+  });
+  const sidebarViewController = new PURE.SidebarViewController({
+    navigation: $('.toolbar-sidebar-tabs'),
+    views: $$('.sidebar-view'),
+    onOutlineSelected: renderOutline,
   });
   const appTooltipController = new PURE.AppTooltipController({
     tooltip: $('#appTooltip'),
@@ -2543,7 +2547,6 @@
     // These values change on every sidebar-drag frame. Keep them on the small
     // chrome subtrees that consume them instead of #app, so CSS-variable
     // inheritance cannot invalidate Vditor's full document tree.
-    $('.toolbar-sidebar-tabs').style.setProperty('--top-controls-width', `${sidebarWidth}px`);
     ['#sidebar', '#windowTitlebar', '.titlebar', '#vditorToolbarMount'].forEach((selector) =>
       $(selector).style.setProperty('--sidebar-current', `${sidebarWidth}px`),
     );
@@ -2562,6 +2565,10 @@
     );
   }
 
+  function sidebarMaximumWidth() {
+    return Math.floor($('#app').getBoundingClientRect().width * 0.66);
+  }
+
   function sidebarTransitionDuration() {
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 1 : 160;
   }
@@ -2575,6 +2582,8 @@
     windowController.init();
     statusMenuController.init();
     resources.add(() => statusMenuController.dispose());
+    sidebarViewController.init();
+    resources.add(() => sidebarViewController.dispose());
     $('#confirmModal').onclick = (event) => {
       if (event.target === $('#confirmModal')) closeConfirmDialog('cancel');
     };
@@ -2610,18 +2619,6 @@
       if (!state.workspace) chooseFolder();
     };
     $('#openFolderEmpty').onclick = chooseFolder;
-    $$('.toolbar-sidebar-tabs button').forEach(
-      (button) =>
-        (button.onclick = () => {
-          $$('.toolbar-sidebar-tabs button').forEach((item) =>
-            item.classList.toggle('active', item === button),
-          );
-          $$('.sidebar-view').forEach((view) =>
-            view.classList.toggle('active', view.id === `${button.dataset.view}View`),
-          );
-          if (button.dataset.view === 'outline') renderOutline();
-        }),
-    );
     $$('.settings-nav button').forEach(
       (button) =>
         (button.onclick = () => {
@@ -2730,6 +2727,7 @@
     const resize = $('#sidebarResize');
     let resizing = false;
     let resizeMinimum = 0;
+    let resizeMaximum = 0;
     let resizeMenuWidth = 0;
     let resizeAppLeft = 0;
     let resizeFrame = null;
@@ -2762,6 +2760,7 @@
     const startSidebarResize = () => {
       resizing = true;
       resizeMinimum = sidebarMinimumWidth();
+      resizeMaximum = sidebarMaximumWidth();
       resizeMenuWidth = $('#appMenuBar').getBoundingClientRect().width;
       resizeAppLeft = $('#app').getBoundingClientRect().left;
       $('#sidebar').style.setProperty('--sidebar-min-width', `${resizeMinimum}px`);
@@ -2796,7 +2795,10 @@
     };
     resources.listen(window, 'mousemove', (event) => {
       if (resizing) {
-        pendingSidebarWidth = Math.max(resizeMinimum, Math.min(500, event.clientX - resizeAppLeft));
+        pendingSidebarWidth = Math.max(
+          resizeMinimum,
+          Math.min(resizeMaximum, event.clientX - resizeAppLeft),
+        );
         if (resizeFrame === null) {
           resizeFrame = requestAnimationFrame(applySidebarResize);
           resources.animationFrame(resizeFrame);
@@ -2823,10 +2825,18 @@
       }
     });
     const topControlsObserver = new ResizeObserver(() => {
+      const maximumSidebarWidth = sidebarMaximumWidth();
+      const sidebar = $('#sidebar');
+      sidebar.style.setProperty('--sidebar-max-width', `${maximumSidebarWidth}px`);
+      if (state.settings.sidebarWidth > maximumSidebarWidth) {
+        state.settings.sidebarWidth = maximumSidebarWidth;
+        sidebar.style.width = `${maximumSidebarWidth}px`;
+      }
       if (!resizing) syncTopControlsWidth();
     });
     topControlsObserver.observe($('#sidebar'));
     topControlsObserver.observe($('#appMenuBar'));
+    topControlsObserver.observe($('#app'));
     resources.observeResize(topControlsObserver);
     const toolbarMount = $('#vditorToolbarMount');
     const toolbarResizeObserver = new ResizeObserver(syncToolbarWrapHeight);
@@ -2946,11 +2956,13 @@
   async function initializeAppUI() {
     applicationShellController.init();
     const minimumSidebarWidth = sidebarMinimumWidth();
+    const maximumSidebarWidth = sidebarMaximumWidth();
     state.settings.sidebarWidth = Math.max(
       minimumSidebarWidth,
-      Number(state.settings.sidebarWidth) || minimumSidebarWidth,
+      Math.min(maximumSidebarWidth, Number(state.settings.sidebarWidth) || minimumSidebarWidth),
     );
     $('#sidebar').style.setProperty('--sidebar-min-width', `${minimumSidebarWidth}px`);
+    $('#sidebar').style.setProperty('--sidebar-max-width', `${maximumSidebarWidth}px`);
     $('#sidebar').style.width = `${state.settings.sidebarWidth}px`;
     applyTopControlsWidth(
       state.settings.sidebarWidth,

@@ -323,7 +323,9 @@ const NUMERIC_SETTINGS = new Map<keyof AppSettings, NumericSettingRange>([
   ['previewMaxWidth', { minimum: 320, maximum: 2_400, integer: true }],
   ['imageMaxWidth', { minimum: 0, maximum: 10_000, integer: true }],
   ['imageQuality', { minimum: 0.1, maximum: 1 }],
-  ['sidebarWidth', { minimum: 0, maximum: 500, integer: true }],
+  // The renderer caps this against the live application width (two thirds). Keep the
+  // persisted value bounded without imposing a stale pixel cap on wide screens.
+  ['sidebarWidth', { minimum: 0, maximum: 10_000, integer: true }],
 ]);
 
 function parseSettingValue(key: keyof AppSettings, value: unknown): AppSettings[keyof AppSettings] {

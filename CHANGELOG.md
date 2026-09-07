@@ -6,39 +6,66 @@
 
 - **build(Electron downloads):** Configured npm installation and electron-builder to retrieve pinned Electron binaries from the npmmirror registry instead of Electron's official release host.
 
+### Toolbar UX
+
+- **fix(toolbar/sidebar cohesion):** Files and Outline now belong to the sidebar. With the editor toolbar visible they form the sidebar-aligned top navigation beside it; when the toolbar is hidden they become the first sidebar-content navigation row, with no leftover toolbar slot. The selected view remains stable across layout changes.
+- **fix(titlebar/sidebar transition):** Titlebar file actions and window controls remain fixed and operable while the sidebar transitions. The titlebar shadow appears only when the editor toolbar is hidden; on sidebar close the Vditor toolbar immediately fills the released area, while the sidebar navigation remains painted with the moving sidebar.
+- **fix(sidebar sizing):** The sidebar's rendered and draggable maximum is now two thirds of the current application width, while persisted values remain safely validated and are clamped to the live window.
+
 ### Renderer Architecture
 
-#### Batch 9 architecture follow-up (2026-09-07)
-
-The following changes complete the internal 0.2.5 renderer refactor. They preserve the existing user-facing behavior; batch 9 is now closed with full unit/E2E validation and user manual testing recorded in `docs/15-0.2.5-EXECUTION-TRACKER.md`.
-
 - **refactor(app shell):** Added `AppController` as the owner of startup sequencing, window-level shortcuts, Markdown drag-and-drop, open-files/menu IPC subscriptions, partial-initialization rollback, and shutdown cleanup. `main.ts` now validates the required globals and starts the composed application through `window.__vditorDesktopApplication`.
+
 - **refactor(renderer entry):** Removed the legacy `src/renderer/app.js` entry. `app/app-composition.js` now contains the transitional cross-domain composition, and the asset-copy script removes only a stale `dist/renderer/app.js` left by an incremental build.
+
 - **refactor(settings persistence):** Moved the serialized preference/state save queue into `settings/settings-persistence.ts`, keeping TOML preference writes separate from versioned `state.json` writes and preserving recoverable versus throwing failure behavior.
+
 - **refactor(settings dialog):** Moved settings-dialog size bounds, drag/resize listeners, transition cleanup, and window-resize handling into `settings/settings-dialog-layout-controller.ts`.
+
 - **refactor(recovery restore):** Moved recovery candidate loading, disk-state classification, identity merging, unavailable-tab creation, resource-root synchronization, and watcher registration into `editor/recovery-restore-controller.ts`.
+
 - **refactor(external changes):** Moved watcher-event routing for clean reloads, conflicts, deletion, unreadable files, and reappearance into `documents/external-file-change-controller.ts`, while leaving document state transitions injected through named callbacks.
+
 - **refactor(sidebar layout):** Moved sidebar transition state, transform-based FLIP animation, reduced-motion timing, fallback completion, and cleanup into `ui/sidebar-layout-controller.ts`.
+
 - **refactor(menu cleanup):** Removed the uncalled duplicate `setupLegacyAppMenus()` implementation and its stale listeners; `MenuController` is now the only renderer custom-menu popup owner.
+
 - **refactor(document links):** Moved document-link classification, Ctrl/Cmd navigation, relative Markdown resolution, unsafe-scheme blocking, modifier hints, and tooltip coordination into `editor/document-link-navigation-controller.ts`; Vditor private DOM access remains behind the adapter.
+
 - **refactor(theme coordination):** Extracted application theme resolution, system-theme mapping, content/code-theme linking, settings-control and status-bar synchronization, persisted linked-theme patches, and Vditor `setTheme()` application into `ui/theme-coordinator.ts`. The composition layer now only injects store, bridge, DOM, status-menu, and adapter dependencies; presentation settings still hot-apply without rebuilding Vditor or clearing undo history.
+
 - **fix(settings and save workflows):** Restored immediate `<select>` setting saves, surfaced the primary Explorer rename error instead of a generic aggregate message, and removed a save-queue reentry deadlock when confirming an overwrite after an ignored external change.
+
 - **test(navigation):** Scoped the app-navigation E2E to the popup-denial boundary and added coverage that a rendered Markdown `app:` link is blocked while the settings dialog remains usable.
+
 - **fix(file explorer):** Differentiate the active Markdown file from pointer hover in the sidebar with an accent-tinted selection surface across all application themes.
+
 - **fix(settings):** Apply editor and preview zoom settings as presentation updates without rebuilding the editor.
+
 - **fix(find and replace):** Preserve allowed SVG images during native WYSIWYG replacements by restoring original image URLs while Vditor serializes the changed block.
+
 - **fix(document links):** Show a text cursor, rather than a navigation affordance, for blocked link schemes while preserving any author-supplied title.
+
 - **improve(tabs):** Use the themed application tooltip for document-tab paths, consistent with sidebar files.
+
 - **docs(batch tracker):** Updated the batch 9 execution record with the legacy-entry evidence, final migration status, scoped validation, and the completed full-check/manual-baseline gate.
 
 - **refactor(renderer build):** Introduced a TypeScript build pipeline for the renderer process using esbuild. Added `tsconfig.renderer.json` (strict mode), `build:renderer` script, and `typecheck:renderer` for independent renderer type checking. The renderer entry point is now `src/renderer/main.ts`, which orchestrates controller initialization and disposal in dependency order.
+
 - **refactor(composition entry):** Established `src/renderer/main.ts` as the application composition entry with a lifecycle manager that initializes controllers in dependency order and disposes them in reverse order on shutdown or failure. Legacy `app.js` is loaded as a controlled bootstrap module via `window.__vditorDesktopLegacyBootstrap`.
+
 - **refactor(pure functions):** Extracted pure functions from `app.js` into typed TypeScript modules (`src/renderer/utils/`, `src/renderer/ui/`). These are bundled separately as `dist/renderer/pure-functions.js` and exposed via `window.__vditorDesktopPureFunctions` for use by the legacy `app.js`. Migrated functions include: `escapeHTML`, `fileName`, `stripExtension`, `detectLineEnding`, `isDarkTheme`, `resolveLocale`, `translate`, `formatIpcErrorMessage`, and theme preference validators.
+
 - **refactor(type declarations):** Added TypeScript type declarations for `window.appAPI`, `window.fileAPI`, `window.VditorDesktopAdapter`, `window.VditorDesktopLocales`, and minimal Vditor types in `src/renderer/types/`.
+
 - **refactor(adapter type contract):** Corrected the `VditorDesktopAdapter` TypeScript facade in `src/renderer/types/adapter.d.ts` so its members, parameter order, nullability, and return shapes match the runtime `Object.freeze` export surface. Added a compile-time call contract (`adapter-contract.ts`) and a runtime export-key manifest asserted against the frozen facade in the adapter DOM tests, providing two-layer drift protection without changing Vditor 3.11.3 runtime behavior.
+
 - **refactor(core utilities):** Established `src/renderer/core/` with type-safe DOM helpers (`requiredElement`, `optionalElement`), a `DisposableBag` for listener/timer/observer cleanup, and a `LifecycleManager` for ordered controller initialization and disposal.
+
 - **refactor(shared contracts):** Created `src/shared/contracts/` skeleton for cross-process serializable DTOs shared between main, preload, and renderer processes.
+
 - **refactor(CSS theme split):** Split the monolithic `app.css` into a base stylesheet and per-theme files in `src/renderer/styles/themes/`. Classic theme variables remain in `app.css` as `:root` defaults; dark, claude-light, claude-dark, monokai-pro-light, and monokai-pro-dark each have their own CSS file. Theme switching now toggles `<link>` element `disabled` attributes instead of relying on `:root[data-theme]` selectors in a single file.
+
 - **refactor(notifications module):** Extracted `NotificationsController` class from `app.js` into `src/renderer/ui/notifications.ts`. Encapsulates `showMessage`, `showTemporaryDocumentNotice`, `showConfirmDialog`, `closeConfirmDialog`, `confirmDialog`, `showUnsavedDialog`, `setConfirmDialogDraggable`, and `setupConfirmDialogDrag` with proper lifecycle management (`init()`/`dispose()`) and locale switching support.
 
 ### State and Documents

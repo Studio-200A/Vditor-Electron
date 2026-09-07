@@ -83,7 +83,7 @@ describe('IPC request validation', () => {
       { splitRatio: 81 },
       { previewMaxWidth: 319 },
       { imageQuality: 0.09 },
-      { sidebarWidth: 501 },
+      { sidebarWidth: 10_001 },
       { contentTheme: 'unknown-theme' },
       { codeTheme: '../untrusted-theme' },
       { pasteImagesDir: '../outside' },
@@ -120,7 +120,7 @@ describe('IPC request validation', () => {
         splitRatio: 20,
         previewMaxWidth: 2_400,
         imageQuality: 0.1,
-        sidebarWidth: 500,
+        sidebarWidth: 10_000,
       }),
     ).toMatchObject({
       defaultOpenPath: '/notes',

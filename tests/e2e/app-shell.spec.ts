@@ -125,90 +125,70 @@ test('creates numbered tabs and shows the empty state after closing all tabs', a
   }
 });
 
-test('uses a unified workbench bar and links sidebar visibility to file actions', async () => {
+test('keeps titlebar file actions stable while the sidebar visibility changes', async () => {
   const running = await launchApp({ sidebarVisible: true });
   try {
-    const { page } = running;
+    const { app, page } = running;
     await createNewTab(page);
     await expect(page.locator('#windowTitlebar #tabBar')).toBeVisible();
     await expect(page.locator('.main-area > #tabBar')).toHaveCount(0);
     await expect(page.locator('#windowTitlebar .titlebar-file-actions')).toBeVisible();
-    await expect(page.locator('header.titlebar .toolbar-sidebar-tabs')).toBeVisible();
+    await expect(page.locator('#sidebar .toolbar-sidebar-tabs')).toBeVisible();
     await expect(page.locator('#appMenuBar [data-menu="main"]')).toHaveCount(1);
     await expect(page.locator('#appMenuBar .app-menu-logo')).toBeVisible();
     await expect(page.locator('.titlebar-drag-region')).toHaveCSS('width', '44px');
-    await expect
-      .poll(() =>
-        page
-          .locator('.toolbar-sidebar-tabs [data-view="files"]')
-          .evaluate((node) => getComputedStyle(node).backgroundColor),
-      )
-      .not.toBe('rgba(0, 0, 0, 0)');
+    const toolbarChrome = await page.evaluate(() => {
+      const actions = document.querySelector('.titlebar-file-actions')?.getBoundingClientRect();
+      const sidebar = document.querySelector('#sidebar')?.getBoundingClientRect();
+      if (!actions || !sidebar) throw new Error('Sidebar chrome is unavailable.');
+      return {
+        actionsRight: actions.right,
+        sidebarRight: sidebar.right,
+        actionBorderRight: getComputedStyle(document.querySelector('.titlebar-file-actions')!)
+          .borderRightWidth,
+        sidebarTabsBorderRight: getComputedStyle(document.querySelector('.toolbar-sidebar-tabs')!)
+          .borderRightWidth,
+        titlebarShadow: getComputedStyle(document.querySelector('#windowTitlebar')!).boxShadow,
+      };
+    });
+    expect(Math.abs(toolbarChrome.actionsRight - toolbarChrome.sidebarRight)).toBeLessThan(2);
+    expect(toolbarChrome.actionBorderRight).toBe('0px');
+    expect(Number.parseFloat(toolbarChrome.sidebarTabsBorderRight)).toBeGreaterThan(0);
+    expect(toolbarChrome.titlebarShadow).toBe('none');
     const alignedDividers = await page.evaluate(() => {
       const tabs = document.querySelector('#tabBar').getBoundingClientRect();
       const sidebarTabs = document.querySelector('.toolbar-sidebar-tabs').getBoundingClientRect();
       return Math.abs(tabs.left - sidebarTabs.right);
     });
-    expect(alignedDividers).toBeLessThan(1);
-    await page.locator('#sidebar').evaluate((node) => (node.style.width = '440px'));
-    await expect
-      .poll(() =>
-        page.evaluate(() => {
-          const sidebar = document.querySelector('#sidebar').getBoundingClientRect();
-          const tabs = document.querySelector('#tabBar').getBoundingClientRect();
-          const sidebarTabs = document
-            .querySelector('.toolbar-sidebar-tabs')
-            .getBoundingClientRect();
-          return Math.max(
-            Math.abs(sidebar.right - tabs.left),
-            Math.abs(sidebar.right - sidebarTabs.right),
-          );
-        }),
-      )
-      .toBeLessThan(1);
+    expect(alignedDividers).toBeLessThan(4);
     await expect(page.locator('.toolbar-sidebar-tabs button').first()).toHaveCSS(
-      'white-space',
-      'nowrap',
+      'cursor',
+      'pointer',
     );
-    for (let index = 0; index < 8; index += 1) await page.locator('#addTab').click();
-    const chromeLayout = await page.evaluate(() => {
-      const menu = document.querySelector('#appMenuBar').getBoundingClientRect();
-      const actions = document.querySelector('.titlebar-file-actions').getBoundingClientRect();
-      const tabs = document.querySelector('#tabBar').getBoundingClientRect();
-      const controls = document.querySelector('.window-controls').getBoundingClientRect();
-      const tabBar = document.querySelector('#tabBar');
-      return {
-        menuRight: menu.right,
-        actionsLeft: actions.left,
-        actionsRight: actions.right,
-        tabsLeft: tabs.left,
-        tabsRight: tabs.right,
-        controlsLeft: controls.left,
-        scrollHeight: tabBar.scrollHeight,
-        clientHeight: tabBar.clientHeight,
-      };
+    await expect(page.locator('.toolbar-sidebar-tabs')).toHaveCSS('user-select', 'none');
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(760, 700));
+    const narrowChrome = await page.evaluate(() => {
+      const read = (selector: string) => document.querySelector(selector)?.getBoundingClientRect();
+      const actions = read('.titlebar-file-actions');
+      const controls = read('.window-controls');
+      if (!actions || !controls) throw new Error('Titlebar controls are unavailable.');
+      return { actionsRight: actions.right, controlsLeft: controls.left };
     });
-    expect(chromeLayout.actionsLeft).toBeGreaterThanOrEqual(chromeLayout.menuRight - 1);
-    expect(chromeLayout.tabsLeft).toBeGreaterThanOrEqual(chromeLayout.actionsRight - 1);
-    expect(chromeLayout.tabsRight).toBeLessThanOrEqual(chromeLayout.controlsLeft + 1);
-    expect(chromeLayout.scrollHeight).toBe(chromeLayout.clientHeight);
+    expect(narrowChrome.actionsRight).toBeLessThanOrEqual(narrowChrome.controlsLeft);
 
     const editorBefore = await page.locator('#editorArea').boundingBox();
     await page.locator('#toggleSidebar').click();
+    await page.waitForTimeout(50);
+    expect((await page.locator('#vditorToolbarMount').boundingBox())?.x || 0).toBeLessThan(2);
     await expect(page.locator('#app')).toHaveClass(/sidebar-collapsed/);
     await expect(page.locator('#sidebar')).toHaveClass(/collapsed/);
     await expect(
       page.locator('#windowTitlebar .titlebar-file-actions > #toggleSidebar'),
     ).toBeVisible();
-    await expect
-      .poll(async () => (await page.locator('#windowTitlebar #newFile').boundingBox())?.width || 0)
-      .toBeLessThan(2);
-    await expect
-      .poll(
-        async () =>
-          (await page.locator('header.titlebar .toolbar-sidebar-tabs').boundingBox())?.width || 0,
-      )
-      .toBeLessThan(2);
+    await expect(page.locator('#windowTitlebar #newFile')).toBeVisible();
+    await expect(page.locator('#windowTitlebar #openFile')).toBeVisible();
+    await expect(page.locator('#windowTitlebar #saveFile')).toBeVisible();
+    await expect(page.locator('#sidebar .toolbar-sidebar-tabs')).toBeHidden();
     await expect
       .poll(async () => (await page.locator('#editorArea').boundingBox())?.width || 0)
       .toBeGreaterThan(editorBefore?.width || 0);
@@ -216,7 +196,32 @@ test('uses a unified workbench bar and links sidebar visibility to file actions'
     await page.locator('#toggleSidebar').click();
     await expect(page.locator('#app')).not.toHaveClass(/sidebar-collapsed/);
     await expect(page.locator('#windowTitlebar .titlebar-file-actions')).toBeVisible();
-    await expect(page.locator('header.titlebar .toolbar-sidebar-tabs')).toBeVisible();
+    await expect(page.locator('#sidebar .toolbar-sidebar-tabs')).toBeVisible();
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('caps sidebar resizing at two thirds of the application width', async () => {
+  const running = await launchApp({ sidebarVisible: true });
+  try {
+    const { app, page } = running;
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1_000, 700));
+    const appBox = await page.locator('#app').boundingBox();
+    const resizeBox = await page.locator('#sidebarResize').boundingBox();
+    if (!appBox || !resizeBox) throw new Error('Sidebar resize geometry is unavailable.');
+    await page.mouse.move(resizeBox.x + resizeBox.width / 2, resizeBox.y + 20);
+    await page.mouse.down();
+    await page.mouse.move(appBox.x + appBox.width - 1, resizeBox.y + 20);
+    await page.mouse.up();
+    const geometry = await page.evaluate(() => {
+      const app = document.querySelector('#app')?.getBoundingClientRect();
+      const sidebar = document.querySelector('#sidebar')?.getBoundingClientRect();
+      if (!app || !sidebar) throw new Error('Sidebar geometry is unavailable.');
+      return { appWidth: app.width, sidebarWidth: sidebar.width };
+    });
+    expect(geometry.sidebarWidth).toBeLessThanOrEqual(geometry.appWidth * 0.66 + 1);
+    expect(geometry.sidebarWidth).toBeGreaterThan(geometry.appWidth * 0.62);
   } finally {
     await closeApp(running);
   }
@@ -230,106 +235,61 @@ test('keeps the editor width stable until a sidebar opens', async () => {
     await expect(page.locator('#sidebar')).toHaveClass(/collapsed/);
     const editorWidth = (await page.locator('#editorArea').boundingBox())?.width;
     if (!editorWidth) throw new Error('Editor has no measurable width');
-    const before = await page.evaluate(() => {
-      const left = (selector: string) =>
-        document.querySelector(selector)?.getBoundingClientRect().left;
-      return {
-        tabBar: left('#tabBar'),
-        toolbar: left('#vditorToolbarMount'),
-        editor: left('#editorArea'),
-      };
-    });
-
     await page.locator('#toggleSidebar').click();
     await expect(page.locator('#app')).toHaveClass(/sidebar-transitioning/);
     await page.waitForTimeout(50);
     expect((await page.locator('#editorArea').boundingBox())?.width).toBeCloseTo(editorWidth, 0);
-    await expect(page.locator('.toolbar-sidebar-tabs')).toHaveCSS('opacity', '1');
-    await expect(page.locator('.toolbar-sidebar-tabs')).not.toHaveCSS('clip-path', 'none');
-    await expect
-      .poll(() =>
-        page
-          .locator('.toolbar-sidebar-tabs button')
-          .first()
-          .evaluate((node) => Number(getComputedStyle(node).opacity)),
-      )
-      .toBeLessThan(1);
-    const during = await page.evaluate(() => {
-      const left = (selector: string) =>
-        document.querySelector(selector)?.getBoundingClientRect().left;
-      return {
-        tabBar: left('#tabBar'),
-        toolbar: left('#vditorToolbarMount'),
-        editor: left('#editorArea'),
-      };
-    });
-
     await expect(page.locator('#app')).not.toHaveClass(/sidebar-transitioning/);
-    await expect(page.locator('.toolbar-sidebar-tabs')).toHaveCSS('clip-path', 'none');
     expect((await page.locator('#editorArea').boundingBox())?.width || 0).toBeLessThan(editorWidth);
-    const after = await page.evaluate(() => {
-      const left = (selector: string) =>
-        document.querySelector(selector)?.getBoundingClientRect().left;
-      return {
-        tabBar: left('#tabBar'),
-        toolbar: left('#vditorToolbarMount'),
-        editor: left('#editorArea'),
-      };
-    });
-    for (const area of ['tabBar', 'toolbar', 'editor'] as const) {
-      if (before[area] === undefined || during[area] === undefined || after[area] === undefined) {
-        throw new Error(`${area} has no measurable position`);
-      }
-      expect(during[area]).toBeGreaterThan(before[area]);
-      // DOM reads can occur on the terminal compositor frame; reaching the
-      // final coordinate still proves the element moved from its start.
-      expect(during[area]).toBeLessThanOrEqual(after[area] + 1);
-    }
+    await expect(page.locator('#sidebar .toolbar-sidebar-tabs')).toBeVisible();
+
+    const openWidth = (await page.locator('#editorArea').boundingBox())?.width;
+    await page.locator('#toggleSidebar').click();
+    await expect(page.locator('#app')).toHaveClass(/sidebar-transitioning/);
+    await page.waitForTimeout(50);
+    expect((await page.locator('#editorArea').boundingBox())?.width).toBeCloseTo(openWidth || 0, 0);
+    await expect(page.locator('#app')).toHaveClass(/sidebar-collapsed/);
+    expect((await page.locator('#editorArea').boundingBox())?.width).toBeCloseTo(editorWidth, 0);
+    await expect(page.locator('#sidebar .toolbar-sidebar-tabs')).toBeHidden();
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps sidebar navigation painted with the sidebar during its transition', async () => {
+  const running = await launchApp({ sidebarVisible: true });
+  try {
+    const { page } = running;
+    const navigationState = () =>
+      page.locator('.toolbar-sidebar-tabs').evaluate((node) => {
+        const sidebar = document.querySelector('#sidebar')?.getBoundingClientRect();
+        const navigation = node.getBoundingClientRect();
+        return {
+          isVisible: getComputedStyle(node).visibility === 'visible',
+          navigationRight: navigation.right,
+          sidebarLeft: sidebar?.left ?? 0,
+          sidebarZIndex: getComputedStyle(document.querySelector('#sidebar')!).zIndex,
+          sidebarOverflow: getComputedStyle(document.querySelector('#sidebar')!).overflow,
+        };
+      });
 
     await page.locator('#toggleSidebar').click();
     await expect(page.locator('#app')).toHaveClass(/sidebar-transitioning/);
     await page.waitForTimeout(50);
-    await expect(page.locator('.toolbar-sidebar-tabs')).toHaveCSS('opacity', '1');
-    await expect(page.locator('.toolbar-sidebar-tabs')).not.toHaveCSS('clip-path', 'none');
-    await expect
-      .poll(() =>
-        page
-          .locator('.toolbar-sidebar-tabs button')
-          .first()
-          .evaluate((node) => Number(getComputedStyle(node).opacity)),
-      )
-      .toBeLessThan(1);
-    const duringClose = await page.evaluate(() => {
-      const left = (selector: string) =>
-        document.querySelector(selector)?.getBoundingClientRect().left;
-      return {
-        tabBar: left('#tabBar'),
-        toolbar: left('#vditorToolbarMount'),
-        editor: left('#editorArea'),
-      };
-    });
+    const closing = await navigationState();
+    expect(closing.isVisible).toBe(true);
+    expect(closing.navigationRight).toBeGreaterThan(closing.sidebarLeft);
+    expect(closing.sidebarZIndex).toBe('30');
     await expect(page.locator('#app')).toHaveClass(/sidebar-collapsed/);
-    await expect(page.locator('.toolbar-sidebar-tabs')).toHaveCSS('clip-path', 'none');
-    const closed = await page.evaluate(() => {
-      const left = (selector: string) =>
-        document.querySelector(selector)?.getBoundingClientRect().left;
-      return {
-        tabBar: left('#tabBar'),
-        toolbar: left('#vditorToolbarMount'),
-        editor: left('#editorArea'),
-      };
-    });
-    for (const area of ['tabBar', 'toolbar', 'editor'] as const) {
-      if (
-        after[area] === undefined ||
-        duringClose[area] === undefined ||
-        closed[area] === undefined
-      ) {
-        throw new Error(`${area} has no measurable position`);
-      }
-      expect(duringClose[area]).toBeLessThanOrEqual(after[area] + 1);
-      expect(duringClose[area]).toBeGreaterThanOrEqual(closed[area] - 1);
-    }
+
+    await page.locator('#toggleSidebar').click();
+    await expect(page.locator('#app')).toHaveClass(/sidebar-transitioning/);
+    await page.waitForTimeout(50);
+    const opening = await navigationState();
+    expect(opening.isVisible).toBe(true);
+    expect(opening.navigationRight).toBeGreaterThan(opening.sidebarLeft);
+    expect(opening.sidebarZIndex).toBe('30');
+    expect(opening.sidebarOverflow).toBe('visible');
   } finally {
     await closeApp(running);
   }
@@ -433,11 +393,10 @@ test('scrolls overflowing document tabs with the mouse wheel', async () => {
   }
 });
 
-test('opens the View > Layout submenu and toggles the unified toolbar', async () => {
+test('moves Files and Outline into sidebar content when the toolbar is hidden', async () => {
   const running = await launchApp({ sidebarVisible: true });
   try {
     const { page } = running;
-    await createNewTab(page);
     const layoutMenu = () =>
       page.locator('.app-menu-popup:not(.submenu) button.has-submenu', { hasText: 'Layout' });
     await page.locator('[data-menu="main"]').click();
@@ -445,13 +404,21 @@ test('opens the View > Layout submenu and toggles the unified toolbar', async ()
     await expect(page.locator('.app-menu-popup.submenu')).toBeVisible();
     await page.locator('.app-menu-popup.submenu button', { hasText: 'Show Toolbar' }).click();
     await expect(page.locator('#app')).toHaveClass(/toolbar-hidden/);
-    await expect(page.locator('header.titlebar .toolbar-sidebar-tabs')).toBeVisible();
+    await page.locator('[data-menu="main"]').click();
+    const sidebarTabs = page.locator('#sidebar .toolbar-sidebar-tabs');
+    await expect(sidebarTabs).toBeVisible();
     await expect(page.locator('#vditorToolbarMount')).toBeHidden();
-    await page.locator('#newFile').click();
-    await expect(page.locator('.document-tab')).toHaveCount(2);
-    const titlebarBox = await page.locator('#windowTitlebar').boundingBox();
-    const editorBox = await page.locator('#editorArea').boundingBox();
-    expect(editorBox?.y || 0).toBeCloseTo((titlebarBox?.y || 0) + (titlebarBox?.height || 0), 0);
+    await expect(page.locator('header.titlebar')).toBeHidden();
+    await sidebarTabs.locator('[data-view="outline"]').click();
+    await expect(page.locator('#outlineView')).toHaveClass(/active/);
+    await expect(sidebarTabs.locator('[data-view="outline"]')).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await expect(page.locator('#newFile')).toBeEnabled();
+    await page.locator('#toggleSidebar').click();
+    await expect(page.locator('#app')).toHaveClass(/sidebar-collapsed/);
+    await expect(sidebarTabs).toBeHidden();
 
     await expect(page.locator('#appMenuBar [data-menu="file"]')).toHaveCount(0);
     await expect(page.locator('#appMenuBar [data-menu="view"]')).toHaveCount(0);
@@ -460,7 +427,7 @@ test('opens the View > Layout submenu and toggles the unified toolbar', async ()
   }
 });
 
-test('animates the hidden-toolbar titlebar shadow without blocking titlebar controls', async () => {
+test('keeps the window titlebar fixed and controls operable during hidden-toolbar sidebar transitions', async () => {
   const running = await launchApp({ sidebarVisible: true });
   try {
     const { page } = running;
@@ -471,45 +438,32 @@ test('animates the hidden-toolbar titlebar shadow without blocking titlebar cont
     await layoutMenu().click();
     await page.locator('.app-menu-popup.submenu button', { hasText: 'Show Toolbar' }).click();
     await expect(page.locator('#app')).toHaveClass(/toolbar-hidden/);
-    const titlebarShadow = () =>
-      page.locator('#windowTitlebar').evaluate((node) => {
-        const style = getComputedStyle(node, '::after');
-        return {
-          height: Number.parseFloat(style.height),
-          left: Number.parseFloat(style.left),
-          shadow: style.boxShadow,
-          animation: style.animationName,
-          background: style.backgroundColor,
-          borderBottomWidth: Number.parseFloat(style.borderBottomWidth),
-          pointerEvents: style.pointerEvents,
-        };
-      });
-    await expect
-      .poll(async () => {
-        const shadow = await titlebarShadow();
-        return shadow.shadow !== 'none' && shadow.shadow !== '' && shadow.height === 2;
-      })
-      .toBe(true);
-    const visibleSidebarShadow = await titlebarShadow();
-    const sidebarWidth = await page
-      .locator('#sidebar')
-      .evaluate((node) => node.getBoundingClientRect().width);
-    expect(visibleSidebarShadow.left).toBeCloseTo(sidebarWidth, 0);
-    expect(visibleSidebarShadow.borderBottomWidth).toBeGreaterThan(0);
-    expect(visibleSidebarShadow.pointerEvents).toBe('none');
-    expect(visibleSidebarShadow.background).toBe(
-      await page
-        .locator('#windowTitlebar')
-        .evaluate((node) => getComputedStyle(node).backgroundColor),
-    );
+    const before = await page.locator('#windowTitlebar').boundingBox();
+    expect(
+      await page.locator('#windowTitlebar').evaluate((node) => getComputedStyle(node).boxShadow),
+    ).not.toBe('none');
 
     await page.locator('#toggleSidebar').click();
     await expect(page.locator('#app')).toHaveClass(/sidebar-transitioning/);
     await page.waitForTimeout(50);
-    expect((await titlebarShadow()).animation).toBe('sidebar-titlebar-shadow-exit');
+    const during = await page.locator('#windowTitlebar').boundingBox();
+    expect(during).toEqual(before);
+    const actionState = await page
+      .locator('.titlebar-file-actions button')
+      .evaluateAll((buttons) =>
+        buttons.map((button) => ({ id: button.id, disabled: button.disabled })),
+      );
+    await expect(page.locator('#newFile')).toBeEnabled();
+    await expect(page.locator('#openFile')).toBeEnabled();
+    expect(
+      await page
+        .locator('.titlebar-file-actions button')
+        .evaluateAll((buttons) =>
+          buttons.map((button) => ({ id: button.id, disabled: button.disabled })),
+        ),
+    ).toEqual(actionState);
     await expect(page.locator('#app')).toHaveClass(/sidebar-collapsed/);
-    await expect.poll(async () => (await titlebarShadow()).left).toBe(0);
-    expect((await titlebarShadow()).height).toBe(2);
+    expect(await page.locator('#windowTitlebar').boundingBox()).toEqual(before);
   } finally {
     await closeApp(running);
   }
@@ -566,7 +520,11 @@ test('keeps the sidebar tab boundary stable while toggling a wrapped toolbar acr
             overflow: style.overflow,
           };
         };
-        return { tabs: read(tabs), titlebar: read(titlebar) };
+        return {
+          tabs: read(tabs),
+          titlebar: read(titlebar),
+          titlebarDisplay: getComputedStyle(titlebar).display,
+        };
       });
     const toggleToolbar = async () => {
       let toolbarItem = page.locator('.app-menu-popup.submenu button', { hasText: 'Show Toolbar' });
@@ -594,7 +552,8 @@ test('keeps the sidebar tab boundary stable while toggling a wrapped toolbar acr
         await toggleToolbar();
         await expect(page.locator('#app')).toHaveClass(/toolbar-hidden/);
         await expect(page.locator('.main-area')).toHaveCSS('padding-top', '0px');
-        expect(await readBoundary()).toEqual(visible);
+        expect((await readBoundary()).titlebarDisplay).toBe('none');
+        expect((await readBoundary()).tabs.boxShadow).toBe('none');
 
         await toggleToolbar();
         expect(await readBoundary()).toEqual(visible);

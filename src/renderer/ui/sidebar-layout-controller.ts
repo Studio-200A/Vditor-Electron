@@ -3,7 +3,6 @@ export interface SidebarLayoutControllerOptions {
   readonly sidebar: HTMLElement;
   readonly toggle: HTMLElement;
   readonly menuBar: HTMLElement;
-  readonly titlebarActions: HTMLElement;
   readonly animatedElements: readonly HTMLElement[];
   readonly chromeElements: readonly HTMLElement[];
   readonly getSidebarWidth: () => number;
@@ -53,7 +52,7 @@ export class SidebarLayoutController {
       void sidebar.offsetWidth;
       sidebar.classList.add('sidebar-opening');
     } else {
-      this.options.titlebarActions.style.flexBasis = 'auto';
+      this.options.applyTopControlsWidth(0, this.options.menuBar.getBoundingClientRect().width);
       sidebar.classList.add('sidebar-closing');
     }
     if (!visible) sidebar.classList.remove('collapsed');
@@ -123,6 +122,7 @@ export class SidebarLayoutController {
     const targets = new Map(targetChrome);
     const sidebarWidth = this.options.getSidebarWidth();
     this.animations = this.layoutPositions().flatMap(([element, currentLeft]) => {
+      if (!visible && element.id === 'vditorToolbarMount') return [];
       const initialLeft = before.get(element);
       if (initialLeft === undefined) return [];
       const from = initialLeft - currentLeft;

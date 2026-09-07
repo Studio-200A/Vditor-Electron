@@ -9,12 +9,12 @@ function fixture() {
   const sidebar = document.getElementById('sidebar')!;
   let visible = false;
   const persistSidebarVisible = vi.fn();
+  const applyTopControlsWidth = vi.fn();
   const controller = new SidebarLayoutController({
     app,
     sidebar,
     toggle: document.getElementById('toggle')!,
     menuBar: document.getElementById('menu')!,
-    titlebarActions: document.getElementById('actions')!,
     animatedElements: ['tabBar', 'toolbar', 'editorArea'].map((id) => document.getElementById(id)!),
     chromeElements: ['tabBar', 'toolbar'].map((id) => document.getElementById(id)!),
     getSidebarWidth: () => 240,
@@ -23,12 +23,12 @@ function fixture() {
       visible = next;
     },
     persistSidebarVisible,
-    applyTopControlsWidth: vi.fn(),
+    applyTopControlsWidth,
     syncTopControlsWidth: vi.fn(),
     refreshEditorLayout: vi.fn(),
     duration: () => 1,
   });
-  return { app, sidebar, controller, persistSidebarVisible };
+  return { app, sidebar, controller, persistSidebarVisible, applyTopControlsWidth };
 }
 
 afterEach(() => {
@@ -54,5 +54,14 @@ describe('SidebarLayoutController', () => {
     vi.runAllTimers();
     expect(f.app.classList.contains('sidebar-transitioning')).toBe(false);
     vi.useRealTimers();
+  });
+
+  it('releases toolbar chrome width before hiding a visible sidebar', () => {
+    const f = fixture();
+    f.sidebar.classList.remove('collapsed');
+
+    f.controller.toggle(false);
+
+    expect(f.applyTopControlsWidth).toHaveBeenCalledWith(0, 0);
   });
 });

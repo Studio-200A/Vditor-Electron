@@ -98,10 +98,6 @@
         </div>
       </div>
       <header class="titlebar" aria-label="Editor toolbar">
-        <div class="toolbar-sidebar-tabs sidebar-tabs" aria-label="Sidebar view">
-          <button data-view="files" class="active" data-i18n="sidebar.files">Files</button
-          ><button data-view="outline" data-i18n="sidebar.outline">Outline</button>
-        </div>
         <div class="legacy-file-actions hidden" aria-hidden="true">
           <button
             id="obsoleteLegacyOpenFile"
@@ -138,6 +134,26 @@
       </header>
       <div class="workbench">
         <aside id="sidebar" class="sidebar">
+          <nav class="toolbar-sidebar-tabs sidebar-tabs" aria-label="Sidebar view" role="tablist">
+            <button
+              data-view="files"
+              class="active"
+              role="tab"
+              aria-controls="filesView"
+              aria-selected="true"
+              data-i18n="sidebar.files"
+            >
+              Files</button
+            ><button
+              data-view="outline"
+              role="tab"
+              aria-controls="outlineView"
+              aria-selected="false"
+              data-i18n="sidebar.outline"
+            >
+              Outline
+            </button>
+          </nav>
           <section id="filesView" class="sidebar-view active">
             <div class="side-toolbar">
               <button

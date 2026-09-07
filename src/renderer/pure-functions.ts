@@ -205,6 +205,8 @@ export { MenuController } from './ui/menu-controller.js';
 export type { MenuControllerOptions, MenuItem } from './ui/menu-controller.js';
 export { WindowController } from './ui/window-controller.js';
 export { SidebarLayoutController } from './ui/sidebar-layout-controller.js';
+export { SidebarViewController } from './ui/sidebar-view-controller.js';
+export type { SidebarViewControllerOptions } from './ui/sidebar-view-controller.js';
 export { AppTooltipController } from './ui/app-tooltip-controller.js';
 export type { WindowControllerOptions } from './ui/window-controller.js';
 export type { AppTooltipControllerOptions } from './ui/app-tooltip-controller.js';

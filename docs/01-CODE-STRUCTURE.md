@@ -136,6 +136,7 @@ Vditor-Electron/
 │   │   ├── status-menu-controller.ts # StatusMenuController（状态栏模式/主题弹出菜单与 listener cleanup）
 │   │   ├── app-tooltip-controller.ts # AppTooltipController（共享 #appTooltip 与 sidebar/tabBar 委托 hover）
 │   │   ├── sidebar-layout-controller.ts # SidebarLayoutController（侧栏过渡、FLIP、fallback 与 cleanup）
+│   │   ├── sidebar-view-controller.ts # SidebarViewController（Files/Outline tab 状态、ARIA 与点击委托）
 │   │   └── localization-controller.ts # LocalizationController（运行时 locale 解析与 DOM 刷新）
 │   ├── state/                     # 应用状态管理（批次 3 建立）
 │   │   ├── types.ts               # 核心状态类型（EditMode、DocumentIdentity、DocumentState、EditorRuntime、DocumentTab、AppState 等）
@@ -1108,12 +1109,13 @@ function rememberRecent(filePath) {
 - **实现：** `FindController` 拥有 find widget DOM、打开/关闭/切换快捷键、匹配计数、reveal timer 与 dispose；查找高亮和替换经 adapter 的 `textMatches` / `revealTextMatch` / `replaceTextMatch` 完成。`app/app-composition.js` 仅在组合层注入活动 tab、模式与 adapter 依赖。
 - **替换路径：** `replaceTextMatch()` 经 Vditor 原生编辑/input 路径替换单个匹配，保留选区、undo 历史和模式状态（不再使用 `setValue()` 全文回写）。
 
-#### 侧栏（`ui/sidebar-layout-controller.ts` + `app/app-composition.js` 的 `toggleSidebar()`，`index.html:115-139`）
+#### 侧栏（`ui/sidebar-layout-controller.ts`、`ui/sidebar-view-controller.ts` + `app/app-composition.js` 的 `toggleSidebar()`，`index.html:115-139`）
 
-- **职责：** 左侧可折叠面板，包含文件树视图和大纲视图
-- **实现：** `toggleSidebar()` 以 `sidebar-opening` / `sidebar-closing` / `sidebar-hiding` 表达过渡目标。显示时保持 `.collapsed` 并以绝对定位的完整宽度 sidebar 从左侧 transform 滑入，结束后才回归 flex 布局；隐藏时保持原 flex 占位并 transform 滑出，结束后才添加 `.collapsed`。因此长 Vditor 文档不会在动画每帧重排。`#tabBar`、共享 Vditor toolbar mount 和编辑区（含 Vditor host）在这段时间以 FLIP transform 平滑跟随最终位置，最终 flex 落位时移除 transform；编辑区只用已知 sidebar 宽度计算位移，绝不为测量目标而临时展开 sidebar。Files/Outline tabs 的容器保持静态阴影，使用 clip-path 使可见空间与顶部布局平滑收放，而其按钮使用 opacity + transform 进入/退出；titlebar file actions 采用同样的内容动画，避免动画 width、padding 或 gap。空状态过渡中 `.main-area` 临时使用编辑背景；`#vditorToolbarMount::before` 绘制不参与布局、随 mount FLIP 移动且覆盖 toolbar 与暴露区域的连续表面，真实 toolbar/skeleton 在其上层保留原始边界。隐藏工具栏时 `#windowTitlebar::after` 绘制等价的 2px 阴影边并位于所有 titlebar 子项之下。最终 flex 宽度提交后直接稳定呈现；不缩放文字，也不为渐变复制长文档 DOM。减少动态效果时直接安全落位。
-- **拖动性能：** `setupEvents()` 在 sidebar resize handle 的 mousedown 阻止默认 blur，鼠标移动以 `requestAnimationFrame` 合并宽度写入。只把 `--sidebar-current`、`--top-controls-width` 等变量写到消费它们的 chrome 子树；拖动中以保存的 inline `inset`/`left`/`width`/`transform` 冻结活动 Vditor host，mouseup 恢复后才允许一次实际 editor resize，并重新调度 SV 行号。文件树名称使用原生 CSS 末尾省略，无拖动期间的逐项 canvas 测量。
-- **状态与清理：** 稳定态根据 `.collapsed` 判断可见性，过渡中以 `state.settings.sidebarVisible` 作为目标状态，重复操作可反向而不会重启动画。`transitionend` 仅接受 sidebar 自身的 `transform`，220ms timeout 为事件缺失回退；完成后清理过渡类、取消 Web Animations、同步顶部宽度，并只调度一次 SV 行号/空白标记更新。`prefers-reduced-motion` 同时缩短 transition 和 keyframe animation。
+- **职责：** 左侧可折叠面板，包含 Files / Outline 导航、文件树和大纲视图。`SidebarLayoutController` 拥有侧栏过渡；`SidebarViewController` 拥有 application-owned `tablist` 的委托点击、视图 active class、`aria-selected` 同步及 dispose。组合层只注入大纲刷新回调。
+- **工具栏归属：** Files / Outline 始终位于 `#sidebar`。编辑器工具栏可见时，`.toolbar-sidebar-tabs` 以侧栏顶部上方的绝对定位导航呈现，并绘制 sidebar-to-toolbar 的边界；工具栏隐藏时，该导航回到 sidebar 内容首项，不再在顶部留下占位。sidebar 收起时它随侧栏不可见；当前选中的 Files / Outline 视图不因布局切换而改变。
+- **实现：** `toggleSidebar()` 以 `sidebar-opening` / `sidebar-closing` / `sidebar-hiding` 表达过渡目标。显示时保持 `.collapsed` 并以绝对定位的完整宽度 sidebar 从左侧 transform 滑入，结束后才回归 flex 布局；隐藏时保持原 flex 占位并 transform 滑出，结束后才添加 `.collapsed`。因此长 Vditor 文档不会在动画每帧重排。`#tabBar`、共享 Vditor toolbar mount 和编辑区在这段时间以 FLIP transform 平滑跟随最终位置；但收起 sidebar 时 toolbar mount 不参与位移，先直接填满释放的宽度，避免留下 Files/Outline 空槽或使 Vditor toolbar 跟随侧栏滑走。入场的 sidebar 提升到 toolbar 之上，保证导航与侧栏作为同一层完整滑入。空状态过渡中 `.main-area` 临时使用编辑背景；最终 flex 宽度提交后直接稳定呈现；不缩放文字，也不为渐变复制长文档 DOM。
+- **标题栏与拖动性能：** `#windowTitlebar` 不加入侧栏 FLIP，文件操作与窗口控制始终保持可用。编辑器工具栏可见时标题栏不投影，由 toolbar 提供顶部分隔；工具栏隐藏时标题栏显示 `--top-surface-shadow`。侧栏拖动以 `requestAnimationFrame` 合并宽度写入，并将 `--sidebar-current`、`--sidebar-max-width` 限制在消费它们的 chrome 子树；最大可见和可拖拽宽度为应用实时宽度的三分之二。拖动中冻结活动 Vditor host，mouseup 后才允许一次实际 editor resize 并调度 SV 行号。
+- **状态与清理：** 稳定态根据 `.collapsed` 判断可见性，过渡中以 `state.settings.sidebarVisible` 作为目标状态，重复操作可反向而不会重启动画。`transitionend` 仅接受 sidebar 自身的 `transform`，timeout 为事件缺失回退；完成后清理过渡类、取消 Web Animations、同步顶部宽度，并只调度一次 SV 行号/空白标记更新。`prefers-reduced-motion` 直接缩短相关过渡。
 - **提示：** `ui/app-tooltip-controller.ts` 通过事件委托读取 sidebar 内的 `data-tooltip`，与 Markdown 链接共用独立的 `#appTooltip`；它拥有 mouseover/mousemove/mouseout listener，并在应用关闭时移除。文件名、工作区路径和图标操作不再依赖浏览器原生 `title` 提示。
 
 #### 文件树（`workspace/explorer-controller.ts` + `app/app-composition.js` 命令回调，`index.html:127-131`）
@@ -1217,10 +1219,10 @@ function rememberRecent(filePath) {
 │   ├── #tabBar（标签栏）
 │   └── .window-controls（最小化/最大化/关闭）
 ├── header.titlebar（工具栏 mount）
-│   ├── .sidebar-tabs / files/outline 切换按钮
 │   └── #vditorToolbarMount（Vditor 工具栏共享 mount 点）
 ├── .workbench
 │   ├── #sidebar（侧栏）
+│   │   ├── nav.toolbar-sidebar-tabs.sidebar-tabs（Files/Outline tablist）
 │   │   ├── #filesView（文件树视图）
 │   │   └── #outlineView（大纲视图）
 │   └── main.main-area
@@ -1767,7 +1769,7 @@ flowchart TB
 | `tests/unit/renderer/application-shell-controller.test.ts`、`session-restore-controller.test.ts`、`recovery-restore-controller.test.ts` | 应用 shell 资源与会话恢复 | 重复 init/dispose、property handler/listener/observer/timer 清理；session DTO 捕获/恢复/激活与 unavailable 投影；recovery 候选加载、磁盘分类、identity 合并与不可用标签 |
 | `tests/unit/renderer/export-html.test.ts`、`status-menu-controller.test.ts`、`app-tooltip-controller.test.ts`、`explorer-file-transaction-controller.test.ts` | 导出、状态栏菜单、tooltip 与文件树交易 | HTML snapshot/资源可移植化；status popup 命令/dismiss/dispose；tooltip 委托与清理；创建/改名/删除交易与 binding 迁移 |
 | `tests/unit/renderer/document-link-navigation-controller.test.ts` | `src/renderer/editor/document-link-navigation-controller.ts` | 相对 Markdown/片段导航、危险 scheme 拦截、modifier hint、tooltip 清理和注入 bridge 协作 |
-| `tests/unit/renderer/sidebar-layout-controller.test.ts` | `src/renderer/ui/sidebar-layout-controller.ts` | 侧栏过渡、反向切换、FLIP/fallback timer、布局同步和 dispose |
+| `tests/unit/renderer/sidebar-layout-controller.test.ts`、`sidebar-view-controller.test.ts` | `src/renderer/ui/sidebar-layout-controller.ts`、`ui/sidebar-view-controller.ts` | 侧栏过渡、反向切换、FLIP/fallback timer、布局同步和 dispose；Files/Outline 的点击切换、ARIA 状态与大纲刷新 |
 | `tests/unit/renderer/tab-controller.test.ts` | 标签栏控制器 | 从 view model 渲染标题/脏标记/attention/active 态、primary/close/中键点击路由、替换旧标签 DOM、dispose 取消 drag-reset timer |
 | `tests/unit/renderer/settings-controller.test.ts`、`settings-window.test.ts`、`settings-persistence.test.ts`、`settings-runtime-controller.test.ts`、`settings-dialog-layout-controller.test.ts` | 设置保存分类、持久化与设置窗口 | classifySettingsChange 将展示/constructor-only 设置分开；SettingsController 加载保存后保持 Store；SettingsPersistence 分离 TOML 偏好与 state.json 队列；SettingsRuntimeController 表单同步/风险确认/live save 分发；SettingsWindow/SettingsDialogLayoutController 负责动画、尺寸拖动和 cleanup |
 | `tests/unit/renderer/workspace-controller.test.ts`、`external-file-change-controller.test.ts` | 工作区、文件树与 watcher 事件路由 | 根路径/revision/watch 刷新与持久化、不可用工作区路径路由到 document-binding owner、未信任名称按 text 渲染与展开回调、绑定提交失败恢复、ExplorerController 懒加载，以及外部删除/重出现/冲突/干净重载路由 |
@@ -1840,8 +1842,9 @@ flowchart TB
 - 默认 7、可选 7–12 的目录读取深度；达到边界时不读取更深后代，并显示受限提示；设置变更会立即重建工作区 watcher 和刷新文件树
 - 切换工作区后各自保留展开状态，文件监听器拾取新文件
 - 菜单"打开文件夹"后侧栏自动显示并持久化 `sidebarVisible`
-- 侧栏宽度调整，长文件名中间省略（canvas 测量）
+- 侧栏宽度可调整到应用实时宽度的三分之二；长文件名使用原生末尾省略，不在拖动期间逐项测量
 - 侧栏显示动画期间 `#editorArea` 宽度保持不变，结束后才收缩；过渡中再次切换会回到最后请求的可见状态并持久化该状态
+- 工具栏可见时 Files / Outline 位于 sidebar 顶部之外并与工具栏相接；隐藏工具栏时回到 sidebar 内容顶部，切换后保持当前视图
 - 文件树使用 Lucide `file`、`folder` 和目录链接专用的 `folder-symlink` 图标；查找替换使用 Lucide `replace` 与 `replace-all` 图标
 - 文件树行无 `draggable` 属性
 
