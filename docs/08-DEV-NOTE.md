@@ -328,3 +328,105 @@ Vditor `3.11.3` 的 WYSIWYG/IR 将表格本身作为横向滚动容器（`displa
 这是 Vditor 的上游限制/缺陷，不是 0.2.5 renderer 重构回归。Desktop 不在 adapter 或菜单层补写祖先标签、HTML 剪贴板格式或 Markdown 包装：跨嵌套格式、部分链接、列表和代码边界的正确序列化属于 Vditor 编辑引擎职责，应用层猜测 Range 祖先会偏离上游并增加selection/undo 风险。后续仅在 Vditor 上游提供修复或稳定公开 API 时重新评估。
 
 本轮 Electron 专项覆盖完整 Markdown 语义选区在 WYSIWYG、IR 中经快捷键及右键菜单Copy/Paste 的往返：剪贴板 HTML 为空，Markdown、粗体和列表语义保持一致。该测试不将上述已确认的上游限制编码为 Desktop 行为承诺。
+
+---
+
+# 模块化重构边界
+
+## 记录版本：0.2.5 / 2026-09-07
+
+## 背景
+
+`app.js` 从最初的 5000+ 行逐步迁移为当前的 `app-composition.js`（约 3050 行）。迁移过程中，领域逻辑被持续提取为独立的 Controller 类，通过 `PURE` 命名空间注入，composition 层只保留实例化、依赖注入和跨域协调。
+
+## 已提取的 Controller 清单
+
+以下 Controller 已从 composition 层提取，各自拥有独立的领域状态、资源生命周期或测试覆盖：
+
+| 类别 | Controller | 职责 |
+| --- | --- | --- |
+| 文档与文件 | `DocumentController` | 文档绑定、打开、保存事务 |
+| 文档与文件 | `DocumentWatchController` | 文件 watcher 生命周期 |
+| 文档与文件 | `DocumentTabWorkflowController` | 标签打开/关闭/切换流程 |
+| 文档与文件 | `ExternalFileChangeController` | 外部文件变更分类与响应 |
+| 文档与文件 | `DocumentSaveExternalWorkflowController` | 外部变更下的保存/重载/重建流程 |
+| 编辑器 | `EditorController` | Vditor 实例创建、重建、销毁、模式同步 |
+| 编辑器 | `EditorRuntimeCoordinator` | 标签激活时的编辑器运行时切换 |
+| 编辑器 | `SplitViewController` | 分栏布局、行号、缩进、滚动同步 |
+| 编辑器 | `ToolbarController` | 工具栏挂载、预览、可用性同步 |
+| 编辑器 | `FindController` | 搜索/替换浮层 |
+| 编辑器 | `OutlineController` | 大纲视图渲染与导航 |
+| 编辑器 | `ImageController` / `ImageRuntimeController` | 图片上传与相对路径图片观察 |
+| 编辑器 | `DocumentLinkNavigationController` | 文档内链接点击与 tooltip |
+| 标签与 UI | `TabController` | 标签栏渲染与交互 |
+| 标签与 UI | `ContextMenuController` | 右键菜单显示/隐藏 |
+| 标签与 UI | `StatusMenuController` | 状态栏编辑模式和主题模式菜单 |
+| 标签与 UI | `MenuController` | 顶部应用菜单 |
+| 标签与 UI | `NotificationsController` | 消息提示、确认对话框 |
+| 标签与 UI | `AppTooltipController` | 应用 tooltip 浮层 |
+| 布局 | `SidebarLayoutController` | 侧边栏展开/收起动画与尺寸 |
+| 布局 | `SettingsDialogLayoutController` | 设置对话框拖拽尺寸 |
+| 布局 | `WindowController` | 窗口控制按钮、全屏、最大化状态 |
+| 工作区 | `WorkspaceController` | 工作区设置、watcher、路径变更 |
+| 工作区 | `ExplorerController` / `ExplorerFileTransactionController` | 文件树渲染、文件/目录 CRUD |
+| 设置 | `SettingsController` / `SettingsPersistence` | 设置读写与持久化分离 |
+| 设置 | `SettingsRuntimeController` | 设置表单渲染与实时保存 |
+| 设置 | `SettingsWindow` | 设置弹窗开关 |
+| 设置 | `ThemeCoordinator` | 应用主题解析、系统主题映射和 Vditor 主题应用 |
+| 恢复与会话 | `RecoveryRuntimeController` / `RecoveryRestoreController` | 自动恢复快照 |
+| 恢复与会话 | `RecoveryBannerController` | 恢复横幅 UI |
+| 恢复与会话 | `SessionRestoreController` | 会话 DTO 持久化与启动恢复 |
+| 本地化 | `LocalizationController` | locale 切换与 DOM 更新 |
+| 导出 | `ExportController` / `ExportHtmlBuilder` | HTML/PDF 导出 |
+| Shell | `AppController` (TS) | 启动顺序与窗口命令路由 |
+| Shell | `ApplicationShellController` (TS) | shell 级 DOM 资源生命周期 |
+
+## composition 层剩余内容的构成
+
+`app-composition.js` 当前 ~3050 行中：
+
+1. **Controller 实例化与依赖注入**（约 L114–935，~820 行）：创建 controller 实例并通过回调注入跨域依赖。这是 composition 层的本职工作，不属于膨胀。
+
+2. **委托函数**（约 60+ 个，各 1–3 行）：如 `ensureEditor`、`rebuildEditor`、`syncToolbarAvailability`、`persistSession`、`queueSettingsSave` 等，直接转发给已提取的 controller。它们提供稳定的内部 API，简化跨函数调用。
+
+3. **跨域协调函数**（约 500–800 行）：需要连接多个 controller 的胶水逻辑，如 `editorOptions`（~77 行，连接 EditorController、ImageRuntimeController、SplitViewController、ToolbarController 等）、`setupApplicationShellResources`（~270 行，注册 shell 级 DOM 事件和 Observer）、`beforeAppShortcut`（~45 行，Escape/F11 焦点分发）、`updateActiveUI`（~48 行，同步状态栏、横幅、树选择等）。
+
+4. **未提取的局部 UI 辅助**（约 200–300 行）：如 `applyPresentationSettings`、context menu 构建、`handleMenu` 等。
+
+## 边界判断原则
+
+以下原则用于判断一个函数是否应该从 composition 层提取为独立 Controller：
+
+### 应该提取的条件（满足至少一项）
+
+- 拥有独立的领域状态（不是 `state` 或 `store` 的投影）
+- 拥有运行时资源生命周期（Observer、Timer、Watcher、DOM 节点等需要 dispose）
+- 拥有安全边界或 IPC 边界（如文件写入、权限检查）
+- 行为可以独立测试，不依赖 composition 闭包中的多个 controller
+
+### 不应该提取的条件
+
+- 仅是 1–3 行的委托函数，提取后只是换了位置
+- 需要连接 3 个以上 controller 的跨域协调（这是 composition 的本职工作）
+- 提取后需要重新设计状态传递方式（如将 IIFE 闭包共享的 `state`/`store` 改为参数注入）
+- 提取的主要动机是减少行数而非降低耦合
+
+## 当前边界结论
+
+**composition 层的模块化拆分已到达合理边界，不应继续系统性拆分。**
+
+理由：
+
+1. 剩余函数中，绝大多数是委托层或跨域协调层，提取它们不减少系统复杂度，只增加依赖跳转。
+2. IIFE 闭包通过 `state`/`store` 共享状态是当前的架构契约。强行提取需要重新设计状态传递，引入的隐性耦合风险大于行数收益。
+3. `editorOptions`、`setupApplicationShellResources`、`beforeAppShortcut` 等函数的职责就是连接多个 controller，把它们提取出去只是把协调逻辑从 composition 移到另一个文件，没有消除协调本身。
+4. 从 5000+ 行到 3159 行的迁移中，所有拥有领域状态、资源生命周期和可独立测试行为的模块均已提取。剩余内容是 composition 层的合理骨架。
+
+## 后续微调空间
+
+以下局部可在需要时按需提取，但不应作为系统性任务：
+
+- `handleMenu` + `setupAppMenus` + `setLayoutPart` → 如果菜单逻辑继续增长，可考虑提取为 `MenuCommandDispatcher`
+- `updateActiveUI` + 状态栏更新函数 → 如果状态栏逻辑继续增长，可考虑提取为 `StatusBarController`
+
+这些微调只在相关函数增长到值得提取时再做，当前不主动推进。

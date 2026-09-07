@@ -59,6 +59,7 @@ export const ADAPTER_PUBLIC_KEYS = [
   'documentAnchor',
   'documentLink',
   'setDocumentLinkHint',
+  'setDocumentLinkCursor',
   'clearDocumentLinkHint',
   'focusDocumentLink',
   'expandInstantLinkForEditing',
@@ -132,6 +133,7 @@ export function verifyAdapterCallContract(adapter: VditorDesktopAdapter, host: H
   adapter.replaceTextMatch(host, 'ir', 'text', 0, 'replacement');
   adapter.documentAnchor(host, host);
   adapter.setDocumentLinkHint(link, 'hint', 'pointer');
+  adapter.setDocumentLinkCursor(link, 'text');
   adapter.clearDocumentLinkHint(link);
   adapter.focusDocumentLink(link);
   adapter.expandInstantLinkForEditing(link);

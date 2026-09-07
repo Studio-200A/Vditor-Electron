@@ -26,6 +26,7 @@ export interface DocumentLinkAdapter {
   documentLink(target: EventTarget | null, host: HTMLElement): DocumentLink | null;
   headingIndexForAnchor(host: HTMLElement, href: string): number;
   setDocumentLinkHint(link: DocumentLink, text: string, cursor: 'pointer' | 'text'): void;
+  setDocumentLinkCursor(link: DocumentLink, cursor: 'text'): void;
   clearDocumentLinkHint(link: DocumentLink): void;
   expandInstantLinkForEditing(link: DocumentLink): boolean;
   focusDocumentLink(link: DocumentLink): void;
@@ -54,6 +55,7 @@ export interface DocumentLinkNavigationControllerOptions<TTab extends DocumentLi
 export class DocumentLinkNavigationController<TTab extends DocumentLinkTab> {
   private readonly options: DocumentLinkNavigationControllerOptions<TTab>;
   private hovered: DocumentLinkTarget | null = null;
+  private blockedHoveredLink: DocumentLink | null = null;
 
   constructor(options: DocumentLinkNavigationControllerOptions<TTab>) {
     this.options = options;
@@ -62,14 +64,17 @@ export class DocumentLinkNavigationController<TTab extends DocumentLinkTab> {
   handlersFor(tab: TTab): DocumentLinkNavigationHandlers {
     return {
       onMouseOver: (event) => {
-        const target = this.targetFor(tab, event.target);
+        const link = this.options.adapter.documentLink(event.target, tab.host);
+        const target = link && this.targetForLink(tab, link);
         if (target) this.setHovered(target, event);
+        else if (link?.kind === 'link') this.setBlockedHovered(link);
       },
       onMouseOut: (event) => {
         const relatedTarget = event.relatedTarget;
+        const hoveredElement = this.hovered?.link.element ?? this.blockedHoveredLink?.element;
         if (
-          !this.hovered ||
-          (relatedTarget instanceof Node && this.hovered.link.element.contains(relatedTarget))
+          !hoveredElement ||
+          (relatedTarget instanceof Node && hoveredElement.contains(relatedTarget))
         )
           return;
         this.clearHovered();
@@ -123,6 +128,10 @@ export class DocumentLinkNavigationController<TTab extends DocumentLinkTab> {
   private targetFor(tab: TTab, eventTarget: EventTarget | null): DocumentLinkTarget | null {
     const link = this.options.adapter.documentLink(eventTarget, tab.host);
     if (!link) return null;
+    return this.targetForLink(tab, link);
+  }
+
+  private targetForLink(tab: TTab, link: DocumentLink): DocumentLinkTarget | null {
     if (link.href.startsWith('#')) {
       const headingIndex = this.options.adapter.headingIndexForAnchor(tab.host, link.href);
       return headingIndex < 0 ? null : { link, headingIndex };
@@ -187,10 +196,19 @@ export class DocumentLinkNavigationController<TTab extends DocumentLinkTab> {
   }
 
   private clearHovered(): void {
-    if (!this.hovered) return;
-    this.options.adapter.clearDocumentLinkHint(this.hovered.link);
+    const link = this.hovered?.link ?? this.blockedHoveredLink;
+    if (!link) return;
+    this.options.adapter.clearDocumentLinkHint(link);
     this.hovered = null;
+    this.blockedHoveredLink = null;
     this.options.hideTooltip();
+  }
+
+  private setBlockedHovered(link: DocumentLink): void {
+    if (this.blockedHoveredLink?.element === link.element) return;
+    this.clearHovered();
+    this.blockedHoveredLink = link;
+    this.options.adapter.setDocumentLinkCursor(link, 'text');
   }
 
   private tooltipText(): string {

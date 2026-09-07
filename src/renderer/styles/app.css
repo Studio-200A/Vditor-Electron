@@ -19,6 +19,7 @@
   --settings-control-surface: #f7f7f8;
   --panel-2: #f0f1f3;
   --hover: #e7e9ec;
+  --tree-active: color-mix(in srgb, var(--accent) 16%, transparent);
   --text: #25272b;
   --muted: #6e737b;
   --disabled-control-color: color-mix(in srgb, var(--muted) 42%, transparent);
@@ -566,9 +567,12 @@ button.primary.danger {
   cursor: default;
   user-select: none;
 }
-.tree-row:hover,
-.tree-file.active {
+.tree-row:hover {
   background: var(--hover);
+}
+.tree-file.active,
+.tree-file.active:hover {
+  background: var(--tree-active);
 }
 .tree-name {
   min-width: 0;

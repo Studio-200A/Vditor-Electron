@@ -1195,19 +1195,23 @@
     const match = matches[occurrence];
     const editor = activeEditor(host, mode);
     if (!match || !editor) return false;
-    const selection = window.getSelection();
-    selection.removeAllRanges();
-    selection.addRange(match.range);
-    editor.focus({ preventScroll: true });
-    // Keep replacement on Vditor's native editable/input path so its mode
-    // serialization, selection and undo stack remain authoritative.
-    if (document.execCommand?.('insertText', false, replacement)) return true;
-    match.range.deleteContents();
-    match.range.insertNode(document.createTextNode(replacement));
-    editor.dispatchEvent(
-      new InputEvent('input', { bubbles: true, inputType: 'insertText', data: replacement }),
-    );
-    return true;
+    // Restore policy-rewritten image URLs while Vditor serializes the changed WYSIWYG block.
+    // Otherwise Vditor 3.11.3 can discard an allowed SVG after a native replacement.
+    return withOriginalImageSources(host, () => {
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(match.range);
+      editor.focus({ preventScroll: true });
+      // Keep replacement on Vditor's native editable/input path so its mode
+      // serialization, selection and undo stack remain authoritative.
+      if (document.execCommand?.('insertText', false, replacement)) return true;
+      match.range.deleteContents();
+      match.range.insertNode(document.createTextNode(replacement));
+      editor.dispatchEvent(
+        new InputEvent('input', { bubbles: true, inputType: 'insertText', data: replacement }),
+      );
+      return true;
+    });
   }
 
   function normalizedAnchor(value) {
@@ -1278,6 +1282,19 @@
     // The application renders the navigation hint itself. Suppress native titles
     // while hovered so author-provided titles do not create a second tooltip.
     element.removeAttribute('title');
+    element.style.cursor = cursor;
+    return true;
+  }
+
+  function setDocumentLinkCursor(link, cursor) {
+    const element = link?.element;
+    if (!element) return false;
+    if (!documentLinkPresentation.has(element)) {
+      documentLinkPresentation.set(element, {
+        title: element.getAttribute('title'),
+        cursor: element.style.cursor,
+      });
+    }
     element.style.cursor = cursor;
     return true;
   }
@@ -1491,19 +1508,23 @@
       image.setAttribute('src', image.dataset.vditorDesktopOriginalSrc);
       delete image.dataset.vditorDesktopOriginalSrc;
     });
+    const originalImages = Array.from(host?.querySelectorAll('img[src]') || []);
+    const originalSources = originalImages.map((image) => image.getAttribute('src') || '');
     try {
       return callback();
     } finally {
-      images.forEach((image) => {
-        const source = image.getAttribute('src') || '';
-        if (!isRelativeImageSource(source)) return;
-        try {
-          image.dataset.vditorDesktopOriginalSrc = source;
-          image.setAttribute('src', new URL(source, host.dataset.localResourceBase).href);
-        } catch (_) {}
+      // SpinVditorDOM can replace the edited block and its img descendants. Re-scan the
+      // current host rather than restoring only the pre-edit nodes. Vditor resolves a
+      // reconstructed relative URL against app://app/, which cannot be mapped back to the
+      // Markdown directory, so restore the original same-position source before reapplying
+      // local-resource resolution and SVG policy.
+      const currentImages = Array.from(host?.querySelectorAll('img[src]') || []);
+      currentImages.forEach((image, index) => {
+        const source = originalSources[index];
+        if (source && image !== originalImages[index]) image.setAttribute('src', source);
       });
-      const requestVersion = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      policyImages.forEach((image) => reloadImageSource(image, requestVersion));
+      resolveRelativeImageSources(host, host?.dataset.localResourceBase);
+      reloadImageSources(host);
     }
   }
 
@@ -1594,6 +1615,7 @@
     documentAnchor,
     documentLink,
     setDocumentLinkHint,
+    setDocumentLinkCursor,
     clearDocumentLinkHint,
     focusDocumentLink,
     expandInstantLinkForEditing,

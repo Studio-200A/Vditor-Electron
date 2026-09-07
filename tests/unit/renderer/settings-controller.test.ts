@@ -20,6 +20,17 @@ describe('classifySettingsChange', () => {
     expect(change.shouldRebuildEditor).toBe(false);
   });
 
+  it('treats editor and preview zoom as presentation changes', () => {
+    const change = classifySettingsChange(
+      settings,
+      { ...settings, editorZoom: 125, previewZoom: 90 },
+      VDITOR_INITIALIZATION_SETTINGS,
+    );
+
+    expect(change.impacts).toContain('presentation');
+    expect(change.shouldRebuildEditor).toBe(false);
+  });
+
   it('identifies constructor-only settings independently from live preview settings', () => {
     const rebuild = classifySettingsChange(
       settings,

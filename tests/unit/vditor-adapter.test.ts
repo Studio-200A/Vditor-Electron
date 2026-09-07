@@ -427,6 +427,42 @@ describe('Vditor DOM compatibility adapter', () => {
     expect(externalLink.style.cursor).toBe('');
   });
 
+  it('restores a blocked document-link cursor without suppressing its title', () => {
+    const host = createHost();
+    const externalLink = adapter.editorParts(host).wysiwyg.querySelector('a');
+    externalLink.title = 'Original title';
+    const link = adapter.documentLink(externalLink, host);
+
+    expect(adapter.setDocumentLinkCursor(link, 'text')).toBe(true);
+    expect(externalLink.title).toBe('Original title');
+    expect(externalLink.style.cursor).toBe('text');
+    expect(adapter.clearDocumentLinkHint(link)).toBe(true);
+    expect(externalLink.title).toBe('Original title');
+    expect(externalLink.style.cursor).toBe('');
+  });
+
+  it('uses original policy image URLs while replacing WYSIWYG text', () => {
+    const host = createHost();
+    host.dataset.localResourceBase = 'local-file://workspace/docs/';
+    const editor = adapter.editorParts(host).wysiwyg;
+    editor.innerHTML =
+      '<p>replace this <img src="local-file://workspace/assets/fixture.svg?__vditor_svg_policy=1" data-vditor-desktop-image-policy-source="local-file://workspace/assets/fixture.svg"></p>';
+    const image = editor.querySelector('img');
+    let replacementImage: HTMLImageElement | null = null;
+    let sourceDuringInput = '';
+    editor.addEventListener('input', () => {
+      sourceDuringInput = image.getAttribute('src') || '';
+      replacementImage = window.document.createElement('img');
+      replacementImage.setAttribute('src', 'app://app/assets/fixture.svg');
+      image.replaceWith(replacementImage);
+    });
+
+    expect(adapter.replaceTextMatch(host, 'wysiwyg', 'replace', 0, 'updated')).toBe(true);
+    expect(sourceDuringInput).toBe('local-file://workspace/assets/fixture.svg');
+    expect(replacementImage?.dataset.vditorDesktopOriginalSrc).toBe('../assets/fixture.svg');
+    expect(replacementImage?.getAttribute('src')).toContain('__vditor_svg_policy=');
+  });
+
   it('places the selection in editable document links but not preview TOC entries', () => {
     const host = createHost();
     window.document.body.append(host);

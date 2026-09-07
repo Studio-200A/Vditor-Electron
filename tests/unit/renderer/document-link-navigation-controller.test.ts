@@ -33,6 +33,7 @@ describe('DocumentLinkNavigationController', () => {
         documentLink: (target) => (target === linkElement ? link : null),
         headingIndexForAnchor: () => 0,
         setDocumentLinkHint: vi.fn(),
+        setDocumentLinkCursor: vi.fn(),
         clearDocumentLinkHint: vi.fn(),
         expandInstantLinkForEditing: vi.fn(() => false),
         focusDocumentLink: vi.fn(),
@@ -90,6 +91,22 @@ describe('DocumentLinkNavigationController', () => {
     expect(event.defaultPrevented).toBe(true);
     expect(options.adapter.expandInstantLinkForEditing).toHaveBeenCalledWith(link);
     expect(options.resolveMarkdownLink).not.toHaveBeenCalled();
+  });
+
+  it('uses a text cursor without a navigation hint for unsupported links', () => {
+    link = { element: linkElement, href: 'javascript:alert(1)', kind: 'link' };
+    const controller = new DocumentLinkNavigationController(options);
+    attach(controller, { id: 'tab', host, filePath: '/notes/source.md' });
+
+    linkElement.dispatchEvent(new dom.window.MouseEvent('mouseover', { bubbles: true }));
+    expect(options.adapter.setDocumentLinkCursor).toHaveBeenCalledWith(link, 'text');
+    expect(options.adapter.setDocumentLinkHint).not.toHaveBeenCalled();
+    expect(options.showTooltip).not.toHaveBeenCalled();
+
+    linkElement.dispatchEvent(
+      new dom.window.MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }),
+    );
+    expect(options.adapter.clearDocumentLinkHint).toHaveBeenCalledWith(link);
   });
 
   it('shows a platform-specific modifier hint and clears it when leaving the link', () => {

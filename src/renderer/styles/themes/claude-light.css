@@ -17,8 +17,8 @@
   color-scheme: light;
 }
 
-/* Claude Light: sidebar hover/active states */
-:root[data-theme='claude-light'] .sidebar :is(button:hover, .tree-row:hover, .tree-file.active) {
+/* Claude Light: sidebar hover states */
+:root[data-theme='claude-light'] .sidebar :is(button:hover, .tree-row:hover) {
   background: #e8e6dc;
 }
 

@@ -1,10 +1,10 @@
 export interface AppTooltipControllerOptions {
   readonly tooltip: HTMLElement;
-  readonly sidebar: HTMLElement;
+  readonly tooltipRoots: readonly HTMLElement[];
   readonly window: Pick<Window, 'innerWidth' | 'innerHeight'>;
 }
 
-/** Owns the shared application tooltip and sidebar hover listeners. */
+/** Owns shared application tooltip rendering and delegated hover listeners. */
 export class AppTooltipController {
   private hoveredTarget: HTMLElement | null = null;
   private isInitialized = false;
@@ -14,16 +14,20 @@ export class AppTooltipController {
   init(): void {
     if (this.isInitialized) return;
     this.isInitialized = true;
-    this.options.sidebar.addEventListener('mouseover', this.onMouseOver);
-    this.options.sidebar.addEventListener('mousemove', this.onMouseMove);
-    this.options.sidebar.addEventListener('mouseout', this.onMouseOut);
+    this.options.tooltipRoots.forEach((root) => {
+      root.addEventListener('mouseover', this.onMouseOver);
+      root.addEventListener('mousemove', this.onMouseMove);
+      root.addEventListener('mouseout', this.onMouseOut);
+    });
   }
 
   dispose(): void {
     if (this.isInitialized) {
-      this.options.sidebar.removeEventListener('mouseover', this.onMouseOver);
-      this.options.sidebar.removeEventListener('mousemove', this.onMouseMove);
-      this.options.sidebar.removeEventListener('mouseout', this.onMouseOut);
+      this.options.tooltipRoots.forEach((root) => {
+        root.removeEventListener('mouseover', this.onMouseOver);
+        root.removeEventListener('mousemove', this.onMouseMove);
+        root.removeEventListener('mouseout', this.onMouseOut);
+      });
       this.isInitialized = false;
     }
     this.hoveredTarget = null;
@@ -47,7 +51,7 @@ export class AppTooltipController {
     if (!(event.target instanceof Element)) return;
     const target = event.target.closest<HTMLElement>('[data-tooltip]');
     const relatedTarget = event.relatedTarget instanceof Node ? event.relatedTarget : null;
-    if (!target || !this.options.sidebar.contains(target) || target.contains(relatedTarget)) return;
+    if (!target || !this.isTooltipTarget(target) || target.contains(relatedTarget)) return;
     const text = target.dataset.tooltip;
     if (!text) return;
     this.hoveredTarget = target;
@@ -65,4 +69,8 @@ export class AppTooltipController {
     this.hoveredTarget = null;
     this.hide();
   };
+
+  private isTooltipTarget(target: HTMLElement): boolean {
+    return this.options.tooltipRoots.some((root) => root.contains(target));
+  }
 }

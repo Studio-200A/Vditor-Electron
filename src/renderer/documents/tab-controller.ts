@@ -63,7 +63,7 @@ export class TabController {
     const button = document.createElement('button');
     button.className = `document-tab${isActive ? ' active' : ''}`;
     button.dataset.id = tab.id;
-    button.title = tab.filePath || tab.title;
+    button.dataset.tooltip = tab.filePath || tab.title;
 
     const title = document.createElement('span');
     title.textContent = tab.title;

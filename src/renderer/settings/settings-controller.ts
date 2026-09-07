@@ -19,6 +19,8 @@ export interface SettingsChange {
 const PRESENTATION_KEYS = new Set([
   'uiFontFamily',
   'uiZoom',
+  'editorZoom',
+  'previewZoom',
   'editorFontFamily',
   'editorFontSize',
   'previewFontFamily',

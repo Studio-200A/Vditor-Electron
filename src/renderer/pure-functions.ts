@@ -28,6 +28,8 @@ export {
   validateDarkTheme,
   validateLightTheme,
 } from './ui/theme-controller.js';
+export { ThemeCoordinator } from './ui/theme-coordinator.js';
+export type { ThemeCoordinatorOptions, ThemeCoordinatorTab } from './ui/theme-coordinator.js';
 export { NotificationsController } from './ui/notifications.js';
 export type { ConfirmDialogOptions, DialogAction } from './ui/notifications.js';
 export { StatusMenuController } from './ui/status-menu-controller.js';

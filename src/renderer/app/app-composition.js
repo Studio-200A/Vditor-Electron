@@ -10,13 +10,8 @@
   const stripExtension = PURE.stripExtension;
   const detectLineEnding = PURE.detectLineEnding;
   const isDarkTheme = PURE.isDarkTheme;
-  const THEME_MODES = PURE.THEME_MODES;
   const translateImpl = PURE.translate;
   const formatIpcErrorMessageImpl = PURE.formatIpcErrorMessage;
-  const resolveThemeModeImpl = PURE.resolveThemeMode;
-  const validateDarkThemeImpl = PURE.validateDarkTheme;
-  const validateLightThemeImpl = PURE.validateLightTheme;
-  const getPreferredCodeThemeImpl = PURE.getPreferredCodeTheme;
   const AppStore = PURE.AppStore;
   const store = new AppStore();
   const PERSISTENT_STATE_KEYS = new Set([
@@ -911,6 +906,23 @@
     onSelectMode: selectStatusMode,
     onSelectThemeMode: selectStatusThemeMode,
   });
+  const themeCoordinator = new PURE.ThemeCoordinator({
+    document,
+    settingsForm: $('#settingsForm'),
+    getSettings: () => state.settings,
+    replaceSettings: (settings) => {
+      state.settings = settings;
+    },
+    getTabs: () => state.tabs,
+    getSystemTheme: () => window.appAPI.getSystemTheme(),
+    isDarkTheme,
+    persist: (patch) => queueSettingsSave(patch),
+    syncStatusTheme: (mode) => {
+      const labelKey = `themeMode.${mode}`;
+      statusMenuController.syncTheme({ mode, labelKey, label: t(labelKey) });
+    },
+    classifyCodeThemeButtons: (toolbar) => VDITOR.classifyCodeThemeButtons(toolbar),
+  });
   const sidebarLayoutController = new PURE.SidebarLayoutController({
     app: $('#app'),
     sidebar: $('#sidebar'),
@@ -932,7 +944,7 @@
   });
   const appTooltipController = new PURE.AppTooltipController({
     tooltip: $('#appTooltip'),
-    sidebar: $('#sidebar'),
+    tooltipRoots: [$('#sidebar'), $('#tabBar')],
     window,
   });
   const documentLinkNavigationController = new PURE.DocumentLinkNavigationController({
@@ -1290,112 +1302,24 @@
     notifications.showTemporaryDocumentNotice(message, error);
   }
 
-  function darkThemePreference() {
-    return validateDarkThemeImpl(state.settings.darkTheme);
-  }
-
-  function lightThemePreference() {
-    return validateLightThemeImpl(state.settings.lightTheme);
-  }
-
-  function mapSystemTheme(theme) {
-    return theme === 'dark' ? darkThemePreference() : lightThemePreference();
-  }
-
   function preferredCodeTheme(dark) {
-    return getPreferredCodeThemeImpl(state.settings, dark);
-  }
-
-  function ensureCodeThemeOption(codeTheme, dark) {
-    const select = $('#settingsForm [name="codeTheme"]');
-    if (!select || !codeTheme) return;
-    let option = Array.from(select.options).find((item) => item.value === codeTheme);
-    if (!option) {
-      option = new Option(codeTheme, codeTheme);
-      option.dataset.themeTone = dark ? 'dark' : 'light';
-      select.add(option);
-    }
+    return themeCoordinator.preferredCodeTheme(dark);
   }
 
   function syncCodeThemeSelect(dark, codeTheme = preferredCodeTheme(dark)) {
-    const select = $('#settingsForm [name="codeTheme"]');
-    if (!select) return;
-    ensureCodeThemeOption(codeTheme, dark);
-    const tone = dark ? 'dark' : 'light';
-    Array.from(select.options).forEach((option) => {
-      const allowed = option.dataset.themeTone === tone;
-      option.hidden = !allowed;
-      option.disabled = !allowed;
-    });
-    select.value = codeTheme;
-  }
-
-  function syncCodeThemeMenus(dark) {
-    state.tabs.forEach((tab) => {
-      VDITOR.classifyCodeThemeButtons(tab.toolbar).forEach(({ button, tone }) => {
-        button.dataset.themeTone = tone;
-        button.hidden = tone !== (dark ? 'dark' : 'light');
-      });
-    });
+    themeCoordinator.syncCodeThemeSelect(dark, codeTheme);
   }
 
   function syncCodeThemeControls(dark, codeTheme = preferredCodeTheme(dark)) {
-    syncCodeThemeSelect(dark, codeTheme);
-    syncCodeThemeMenus(dark);
-  }
-
-  function syncContentThemeHosts(contentTheme) {
-    state.tabs.forEach((tab) => {
-      if (tab.host) tab.host.dataset.contentTheme = contentTheme;
-    });
+    themeCoordinator.syncCodeThemeControls(dark, codeTheme);
   }
 
   async function resolveTheme() {
-    return state.settings.systemTheme
-      ? mapSystemTheme(await window.appAPI.getSystemTheme())
-      : state.settings.theme;
+    return themeCoordinator.resolveTheme();
   }
 
   async function applyTheme(theme) {
-    document.documentElement.dataset.theme = theme;
-    document.querySelectorAll('link[id^="theme-"]').forEach((link) => {
-      link.disabled = link.id !== `theme-${theme}`;
-    });
-    const dark = isDarkTheme(theme);
-    syncThemeModeControl();
-    const linkedContentTheme = ['light', 'dark'].includes(state.settings.contentTheme);
-    const contentTheme = linkedContentTheme
-      ? dark
-        ? 'dark'
-        : 'light'
-      : state.settings.contentTheme;
-    syncContentThemeHosts(contentTheme);
-    const settingsPatch = {};
-    if (linkedContentTheme && contentTheme !== state.settings.contentTheme) {
-      state.settings.contentTheme = contentTheme;
-      const contentThemeSelect = $('#settingsForm [name="contentTheme"]');
-      if (contentThemeSelect) contentThemeSelect.value = contentTheme;
-      settingsPatch.contentTheme = contentTheme;
-    }
-    const codeTheme = preferredCodeTheme(dark);
-    if (codeTheme !== state.settings.codeTheme) {
-      state.settings.codeTheme = codeTheme;
-      settingsPatch.codeTheme = codeTheme;
-    }
-    syncCodeThemeControls(dark, codeTheme);
-    if (Object.keys(settingsPatch).length) await queueSettingsSave(settingsPatch);
-    state.tabs.forEach((tab) => {
-      if (tab.vditor) {
-        try {
-          tab.vditor.setTheme(
-            dark ? 'dark' : 'classic',
-            contentTheme,
-            codeTheme,
-            'app://app/vditor/dist/css/content-theme',
-          );
-        } catch (_) {}
-      }
-    });
+    await themeCoordinator.applyTheme(theme);
   }
 
   function applyPresentationSettings() {
@@ -1643,21 +1567,9 @@
       if (!codeTheme) return;
       const dark = isDarkTheme(document.documentElement.dataset.theme);
       if (button.dataset.themeTone !== (dark ? 'dark' : 'light')) return;
-      const preferenceKey = dark ? 'darkCodeTheme' : 'lightCodeTheme';
-      state.settings.codeTheme = codeTheme;
-      state.settings[preferenceKey] = codeTheme;
-      syncCodeThemeSelect(dark, codeTheme);
-      queueSettingsSave({ codeTheme, [preferenceKey]: codeTheme });
+      void themeCoordinator.selectCodeTheme(codeTheme, dark);
     } else if (type === 'content-theme' && button.dataset.type) {
-      state.settings.contentTheme = button.dataset.type;
-      syncContentThemeHosts(button.dataset.type);
-      queueSettingsSave({ contentTheme: button.dataset.type });
-      if (button.dataset.type === 'light' || button.dataset.type === 'dark') {
-        setTimeout(
-          () => applyTheme(document.documentElement.dataset.theme || state.settings.theme),
-          0,
-        );
-      }
+      void themeCoordinator.selectContentTheme(button.dataset.type);
     }
     if (themeMenu) {
       setTimeout(() => {
@@ -2124,14 +2036,8 @@
     }
   }
 
-  function themeModeFromSettings() {
-    return resolveThemeModeImpl(state.settings);
-  }
-
   function syncThemeModeControl() {
-    const mode = themeModeFromSettings();
-    const labelKey = `themeMode.${mode}`;
-    statusMenuController.syncTheme({ mode, labelKey, label: t(labelKey) });
+    themeCoordinator.syncThemeMode();
   }
 
   function selectStatusMode(mode) {
@@ -2141,16 +2047,7 @@
   }
 
   async function selectStatusThemeMode(mode) {
-    if (!THEME_MODES.includes(mode) || mode === themeModeFromSettings()) return;
-    const patch =
-      mode === 'system'
-        ? { systemTheme: true }
-        : {
-            systemTheme: false,
-            theme: mode === 'dark' ? darkThemePreference() : lightThemePreference(),
-          };
-    state.settings = await queueSettingsSave(patch);
-    await applyTheme(await resolveTheme());
+    await themeCoordinator.selectThemeMode(mode);
   }
 
   function updateEmptyState() {
@@ -2509,17 +2406,7 @@
         }
       },
       theme: async () => {
-        state.settings.theme = value;
-        state.settings.systemTheme = false;
-        if (isDarkTheme(value)) state.settings.darkTheme = value;
-        else state.settings.lightTheme = value;
-        await queueSettingsSave({
-          theme: value,
-          systemTheme: false,
-          ...(isDarkTheme(value) ? { darkTheme: value } : {}),
-          ...(!isDarkTheme(value) ? { lightTheme: value } : {}),
-        });
-        await applyTheme(value);
+        await themeCoordinator.selectApplicationTheme(value);
       },
     };
     if (handlers[action]) handlers[action]();
@@ -2963,7 +2850,7 @@
     resources.add(setupAutoHideScrollbar($('.confirm-content')) || (() => {}));
     resources.add(
       window.appAPI.onSystemThemeChanged((theme) => {
-        if (state.settings.systemTheme) void applyTheme(mapSystemTheme(theme));
+        if (state.settings.systemTheme) void applyTheme(themeCoordinator.mapSystemTheme(theme));
       }),
     );
     resources.add(window.fileAPI.onChanged(handleExternalChange));

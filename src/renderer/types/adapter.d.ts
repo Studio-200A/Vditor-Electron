@@ -274,6 +274,7 @@ export interface VditorDesktopAdapter {
     host: HTMLElement | null | undefined,
   ): DocumentLink | null;
   setDocumentLinkHint(link: DocumentLink | null | undefined, hint: string, cursor: string): boolean;
+  setDocumentLinkCursor(link: DocumentLink | null | undefined, cursor: string): boolean;
   clearDocumentLinkHint(link: DocumentLink | null | undefined): boolean;
   focusDocumentLink(link: DocumentLink | null | undefined): boolean;
   expandInstantLinkForEditing(link: DocumentLink | null | undefined): boolean;

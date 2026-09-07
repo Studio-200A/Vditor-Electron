@@ -1,8 +1,8 @@
 # Vditor-Electron Code Structure World Map
 
 - **生成时间：** 2026-09-07
-- **基于的工作区：** `dev-0.2.5` 当前工作区实现（批次 8、8.1 已完成，批次 9 实施中；当前 HEAD `60ab08f`）
-- **文档版本：** v1.22
+- **基于的工作区：** `dev-0.2.5` 当前工作区实现（批次 8、8.1 已完成；批次 9 的用户 `check:all` 首轮 E2E 150/152，通过两项精确重跑收口；当前 HEAD `6863306`）
+- **文档版本：** v1.23
 - **对应 package.json 版本号：** 0.2.0（开发中 0.2.5）
 
 ---
@@ -15,7 +15,7 @@
 
 **核心功能：** 多标签页 Markdown 编辑、三种编辑模式（IR/SV/WYSIWYG）、分栏预览、文件树侧栏、文档大纲、查找替换、图片插入与压缩、HTML/PDF 导出、TOML 偏好与版本化 JSON 状态持久化、三语国际化（英/简/繁）。
 
-**开发阶段：** 0.2.5 渲染层架构重构中。批次 8 已完成工作区、设置、菜单、窗口和导出域迁移；批次 8.1 已校正 Vditor adapter 的完整类型 facade 与防漂移证据；批次 9 已删除 legacy `app.js` 入口并继续收口组合层职责和行为测试。`AppController` 负责启动顺序、窗口级命令、拖放和 IPC 订阅；`app/app-composition.js` 仍是渐进迁移期间的组合层，保存交易、标签命令、设置/session 组合和部分全局事件尚未全部迁出。Vditor runtime、自动保存 timer、recovery runtime、共享 toolbar、Split View、outline、find、图片 runtime、文档链接和激活协调均已有明确 controller；DocumentController 与组合层仍保留文件 identity、保存交易、外部变化和 recovery 安全动作的语义所有权。0.2.0 的文件安全、恢复、watcher、冲突与跨平台边界继续作为不可改变的行为基线。精确的批次状态、手测、首轮失败及重跑证据只记录在 [`docs/15-0.2.5-EXECUTION-TRACKER.md`](15-0.2.5-EXECUTION-TRACKER.md)，本地图不维护实时测试总数。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
+**开发阶段：** 0.2.5 渲染层架构重构中。批次 8 已完成工作区、设置、菜单、窗口和导出域迁移；批次 8.1 已校正 Vditor adapter 的完整类型 facade 与防漂移证据；批次 9 已删除 legacy `app.js` 入口并收口组合层职责和行为测试。`AppController` 负责启动顺序、窗口级命令、拖放和 IPC 订阅；`app/app-composition.js` 仍是渐进迁移期间的组合层，保存交易、标签命令、设置/session 组合和部分全局事件尚未全部迁出。Vditor runtime、自动保存 timer、recovery runtime、共享 toolbar、Split View、outline、find、图片 runtime、文档链接、激活协调和应用主题协调均已有明确 controller；DocumentController 与组合层仍保留文件 identity、保存交易、外部变化和 recovery 安全动作的语义所有权。0.2.0 的文件安全、恢复、watcher、冲突与跨平台边界继续作为不可改变的行为基线。精确的批次状态、手测、首轮失败及重跑证据只记录在 [`docs/15-0.2.5-EXECUTION-TRACKER.md`](15-0.2.5-EXECUTION-TRACKER.md)，本地图不维护实时测试总数。主题架构和六套内置主题见 [`docs/04-THEMES.md`](04-THEMES.md)。
 
 ---
 
@@ -111,7 +111,7 @@ Vditor-Electron/
 │   ├── types/                     # renderer TypeScript 类型声明
 │   │   ├── bridges.d.ts           # window.appAPI / window.fileAPI 类型
 │   │   ├── vditor.d.ts            # Vditor 构造器与选项最小类型
-│   │   ├── adapter.d.ts           # 67 个 VditorDesktopAdapter facade 的严格类型契约
+│   │   ├── adapter.d.ts           # 68 个 VditorDesktopAdapter facade 的严格类型契约
 │   │   └── adapter-contract.ts    # 编译期调用契约和运行时导出键 manifest
 │   │   └── locales.d.ts           # window.VditorDesktopLocales 类型
 │   ├── core/                      # renderer 基础模块
@@ -126,6 +126,7 @@ Vditor-Electron/
 │   │   ├── theme.ts               # 主题常量与判定（isDarkTheme、DARK_THEMES 等）
 │   │   ├── localization.ts        # 本地化纯函数（resolveLocale、translate、formatIpcErrorMessage）
 │   │   ├── theme-controller.ts    # 主题控制器纯函数层（resolveEffectiveTheme、resolveThemeMode 等）
+│   │   ├── theme-coordinator.ts   # 主题协调器（解析/映射系统主题、联动 content/code theme、状态栏同步、持久化与 Vditor setTheme）
 │   │   ├── notifications.ts       # NotificationsController 类（消息提示、临时通知、确认对话框、未保存对话框）
 │   │   ├── window-controller.ts   # WindowController（标题栏窗口控制按钮与状态订阅）
 │   │   ├── menu-controller.ts     # MenuController（Windows/Linux 自定义主菜单 popup DOM）
@@ -661,6 +662,8 @@ function mountEditorToolbar(tab) {
 2. 调用 `tab.vditor.setTheme(editorTheme, contentTheme, codeTheme, cssPath)` 更新 Vditor 实例
 3. 内容主题联动：若 `contentTheme` 为 `light/dark` 则根据壳层主题自动切换
 
+主题应用流程由 `ui/theme-coordinator.ts` 的 `ThemeCoordinator` 协调：解析固定/跟随系统主题、映射系统主题偏好、联动 content/code theme、同步设置控件与状态栏、持久化联动补丁，并把 `setTheme` 应用到每个已初始化 tab。`app/app-composition.js` 只注入 store、bridge、DOM、状态栏同步与 adapter 的代码主题按钮分类，不保留主题实现细节。
+
 应用主题只负责应用壳层颜色。字体设置、Vditor 内容主题和 Vditor 原生代码主题保持独立；SV 源码区的编辑表现不由应用主题重新实现。
 
 ### 7.7 事件监听清单
@@ -679,7 +682,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 
 **设计意图：** 将 Vditor 3.11.x 的私有 DOM 选择器和非公开行为集中于此文件，使 `app/app-composition.js` 及各 editor controller 仅依赖语义化的适配器 API，降低 Vditor 升级时的审计面。
 
-`src/renderer/types/adapter.d.ts` 是该冻结 facade 的 TypeScript 边界：它逐项声明当前 67 个公开成员的参数、可空性和返回结构，但不描述或导出 selector、Range workaround 等私有实现。`src/renderer/types/adapter-contract.ts` 由 renderer strict typecheck 纳入，覆盖每个公开成员的有效调用及关键无效调用；其中的键 manifest 由 adapter DOM 单测与运行时冻结对象精确比对。修改 adapter 导出表时，必须同时更新这两份类型证据与单测，而 controller 仍只能消费语义 API。
+`src/renderer/types/adapter.d.ts` 是该冻结 facade 的 TypeScript 边界：它逐项声明当前 68 个公开成员的参数、可空性和返回结构，但不描述或导出 selector、Range workaround 等私有实现。`src/renderer/types/adapter-contract.ts` 由 renderer strict typecheck 纳入，覆盖每个公开成员的有效调用及关键无效调用；其中的键 manifest 由 adapter DOM 单测与运行时冻结对象精确比对。修改 adapter 导出表时，必须同时更新这两份类型证据与单测，而 controller 仍只能消费语义 API。
 
 以下为 `window.VditorDesktopAdapter` 冻结对象导出的 API，按职能分组。
 
@@ -1293,7 +1296,7 @@ function rememberRecent(filePath) {
 用户分别选择 lightTheme / darkTheme
   → saveSettings({ lightTheme, darkTheme })
   → 状态栏太阳 / 月亮 / 显示器模式解析其中一项为当前 theme
-  → applyTheme(theme)
+  → themeCoordinator.applyTheme(theme)
     → document.documentElement.dataset.theme = theme
     → tab.vditor.setTheme(editorTheme, contentTheme, codeTheme, cssPath)
     → syncCodeThemeControls(dark, codeTheme)  // 过滤代码主题下拉选项
@@ -1737,7 +1740,7 @@ flowchart TB
 | `tests/unit/settings-store.test.ts` | `src/main/services/settings-store.ts`   | 首次加载返回默认值、TOML 部分深合并与默认值、未知字段丢弃、`set` 持久化（含 TOML 段结构验证）、`update` 多字段快照（含 `workspaceTreeStates` 数组和 `workspaceReadDepth` 边界）、设置对话框尺寸持久化（`window.settingsDialog`）、`getAll` 返回克隆副本、`reset` 重置内存和磁盘                                                                                                                                                                                                                                                               |
 | `tests/unit/recovery-store.test.ts` | `src/main/services/recovery-store.ts` | 私有目录/文件权限、候选元数据不含正文、原子写入与显式清理、损坏/未知 schema/超限快照移除，以及 `unchanged` / `changed` / `unavailable` 三种磁盘状态 |
 | `tests/unit/persistent-state-store.test.ts` | `src/main/services/persistent-state-store.ts` | 旧 TOML 状态仅迁移一次且保持 config.toml 偏好化、损坏/未知 schema 安全默认值不阻塞启动、串行原子更新、清空状态时保留用户偏好 |
-| `tests/unit/vditor-adapter.test.ts` | `src/renderer/vditor-adapter.js` 与 adapter 类型 manifest | 冻结的 selectors 对象、运行时 67 个导出键与声明 manifest 的精确一致性、`validateHost` 成功（toolbar 通过 `mountedToolbar` 参数提供）、代码主题亮/暗分界点（`ant-design` 前为 dark 组）、DOM 漂移检测（缺少 source 节点时 `valid: false`）、SV divider 创建与 pane 语义可见性、列表 `marker`/`padding` 解析、动态尾部留白写入全部 Vditor 表面、SVG 开关热更新的图片原始来源与缓存隔离、hash anchor 到标题索引（IR 内部链接 + 元素 id + slug）、原生大纲 snapshot、标题间普通块时的准确目标节点及 SV preview 外层滚动容器、跨多 span 文本节点的匹配与选区 |
+| `tests/unit/vditor-adapter.test.ts` | `src/renderer/vditor-adapter.js` 与 adapter 类型 manifest | 冻结的 selectors 对象、运行时 68 个导出键与声明 manifest 的精确一致性、`validateHost` 成功（toolbar 通过 `mountedToolbar` 参数提供）、代码主题亮/暗分界点（`ant-design` 前为 dark 组）、DOM 漂移检测（缺少 source 节点时 `valid: false`）、SV divider 创建与 pane 语义可见性、列表 `marker`/`padding` 解析、动态尾部留白写入全部 Vditor 表面、SVG 开关热更新的图片原始来源与缓存隔离、WYSIWYG 替换期间恢复原始 SVG URL、hash anchor 到标题索引（IR 内部链接 + 元素 id + slug）、原生大纲 snapshot、标题间普通块时的准确目标节点及 SV preview 外层滚动容器、跨多 span 文本节点的匹配与选区 |
 | `tests/unit/renderer-shell.test.ts` | 渲染器壳（HTML/CSS/JS/preload）静态结构 | 标题栏 / 菜单 / 窗口控件 DOM；en/zh_Hans/zh_Hant 键完整性对等；Linux 发布脚本；自动隐藏滚动条样式；第二实例文件转发；确认对话框（未保存变更可拖动、无调整尺寸手柄）；设置对话框 8 方向调整手柄；空标签恢复；查找替换控件带 SVG；文件树无 draggable；折叠/展开/中间省略；链接目录斜体下划线与 SVG 资产；设置面板分类；关于面板；UI/编辑器/预览缩放；状态栏三态主题控件与无旧 checkbox；CSP img-src/connect-src；大纲无标题态；Monokai Pro Light / Dark 主题；亮/暗代码主题分离；字体子分组；工作区头部；编辑文本宽度范围；无过时占位符/工具栏设置项；适配器脚本加载顺序；设置路径页脚/重置当前页 |
 | `tests/unit/renderer/editor-controller.test.ts`、`editor-options.test.ts`、`editor-runtime-coordinator.test.ts` | 编辑器实例、构造选项与 tab 激活协调 | generation、幂等 destroy、rebuild 正文/滚动恢复、auto-save cleanup、pending content、constructor-only 设置、快速切换的 stale rAF 拒绝与 toolbar hand-off |
 | `tests/unit/renderer/split-view-controller.test.ts`、`toolbar-controller.test.ts`、`outline-controller.test.ts`、`find-controller.test.ts` | Split View、共享工具栏、大纲与查找 UI | divider/行号/缩进、observer/listener/timer cleanup、toolbar owner 交接、outline stale refresh、find reveal 与窗口快捷键 |
@@ -1746,7 +1749,7 @@ flowchart TB
 | `tests/unit/renderer/state/store.test.ts`、`state/snapshots.test.ts`、`session-snapshot.test.ts`、`recovery-snapshot.test.ts` | AppStore 与版本化快照 DTO | 文档/活动标签受控状态、session/recovery 白名单投影、恢复输入验证和运行时句柄隔离 |
 | `tests/unit/renderer/disposables.test.ts`、`dom.test.ts`、`lifecycle.test.ts` | renderer core 基础设施 | DisposableBag 逆序/幂等清理、清理失败容忍及 listener/timer/observer 封装；requiredElement/optionalElement；LifecycleManager 注册顺序 init、逆序 dispose、init 失败回收已初始化控制器 |
 | `tests/unit/renderer/strings.test.ts`、`line-ending.test.ts` | renderer 纯函数工具 | escapeHTML / fileName / stripExtension；detectLineEnding 的 CRLF / LF 判定 |
-| `tests/unit/renderer/theme.test.ts`、`theme-controller.test.ts`、`localization.test.ts` | 主题与本地化纯函数 | isDarkTheme 与主题常量；resolveEffectiveTheme / resolveThemeMode / 亮暗主题校验 / code / content theme 解析；resolveLocale / translate / formatIpcErrorMessage 与稳定错误码 |
+| `tests/unit/renderer/theme.test.ts`、`theme-controller.test.ts`、`theme-coordinator.test.ts`、`localization.test.ts` | 主题与本地化纯函数与主题协调器 | isDarkTheme 与主题常量；resolveEffectiveTheme / resolveThemeMode / 亮暗主题校验 / code / content theme 解析；ThemeCoordinator 联动 content/code theme、状态栏同步与 Vditor setTheme 应用；resolveLocale / translate / formatIpcErrorMessage 与稳定错误码 |
 | `tests/unit/renderer/notifications.test.ts`、`window-and-menu-controller.test.ts` | 通知与窗口/菜单控制器 | 状态消息、临时通知与确认对话框的计时、locale 切换与清理；窗口控件绑定与 dispose、菜单 checked 状态与命名命令分发、右键菜单互斥交接 |
 | `tests/unit/renderer/app-controller.test.ts` | `src/renderer/app/app-controller.ts` | 启动顺序、部分初始化失败回收、beforeunload、窗口快捷键、Markdown drop、open-files/menu 订阅和迟到回调清理 |
 | `tests/unit/renderer/document-link-navigation-controller.test.ts` | `src/renderer/editor/document-link-navigation-controller.ts` | 相对 Markdown/片段导航、危险 scheme 拦截、modifier hint、tooltip 清理和注入 bridge 协作 |

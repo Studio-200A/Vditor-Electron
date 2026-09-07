@@ -54,7 +54,8 @@ describe('TabController', () => {
 
     const buttons = document.querySelectorAll<HTMLButtonElement>('.document-tab');
     expect(buttons).toHaveLength(2);
-    expect(buttons[0]?.title).toBe('/notes/one.md');
+    expect(buttons[0]?.dataset.tooltip).toBe('/notes/one.md');
+    expect(buttons[0]?.hasAttribute('title')).toBe(false);
     expect(buttons[1]?.classList.contains('active')).toBe(true);
     expect(buttons[1]?.querySelector('.dirty')?.textContent).toBe('●');
     expect(buttons[1]?.querySelector('.conflict')?.title).toBe('Attention: Two');

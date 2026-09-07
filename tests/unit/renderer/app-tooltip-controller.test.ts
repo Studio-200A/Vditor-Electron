@@ -4,11 +4,19 @@ import { AppTooltipController } from '../../../src/renderer/ui/app-tooltip-contr
 
 function fixture() {
   document.body.innerHTML =
-    '<aside id="sidebar"><button id="target" data-tooltip="Open folder"><span>icon</span></button></aside><div id="tooltip" hidden></div>';
+    '<aside id="sidebar"><button id="target" data-tooltip="Open folder"><span>icon</span></button></aside><div id="tabBar"><button id="tab" data-tooltip="/notes/file.md">File</button></div><div id="tooltip" hidden></div>';
   const tooltip = document.getElementById('tooltip')!;
   const sidebar = document.getElementById('sidebar')!;
-  const controller = new AppTooltipController({ tooltip, sidebar, window });
-  return { controller, sidebar, tooltip, target: document.getElementById('target')! };
+  const tabBar = document.getElementById('tabBar')!;
+  const controller = new AppTooltipController({ tooltip, tooltipRoots: [sidebar, tabBar], window });
+  return {
+    controller,
+    sidebar,
+    tabBar,
+    tooltip,
+    target: document.getElementById('target')!,
+    tab: document.getElementById('tab')!,
+  };
 }
 
 afterEach(() => {
@@ -44,5 +52,14 @@ describe('AppTooltipController', () => {
     f.controller.dispose();
     f.target.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
     expect(f.tooltip.hidden).toBe(true);
+  });
+
+  it('uses the shared tooltip for document tabs', () => {
+    const f = fixture();
+    f.controller.init();
+    f.tab.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, clientX: 20, clientY: 30 }));
+
+    expect(f.tooltip.hidden).toBe(false);
+    expect(f.tooltip.textContent).toBe('/notes/file.md');
   });
 });

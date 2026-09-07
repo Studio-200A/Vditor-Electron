@@ -8,6 +8,7 @@ describe('SettingsRuntimeController', () => {
   beforeEach(() => {
     dom = new JSDOM(`<!doctype html><form>
       <input name="uiZoom" type="number" value="100" />
+      <input name="editorZoom" type="number" value="100" />
       <select name="locale"><option value="en_US">English</option><option value="zh_Hans">Chinese</option></select>
       <input name="workspaceReadDepth" type="range" value="7" />
       <select name="previewMode"><option value="both">Both</option><option value="editor">Editor</option></select>
@@ -103,6 +104,31 @@ describe('SettingsRuntimeController', () => {
     expect(effects.rebuildEditors).not.toHaveBeenCalled();
     expect(effects.applyTheme).toHaveBeenCalledWith('classic');
     expect(effects.showMessage).toHaveBeenCalledWith('message.settingsSaved');
+  });
+
+  it('applies editor zoom without rebuilding the editor', async () => {
+    const current = {
+      uiZoom: 100,
+      editorZoom: 100,
+      locale: 'en_US',
+      workspaceReadDepth: 7,
+      previewMode: 'both',
+      sanitize: true,
+      systemTheme: false,
+      theme: 'classic',
+      lightTheme: 'classic',
+      darkTheme: 'dark',
+      codeTheme: 'github',
+      lightCodeTheme: 'github',
+      darkCodeTheme: 'github-dark',
+    };
+    const { controller, effects } = createController(current);
+    (dom.window.document.querySelector('[name="editorZoom"]') as HTMLInputElement).value = '125';
+
+    await controller.save(false);
+
+    expect(effects.applyPresentation).toHaveBeenCalledOnce();
+    expect(effects.rebuildEditors).not.toHaveBeenCalled();
   });
 
   it('dispatches locale, workspace, live-editor, and rebuild effects after a successful save', async () => {
