@@ -464,6 +464,14 @@
       if (applyPresentation) applyPresentationSettings();
     },
   });
+  const settingsDialogLayoutController = new PURE.SettingsDialogLayoutController({
+    card: $('.settings-card'),
+    onPersist: (settingsDialogSize) => {
+      state.settings.settingsDialogSize = settingsDialogSize;
+      void queueSettingsSave({ settingsDialogSize });
+    },
+    onWindowResize: syncTopControlsWidth,
+  });
   const localizationController = new PURE.LocalizationController({
     store,
     locales: LOCALES,
@@ -3064,7 +3072,7 @@
     $('#previewZoomSetting').classList.toggle('hidden', currentMode !== 'sv');
     $('#editorTextWidthValue').textContent = `${$('#editorTextWidth').value}%`;
     syncWorkspaceReadDepthValue();
-    restoreSettingsCardSize();
+    settingsDialogLayoutController.restore(state.settings.settingsDialogSize);
     settingsWindow.open();
   }
 
@@ -3248,146 +3256,6 @@
     const input = $('#settingsForm [name="workspaceReadDepth"]');
     const output = $('#workspaceReadDepthValue');
     if (input && output) output.textContent = input.value;
-  }
-
-  function settingsCardLimits() {
-    const maxWidth = Math.max(1, Math.floor(window.innerWidth * 0.9));
-    const maxHeight = Math.max(1, Math.floor(window.innerHeight * 0.9));
-    return {
-      minWidth: Math.min(620, maxWidth),
-      minHeight: Math.min(420, maxHeight),
-      maxWidth,
-      maxHeight,
-    };
-  }
-
-  function setSettingsCardBounds({ left, top, width, height }) {
-    const card = $('.settings-card');
-    const size = settingsCardLimits();
-    const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value));
-    const nextWidth = clamp(width, size.minWidth, size.maxWidth);
-    const nextHeight = clamp(height, size.minHeight, size.maxHeight);
-    const nextLeft = clamp(left, 0, Math.max(0, window.innerWidth - nextWidth));
-    const nextTop = clamp(top, 0, Math.max(0, window.innerHeight - nextHeight));
-    card.style.position = 'fixed';
-    card.style.left = `${nextLeft}px`;
-    card.style.top = `${nextTop}px`;
-    card.style.width = `${nextWidth}px`;
-    card.style.height = `${nextHeight}px`;
-  }
-
-  function settingsCardBounds() {
-    const card = $('.settings-card');
-    return {
-      left: card.offsetLeft,
-      top: card.offsetTop,
-      width: card.offsetWidth,
-      height: card.offsetHeight,
-    };
-  }
-
-  function restoreSettingsCardSize() {
-    const saved = state.settings.settingsDialogSize?.customized
-      ? state.settings.settingsDialogSize
-      : { width: 1080, height: 780 };
-    const size = settingsCardLimits();
-    const width = Math.min(size.maxWidth, Math.max(size.minWidth, Number(saved.width) || 1080));
-    const height = Math.min(size.maxHeight, Math.max(size.minHeight, Number(saved.height) || 780));
-    setSettingsCardBounds({
-      left: Math.round((window.innerWidth - width) / 2),
-      top: Math.round((window.innerHeight - height) / 2),
-      width,
-      height,
-    });
-  }
-
-  function persistSettingsCardSize() {
-    const { width, height } = settingsCardBounds();
-    const settingsDialogSize = {
-      width: Math.round(width),
-      height: Math.round(height),
-      customized: true,
-    };
-    state.settings.settingsDialogSize = settingsDialogSize;
-    void queueSettingsSave({ settingsDialogSize });
-  }
-
-  function setupSettingsDrag() {
-    const card = $('.settings-card');
-    const header = card.querySelector(':scope > header');
-    const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value));
-
-    header.addEventListener('mousedown', (event) => {
-      if (event.button !== 0 || event.target.closest('button')) return;
-      const start = settingsCardBounds();
-      setSettingsCardBounds(start);
-      const offsetX = event.clientX - start.left;
-      const offsetY = event.clientY - start.top;
-      const move = (moveEvent) => {
-        setSettingsCardBounds({
-          left: moveEvent.clientX - offsetX,
-          top: moveEvent.clientY - offsetY,
-          width: start.width,
-          height: start.height,
-        });
-      };
-      const up = () => {
-        window.removeEventListener('mousemove', move);
-        window.removeEventListener('mouseup', up);
-      };
-      window.addEventListener('mousemove', move);
-      window.addEventListener('mouseup', up);
-    });
-
-    $$('[data-settings-resize]', card).forEach((handle) => {
-      handle.addEventListener('mousedown', (event) => {
-        if (event.button !== 0) return;
-        event.preventDefault();
-        event.stopPropagation();
-        const edge = handle.dataset.settingsResize;
-        const start = settingsCardBounds();
-        const right = start.left + start.width;
-        const bottom = start.top + start.height;
-        const startX = event.clientX;
-        const startY = event.clientY;
-        setSettingsCardBounds(start);
-        document.body.classList.add('settings-card-resizing');
-        const move = (moveEvent) => {
-          const size = settingsCardLimits();
-          const deltaX = moveEvent.clientX - startX;
-          const deltaY = moveEvent.clientY - startY;
-          const width = edge.includes('w')
-            ? clamp(start.width - deltaX, size.minWidth, size.maxWidth)
-            : edge.includes('e')
-              ? clamp(start.width + deltaX, size.minWidth, size.maxWidth)
-              : start.width;
-          const height = edge.includes('n')
-            ? clamp(start.height - deltaY, size.minHeight, size.maxHeight)
-            : edge.includes('s')
-              ? clamp(start.height + deltaY, size.minHeight, size.maxHeight)
-              : start.height;
-          setSettingsCardBounds({
-            left: edge.includes('w') ? right - width : start.left,
-            top: edge.includes('n') ? bottom - height : start.top,
-            width,
-            height,
-          });
-        };
-        const up = () => {
-          document.body.classList.remove('settings-card-resizing');
-          window.removeEventListener('mousemove', move);
-          window.removeEventListener('mouseup', up);
-          persistSettingsCardSize();
-        };
-        window.addEventListener('mousemove', move);
-        window.addEventListener('mouseup', up);
-      });
-    });
-
-    window.addEventListener('resize', () => {
-      if (card.style.position === 'fixed') setSettingsCardBounds(settingsCardBounds());
-      syncTopControlsWidth();
-    });
   }
 
   async function handleExternalChange(change) {
@@ -4089,7 +3957,7 @@
         openSettings();
       }
     };
-    setupSettingsDrag();
+    settingsDialogLayoutController.init();
     notifications.init();
     $('#openSettingsFolder').onclick = async () =>
       window.appAPI.showItemInFolder(await window.appAPI.getSettingsPath());
@@ -4410,6 +4278,7 @@
   }
 
   function disposeAppDomains() {
+    settingsDialogLayoutController.dispose();
     settingsWindow.dispose();
     localizationController.dispose();
     windowController.dispose();
