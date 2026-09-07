@@ -156,6 +156,7 @@ export type { ContextMenuItem } from './ui/context-menu-controller.js';
 export { MenuController } from './ui/menu-controller.js';
 export type { MenuControllerOptions, MenuItem } from './ui/menu-controller.js';
 export { WindowController } from './ui/window-controller.js';
+export { SidebarLayoutController } from './ui/sidebar-layout-controller.js';
 export type { WindowControllerOptions } from './ui/window-controller.js';
 export { ExportController } from './export/export-controller.js';
 export type { ExportControllerOptions, ExportDocument } from './export/export-controller.js';

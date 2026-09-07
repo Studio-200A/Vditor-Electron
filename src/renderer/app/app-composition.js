@@ -629,9 +629,6 @@
   let closeAppMenu = () => {};
   let appMenuBlurHandler;
   let settingsSaveTimer;
-  let sidebarTransitionTimer;
-  let sidebarTransitionEndHandler;
-  let sidebarLayoutAnimations = [];
   let hoveredDocumentLink = null;
   let hoveredSidebarTooltip = null;
   let editorSelectionActive = false;
@@ -640,6 +637,25 @@
   const contextMenuController = new PURE.ContextMenuController($('#contextMenu'), () =>
     closeAppMenu(),
   );
+  const sidebarLayoutController = new PURE.SidebarLayoutController({
+    app: $('#app'),
+    sidebar: $('#sidebar'),
+    toggle: $('#toggleSidebar'),
+    menuBar: $('#appMenuBar'),
+    titlebarActions: $('.titlebar-file-actions'),
+    animatedElements: [$('#tabBar'), $('#vditorToolbarMount'), $('#editorArea')],
+    chromeElements: [$('#tabBar'), $('#vditorToolbarMount')],
+    getSidebarWidth: () => Number(state.settings.sidebarWidth),
+    getSidebarVisible: () => state.settings.sidebarVisible,
+    setSidebarVisible: (visible) => {
+      state.settings.sidebarVisible = visible;
+    },
+    persistSidebarVisible: (visible) => void queueSettingsSave({ sidebarVisible: visible }),
+    applyTopControlsWidth,
+    syncTopControlsWidth,
+    refreshEditorLayout: () => scheduleSplitLineNumbers(activeTab()),
+    duration: sidebarTransitionDuration,
+  });
 
   function t(key, params = {}) {
     return translateImpl(LOCALES, state.locale, key, params);
@@ -3650,136 +3666,8 @@
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 1 : 160;
   }
 
-  function sidebarLayoutPositions() {
-    return ['#tabBar', '#vditorToolbarMount', '#editorArea'].flatMap((selector) => {
-      const element = $(selector);
-      return element ? [[element, element.getBoundingClientRect().left]] : [];
-    });
-  }
-
-  function measureCollapsedSidebarChrome() {
-    const app = $('#app');
-    const wasAppCollapsed = app.classList.contains('sidebar-collapsed');
-    app.classList.add('sidebar-collapsed');
-    const positions = ['#tabBar', '#vditorToolbarMount'].flatMap((selector) => {
-      const element = $(selector);
-      return element ? [[element, element.getBoundingClientRect().left]] : [];
-    });
-    app.classList.toggle('sidebar-collapsed', wasAppCollapsed);
-    return positions;
-  }
-
-  function cancelSidebarLayoutAnimations() {
-    sidebarLayoutAnimations.forEach((animation) => animation.cancel());
-    sidebarLayoutAnimations = [];
-  }
-
-  function animateSidebarLayout(initialPositions, visible, targetChromePositions) {
-    cancelSidebarLayoutAnimations();
-    const initialByElement = new Map(initialPositions);
-    const targetChromeByElement = new Map(targetChromePositions);
-    const duration = sidebarTransitionDuration();
-    const sidebarWidth = Number(state.settings.sidebarWidth);
-    sidebarLayoutAnimations = sidebarLayoutPositions().flatMap(([element, currentLeft]) => {
-      const initialLeft = initialByElement.get(element);
-      if (initialLeft === undefined) return [];
-      const from = initialLeft - currentLeft;
-      const to =
-        element.id === 'editorArea'
-          ? visible
-            ? sidebarWidth
-            : -sidebarWidth
-          : visible
-            ? 0
-            : (targetChromeByElement.get(element) ?? currentLeft) - currentLeft;
-      if (Math.abs(from - to) < 0.5) return [];
-      return [
-        element.animate(
-          [{ transform: `translateX(${from}px)` }, { transform: `translateX(${to}px)` }],
-          { duration, easing: 'ease', fill: 'forwards' },
-        ),
-      ];
-    });
-  }
-
-  function finishSidebarTransition(refreshEditorLayout = false) {
-    const sidebar = $('#sidebar');
-    clearTimeout(sidebarTransitionTimer);
-    sidebarTransitionTimer = undefined;
-    if (sidebarTransitionEndHandler) {
-      sidebar.removeEventListener('transitionend', sidebarTransitionEndHandler);
-      sidebarTransitionEndHandler = undefined;
-    }
-    const wasOpening = sidebar.classList.contains('sidebar-opening');
-    const app = $('#app');
-    const wasHiding = app.classList.contains('sidebar-hiding');
-    if (wasHiding) sidebar.classList.add('collapsed');
-    sidebar.classList.remove('sidebar-entering', 'sidebar-opening', 'sidebar-closing');
-    if (wasOpening) sidebar.classList.remove('collapsed');
-    if (wasHiding) app.classList.add('sidebar-collapsed');
-    app.classList.remove('sidebar-transitioning', 'sidebar-hiding');
-    syncTopControlsWidth();
-    // The layout now has its final flex geometry, so dropping the composited
-    // FLIP transforms cannot visibly move the toolbar, tabs, or Vditor host.
-    cancelSidebarLayoutAnimations();
-    if (refreshEditorLayout) scheduleSplitLineNumbers(activeTab());
-  }
-
   function toggleSidebar(force) {
-    const app = $('#app');
-    const sidebar = $('#sidebar');
-    const isTransitioning = app.classList.contains('sidebar-transitioning');
-    const visible =
-      typeof force === 'boolean'
-        ? force
-        : isTransitioning
-          ? !state.settings.sidebarVisible
-          : sidebar.classList.contains('collapsed');
-    const currentTargetVisible = isTransitioning
-      ? state.settings.sidebarVisible
-      : !sidebar.classList.contains('collapsed');
-    if (currentTargetVisible === visible) {
-      state.settings.sidebarVisible = visible;
-      $('#toggleSidebar')?.setAttribute('aria-pressed', String(visible));
-      if (!isTransitioning) syncTopControlsWidth();
-      return;
-    }
-    finishSidebarTransition();
-    const initialLayout = sidebarLayoutPositions();
-    app.classList.add('sidebar-transitioning');
-    if (visible) {
-      const menuWidth = $('#appMenuBar').getBoundingClientRect().width;
-      applyTopControlsWidth(state.settings.sidebarWidth, menuWidth);
-      // A collapsed sidebar has zero layout width. Keep an overlay box until
-      // the slide-in ends, so Vditor does not reflow during this animation.
-      sidebar.classList.add('sidebar-entering');
-      void sidebar.offsetWidth;
-      sidebar.classList.add('sidebar-opening');
-    } else {
-      $('.titlebar-file-actions').style.flexBasis = 'auto';
-      // Keep the sidebar's flex space until it finishes sliding out, so the
-      // Vditor document resizes at the same point as on sidebar open.
-      sidebar.classList.add('sidebar-closing');
-    }
-    if (!visible) sidebar.classList.remove('collapsed');
-    if (visible) {
-      app.classList.remove('sidebar-collapsed', 'sidebar-hiding');
-    } else {
-      app.classList.add('sidebar-hiding');
-    }
-    state.settings.sidebarVisible = visible;
-    $('#toggleSidebar')?.setAttribute('aria-pressed', String(visible));
-    queueSettingsSave({ sidebarVisible: visible });
-    const targetChromeLayout = visible ? [] : measureCollapsedSidebarChrome();
-    // Keep Vditor's width fixed for the slide, while the surrounding chrome
-    // follows its eventual flex position on compositor-only transforms.
-    animateSidebarLayout(initialLayout, visible, targetChromeLayout);
-    sidebarTransitionEndHandler = (event) => {
-      if (event.target !== sidebar || event.propertyName !== 'transform') return;
-      finishSidebarTransition(true);
-    };
-    sidebar.addEventListener('transitionend', sidebarTransitionEndHandler);
-    sidebarTransitionTimer = setTimeout(() => finishSidebarTransition(true), 220);
+    sidebarLayoutController.toggle(force);
   }
 
   function setupEvents() {
@@ -4214,6 +4102,7 @@
   }
 
   function disposeAppDomains() {
+    sidebarLayoutController.dispose();
     settingsDialogLayoutController.dispose();
     settingsWindow.dispose();
     localizationController.dispose();
