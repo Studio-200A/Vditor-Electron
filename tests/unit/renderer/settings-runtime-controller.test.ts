@@ -195,4 +195,31 @@ describe('SettingsRuntimeController', () => {
     expect(sanitize.checked).toBe(true);
     expect(savePatch).not.toHaveBeenCalled();
   });
+
+  it('saves select changes immediately', async () => {
+    vi.useFakeTimers();
+    const current = {
+      uiZoom: 100,
+      locale: 'en_US',
+      workspaceReadDepth: 7,
+      previewMode: 'both',
+      sanitize: true,
+      systemTheme: false,
+      theme: 'classic',
+      lightTheme: 'classic',
+      darkTheme: 'dark',
+      codeTheme: 'github',
+      lightCodeTheme: 'github',
+      darkCodeTheme: 'github-dark',
+    };
+    const { controller, savePatch } = createController(current);
+    const locale = dom.window.document.querySelector('[name="locale"]') as HTMLSelectElement;
+    locale.value = 'zh_Hans';
+
+    await controller.scheduleLiveSave({ target: locale } as Event);
+    await vi.runAllTimersAsync();
+
+    expect(savePatch).toHaveBeenCalledTimes(1);
+    expect(current.locale).toBe('zh_Hans');
+  });
 });

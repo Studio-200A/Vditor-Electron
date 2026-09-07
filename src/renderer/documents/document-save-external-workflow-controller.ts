@@ -305,7 +305,7 @@ export class DocumentSaveExternalWorkflowController<TDocument extends SaveWorkfl
     }
     if (writesConflictedPath && overwriteVersion === null) {
       if (document.externalChangeIgnored)
-        return this.confirmOverwrite(document, destinationIdentity, destination);
+        return this.confirmOverwrite(document, destinationIdentity, destination, false);
       this.options.showMessage('resolve-conflict', document);
       return false;
     }
@@ -483,6 +483,7 @@ export class DocumentSaveExternalWorkflowController<TDocument extends SaveWorkfl
     document: TDocument,
     identity: string | null,
     destination: string,
+    serialize = true,
   ): Promise<boolean> {
     const conflict = document.externalConflict;
     if (!conflict || !(await this.options.confirm('overwrite', document))) return false;
@@ -490,9 +491,9 @@ export class DocumentSaveExternalWorkflowController<TDocument extends SaveWorkfl
       this.options.showMessage('changed-again', document);
       return false;
     }
-    return this.options.saveDocument(document, () =>
-      this.performSave(document, false, conflict.version, null, identity, destination),
-    );
+    const save = () =>
+      this.performSave(document, false, conflict.version, null, identity, destination);
+    return serialize ? this.options.saveDocument(document, save) : save();
   }
 
   private async confirmRecreate(

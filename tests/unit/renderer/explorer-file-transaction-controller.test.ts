@@ -17,6 +17,7 @@ function fixture(options: { readonly persistFails?: boolean } = {}) {
   const deleteItem = vi.fn().mockResolvedValue(undefined);
   const confirmDelete = vi.fn().mockResolvedValue(true);
   const preserveDeletedDocument = vi.fn().mockResolvedValue(undefined);
+  const showError = vi.fn();
   const controller = new ExplorerFileTransactionController<Document>({
     fileAPI: {
       createItem: vi.fn(),
@@ -69,9 +70,9 @@ function fixture(options: { readonly persistFails?: boolean } = {}) {
     updateActiveDocumentUI: vi.fn(),
     refreshTree: vi.fn().mockImplementation(async () => calls.push('refresh')),
     persistSession: vi.fn().mockImplementation(async () => calls.push('session')),
-    showError: vi.fn(),
+    showError,
   });
-  return { controller, document, calls, deleteItem, preserveDeletedDocument };
+  return { controller, document, calls, deleteItem, preserveDeletedDocument, showError };
 }
 
 describe('ExplorerFileTransactionController', () => {
@@ -111,6 +112,11 @@ describe('ExplorerFileTransactionController', () => {
     expect(f.calls).toContain('rebind');
     expect(f.calls.filter((call) => call === 'resources')).toHaveLength(2);
     expect(f.calls.filter((call) => call === 'refresh')).toHaveLength(1);
+    expect(f.showError).toHaveBeenCalledWith(expect.any(AggregateError));
+    expect(f.showError.mock.calls[0][0].errors[0]).toHaveProperty(
+      'message',
+      'settings unavailable',
+    );
   });
 
   it('marks affected documents unavailable after deleting an Explorer entry', async () => {

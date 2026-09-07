@@ -141,8 +141,13 @@ export class SettingsRuntimeController {
 
   async scheduleLiveSave(event: Event): Promise<void> {
     const input = event.target;
-    if (!(input instanceof HTMLInputElement) || !input.name || this.disposed) return;
-    if (!(await this.confirmDangerousChange(input))) return;
+    if (
+      !(input instanceof HTMLInputElement || input instanceof HTMLSelectElement) ||
+      !input.name ||
+      this.disposed
+    )
+      return;
+    if (input instanceof HTMLInputElement && !(await this.confirmDangerousChange(input))) return;
     if (
       (input.type === 'number' || input.type === 'range') &&
       (!input.value || !input.validity.valid)
@@ -154,7 +159,9 @@ export class SettingsRuntimeController {
         this.saveTimer = null;
         void this.save(false);
       },
-      input.type === 'text' || input.type === 'number' ? 250 : 0,
+      input instanceof HTMLInputElement && (input.type === 'text' || input.type === 'number')
+        ? 250
+        : 0,
     );
   }
 

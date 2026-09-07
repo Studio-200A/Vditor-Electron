@@ -90,6 +90,10 @@ export class DocumentLinkNavigationController<TTab extends DocumentLinkTab> {
     );
   }
 
+  clearHoveredLink(): void {
+    this.clearHovered();
+  }
+
   private async handleClick(tab: TTab, event: MouseEvent): Promise<void> {
     const target = this.targetFor(tab, event.target);
     if (!target) {

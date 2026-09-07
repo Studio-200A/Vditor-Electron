@@ -40,6 +40,7 @@ function fixture(
   const updateDocument = vi.fn((item: TestDocument, updates: Record<string, unknown>) =>
     Object.assign(item, updates),
   );
+  const readFile = vi.fn(async () => ({ content: 'before', encoding: 'utf-8' }));
   const writeClipboard = vi.fn(async () => undefined);
   const showMessage = vi.fn();
   const options: DocumentSaveExternalWorkflowControllerOptions<TestDocument> = {
@@ -52,7 +53,7 @@ function fixture(
     saveFileDialog: async () => null,
     fileIdentity: async () => document.fileIdentity,
     exists: async () => true,
-    readFile: async () => ({ content: 'before', encoding: 'utf-8' }),
+    readFile,
     writeDocument,
     dirname: async () => '/notes',
     resolveRenamedDocument: async () => null,
@@ -92,6 +93,7 @@ function fixture(
     documents,
     updateDocument,
     writeDocument,
+    readFile,
     writeClipboard,
     showMessage,
     showRecreateNotice: options.showRecreateNotice,
@@ -123,17 +125,37 @@ describe('DocumentSaveExternalWorkflowController', () => {
     expect(f.updateDocument).not.toHaveBeenCalled();
   });
 
+  it('writes ignored external conflicts without reentering the document save queue', async () => {
+    const f = fixture();
+    f.document.externalChangeIgnored = true;
+    f.document.externalConflict = {
+      path: '/notes/one.md',
+      identity: f.document.fileIdentity,
+      content: 'external change',
+      encoding: 'utf-8',
+      detectedAt: Date.now(),
+      version: 1,
+    };
+    f.readFile.mockResolvedValue({ content: 'external change', encoding: 'utf-8' });
+
+    await expect(f.controller.save(f.document)).resolves.toBe(true);
+
+    expect(f.writeDocument).toHaveBeenCalledWith(
+      '/notes/one.md',
+      'after',
+      'external change',
+      false,
+    );
+  });
+
   it('copies the pre-deletion snapshot after recreating a deleted document', async () => {
-    let target!: TestDocument;
-    const f = fixture(undefined, async () => {
-      target.externalFileState = {
-        kind: 'deleted',
-        path: '/notes/one.md',
-        identity: target.fileIdentity,
-        version: 1,
-      };
-    });
-    target = f.document;
+    const f = fixture();
+    f.document.externalFileState = {
+      kind: 'deleted',
+      path: '/notes/one.md',
+      identity: f.document.fileIdentity,
+      version: 1,
+    };
     f.document.content = 'Content before deletion';
 
     await f.controller.preserveUnavailable(f.document, 'deleted', '/notes/one.md');

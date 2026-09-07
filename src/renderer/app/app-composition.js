@@ -689,7 +689,10 @@
     updateActiveDocumentUI: () => updateActiveUI(),
     refreshTree: () => refreshTree(),
     persistSession: (throwOnFailure) => persistSession(throwOnFailure),
-    showError: (error) => showMessage(ipcErrorMessage(error), true),
+    showError: (error) => {
+      const primaryError = error instanceof AggregateError ? (error.errors[0] ?? error) : error;
+      showMessage(ipcErrorMessage(primaryError), true);
+    },
   });
   const explorerController = new PURE.ExplorerController({
     store,
@@ -2195,7 +2198,7 @@
     await documentSaveExternalWorkflowController.reloadExternalChange(tab);
   }
 
-  async function confirmExternalOverwrite(tab, queuedIdentity = null, selectedDestination = null) {
+  async function confirmExternalOverwrite(tab) {
     if (!tab) return false;
     return documentSaveExternalWorkflowController.confirmExternalOverwrite(tab);
   }
@@ -2208,7 +2211,7 @@
     await documentSaveExternalWorkflowController.keepAsUntitled(tab);
   }
 
-  async function confirmExternalFileRecreate(tab, recreate) {
+  async function confirmExternalFileRecreate(tab) {
     if (!tab) return false;
     return documentSaveExternalWorkflowController.recreateFile(tab);
   }
@@ -2835,7 +2838,7 @@
       editorSelectionActive = false;
       closeContextMenu();
       statusMenuController.closeAll();
-      clearHoveredDocumentLink();
+      documentLinkNavigationController.clearHoveredLink();
     });
     const resize = $('#sidebarResize');
     let resizing = false;
