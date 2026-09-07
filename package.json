@@ -67,6 +67,11 @@
       "static/**/*",
       "package.json"
     ],
+    "electronDownload": {
+      "mirrorOptions": {
+        "mirror": "https://registry.npmmirror.com/-/binary/electron/"
+      }
+    },
     "linux": {
       "syncDesktopName": true,
       "executableName": "vditor-desktop",

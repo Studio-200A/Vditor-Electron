@@ -2,6 +2,10 @@
 
 ## 0.2.5 - Modularized Refactor
 
+### Development
+
+- **build(Electron downloads):** Configured npm installation and electron-builder to retrieve pinned Electron binaries from the npmmirror registry instead of Electron's official release host.
+
 ### Renderer Architecture
 
 #### Batch 9 architecture follow-up (2026-09-07)

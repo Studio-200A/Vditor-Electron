@@ -158,7 +158,7 @@ npm ci
 npm start
 ```
 
-On Linux, `npm run test:e2e` reuses an already unpacked `node_modules/electron/dist` runtime before requesting a download. Other first commands that launch or package Electron may download the pinned Electron 44.1.0 runtime into Electron's local cache; this is separate from `npm ci` and does not change the lockfile. The runtime requires macOS 13 or later, and Electron 44 does not provide prebuilt Windows 32-bit or Linux ARMv7 binaries. This repository's Linux release script currently targets x86_64; Windows/macOS packaging and native validation remain separate platform work.
+Electron binary downloads for `npm ci` and electron-builder use the npmmirror registry (`https://registry.npmmirror.com/-/binary/electron/`). On Linux, `npm run test:e2e` reuses an already unpacked `node_modules/electron/dist` runtime before requesting a download. The pinned Electron 44.1.0 runtime is cached locally and does not change the lockfile. The runtime requires macOS 13 or later, and Electron 44 does not provide prebuilt Windows 32-bit or Linux ARMv7 binaries. This repository's Linux release script currently targets x86_64; Windows/macOS packaging and native validation remain separate platform work.
 
 The build copies Vditor's bundled assets locally; runtime use does not depend on a Vditor CDN.
 
