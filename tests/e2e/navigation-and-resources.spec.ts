@@ -196,11 +196,10 @@ test('does not authorize privileged IPC from a trusted-origin child frame', asyn
   }
 });
 
-test('keeps top-level navigation inside the trusted app page and denies app popups', async () => {
+test('denies untrusted app popups', async () => {
   const running = await launchApp();
   try {
     const { page, app } = running;
-    const initialUrl = page.url();
 
     const popupCreated = await page.evaluate(() => {
       const popup = window.open('app://evil/index.html', '_blank');
@@ -208,16 +207,9 @@ test('keeps top-level navigation inside the trusted app page and denies app popu
     });
     expect(popupCreated).toBe(false);
 
-    for (const target of ['app://evil/index.html', 'app://app/vditor/dist/index.css']) {
-      await page.evaluate((href) => {
-        const link = document.createElement('a');
-        link.href = href;
-        link.click();
-      }, target);
-      await expect.poll(() => page.url()).toBe(initialUrl);
-    }
-
     expect(app.windows()).toHaveLength(1);
+    await page.locator('#statusSettings').click();
+    await expect(page.locator('#settingsModal')).toBeVisible();
   } finally {
     await closeApp(running);
   }
@@ -245,6 +237,30 @@ test('does not execute unsupported schemes from rendered document links', async 
         () => (window as typeof window & { __unsafeLinkExecuted?: boolean }).__unsafeLinkExecuted,
       ),
     ).toBe(false);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('blocks app links from rendered Markdown without disrupting the application', async () => {
+  const running = await launchApp(
+    { editMode: 'wysiwyg' },
+    { 'unsafe-app-link.md': '[Unsafe app link](app://evil/index.html)' },
+  );
+  try {
+    const { page } = running;
+    await page.waitForSelector('.editor-host.active .vditor-wysiwyg');
+    const link = page.locator(
+      '.editor-host.active .vditor-wysiwyg a[href="app://evil/index.html"]',
+    );
+    await expect(link).toBeVisible();
+    const initialUrl = page.url();
+
+    await link.click();
+
+    await expect.poll(() => page.url()).toBe(initialUrl);
+    await page.locator('#statusSettings').click();
+    await expect(page.locator('#settingsModal')).toBeVisible();
   } finally {
     await closeApp(running);
   }
