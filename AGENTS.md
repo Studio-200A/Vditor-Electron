@@ -98,6 +98,13 @@ Only read multiple sections when the task crosses architectural boundaries, such
 - Keep a one-off operation local to its caller. Extract a small named helper when behavior is repeated, security-sensitive, independently testable, or owns cleanup. Do not use line-count limits as a splitting rule: a cohesive transaction with error handling and cleanup may remain one function.
 - Place state next to its owning domain and make transitions explicit. Do not use a persisted setting as incidental UI/session state, and do not serialize DOM nodes, Vditor instances, ranges, observers, timers, or cleanup callbacks.
 
+### Renderer composition layer
+
+- Treat `src/renderer/app/app-composition.js` as a composition boundary: it may create the store and controllers, inject narrow dependencies, wire startup/dispose callbacks, and retain small, named cross-domain coordination callbacks.
+- Do not extract code solely to reduce the composition file's line count. Extract a controller when behavior owns domain state, runtime resources, a security boundary, or an independently testable transaction.
+- Do not add direct Store writes, bridge subscriptions, timers, observers, event listeners, watcher ownership, or Vditor private-DOM access to the composition layer when an existing domain controller can own the behavior.
+- A composition callback must name the coordinated use case and remain narrow. If it accumulates state transitions, resource lifecycle, or reusable business rules, move the behavior to a focused controller with tests and an explicit cleanup path.
+
 ### Comments and error handling
 
 - Comments explain a non-obvious constraint, compatibility assumption, security boundary, platform behavior, or cleanup reason. They do not paraphrase the next statement, narrate edits, or preserve obsolete implementation history.

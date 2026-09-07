@@ -1143,10 +1143,7 @@ test('satisfies the Vditor DOM integration contract', async () => {
       .poll(() =>
         source.evaluate((editor) => {
           const adapter = window.VditorDesktopAdapter;
-          return (
-            adapter.sourceNewlines(editor).length >= 1 &&
-            Boolean(editor.querySelector(adapter.selectors.listMarker))
-          );
+          return adapter.sourceNewlines(editor).length >= 1 && adapter.hasListMarker(editor);
         }),
       )
       .toBe(true);

@@ -1,5 +1,11 @@
 export { escapeHTML, fileName, stripExtension } from './utils/strings.js';
 export { AppController } from './app/app-controller.js';
+export { SessionRestoreController } from './app/session-restore-controller.js';
+export type {
+  SessionRestoreControllerOptions,
+  SessionRestoreDocument,
+  SessionRestoreSettings,
+} from './app/session-restore-controller.js';
 export { ApplicationShellController } from './app/application-shell-controller.js';
 export type {
   ApplicationShellControllerOptions,
@@ -24,6 +30,11 @@ export {
 } from './ui/theme-controller.js';
 export { NotificationsController } from './ui/notifications.js';
 export type { ConfirmDialogOptions, DialogAction } from './ui/notifications.js';
+export { StatusMenuController } from './ui/status-menu-controller.js';
+export type {
+  StatusMenuControllerOptions,
+  ThemeModePresentation,
+} from './ui/status-menu-controller.js';
 export { TabController } from './documents/tab-controller.js';
 export { EditorController } from './editor/editor-controller.js';
 export { DocumentLinkNavigationController } from './editor/document-link-navigation-controller.js';
@@ -166,7 +177,14 @@ export type {
   ExplorerEntry,
   ExplorerSettings,
 } from './workspace/explorer-controller.js';
+export { ExplorerFileTransactionController } from './workspace/explorer-file-transaction-controller.js';
+export type {
+  ExplorerFileTransactionControllerOptions,
+  ExplorerPathState,
+  ExplorerTransactionDocument,
+} from './workspace/explorer-file-transaction-controller.js';
 export { SettingsController, classifySettingsChange } from './settings/settings-controller.js';
+export { SettingsRuntimeController } from './settings/settings-runtime-controller.js';
 export { SettingsPersistence } from './settings/settings-persistence.js';
 export { SettingsDialogLayoutController } from './settings/settings-dialog-layout-controller.js';
 export type {
@@ -174,6 +192,7 @@ export type {
   SettingsControllerOptions,
   SettingsImpact,
 } from './settings/settings-controller.js';
+export type { SettingsRuntimeControllerOptions } from './settings/settings-runtime-controller.js';
 export { SettingsWindow } from './settings/settings-window.js';
 export type { SettingsWindowOptions } from './settings/settings-window.js';
 export { LocalizationController } from './ui/localization-controller.js';

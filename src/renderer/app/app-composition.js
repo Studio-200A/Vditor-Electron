@@ -378,10 +378,16 @@
         !['saved', 'reloaded', 'ignored', 'recreated', 'recreated-copied'].includes(kind),
       );
     },
-    showRecreateNotice: (failed) =>
+    showRecreateNotice: (kind) =>
       showTemporaryDocumentNotice(
-        t(failed ? 'external.recreatedClipboardFailed' : 'external.recreated'),
-        failed,
+        t(
+          {
+            recreated: 'external.recreated',
+            'recreated-copied': 'external.recreatedCopied',
+            'recreated-clipboard-failed': 'external.recreatedClipboardFailed',
+          }[kind],
+        ),
+        kind === 'recreated-clipboard-failed',
       ),
     finish: () => {
       renderTabs();
@@ -482,6 +488,28 @@
     watchDocument: (tab) => watchTabDocument(tab),
     conflictTitle: (title) => t('recovery.conflictTitle', { title }),
   });
+  const sessionRestoreController = new PURE.SessionRestoreController({
+    getSettings: () => state.settings,
+    getWorkspacePath: () => state.workspace,
+    getActiveFilePath: () => activeTab()?.filePath || null,
+    getDocuments: () => state.tabs,
+    persistSnapshot: async (session) => {
+      state.settings.session = session;
+      await queueSettingsSave({ session }, { throwOnFailure: true });
+    },
+    reportPersistenceFailure: (error) =>
+      console.error('Unable to persist the current session.', error),
+    workspaceExists: (workspacePath) => window.fileAPI.exists(workspacePath),
+    setWorkspace,
+    openPaths,
+    activateFile: (filePath) => {
+      const tab = state.tabs.find((document) => document.filePath === filePath);
+      if (tab) switchTab(tab.id);
+    },
+    createEmptyPreview: createToolbarPreview,
+    updateActiveUI,
+    syncTopControlsWidth,
+  });
   const recoveryBannerController = new PURE.RecoveryBannerController({
     banner: $('#recoveryBanner'),
     message: $('#recoveryMessage'),
@@ -561,7 +589,7 @@
     getActiveRuntime: () => activeTab(),
     getPreviewRuntime: () => state.toolbarPreview,
     findRuntimeByToolbar: (toolbar) => state.tabs.find((tab) => tab.toolbar === toolbar) || null,
-    getMountedToolbar: () => $('#vditorToolbarMount').querySelector(VDITOR.selectors.toolbar),
+    getMountedToolbar: () => VDITOR.mountedToolbar($('#vditorToolbarMount')),
   });
   const editorRuntimeCoordinator = new PURE.EditorRuntimeCoordinator({
     getTab: (id) => state.tabs.find((tab) => tab.id === id) || null,
@@ -625,6 +653,44 @@
     isWorkspaceAvailable: (workspacePath) => window.fileAPI.exists(workspacePath),
     onWorkspaceWatchError: () => showMessage(t('workspace.watchResourceLimit'), true),
   });
+  const explorerFileTransactionController = new PURE.ExplorerFileTransactionController({
+    fileAPI: window.fileAPI,
+    getDocuments: () => state.tabs,
+    nextUntitledName: async (parentPath, type) =>
+      untitledItemName(await nextUntitledNumber(parentPath, type), type),
+    fileName,
+    openPath: (filePath) => openPath(filePath),
+    confirmDelete: (entry) =>
+      confirmDialog({ message: t('workspace.delete', { name: entry.name }), draggable: true }),
+    getPathState: () => ({
+      recentFiles: state.settings.recentFiles,
+      workspaceTreeStates: state.settings.workspaceTreeStates,
+    }),
+    applyPathState: ({ recentFiles, workspaceTreeStates }) => {
+      state.settings.recentFiles = recentFiles;
+      state.settings.workspaceTreeStates = workspaceTreeStates;
+    },
+    persistPathState: (pathState) => queueSettingsSave(pathState, { throwOnFailure: true }),
+    suspendWatches: (tabs) => suspendDocumentWatches(tabs),
+    rebindWatches: (tabs) => rebindDocumentWatches(tabs),
+    transitionBindings: (transition) => documentController.transitionBindings(transition),
+    updateDocumentBinding: (tab, binding) =>
+      updateTabDocument(tab, {
+        filePath: binding.nextPath,
+        fileIdentity: binding.fileIdentity,
+        title: fileName(binding.nextPath),
+        baseDir: binding.baseDir,
+      }),
+    preserveDeletedDocument: (tab) =>
+      documentSaveExternalWorkflowController.preserveUnavailable(tab, 'deleted', tab.filePath),
+    syncLocalResourceRoots: () => syncLocalResourceRoots(),
+    rebuildEditors: (tabs) => rebuildRenamedEditors(tabs),
+    renderDocuments: () => renderTabs(),
+    updateActiveDocumentUI: () => updateActiveUI(),
+    refreshTree: () => refreshTree(),
+    persistSession: (throwOnFailure) => persistSession(throwOnFailure),
+    showError: (error) => showMessage(ipcErrorMessage(error), true),
+  });
   const explorerController = new PURE.ExplorerController({
     store,
     fileAPI: window.fileAPI,
@@ -638,10 +704,10 @@
     chooseWorkspace: chooseFolder,
     showMessage,
     showContextMenu: (event, items) => showContextMenu(event, items),
-    renameEntry: renameExplorerItem,
-    deleteEntry: deleteExplorerItem,
+    renameEntry: (entry, name) => explorerFileTransactionController.rename(entry, name),
+    deleteEntry: (entry) => explorerFileTransactionController.delete(entry),
     revealEntry: (filePath) => window.appAPI.showItemInFolder(filePath),
-    createEntry: createExplorerItem,
+    createEntry: (parentPath, type) => explorerFileTransactionController.create(parentPath, type),
     openWorkspaceInFolder: (workspacePath) => window.appAPI.openDirectory(workspacePath),
     saveExpansion: (workspacePath, expandedPaths) => {
       const previous = state.settings.workspaceTreeStates || [];
@@ -705,6 +771,61 @@
     },
     onWindowResize: syncTopControlsWidth,
   });
+  const settingsRuntimeController = new PURE.SettingsRuntimeController({
+    form: $('#settingsForm'),
+    settingsController,
+    getSettings: () => state.settings,
+    getDefaultSettings: () => state.defaultSettings,
+    initializationSettings: PURE.VDITOR_INITIALIZATION_SETTINGS,
+    getAppliedTheme: () => document.documentElement.dataset.theme || state.settings.theme,
+    isDarkTheme,
+    preferredCodeTheme,
+    syncCodeThemeSelect,
+    syncPreviewZoomVisibility: () => {
+      const tab = activeTab();
+      const mode = tab?.vditor && tab.ready ? tab.vditor.getCurrentMode() : tab?.mode;
+      $('#previewZoomSetting').classList.toggle('hidden', mode !== 'sv');
+    },
+    syncEditorTextWidthValue: () => {
+      $('#editorTextWidthValue').textContent = `${$('#editorTextWidth').value}%`;
+    },
+    syncWorkspaceReadDepthValue,
+    restoreDialogLayout: () =>
+      settingsDialogLayoutController.restore(state.settings.settingsDialogSize),
+    openWindow: () => settingsWindow.open(),
+    closeWindow: () => closeSettings({ applyPresentation: false }),
+    showConfirmDialog,
+    translate: t,
+    showMessage,
+    errorMessage: ipcErrorMessage,
+    reloadImages: () => imageRuntimeController.reload(state.tabs),
+    applyLocale,
+    hasWorkspace: () => Boolean(state.workspace),
+    setWorkspaceWatch: (depth) => window.fileAPI.setWorkspaceWatch(state.workspace, depth),
+    refreshWorkspaceTree: refreshTree,
+    applyPresentation: applyPresentationSettings,
+    resolveTheme,
+    applyTheme,
+    applyLiveEditorSettings: applyLiveVditorSettings,
+    rebuildEditors: () => {
+      const openModes = new Map(
+        state.tabs.map((tab) => [
+          tab.id,
+          tab.vditor && tab.ready ? tab.vditor.getCurrentMode() : tab.mode,
+        ]),
+      );
+      state.tabs.forEach((tab) => {
+        updateTabDocument(tab, { mode: openModes.get(tab.id) || tab.mode });
+        rebuildEditor(tab);
+      });
+    },
+    refreshToolbarPreview: () => {
+      if (!state.tabs.length) {
+        destroyToolbarPreview();
+        createToolbarPreview();
+      }
+    },
+  });
   const localizationController = new PURE.LocalizationController({
     store,
     locales: LOCALES,
@@ -766,18 +887,27 @@
     'code-theme',
     'content-theme',
   ];
-  // Vditor 3.11.3 exposes public setters only for themes and preview mode.
-  // Keep this list limited to settings that are passed to its constructor and
-  // have no safe runtime setter; rebuilding clears Vditor's undo stack.
-  const VDITOR_INITIALIZATION_SETTINGS = PURE.VDITOR_INITIALIZATION_SETTINGS;
   let closeAppMenu = () => {};
-  let settingsSaveTimer;
   let editorSelectionActive = false;
   let pendingTableCellSelection = null;
   let contextMenuState = null;
   const contextMenuController = new PURE.ContextMenuController($('#contextMenu'), () =>
     closeAppMenu(),
   );
+  const statusMenuController = new PURE.StatusMenuController({
+    document,
+    modeTrigger: $('#statusMode'),
+    modeMenu: $('#statusModeMenu'),
+    themeTrigger: $('#statusThemeMode'),
+    themeMenu: $('#statusThemeMenu'),
+    getMode: () => {
+      const tab = activeTab();
+      return tab?.vditor && tab.ready ? tab.vditor.getCurrentMode() : null;
+    },
+    onBeforeThemeOpen: syncThemeModeControl,
+    onSelectMode: selectStatusMode,
+    onSelectThemeMode: selectStatusThemeMode,
+  });
   const sidebarLayoutController = new PURE.SidebarLayoutController({
     app: $('#app'),
     sidebar: $('#sidebar'),
@@ -870,18 +1000,7 @@
   }
 
   function syncToolbarAvailability(shouldSyncWrapHeight = true) {
-    const mount = $('#vditorToolbarMount');
-    if (!mount) return;
-    const owner = activeTab() || state.toolbarPreview;
-    const available = Boolean(
-      owner?.ready && owner.toolbar && owner.toolbar.parentElement === mount,
-    );
-    // Vditor inserts its toolbar into the editor host before invoking after().
-    // Keep a non-interactive Desktop skeleton in the shared row until Desktop
-    // owns that node, so the editor geometry never jumps during the hand-off.
-    mount.dataset.toolbarPending = String(!available);
-    mount.setAttribute('aria-busy', String(!available));
-    if (shouldSyncWrapHeight) syncToolbarWrapHeight();
+    toolbarController.syncAvailability(shouldSyncWrapHeight);
   }
 
   function destroyToolbarPreview() {
@@ -925,10 +1044,7 @@
 
   function disableToolbarPreview(preview) {
     preview.vditor?.disabled();
-    preview.toolbar?.querySelectorAll('button, input').forEach((control) => {
-      control.disabled = true;
-      control.tabIndex = -1;
-    });
+    toolbarController.disablePreview(preview);
   }
 
   function selectEditorContextOrAll(event) {
@@ -1624,20 +1740,11 @@
   }
 
   function restoreEditorToolbar(tab) {
-    if (tab && tab.toolbar && tab.toolbar.parentElement === $('#vditorToolbarMount')) {
-      tab.host.insertBefore(tab.toolbar, tab.host.firstChild);
-    }
+    toolbarController.restore(tab);
   }
 
   function mountEditorToolbar(tab) {
-    const mount = $('#vditorToolbarMount');
-    const mounted = mount.querySelector(VDITOR.selectors.toolbar);
-    if (mounted && mounted !== tab.toolbar) {
-      const owner = state.tabs.find((item) => item.toolbar === mounted);
-      if (owner && owner.host.isConnected) owner.host.insertBefore(mounted, owner.host.firstChild);
-      else mounted.remove();
-    }
-    if (tab.toolbar && tab.toolbar.parentElement !== mount) mount.appendChild(tab.toolbar);
+    toolbarController.mountRuntime(tab);
   }
 
   function rebuildEditor(tab, mode) {
@@ -1972,7 +2079,7 @@
       $('#statusPath').textContent = '';
       $('#statusMode').textContent = '—';
       $('#statusMode').setAttribute('aria-disabled', 'true');
-      closeStatusModeMenu();
+      statusMenuController.closeMode();
       $('#statusWords').textContent = t('status.words', { count: 0 });
       $('#statusChars').textContent = t('status.chars', { count: 0 });
       $('#statusLines').textContent = t('status.lines', { count: 0 });
@@ -1994,7 +2101,7 @@
     updateTabDocument(tab, { mode: currentMode });
     $('#statusMode').textContent = currentMode.toUpperCase();
     $('#statusMode').setAttribute('aria-disabled', 'false');
-    syncStatusModeMenu(currentMode);
+    statusMenuController.syncMode(currentMode);
     const chars = content.replace(/\s/g, '').length;
     const latinWords = (content.match(/[A-Za-z0-9_]+/g) || []).length;
     const hanChars = (content.match(/[\u3400-\u9fff]/g) || []).length;
@@ -2014,83 +2121,23 @@
     }
   }
 
-  function syncStatusModeMenu(mode) {
-    $$('#statusModeMenu [data-status-mode]').forEach((button) => {
-      const selected = button.dataset.statusMode === mode;
-      button.setAttribute('aria-checked', String(selected));
-      button.querySelector('.checkmark').textContent = selected ? '✓' : '';
-    });
-  }
-
   function themeModeFromSettings() {
     return resolveThemeModeImpl(state.settings);
   }
 
   function syncThemeModeControl() {
-    const trigger = $('#statusThemeMode');
-    const icon = $('#statusThemeIcon');
-    const menu = $('#statusThemeMenu');
-    if (!trigger || !icon || !menu || !state.settings) return;
     const mode = themeModeFromSettings();
     const labelKey = `themeMode.${mode}`;
-    const label = t(labelKey);
-    icon.className = `theme-mode-icon theme-mode-icon-${mode}`;
-    trigger.dataset.themeMode = mode;
-    trigger.dataset.i18nTitle = labelKey;
-    trigger.title = label;
-    trigger.setAttribute('aria-label', label);
-    $$('#statusThemeMenu [data-theme-mode]').forEach((button) => {
-      button.setAttribute('aria-checked', String(button.dataset.themeMode === mode));
-    });
-  }
-
-  function closeStatusModeMenu() {
-    $('#statusModeMenu').classList.add('hidden');
-    $('#statusMode').setAttribute('aria-expanded', 'false');
-  }
-
-  function closeStatusThemeMenu() {
-    $('#statusThemeMenu').classList.add('hidden');
-    $('#statusThemeMode').setAttribute('aria-expanded', 'false');
-  }
-
-  function toggleStatusModeMenu() {
-    const tab = activeTab();
-    if (!tab?.vditor || !tab.ready) return;
-    const menu = $('#statusModeMenu');
-    const willOpen = menu.classList.contains('hidden');
-    if (!willOpen) {
-      closeStatusModeMenu();
-      return;
-    }
-    closeStatusThemeMenu();
-    syncStatusModeMenu(tab.vditor.getCurrentMode());
-    menu.classList.remove('hidden');
-    $('#statusMode').setAttribute('aria-expanded', 'true');
+    statusMenuController.syncTheme({ mode, labelKey, label: t(labelKey) });
   }
 
   function selectStatusMode(mode) {
     const tab = activeTab();
-    closeStatusModeMenu();
     if (!tab?.vditor || !tab.ready || mode === tab.vditor.getCurrentMode()) return;
     VDITOR.selectEditMode(tab.toolbar, mode);
   }
 
-  function toggleStatusThemeMenu() {
-    const menu = $('#statusThemeMenu');
-    const willOpen = menu.classList.contains('hidden');
-    if (!willOpen) {
-      closeStatusThemeMenu();
-      return;
-    }
-    closeStatusModeMenu();
-    syncThemeModeControl();
-    menu.classList.remove('hidden');
-    $('#statusThemeMode').setAttribute('aria-expanded', 'true');
-  }
-
   async function selectStatusThemeMode(mode) {
-    closeStatusThemeMenu();
     if (!THEME_MODES.includes(mode) || mode === themeModeFromSettings()) return;
     const patch =
       mode === 'system'
@@ -2320,209 +2367,6 @@
     explorerController.showWorkspaceContextMenu(event, parent);
   }
 
-  async function createExplorerItem(parent, type) {
-    if (!parent) return;
-    const number = await nextUntitledNumber(parent, type);
-    const name = untitledItemName(number, type);
-    try {
-      const created = await window.fileAPI.createItem(parent, name, type);
-      await refreshTree();
-      if (type === 'file') await openPath(created);
-    } catch (error) {
-      showMessage(ipcErrorMessage(error), true);
-    }
-  }
-  function renameExplorerItem(entry, row) {
-    const label = row.querySelector('.tree-name');
-    if (!label) return;
-    const input = document.createElement('input');
-    input.className = 'tree-rename-input';
-    input.value = entry.name;
-    label.replaceWith(input);
-    let settled = false;
-    let submitting = false;
-    let affectedTabs = [];
-    const finish = async (commit) => {
-      if (settled || submitting) return;
-      let name = input.value.trim();
-      const extensionStart = entry.type === 'file' ? entry.name.lastIndexOf('.') : -1;
-      if (extensionStart > 0) {
-        const extension = entry.name.slice(extensionStart);
-        const keepsExtension = name.toLocaleLowerCase().endsWith(extension.toLocaleLowerCase());
-        const proposedExtensionStart = name.lastIndexOf('.');
-        const stem = keepsExtension
-          ? name.slice(0, -extension.length)
-          : proposedExtensionStart > 0
-            ? name.slice(0, proposedExtensionStart)
-            : name;
-        if (!stem) name = '';
-        else name = `${stem}${extension}`;
-      }
-      if (!commit || !name || name === entry.name) {
-        settled = true;
-        if (input.isConnected) input.replaceWith(label);
-        return;
-      }
-      submitting = true;
-      settled = true;
-      let fileSystemCommitted = false;
-      const editorRebuilds = new Set();
-      let settingsPlan = null;
-      let settingsPersisted = false;
-      try {
-        const updates = await rebaseOpenTabs(entry.path, entry.path);
-        affectedTabs = updates.map(({ tab }) => tab);
-        const plannedDestination = await window.fileAPI.prepareRename(entry.path, name);
-        const tabPlans = await Promise.all(
-          updates.map(async ({ tab }) => {
-            const nextPath = await window.fileAPI.rebasePath(
-              entry.path,
-              plannedDestination,
-              tab.filePath,
-            );
-            if (!nextPath) throw new Error('Unable to rebase an open document during rename.');
-            return {
-              tab,
-              nextPath,
-              fileIdentity: await window.fileAPI.fileIdentity(nextPath),
-              baseDir: await window.fileAPI.dirname(nextPath),
-            };
-          }),
-        );
-        settingsPlan = await rebasePathState(entry.path, plannedDestination);
-        await suspendDocumentWatches(affectedTabs);
-        const destination = await window.fileAPI.renameItem(entry.path, name);
-        fileSystemCommitted = true;
-        if (destination !== plannedDestination)
-          throw new Error('The rename destination changed before the operation completed.');
-        await documentController.transitionBindings({
-          prepare: async () => tabPlans,
-          commit: async (plans) => {
-            for (const { tab, nextPath, fileIdentity, baseDir } of plans) {
-              const previousBaseDir = tab.baseDir;
-              updateTabDocument(tab, {
-                filePath: nextPath,
-                fileIdentity,
-                title: fileName(nextPath),
-                baseDir,
-              });
-              if (previousBaseDir !== tab.baseDir) editorRebuilds.add(tab);
-            }
-          },
-        });
-        state.settings.recentFiles = settingsPlan.recentFiles;
-        state.settings.workspaceTreeStates = settingsPlan.workspaceTreeStates;
-        await syncLocalResourceRoots();
-        await queueSettingsSave(settingsPlan, { throwOnFailure: true });
-        settingsPersisted = true;
-        await rebindDocumentWatches(affectedTabs);
-        const rebuildFailures = rebuildRenamedEditors(editorRebuilds);
-        if (rebuildFailures.length)
-          throw new AggregateError(rebuildFailures, 'Unable to rebuild every renamed document.');
-        renderTabs();
-        await refreshTree();
-        persistSession();
-      } catch (error) {
-        const failures = [error];
-        try {
-          await rebindDocumentWatches(affectedTabs);
-        } catch (rebindError) {
-          failures.push(rebindError);
-        }
-        if (fileSystemCommitted) {
-          try {
-            await syncLocalResourceRoots();
-          } catch (resourceError) {
-            failures.push(resourceError);
-          }
-          failures.push(...rebuildRenamedEditors(editorRebuilds));
-          if (!settingsPersisted && settingsPlan) {
-            try {
-              await queueSettingsSave(settingsPlan, { throwOnFailure: true });
-              settingsPersisted = true;
-            } catch (settingsError) {
-              failures.push(settingsError);
-            }
-          }
-          renderTabs();
-          try {
-            await refreshTree();
-          } catch (refreshError) {
-            failures.push(refreshError);
-          }
-          try {
-            await persistSession(true);
-          } catch (sessionError) {
-            failures.push(sessionError);
-          }
-        } else {
-          try {
-            await refreshTree();
-          } catch (refreshError) {
-            failures.push(refreshError);
-          }
-        }
-        if (input.isConnected) input.replaceWith(label);
-        showMessage(
-          failures
-            .map((failure) => ipcErrorMessage(failure))
-            .filter(Boolean)
-            .join(' '),
-          true,
-        );
-      }
-    };
-    input.addEventListener('click', (event) => event.stopPropagation());
-    input.addEventListener('keydown', (event) => {
-      event.stopPropagation();
-      if (event.key === 'Enter') {
-        event.preventDefault();
-        void finish(true);
-      } else if (event.key === 'Escape') {
-        event.preventDefault();
-        void finish(false);
-      }
-    });
-    input.addEventListener('blur', () => void finish(true));
-    input.focus();
-    const extensionStart = entry.type === 'file' ? entry.name.lastIndexOf('.') : -1;
-    input.setSelectionRange(0, extensionStart > 0 ? extensionStart : entry.name.length);
-  }
-  async function deleteExplorerItem(entry) {
-    const proceed = await confirmDialog({
-      message: t('workspace.delete', { name: entry.name }),
-      draggable: true,
-    });
-    if (!proceed) return;
-    let affectedTabs = [];
-    try {
-      for (const tab of state.tabs) {
-        if (tab.filePath && (await window.fileAPI.rebasePath(entry.path, entry.path, tab.filePath)))
-          affectedTabs.push(tab);
-      }
-      await suspendDocumentWatches(affectedTabs);
-      await window.fileAPI.deleteItem(entry.path);
-      for (const tab of affectedTabs)
-        await documentController.transitionBindings({
-          prepare: async () => tab,
-          commit: async (document) =>
-            documentSaveExternalWorkflowController.preserveUnavailable(
-              document,
-              'deleted',
-              document.filePath,
-            ),
-        });
-      await rebindDocumentWatches(affectedTabs);
-      renderTabs();
-      updateActiveUI();
-      persistSession();
-      await refreshTree();
-    } catch (error) {
-      await rebindDocumentWatches(affectedTabs);
-      showMessage(ipcErrorMessage(error), true);
-    }
-  }
-
   function scheduleOutline() {
     outlineController.schedule();
   }
@@ -2605,227 +2449,26 @@
     queueSettingsSave({ recentFiles: recent });
   }
   async function persistSession(throwOnFailure = false) {
-    if (!state.settings) return false;
-    const session = PURE.toPersistedSessionSnapshot({
-      restoreWorkspace: state.settings.restoreWorkspace,
-      restoreTabs: state.settings.restoreTabs,
-      workspacePath: state.workspace,
-      activeFilePath: activeTab()?.filePath || null,
-      openFiles: state.tabs.map((tab) => tab.filePath),
-      unavailableFilePaths: new Set(
-        state.tabs
-          .filter((tab) => tab.externalFileState && tab.filePath)
-          .map((tab) => tab.filePath),
-      ),
-    });
-    state.settings.session = session;
-    try {
-      await queueSettingsSave({ session }, { throwOnFailure: true });
-      return true;
-    } catch (error) {
-      if (throwOnFailure) throw error;
-      console.error('Unable to persist the current session.', error);
-      return false;
-    }
+    return sessionRestoreController.persist(throwOnFailure);
   }
 
   function openSettings() {
-    const f = $('#settingsForm');
-    $$('[name]', f).forEach((input) => {
-      const key = input.name;
-      let value;
-      value = state.settings[key];
-      if (input.type === 'checkbox') input.checked = Boolean(value);
-      else if (input.type === 'radio') input.checked = input.value === value;
-      else if (value !== undefined) input.value = value;
-    });
-    syncCodeThemeSelect(
-      isDarkTheme(document.documentElement.dataset.theme),
-      state.settings.codeTheme,
-    );
-    const tab = activeTab();
-    const currentMode = tab?.vditor && tab.ready ? tab.vditor.getCurrentMode() : tab?.mode;
-    $('#previewZoomSetting').classList.toggle('hidden', currentMode !== 'sv');
-    $('#editorTextWidthValue').textContent = `${$('#editorTextWidth').value}%`;
-    syncWorkspaceReadDepthValue();
-    settingsDialogLayoutController.restore(state.settings.settingsDialogSize);
-    settingsWindow.open();
+    settingsRuntimeController.open();
   }
 
   function closeSettings({ applyPresentation = true } = {}) {
     return settingsWindow.close(applyPresentation);
   }
   async function saveSettings(closeAfterSave = true) {
-    clearTimeout(settingsSaveTimer);
-    const form = $('#settingsForm');
-    const patch = {};
-    const numericSettingNames = new Set(['tabSize']);
-    const previousSettings = { ...state.settings };
-    const openModes = new Map(
-      state.tabs.map((tab) => [
-        tab.id,
-        tab.vditor && tab.ready ? tab.vditor.getCurrentMode() : tab.mode,
-      ]),
-    );
-    $$('[name]', form).forEach((input) => {
-      if (input.type === 'radio' && !input.checked) return;
-      if (
-        (input.type === 'number' || input.type === 'range') &&
-        (!input.value || !input.validity.valid)
-      )
-        return;
-      patch[input.name] =
-        input.type === 'checkbox'
-          ? input.checked
-          : input.type === 'number' ||
-              input.type === 'range' ||
-              input.name.endsWith('Zoom') ||
-              numericSettingNames.has(input.name)
-            ? Number(input.value)
-            : input.value;
-    });
-    const appliedTheme = document.documentElement.dataset.theme || state.settings.theme;
-    patch.systemTheme = previousSettings.systemTheme;
-    patch.theme = previousSettings.systemTheme
-      ? previousSettings.theme
-      : isDarkTheme(appliedTheme)
-        ? patch.darkTheme
-        : patch.lightTheme;
-    const dark = patch.systemTheme
-      ? isDarkTheme(document.documentElement.dataset.theme)
-      : isDarkTheme(patch.theme);
-    const codePreferenceKey = dark ? 'darkCodeTheme' : 'lightCodeTheme';
-    patch.lightCodeTheme = state.settings.lightCodeTheme;
-    patch.darkCodeTheme = state.settings.darkCodeTheme;
-    patch[codePreferenceKey] = patch.codeTheme;
-    patch.toolbarConfig = state.settings.toolbarConfig;
-    const previousWorkspaceReadDepth = state.settings.workspaceReadDepth;
-    const previousLocale = state.locale;
-    try {
-      await settingsController.savePatch(patch);
-    } catch (error) {
-      showMessage(ipcErrorMessage(error), true);
-      return;
-    }
-    const settingsChange = PURE.classifySettingsChange(
-      previousSettings,
-      state.settings,
-      VDITOR_INITIALIZATION_SETTINGS,
-    );
-    const changedSettings = settingsChange.changedKeys;
-    const shouldRebuildEditors = settingsChange.shouldRebuildEditor;
-    if (changedSettings.includes('allowSvgImages')) {
-      imageRuntimeController.reload(state.tabs);
-    }
-    if (closeAfterSave) await closeSettings({ applyPresentation: false });
-    applyLocale(state.settings.locale);
-    if (state.workspace && previousWorkspaceReadDepth !== state.settings.workspaceReadDepth)
-      await window.fileAPI.setWorkspaceWatch(state.workspace, state.settings.workspaceReadDepth);
-    if (
-      state.workspace &&
-      (previousWorkspaceReadDepth !== state.settings.workspaceReadDepth ||
-        previousLocale !== state.locale)
-    )
-      await refreshTree();
-    applyPresentationSettings();
-    await applyTheme(await resolveTheme());
-    applyLiveVditorSettings(changedSettings);
-    if (shouldRebuildEditors) {
-      state.tabs.forEach((tab) => {
-        updateTabDocument(tab, { mode: openModes.get(tab.id) || tab.mode });
-        rebuildEditor(tab);
-      });
-    }
-    if (!state.tabs.length) {
-      destroyToolbarPreview();
-      createToolbarPreview();
-    }
-    showMessage(t('message.settingsSaved'));
+    await settingsRuntimeController.save(closeAfterSave);
   }
 
   async function resetCurrentSettingsPage() {
-    const panel = $('[data-settings-panel].active');
-    if (!panel || !state.defaultSettings) return;
-    if (panel.dataset.settingsPanel === 'appearance') {
-      state.settings.systemTheme = state.defaultSettings.systemTheme;
-      state.settings.theme = state.defaultSettings.theme;
-      state.settings.lightTheme = state.defaultSettings.lightTheme;
-      state.settings.darkTheme = state.defaultSettings.darkTheme;
-      state.settings.lightCodeTheme = state.defaultSettings.lightCodeTheme;
-      state.settings.darkCodeTheme = state.defaultSettings.darkCodeTheme;
-    }
-    $$('[name]', panel).forEach((input) => {
-      const value = state.defaultSettings[input.name];
-      if (input.type === 'checkbox') input.checked = Boolean(value);
-      else if (input.type === 'radio') input.checked = input.value === value;
-      else if (value !== undefined) input.value = value;
-    });
-    if (panel.dataset.settingsPanel === 'editor')
-      $('#editorTextWidthValue').textContent = `${$('#editorTextWidth').value}%`;
-    if (panel.dataset.settingsPanel === 'files') syncWorkspaceReadDepthValue();
-    if (panel.dataset.settingsPanel === 'appearance') {
-      const appliedTheme = document.documentElement.dataset.theme || state.settings.theme;
-      syncCodeThemeSelect(isDarkTheme(appliedTheme), preferredCodeTheme(isDarkTheme(appliedTheme)));
-    }
-    await saveSettings(false);
+    await settingsRuntimeController.resetCurrentPage($('[data-settings-panel].active'));
   }
 
   async function scheduleLiveSettingsSave(event) {
-    const input = event.target;
-    if (input.name === 'allowSvgImages' && input.checked && !state.settings.allowSvgImages) {
-      const confirmed =
-        (await showConfirmDialog({
-          title: t('settings.allowSvgImagesWarningTitle'),
-          message: t('settings.allowSvgImagesWarningMessage'),
-          detail: t('settings.allowSvgImagesWarningDetail'),
-          actions: [
-            { id: 'cancel', label: t('settings.keepSvgImagesBlocked') },
-            {
-              id: 'confirm',
-              label: t('settings.allowSvgImagesAnyway'),
-              primary: true,
-              danger: true,
-            },
-          ],
-          draggable: true,
-        })) === 'confirm';
-      if (!confirmed) {
-        input.checked = false;
-        return;
-      }
-    }
-    if (input.name === 'sanitize' && !input.checked && state.settings.sanitize) {
-      const confirmed =
-        (await showConfirmDialog({
-          title: t('settings.sanitizeWarningTitle'),
-          message: t('settings.sanitizeWarningMessage'),
-          detail: t('settings.sanitizeWarningDetail'),
-          actions: [
-            { id: 'cancel', label: t('settings.keepHtmlFilter') },
-            {
-              id: 'confirm',
-              label: t('settings.disableHtmlFilter'),
-              primary: true,
-              danger: true,
-            },
-          ],
-          draggable: true,
-        })) === 'confirm';
-      if (!confirmed) {
-        input.checked = true;
-        return;
-      }
-    }
-    if (
-      (input.type === 'number' || input.type === 'range') &&
-      (!input.value || !input.validity.valid)
-    )
-      return;
-    clearTimeout(settingsSaveTimer);
-    settingsSaveTimer = setTimeout(
-      () => saveSettings(false),
-      input.type === 'text' || input.type === 'number' ? 250 : 0,
-    );
+    await settingsRuntimeController.scheduleLiveSave(event);
   }
 
   function syncWorkspaceReadDepthValue() {
@@ -3040,6 +2683,8 @@
   function setupApplicationShellResources(resources) {
     setupAppMenus();
     windowController.init();
+    statusMenuController.init();
+    resources.add(() => statusMenuController.dispose());
     $('#confirmModal').onclick = (event) => {
       if (event.target === $('#confirmModal')) closeConfirmDialog('cancel');
     };
@@ -3065,32 +2710,7 @@
     $('#emptyNewFile').onclick = newTab;
     $('#emptyOpenFile').onclick = chooseFiles;
     $('#toggleSidebar').onclick = () => toggleSidebar();
-    $('#statusMode').onclick = (event) => {
-      event.stopPropagation();
-      toggleStatusModeMenu();
-    };
-    $('#statusMode').onkeydown = (event) => {
-      if (event.key !== 'Enter' && event.key !== ' ') return;
-      event.preventDefault();
-      toggleStatusModeMenu();
-    };
-    $('#statusModeMenu').onclick = (event) => {
-      const button = event.target.closest('[data-status-mode]');
-      if (!button) return;
-      event.stopPropagation();
-      selectStatusMode(button.dataset.statusMode);
-    };
     $('#statusSettings').onclick = openSettings;
-    $('#statusThemeMode').onclick = (event) => {
-      event.stopPropagation();
-      toggleStatusThemeMenu();
-    };
-    $('#statusThemeMenu').onclick = (event) => {
-      const button = event.target.closest('[data-theme-mode]');
-      if (!button) return;
-      event.stopPropagation();
-      void selectStatusThemeMode(button.dataset.themeMode);
-    };
     $('#refreshTree').onclick = refreshTree;
     resources.listen($('#fileTree'), 'contextmenu', (event) => {
       if (event.target.closest('.tree-row, button')) return;
@@ -3169,10 +2789,6 @@
     $$('[data-external]').forEach((element) => {
       element.onclick = () => window.appAPI.openExternal(element.dataset.external);
     });
-    resources.listen(document, 'click', () => {
-      closeStatusModeMenu();
-      closeStatusThemeMenu();
-    });
     resources.listen(document, 'pointerdown', (event) => {
       if (!event.target.closest('#contextMenu')) closeContextMenu();
     });
@@ -3218,8 +2834,7 @@
     resources.listen(window, 'blur', () => {
       editorSelectionActive = false;
       closeContextMenu();
-      closeStatusModeMenu();
-      closeStatusThemeMenu();
+      statusMenuController.closeAll();
       clearHoveredDocumentLink();
     });
     const resize = $('#sidebarResize');
@@ -3395,15 +3010,15 @@
       closeConfirmDialog('cancel');
       return true;
     }
-    if (event.key === 'Escape' && !$('#statusModeMenu').classList.contains('hidden')) {
+    if (event.key === 'Escape' && statusMenuController.isModeOpen()) {
       event.preventDefault();
-      closeStatusModeMenu();
+      statusMenuController.closeMode();
       $('#statusMode').focus({ preventScroll: true });
       return true;
     }
-    if (event.key === 'Escape' && !$('#statusThemeMenu').classList.contains('hidden')) {
+    if (event.key === 'Escape' && statusMenuController.isThemeOpen()) {
       event.preventDefault();
-      closeStatusThemeMenu();
+      statusMenuController.closeTheme();
       $('#statusThemeMode').focus({ preventScroll: true });
       return true;
     }
@@ -3462,36 +3077,16 @@
     $('#versionInfo').textContent = `Version ${info.app} · Electron ${info.electron}`;
   }
 
-  let sessionToRestore = null;
-
   async function restoreWorkspaceSession() {
-    // Workspace restoration can persist a new session; retain the original tab snapshot.
-    sessionToRestore = PURE.fromPersistedSessionSnapshot(state.settings.session);
-    const session = sessionToRestore;
-    if (state.settings.restoreWorkspace && session?.workspacePath) {
-      if (await window.fileAPI.exists(session.workspacePath))
-        await setWorkspace(session.workspacePath);
-      else await setWorkspace('');
-    }
+    await sessionRestoreController.restoreWorkspace();
   }
 
   async function restoreDocumentSession() {
-    const session = sessionToRestore;
-    if (state.settings.restoreTabs && session?.openFiles?.length) {
-      await openPaths(session.openFiles);
-      const active = state.tabs.find((tab) => tab.filePath === session.activeFilePath);
-      if (active) switchTab(active.id);
-    }
-    sessionToRestore = null;
+    await sessionRestoreController.restoreDocuments();
   }
 
   async function finishAppRestoration() {
-    if (!state.tabs.length) {
-      createToolbarPreview();
-      updateActiveUI();
-    }
-    syncTopControlsWidth();
-    await persistSession();
+    await sessionRestoreController.finishRestoration();
   }
 
   function disposeAppDomains() {
@@ -3500,6 +3095,7 @@
     appTooltipController.dispose();
     settingsDialogLayoutController.dispose();
     settingsWindow.dispose();
+    settingsRuntimeController.dispose();
     localizationController.dispose();
     windowController.dispose();
     contextMenuController.dispose();

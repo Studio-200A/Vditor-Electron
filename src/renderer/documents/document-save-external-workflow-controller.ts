@@ -124,7 +124,9 @@ export interface DocumentSaveExternalWorkflowControllerOptions<
     document: TDocument,
     error?: unknown,
   ) => void;
-  readonly showRecreateNotice: (failed: boolean) => void;
+  readonly showRecreateNotice: (
+    key: 'recreated' | 'recreated-copied' | 'recreated-clipboard-failed',
+  ) => void;
   readonly finish: () => void;
 }
 
@@ -518,16 +520,16 @@ export class DocumentSaveExternalWorkflowController<TDocument extends SaveWorkfl
     this.unavailableClipboard.delete(document.id);
     if (!clipboardContent) {
       this.options.showMessage('recreated', document);
-      this.options.showRecreateNotice(false);
+      this.options.showRecreateNotice('recreated');
       return true;
     }
     try {
       await this.options.writeClipboard(clipboardContent);
       this.options.showMessage('recreated-copied', document);
-      this.options.showRecreateNotice(false);
+      this.options.showRecreateNotice('recreated-copied');
     } catch {
       this.options.showMessage('recreated-clipboard-failed', document);
-      this.options.showRecreateNotice(true);
+      this.options.showRecreateNotice('recreated-clipboard-failed');
     }
     return true;
   }

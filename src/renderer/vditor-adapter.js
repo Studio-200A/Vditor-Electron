@@ -45,6 +45,10 @@
     };
   }
 
+  function mountedToolbar(mount) {
+    return mount?.querySelector(selectors.toolbar) || null;
+  }
+
   function ensureSplitResizer(host) {
     const { content, preview } = editorParts(host);
     if (!content || !preview) return null;
@@ -466,6 +470,10 @@
       ? marker.previousElementSibling
       : null;
     return { block, marker, padding };
+  }
+
+  function hasListMarker(editor) {
+    return Boolean(editor?.querySelector(selectors.listMarker));
   }
 
   function headingTargets(host, headingIndex) {
@@ -1529,8 +1537,8 @@
   }
 
   window.VditorDesktopAdapter = Object.freeze({
-    selectors,
     editorParts,
+    mountedToolbar,
     ensureSplitResizer,
     splitViewVisibility,
     toolbarContext,
@@ -1553,6 +1561,7 @@
     applySplitListIndent,
     installSplitAutoIndent,
     listContext,
+    hasListMarker,
     headingTargets,
     outlineContentElement,
     outlineSnapshot,

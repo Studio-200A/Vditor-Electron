@@ -2,8 +2,8 @@ import type { VditorDesktopAdapter } from './adapter.js';
 
 /** Runtime tests compare this declaration manifest with the frozen adapter facade. */
 export const ADAPTER_PUBLIC_KEYS = [
-  'selectors',
   'editorParts',
+  'mountedToolbar',
   'ensureSplitResizer',
   'splitViewVisibility',
   'toolbarContext',
@@ -26,6 +26,7 @@ export const ADAPTER_PUBLIC_KEYS = [
   'applySplitListIndent',
   'installSplitAutoIndent',
   'listContext',
+  'hasListMarker',
   'headingTargets',
   'outlineContentElement',
   'outlineSnapshot',
@@ -80,6 +81,7 @@ export function verifyAdapterCallContract(adapter: VditorDesktopAdapter, host: H
   const link = adapter.documentLink(host, host);
 
   adapter.ensureSplitResizer(host);
+  adapter.mountedToolbar(host);
   adapter.splitViewVisibility(host, 'sv');
   adapter.toolbarContext(host);
   adapter.toolbarButton(toolbar, 'edit-mode');
@@ -100,6 +102,7 @@ export function verifyAdapterCallContract(adapter: VditorDesktopAdapter, host: H
   adapter.applySplitListIndent(host, 'indent', selection);
   adapter.installSplitAutoIndent(host, () => true);
   adapter.listContext(host.firstChild);
+  adapter.hasListMarker(parts.source);
   adapter.headingTargets(host, 0);
   adapter.outlineContentElement(host, 'ir');
   adapter.outlineSnapshot(host, 'ir');

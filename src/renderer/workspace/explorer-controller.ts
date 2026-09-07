@@ -41,7 +41,7 @@ export interface ExplorerControllerOptions {
       readonly action: () => void;
     }[],
   ) => void;
-  readonly renameEntry: (entry: ExplorerEntry, row: HTMLElement) => void;
+  readonly renameEntry: (entry: ExplorerEntry, name: string) => Promise<void>;
   readonly deleteEntry: (entry: ExplorerEntry) => Promise<void>;
   readonly revealEntry: (path: string) => Promise<void>;
   readonly createEntry: (parentPath: string, type: 'file' | 'directory') => Promise<void>;
@@ -112,10 +112,59 @@ export class ExplorerController {
   showEntryContextMenu(event: MouseEvent, entry: ExplorerEntry, row: HTMLElement): void {
     event.preventDefault();
     this.showContextMenu(event, [
-      { label: this.translate('context.rename'), action: () => this.renameEntry(entry, row) },
+      { label: this.translate('context.rename'), action: () => this.beginRename(entry, row) },
       { label: this.translate('context.trash'), action: () => void this.deleteEntry(entry) },
       { label: this.translate('context.reveal'), action: () => void this.revealEntry(entry.path) },
     ]);
+  }
+
+  private beginRename(entry: ExplorerEntry, row: HTMLElement): void {
+    const label = row.querySelector<HTMLElement>('.tree-name');
+    if (!label) return;
+    const input = document.createElement('input');
+    input.className = 'tree-rename-input';
+    input.value = entry.name;
+    label.replaceWith(input);
+    let settled = false;
+    const finish = async (commit: boolean): Promise<void> => {
+      if (settled) return;
+      settled = true;
+      const name = this.renameName(entry, input.value.trim());
+      if (!commit || !name || name === entry.name) {
+        if (input.isConnected) input.replaceWith(label);
+        return;
+      }
+      await this.renameEntry(entry, name);
+    };
+    input.addEventListener('click', (event) => event.stopPropagation());
+    input.addEventListener('keydown', (event) => {
+      event.stopPropagation();
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        void finish(true);
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        void finish(false);
+      }
+    });
+    input.addEventListener('blur', () => void finish(true));
+    input.focus();
+    const extensionStart = entry.type === 'file' ? entry.name.lastIndexOf('.') : -1;
+    input.setSelectionRange(0, extensionStart > 0 ? extensionStart : entry.name.length);
+  }
+
+  private renameName(entry: ExplorerEntry, proposedName: string): string {
+    const extensionStart = entry.type === 'file' ? entry.name.lastIndexOf('.') : -1;
+    if (extensionStart <= 0) return proposedName;
+    const extension = entry.name.slice(extensionStart);
+    const keepsExtension = proposedName.toLocaleLowerCase().endsWith(extension.toLocaleLowerCase());
+    const proposedExtensionStart = proposedName.lastIndexOf('.');
+    const stem = keepsExtension
+      ? proposedName.slice(0, -extension.length)
+      : proposedExtensionStart > 0
+        ? proposedName.slice(0, proposedExtensionStart)
+        : proposedName;
+    return stem ? `${stem}${extension}` : '';
   }
 
   showWorkspaceContextMenu(

@@ -45,8 +45,8 @@ describe('Vditor DOM compatibility adapter', () => {
 
   it('centralizes and validates the supported Vditor structure', () => {
     const host = createHost();
-    expect(Object.isFrozen(adapter.selectors)).toBe(true);
     expect(adapter.validateHost(host)).toEqual({ valid: true, missing: [] });
+    expect(adapter.mountedToolbar(host)).toBe(adapter.editorParts(host).toolbar);
     expect(adapter.sourceNewlines(adapter.editorParts(host).source)).toHaveLength(1);
     expect(adapter.headingTargets(host, 0).every(({ heading }: any) => heading)).toBe(true);
     expect(adapter.scrollContainers(host).length).toBeGreaterThanOrEqual(4);

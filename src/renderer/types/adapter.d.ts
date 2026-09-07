@@ -106,8 +106,8 @@ export interface ClipboardContent {
 }
 
 export interface VditorDesktopAdapter {
-  readonly selectors: Readonly<Record<string, string>>;
   editorParts(host: HTMLElement | null | undefined): EditorParts;
+  mountedToolbar(mount: HTMLElement | null | undefined): HTMLElement | null;
   ensureSplitResizer(host: HTMLElement | null | undefined): HTMLElement | null;
   splitViewVisibility(
     host: HTMLElement | null | undefined,
@@ -145,6 +145,7 @@ export interface VditorDesktopAdapter {
     shouldAutoIndent: () => boolean,
   ): (() => void) | null;
   listContext(node: Node | null | undefined): ListContext;
+  hasListMarker(editor: HTMLElement | null | undefined): boolean;
   headingTargets(host: HTMLElement | null | undefined, headingIndex: number): HeadingTarget[];
   outlineContentElement(
     host: HTMLElement | null | undefined,

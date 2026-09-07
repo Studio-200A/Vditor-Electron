@@ -94,6 +94,7 @@ function fixture(
     writeDocument,
     writeClipboard,
     showMessage,
+    showRecreateNotice: options.showRecreateNotice,
   };
 }
 
@@ -140,5 +141,6 @@ describe('DocumentSaveExternalWorkflowController', () => {
 
     expect(f.writeClipboard).toHaveBeenCalledWith('Content before deletion');
     expect(f.showMessage).toHaveBeenCalledWith('recreated-copied', f.document);
+    expect(f.showRecreateNotice).toHaveBeenCalledWith('recreated-copied');
   });
 });
