@@ -851,6 +851,20 @@
       }
       return true;
     },
+    showChangedSinceScanDialog: async () =>
+      (await showConfirmDialog({
+        title: t('resourceHealth.trashChangedTitle'),
+        message: t('resourceHealth.trashChangedMessage'),
+        detail: '',
+        actions: [
+          {
+            id: 'rescan',
+            label: t('resourceHealth.backAndRescan'),
+            primary: true,
+          },
+        ],
+        draggable: true,
+      })) === 'rescan',
   });
   const settingsDialogLayoutController = new PURE.SettingsDialogLayoutController({
     card: $('.settings-card'),
@@ -1577,6 +1591,7 @@
           editorController.preserveTableScrollDuringInput(tab);
           editorController.reconcileInitializedContent(tab, wasModified);
           tab.ready = true;
+          tab.host.dataset.editorReady = 'true';
           if (!tab.toolbarPreview)
             editorController.installCustomCaret(tab, () => state.settings.caretStyle);
           tab.toolbar = VDITOR.editorParts(tab.host).toolbar;
@@ -1915,11 +1930,14 @@
     const tab = activeTab();
     const filePath = tab?.filePath;
     const workspacePath = state.workspace;
+    resourceHealthMenuEligible = false;
+    if ($('#appMenuBar')?.dataset.ready === 'true') setupAppMenus();
+    if (!filePath || !workspacePath) return;
     resourceHealthMenuEligible = Boolean(
-      filePath &&
-      workspacePath &&
-      (await window.appAPI.isResourceHealthEligible(filePath, workspacePath).catch(() => false)),
+      await window.appAPI.isResourceHealthEligible(filePath, workspacePath).catch(() => false),
     );
+    if (activeTab()?.filePath !== filePath || state.workspace !== workspacePath) return;
+    if ($('#appMenuBar')?.dataset.ready === 'true') setupAppMenus();
   }
 
   async function closeTab(id, { discard = false } = {}) {
@@ -2503,6 +2521,7 @@
 
   async function handleExternalChange(change) {
     await externalFileChangeController.handle(change);
+    if (activeTab()?.externalFileState?.kind === 'deleted') resourceHealthController.invalidate();
   }
 
   function handleMenu(action, value) {

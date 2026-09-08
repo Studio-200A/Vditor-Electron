@@ -174,6 +174,13 @@ describe('ResourceHealthController', () => {
     expect(document.querySelector('.resource-health-scan-metadata')?.textContent).toContain(
       'resourceHealth.scanDetail.snapshot',
     );
+    expect(document.querySelector('.resource-health-workspace')?.textContent).toBe('workspace');
+    expect(document.querySelector('.resource-health-workspace')?.classList.contains('hidden')).toBe(
+      false,
+    );
+    expect(
+      document.querySelector('.resource-health-workspace-icon')?.getAttribute('aria-hidden'),
+    ).toBe('true');
     expect(document.querySelector('.resource-health-unsaved-notice')?.textContent).toContain(
       'resourceHealth.unsavedNotice',
     );

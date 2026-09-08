@@ -205,6 +205,89 @@ describe('Vditor DOM compatibility adapter', () => {
     cleanup();
   });
 
+  it('redraws a normalized caret after SV deletion and IR history restoration replace DOM', async () => {
+    const frames = new Map<number, FrameRequestCallback>();
+    let nextFrame = 0;
+    window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+      nextFrame += 1;
+      frames.set(nextFrame, callback);
+      return nextFrame;
+    }) as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = ((frame: number) => {
+      frames.delete(frame);
+    }) as typeof window.cancelAnimationFrame;
+    Object.defineProperty(window.HTMLElement.prototype, 'animate', {
+      configurable: true,
+      value: () => ({ cancel: () => {} }),
+    });
+    const viewport = { bottom: 400, height: 400, left: 0, right: 600, top: 0, width: 600 };
+    Object.defineProperty(window.document, 'hasFocus', { configurable: true, value: () => true });
+    const selectAt = (node: Text, top: number, height: number) => {
+      const range = window.document.createRange();
+      range.setStart(node, 0);
+      range.collapse(true);
+      const rect = {};
+      Object.defineProperties(rect, {
+        bottom: { value: top + height },
+        height: { value: height },
+        left: { value: 20 },
+        right: { value: 22 },
+        top: { value: top },
+        width: { value: 2 },
+      });
+      Object.defineProperty(range, 'getClientRects', {
+        value: () => [rect],
+      });
+      window.getSelection()!.removeAllRanges();
+      window.getSelection()!.addRange(range);
+    };
+    const runFrames = () => {
+      while (frames.size) {
+        const queued = [...frames.values()];
+        frames.clear();
+        queued.forEach((callback) => callback(0));
+      }
+    };
+
+    for (const mode of ['sv', 'ir'] as const) {
+      const host = createHost();
+      window.document.body.append(host);
+      const parts = adapter.editorParts(host);
+      const editor =
+        mode === 'sv'
+          ? parts.source
+          : parts.instantRendering.querySelector<HTMLElement>('.vditor-reset')!;
+      Object.defineProperty(host, 'getBoundingClientRect', { value: () => viewport });
+      Object.defineProperty(editor, 'getBoundingClientRect', { value: () => viewport });
+      editor.replaceChildren(window.document.createTextNode('Original line'));
+      editor.setAttribute('tabindex', '0');
+      editor.focus();
+      selectAt(editor.firstChild as Text, 30, 160);
+      const cleanup = adapter.installCustomCaret(
+        host,
+        () => mode,
+        () => 'bar',
+      );
+      host.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+      runFrames();
+      const caret = window.document.querySelector<HTMLElement>(
+        '[data-vditor-desktop-caret="true"]',
+      )!;
+      expect(Number.parseFloat(caret.style.height)).toBeLessThan(160);
+
+      const restoredText = window.document.createTextNode('Restored line');
+      editor.replaceChildren(restoredText);
+      selectAt(restoredText, 110, 20);
+      await Promise.resolve();
+      runFrames();
+
+      expect(caret.style.top).toBe('110px');
+      expect(caret.style.height).toBe('20px');
+      cleanup();
+      host.remove();
+    }
+  });
+
   it('owns the SV divider structure and reports pane visibility semantically', () => {
     const host = createHost();
     const { content, preview } = adapter.editorParts(host);

@@ -624,7 +624,7 @@
     let isComposing = false;
     let previousRect = null;
     let disposed = false;
-    let hasUserInteraction = false;
+    let hasUserInteraction = host.dataset.vditorDesktopCaretInteracted === 'true';
     let pendingScrollOffsetX = 0;
     let pendingScrollOffsetY = 0;
     const scrollPositions = new WeakMap();
@@ -646,7 +646,32 @@
       const rects =
         typeof range.getClientRects === 'function' ? Array.from(range.getClientRects()) : [];
       const rect = rects.at(-1) || range.getBoundingClientRect?.();
-      if (rect?.height) return rect;
+      if (rect && Number.isFinite(rect.left) && Number.isFinite(rect.top)) {
+        const container = elementForNode(range.startContainer);
+        const style = getComputedStyle(
+          container && editor.contains(container) ? container : editor,
+        );
+        const lineHeight = Number.parseFloat(style.lineHeight);
+        const fontSize = Number.parseFloat(style.fontSize);
+        const expectedHeight = Number.isFinite(lineHeight)
+          ? lineHeight
+          : Number.isFinite(fontSize)
+            ? fontSize * 1.2
+            : 16;
+        // A collapsed Range at a Vditor block boundary can report its whole
+        // replaced block after delete or history restore. Keep its insertion
+        // coordinate, but use the current line height for the visual caret.
+        const height =
+          rect.height > expectedHeight * 1.5 || rect.height <= 0 ? expectedHeight : rect.height;
+        return {
+          left: rect.left,
+          top: rect.top,
+          right: rect.right,
+          bottom: rect.top + height,
+          width: rect.width,
+          height,
+        };
+      }
       const container = elementForNode(range.startContainer);
       const fallback =
         container && container !== editor && editor.contains(container)
@@ -801,13 +826,20 @@
     };
     const onUserInteraction = () => {
       hasUserInteraction = true;
+      host.dataset.vditorDesktopCaretInteracted = 'true';
       schedule(true);
     };
     const onInput = () => {
       if (hasUserInteraction) schedule(true);
     };
+    const onEditorMutation = () => {
+      // Vditor 3.11.3 replaces mode DOM after whole-line deletion and history
+      // restoration. Its intermediate selection geometry is not a caret line.
+      if (hasUserInteraction) schedule(true);
+    };
     const onCompositionStart = () => {
       hasUserInteraction = true;
+      host.dataset.vditorDesktopCaretInteracted = 'true';
       isComposing = true;
       hide();
     };
@@ -832,14 +864,15 @@
     host.addEventListener('input', onInput, true);
     host.addEventListener('compositionstart', onCompositionStart, true);
     host.addEventListener('compositionend', onCompositionEnd, true);
+    const editorObserver = new MutationObserver(onEditorMutation);
+    editorObserver.observe(host, { childList: true, characterData: true, subtree: true });
     const scrollers = scrollContainers(host);
     scrollers.forEach((scroller) => {
       scrollPositions.set(scroller, { left: scroller.scrollLeft, top: scroller.scrollTop });
       scroller.addEventListener('scroll', onScroll, true);
     });
     motionQuery?.addEventListener?.('change', onVisibilityChange);
-    // Vditor 3.11.3 exposes a programmatic, provisional selection while opening a document.
-    // Keep the native caret until an editor-originated interaction establishes the real position.
+    if (hasUserInteraction) schedule(false, false, true);
     return () => {
       disposed = true;
       if (frame !== null) window.cancelAnimationFrame(frame);
@@ -856,6 +889,7 @@
       host.removeEventListener('input', onInput, true);
       host.removeEventListener('compositionstart', onCompositionStart, true);
       host.removeEventListener('compositionend', onCompositionEnd, true);
+      editorObserver.disconnect();
       scrollers.forEach((scroller) => scroller.removeEventListener('scroll', onScroll, true));
       motionQuery?.removeEventListener?.('change', onVisibilityChange);
       hide();

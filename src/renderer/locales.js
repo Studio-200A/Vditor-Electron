@@ -338,6 +338,10 @@
         'Move {count} explicitly selected image candidates to the system Trash?',
       'resourceHealth.trashConfirmDetail':
         'Each item will be scanned again first. References outside this workspace cannot be proven absent.',
+      'resourceHealth.trashChangedTitle': 'Move to Trash failed',
+      'resourceHealth.trashChangedMessage':
+        'Move to Trash failed: the file changed after the scan.',
+      'resourceHealth.backAndRescan': 'Back and scan again',
       'resourceHealth.trashScopeDetail':
         'Resource health checks local references only in readable, safely parsed Markdown/HTML documents in the current workspace, for candidates in this document image directory. It cannot confirm references from inaccessible, unreadable, size-limited, or unsafe-to-parse documents, non-Markdown/HTML files, or files outside the workspace. If this scan is incomplete, moving items to Trash is disabled.',
       'resourceHealth.trashScopeAcknowledge':
@@ -699,6 +703,9 @@
       'resourceHealth.trashConfirmTitle': '移至系统回收站？',
       'resourceHealth.trashConfirmMessage': '将已明确选择的 {count} 个图片候选移至系统回收站？',
       'resourceHealth.trashConfirmDetail': '每项都会先重新扫描验证；无法证明工作区外不存在引用。',
+      'resourceHealth.trashChangedTitle': '移至回收站失败',
+      'resourceHealth.trashChangedMessage': '移至回收站失败：文件在扫描后发生变更',
+      'resourceHealth.backAndRescan': '返回并重新扫描',
       'resourceHealth.trashScopeDetail':
         '资源健康仅对当前工作区内可读取且可安全解析的 Markdown/HTML 文档，检测当前文档图片目录候选的本地引用。它不能确认不可访问、读取失败、超出大小限制或无法安全解析的文档，以及非 Markdown/HTML 文档和工作区外文件是否仍有引用。若本次扫描不完整，将禁止移至系统回收站。',
       'resourceHealth.trashScopeAcknowledge': '我已了解，后续不再显示此扫描范围提示。',
@@ -1059,6 +1066,9 @@
       'resourceHealth.trashConfirmTitle': '移至系統回收筒？',
       'resourceHealth.trashConfirmMessage': '將已明確選擇的 {count} 個圖片候選移至系統回收筒？',
       'resourceHealth.trashConfirmDetail': '每項都會先重新掃描驗證；無法證明工作區外不存在引用。',
+      'resourceHealth.trashChangedTitle': '移至回收筒失敗',
+      'resourceHealth.trashChangedMessage': '移至回收筒失敗：檔案在掃描後發生變更',
+      'resourceHealth.backAndRescan': '返回並重新掃描',
       'resourceHealth.trashScopeDetail':
         '資源健康僅對目前工作區內可讀取且可安全解析的 Markdown/HTML 文件，檢測目前文件圖片目錄候選的本機引用。它不能確認無法存取、讀取失敗、超出大小限制或無法安全解析的文件，以及非 Markdown/HTML 文件和工作區外檔案是否仍有引用。若本次掃描不完整，將禁止移至系統回收筒。',
       'resourceHealth.trashScopeAcknowledge': '我已了解，後續不再顯示此掃描範圍提示。',

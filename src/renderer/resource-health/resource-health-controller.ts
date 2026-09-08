@@ -47,6 +47,7 @@ export interface ResourceHealthControllerOptions {
   readonly confirmMoveToTrash: (
     candidates: readonly { relativePath: string; size: number }[],
   ) => Promise<boolean>;
+  readonly showChangedSinceScanDialog?: () => Promise<boolean>;
   readonly showMessage?: (message: string, error?: boolean) => void;
 }
 
@@ -76,6 +77,8 @@ export class ResourceHealthController {
   private readonly scanStatusIcon: HTMLElement;
   private readonly scanStatusText: HTMLElement;
   private readonly scanStatusDetail: HTMLElement;
+  private readonly workspaceIndicator: HTMLElement;
+  private readonly workspaceName: HTMLElement;
   private readonly unsavedNotice: HTMLElement;
   private readonly unsavedNoticeText: HTMLElement;
   private readonly limitations: HTMLElement;
@@ -91,6 +94,7 @@ export class ResourceHealthController {
   private readonly overlay: HTMLElement;
   private readonly overlayText: HTMLElement;
   private readonly overlayDescription: HTMLElement;
+  private readonly closeOverlayButton: HTMLButtonElement;
   private readonly warningIcon: HTMLImageElement;
   private readonly rescanButton: HTMLButtonElement;
   private readonly rescanLabel: HTMLElement;
@@ -141,6 +145,11 @@ export class ResourceHealthController {
       'p',
       'resource-health-scan-status-detail resource-health-scan-metadata',
     );
+    this.workspaceIndicator = element(document, 'div', 'resource-health-workspace hidden');
+    const workspaceIcon = element(document, 'span', 'resource-health-workspace-icon');
+    workspaceIcon.setAttribute('aria-hidden', 'true');
+    this.workspaceName = element(document, 'span');
+    this.workspaceIndicator.append(workspaceIcon, this.workspaceName);
     this.unsavedNotice = element(document, 'div', 'resource-health-unsaved-notice');
     const unsavedNoticeIcon = element(document, 'span', 'resource-health-notice-icon');
     unsavedNoticeIcon.setAttribute('aria-hidden', 'true');
@@ -164,7 +173,11 @@ export class ResourceHealthController {
     this.candidatePreview = element(document, 'img');
     this.candidatePreview.alt = '';
     this.candidatePreview.hidden = true;
-    this.candidatePreviewPlaceholder = element(document, 'p');
+    this.candidatePreviewPlaceholder = element(
+      document,
+      'div',
+      'resource-health-preview-placeholder',
+    );
     this.candidatePreviewPlaceholder.textContent = options.translate(
       'resourceHealth.selectCandidate',
     );
@@ -204,6 +217,7 @@ export class ResourceHealthController {
       this.scanStatusIcon,
       this.scanStatusText,
       this.scanStatusDetail,
+      this.workspaceIndicator,
       this.rescanButton,
     );
     this.body.append(
@@ -225,10 +239,10 @@ export class ResourceHealthController {
     this.overlayText = element(document, 'p', 'resource-health-overlay-text');
     this.overlayText.setAttribute('role', 'status');
     this.overlayDescription = element(document, 'p', 'resource-health-overlay-description hidden');
-    const closeOverlay = element(document, 'button', 'resource-health-overlay-close');
-    closeOverlay.type = 'button';
-    closeOverlay.textContent = options.translate('resourceHealth.close');
-    closeOverlay.addEventListener('click', () => this.close());
+    this.closeOverlayButton = element(document, 'button', 'resource-health-overlay-close');
+    this.closeOverlayButton.type = 'button';
+    this.closeOverlayButton.textContent = options.translate('resourceHealth.close');
+    this.closeOverlayButton.addEventListener('click', () => this.close());
     const openWorkspace = element(document, 'button', 'resource-health-open-workspace hidden');
     openWorkspace.type = 'button';
     openWorkspace.textContent = options.translate('resourceHealth.openWorkspace');
@@ -237,7 +251,7 @@ export class ResourceHealthController {
       this.warningIcon,
       this.overlayText,
       this.overlayDescription,
-      closeOverlay,
+      this.closeOverlayButton,
       openWorkspace,
     );
     for (const direction of ['n', 'e', 's', 'w', 'ne', 'se', 'sw', 'nw']) {
@@ -251,12 +265,9 @@ export class ResourceHealthController {
     document.body.append(this.modal);
     this.header.addEventListener('mousedown', this.onHeaderMouseDown);
     this.modal.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        this.close();
-      }
       if (event.key === 'Tab') this.keepFocusInDialog(event);
     });
+    document.addEventListener('keydown', this.onDocumentKeyDown, true);
   }
 
   open(): void {
@@ -287,6 +298,7 @@ export class ResourceHealthController {
     this.selected.clear();
     this.selectedMissing.clear();
     this.activeCandidateId = null;
+    this.workspaceIndicator.classList.add('hidden');
     this.setBlocked(false);
     this.modal.classList.remove('modal-open');
     this.modal.classList.add('modal-closing');
@@ -313,6 +325,7 @@ export class ResourceHealthController {
     this.stopResizing();
     this.stopClosingAnimation();
     this.header.removeEventListener('mousedown', this.onHeaderMouseDown);
+    this.options.document.removeEventListener('keydown', this.onDocumentKeyDown, true);
     this.card
       .querySelectorAll<HTMLElement>('.resource-health-resize-handle')
       .forEach((handle) => handle.removeEventListener('mousedown', this.onResizeMouseDown));
@@ -322,6 +335,7 @@ export class ResourceHealthController {
   private refreshLocalizedLabels(): void {
     this.title.textContent = this.options.translate('resourceHealth.title');
     this.closeButton.setAttribute('aria-label', this.options.translate('resourceHealth.close'));
+    this.closeOverlayButton.textContent = this.options.translate('resourceHealth.close');
     this.rescanLabel.textContent = this.options.translate('resourceHealth.rescan');
     this.trashButton.textContent = this.options.translate('resourceHealth.moveToTrash');
     this.removeMissingButton.textContent = this.options.translate('resourceHealth.removeReference');
@@ -376,6 +390,19 @@ export class ResourceHealthController {
     };
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
+  };
+
+  private readonly onDocumentKeyDown = (event: KeyboardEvent): void => {
+    if (
+      event.key !== 'Escape' ||
+      this.modal.classList.contains('hidden') ||
+      this.modal.classList.contains('modal-closing') ||
+      this.options.document.querySelector('#confirmModal:not(.hidden)')
+    )
+      return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.close();
   };
 
   private stopDragging(): void {
@@ -512,6 +539,7 @@ export class ResourceHealthController {
     this.selected.clear();
     this.selectedMissing.clear();
     this.activeCandidateId = null;
+    this.workspaceIndicator.classList.add('hidden');
     this.setBlocked(true);
     this.overlay.classList.remove('hidden', 'resource-health-overlay-error');
     this.warningIcon.classList.add('hidden');
@@ -559,6 +587,7 @@ export class ResourceHealthController {
     this.overlay.setAttribute('role', 'alert');
     this.warningIcon.classList.remove('hidden');
     this.overlayText.textContent = this.options.translate(key);
+    this.closeOverlayButton.textContent = this.options.translate('resourceHealth.close');
     this.renderScanStatus(
       key === 'resourceHealth.stale'
         ? 'resourceHealth.scanStatus.stale'
@@ -625,6 +654,8 @@ export class ResourceHealthController {
       missing: summary.missingReferences.length,
     });
     this.summary.replaceChildren(this.summaryTitle);
+    this.workspaceName.textContent = summary.workspaceName;
+    this.workspaceIndicator.classList.toggle('hidden', !summary.workspaceName);
     if (
       Number.isFinite(summary.savedAt) &&
       summary.documentRelativePath &&
@@ -764,6 +795,13 @@ export class ResourceHealthController {
     const trashed = results.filter(
       (result: ResourceHealthActionResult) => result.code === 'trashed',
     ).length;
+    const changedSinceScan = results.some((result) => result.code === 'changed-since-scan');
+    if (changedSinceScan && this.options.showChangedSinceScanDialog) {
+      const shouldRescan = await this.options.showChangedSinceScanDialog();
+      if (shouldRescan || trashed) await this.scan();
+      else this.renderActions();
+      return;
+    }
     this.options.showMessage?.(
       this.options.translate('resourceHealth.trashResult', { trashed, count: results.length }),
       trashed === 0,
@@ -912,11 +950,22 @@ export class ResourceHealthController {
     this.candidatePreview.hidden = true;
     this.candidatePreview.removeAttribute('src');
     this.candidatePreviewPlaceholder.hidden = false;
-    this.candidatePreviewPlaceholder.textContent = candidate
-      ? candidate.previewAvailable
+    this.candidatePreviewPlaceholder.replaceChildren();
+    if (candidate && !candidate.previewAvailable) {
+      const icon = element(
+        this.options.document,
+        'span',
+        'resource-health-preview-unavailable-icon',
+      );
+      icon.setAttribute('aria-hidden', 'true');
+      const message = element(this.options.document, 'span');
+      message.textContent = this.options.translate('resourceHealth.previewUnavailable');
+      this.candidatePreviewPlaceholder.append(icon, message);
+    } else {
+      this.candidatePreviewPlaceholder.textContent = candidate
         ? this.options.translate('resourceHealth.previewUnavailable')
-        : this.options.translate('resourceHealth.previewUnavailable')
-      : this.options.translate('resourceHealth.selectCandidate');
+        : this.options.translate('resourceHealth.selectCandidate');
+    }
     if (!candidate?.previewAvailable) return;
     void this.options.appAPI
       .previewResourceHealthCandidate(revision, candidate.id)

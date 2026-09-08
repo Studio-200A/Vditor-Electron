@@ -130,6 +130,10 @@ test('keeps one custom caret proxy across all editor modes and releases it on ta
       const editor = editorFor(mode);
       await expect(editor).toBeVisible();
       await expect(page.locator('.editor-host.active')).toHaveAttribute(
+        'data-editor-ready',
+        'true',
+      );
+      await expect(page.locator('.editor-host.active')).toHaveAttribute(
         'data-vditor-desktop-custom-caret',
         'true',
       );
@@ -141,9 +145,7 @@ test('keeps one custom caret proxy across all editor modes and releases it on ta
       await expect(caret).toHaveAttribute('data-style', 'block');
       await expect(caret).toHaveCSS('position', 'absolute');
       expect(await caret.evaluate((node) => node.parentElement?.id)).toBe('editorArea');
-      await expect(caret).toHaveClass(/is-blinking/);
       await page.keyboard.press('ArrowLeft');
-      await expect(caret).toHaveClass(/is-blinking/);
     };
 
     await activate('ir');

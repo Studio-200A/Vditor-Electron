@@ -418,6 +418,29 @@ test('keeps local and remote SVG images blocked until the unified setting is con
       .toEqual([2, 2]);
     await allowSvgImages.locator('xpath=..').click();
     await expect(allowSvgImages).not.toBeChecked();
+    const settingsLayout = await page.evaluate(() => {
+      const card = document.querySelector<HTMLElement>('.settings-card');
+      const header = card?.querySelector<HTMLElement>(':scope > header');
+      const layout = card?.querySelector<HTMLElement>(':scope > .settings-layout');
+      const footer = card?.querySelector<HTMLElement>(':scope > footer');
+      if (!card || !header || !layout || !footer) throw new Error('Settings dialog is incomplete');
+      const cardBounds = card.getBoundingClientRect();
+      const headerBounds = header.getBoundingClientRect();
+      const layoutBounds = layout.getBoundingClientRect();
+      const footerBounds = footer.getBoundingClientRect();
+      return {
+        cardScrollTop: card.scrollTop,
+        headerTop: Math.round(headerBounds.top - cardBounds.top),
+        layoutTop: Math.round(layoutBounds.top - headerBounds.bottom),
+        layoutBottom: Math.round(footerBounds.top - layoutBounds.bottom),
+        footerBottom: Math.round(cardBounds.bottom - footerBounds.bottom),
+      };
+    });
+    expect(settingsLayout.cardScrollTop).toBe(0);
+    expect(Math.abs(settingsLayout.headerTop)).toBeLessThanOrEqual(1);
+    expect(Math.abs(settingsLayout.layoutTop)).toBeLessThanOrEqual(1);
+    expect(Math.abs(settingsLayout.layoutBottom)).toBeLessThanOrEqual(1);
+    expect(Math.abs(settingsLayout.footerBottom)).toBeLessThanOrEqual(1);
     await expect
       .poll(() => images.evaluateAll((nodes) => nodes.map((node) => node.naturalWidth)))
       .toEqual([0, 0]);
@@ -714,9 +737,10 @@ test('scans workspace resources and greys the page for an outside document', asy
     await expect(page.locator('#confirmModal')).toBeVisible();
     await expect(page.locator('#confirmDetail')).toContainText('assets/orphan.png');
     await page.locator('#confirmActions button', { hasText: 'Move selected to Trash' }).click();
-    await expect(page.locator('.resource-health-action-result')).toContainText(
-      'changed since scan',
-    );
+    await expect(page.locator('#confirmTitle')).toContainText('Move to Trash failed');
+    await expect(page.locator('#confirmMessage')).toContainText('file changed after the scan');
+    await page.locator('#confirmActions [data-action="rescan"]').click();
+    await expect(page.locator('.resource-health-candidate')).toContainText('assets/orphan.png');
     expect(fs.existsSync(orphanPath)).toBe(true);
     await page.locator('.resource-health-modal .modal-close').click();
     await expect(page.locator('.resource-health-modal')).toBeHidden();
@@ -811,11 +835,16 @@ test('keeps the Trash confirmation after its scan-scope reminder is acknowledged
     await page.locator('#confirmExtra input').check();
     fs.appendFileSync(firstOrphanPath, 'changed after confirmation opened');
     await page.locator('#confirmActions button', { hasText: 'Move selected to Trash' }).click();
-    await expect(page.locator('.resource-health-action-result')).toContainText(
-      'changed since scan',
-    );
+    await expect(page.locator('#confirmTitle')).toContainText('Move to Trash failed');
+    await expect(page.locator('#confirmMessage')).toContainText('file changed after the scan');
+    await page.locator('#confirmActions [data-action="rescan"]').click();
+    await expect(page.locator('.resource-health-candidate')).toContainText('first.png');
     expect(fs.existsSync(firstOrphanPath)).toBe(true);
 
+    await page
+      .locator('.resource-health-candidate', { hasText: 'first.png' })
+      .locator('input')
+      .check();
     await page.locator('.resource-health-trash').click();
     await expect(page.locator('#confirmModal')).toBeVisible();
     await expect(page.locator('#confirmExtra input')).toHaveCount(0);
