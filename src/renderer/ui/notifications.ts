@@ -7,12 +7,19 @@ export interface DialogAction {
   danger?: boolean;
 }
 
+export interface ConfirmDialogCheckbox {
+  label: string;
+  checked?: boolean;
+}
+
 export interface ConfirmDialogOptions {
   title?: string;
   message?: string;
   detail?: string;
   actions?: DialogAction[];
   draggable?: boolean;
+  checkbox?: ConfirmDialogCheckbox;
+  onAction?: (action: string, checkboxChecked: boolean) => void;
 }
 
 const MESSAGE_DURATION_MS = 4500;
@@ -30,6 +37,8 @@ export class NotificationsController {
   private _messageTimer: ReturnType<typeof setTimeout> | null = null;
   private _noticeTimer: ReturnType<typeof setTimeout> | null = null;
   private _confirmResolver: ((action: string) => void) | null = null;
+  private _confirmAction: ((action: string, checkboxChecked: boolean) => void) | null = null;
+  private _confirmCheckbox: HTMLInputElement | null = null;
   private _dragCleanup: (() => void) | null = null;
 
   constructor(
@@ -105,7 +114,7 @@ export class NotificationsController {
   async showConfirmDialog(options: ConfirmDialogOptions): Promise<string> {
     if (this._confirmResolver) this.closeConfirmDialog('cancel');
 
-    const { title, message, detail, draggable = false } = options;
+    const { title, message, detail, draggable = false, checkbox } = options;
     const actions = options.actions ?? [
       { id: 'cancel', label: this._t('dialog.cancel') },
       { id: 'confirm', label: this._t('dialog.continue'), primary: true },
@@ -116,15 +125,31 @@ export class NotificationsController {
     const titleEl = document.getElementById('confirmTitle');
     const messageEl = document.getElementById('confirmMessage');
     const detailEl = document.getElementById('confirmDetail');
+    const extraEl = document.getElementById('confirmExtra');
     const actionsEl = document.getElementById('confirmActions');
     const modal = document.getElementById('confirmModal');
-    if (!titleEl || !messageEl || !detailEl || !actionsEl || !modal) {
+    if (!titleEl || !messageEl || !detailEl || !extraEl || !actionsEl || !modal) {
       throw new Error('Confirm dialog DOM is unavailable');
     }
 
     titleEl.textContent = title || this._t('dialog.confirmTitle');
     messageEl.textContent = message || '';
     detailEl.textContent = detail ?? '';
+    extraEl.replaceChildren();
+    this._confirmCheckbox = null;
+    if (checkbox) {
+      const label = document.createElement('label');
+      label.className = 'confirm-checkbox';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = checkbox.checked ?? false;
+      const text = document.createElement('span');
+      text.textContent = checkbox.label;
+      label.append(input, text);
+      extraEl.append(label);
+      this._confirmCheckbox = input;
+    }
+    this._confirmAction = options.onAction ?? null;
 
     actionsEl.replaceChildren(
       ...actions.map((action) => {
@@ -160,7 +185,14 @@ export class NotificationsController {
     const actionsEl = document.getElementById('confirmActions');
     if (modal) modal.classList.add('hidden');
     if (actionsEl) actionsEl.replaceChildren();
+    const extraEl = document.getElementById('confirmExtra');
+    if (extraEl) extraEl.replaceChildren();
+    const checkboxChecked = this._confirmCheckbox?.checked ?? false;
+    const onAction = this._confirmAction;
+    this._confirmCheckbox = null;
+    this._confirmAction = null;
     this.setConfirmDialogDraggable(false);
+    onAction?.(action, checkboxChecked);
     resolver(action);
   }
 

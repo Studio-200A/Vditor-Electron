@@ -22,9 +22,18 @@ describe('window and menu controllers', () => {
 
   it('renders checked menu state and dispatches named commands without writing state', () => {
     const command = vi.fn();
+    const menuBar = document.getElementById('menu') as HTMLElement;
+    const titlebar = document.getElementById('title') as HTMLElement;
+    const trigger = document.querySelector('[data-menu="main"]') as HTMLButtonElement;
+    vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue(
+      new dom.window.DOMRect(18, 4, 80, 26),
+    );
+    vi.spyOn(titlebar, 'getBoundingClientRect').mockReturnValue(
+      new dom.window.DOMRect(0, 0, 600, 38),
+    );
     const controller = new MenuController({
-      menuBar: document.getElementById('menu') as HTMLElement,
-      titlebar: document.getElementById('title') as HTMLElement,
+      menuBar,
+      titlebar,
       toggleSidebar: document.getElementById('sidebar'),
       translate: (key) => key,
       onPopupCreated: () => undefined,
@@ -34,9 +43,11 @@ describe('window and menu controllers', () => {
       ],
     });
     controller.init();
-    (document.querySelector('[data-menu="main"]') as HTMLButtonElement).click();
+    trigger.click();
 
     const popup = document.querySelector('.app-menu-popup') as HTMLElement;
+    expect(popup.style.left).toBe('18px');
+    expect(popup.style.top).toBe('38px');
     expect(popup.querySelector('.checkmark')?.textContent).toBe('✓');
     (popup.querySelector('button') as HTMLButtonElement).click();
     expect(command).toHaveBeenCalledOnce();

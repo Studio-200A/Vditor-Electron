@@ -35,6 +35,7 @@ export async function launchApp(
     'windowBounds',
     'windowMaximized',
     'settingsDialogSize',
+    'resourceHealthDialogSize',
     'session',
   ]);
   const preferences = Object.fromEntries(
@@ -121,6 +122,7 @@ export function readSetting(testRoot: string, section: string, key: string): unk
     'windowBounds',
     'windowMaximized',
     'settingsDialogSize',
+    'resourceHealthDialogSize',
     'session',
   ]);
   const legacyStateKey =

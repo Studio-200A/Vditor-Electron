@@ -31,7 +31,11 @@ export {
 export { ThemeCoordinator } from './ui/theme-coordinator.js';
 export type { ThemeCoordinatorOptions, ThemeCoordinatorTab } from './ui/theme-coordinator.js';
 export { NotificationsController } from './ui/notifications.js';
-export type { ConfirmDialogOptions, DialogAction } from './ui/notifications.js';
+export type {
+  ConfirmDialogCheckbox,
+  ConfirmDialogOptions,
+  DialogAction,
+} from './ui/notifications.js';
 export { StatusMenuController } from './ui/status-menu-controller.js';
 export type {
   StatusMenuControllerOptions,
@@ -204,6 +208,11 @@ export type { ContextMenuItem } from './ui/context-menu-controller.js';
 export { MenuController } from './ui/menu-controller.js';
 export type { MenuControllerOptions, MenuItem } from './ui/menu-controller.js';
 export { WindowController } from './ui/window-controller.js';
+export { ResourceHealthController } from './resource-health/resource-health-controller.js';
+export type {
+  ResourceHealthControllerOptions,
+  ResourceHealthDialogSize,
+} from './resource-health/resource-health-controller.js';
 export { SidebarLayoutController } from './ui/sidebar-layout-controller.js';
 export { SidebarViewController } from './ui/sidebar-view-controller.js';
 export type { SidebarViewControllerOptions } from './ui/sidebar-view-controller.js';

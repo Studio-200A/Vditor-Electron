@@ -171,6 +171,11 @@ export function parseResourceRootPaths(value: unknown): string[] {
   return parseAbsolutePathArray(value, MAX_RESOURCE_ROOTS);
 }
 
+export function parseResourceHealthCandidateIds(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 100) invalidIpcArgument();
+  return value.map((item) => parseText(item, 128));
+}
+
 function parseAbsolutePathOrEmpty(value: unknown): string {
   return value === '' ? '' : parseAbsolutePath(value);
 }
@@ -286,6 +291,7 @@ const BOOLEAN_SETTINGS = new Set<keyof AppSettings>([
   'headingAnchor',
   'sanitize',
   'allowSvgImages',
+  'resourceHealthTrashScopeWarningEnabled',
   'sidebarVisible',
   'toolbarVisible',
   'windowMaximized',
@@ -391,6 +397,8 @@ function parseSettingValue(key: keyof AppSettings, value: unknown): AppSettings[
       return parseWindowBounds(value);
     case 'settingsDialogSize':
       return parseSettingsDialogSize(value);
+    case 'resourceHealthDialogSize':
+      return parseSettingsDialogSize(value);
     case 'session':
       return parseSession(value);
     default:
@@ -422,6 +430,7 @@ const PERSISTENT_STATE_KEYS = [
   'windowBounds',
   'windowMaximized',
   'settingsDialogSize',
+  'resourceHealthDialogSize',
   'session',
 ] as const satisfies readonly (keyof PersistentAppState)[];
 

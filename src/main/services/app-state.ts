@@ -71,6 +71,7 @@ export interface AppSettings {
   imageMaxWidth: number;
   imageQuality: number;
   workspaceReadDepth: number;
+  resourceHealthTrashScopeWarningEnabled: boolean;
   paragraphBeginningSpace: boolean;
   fixTermTypo: boolean;
   gfmAutoLink: boolean;
@@ -85,6 +86,7 @@ export interface AppSettings {
   windowBounds: { x: number | undefined; y: number | undefined; width: number; height: number };
   windowMaximized: boolean;
   settingsDialogSize: { width: number; height: number; customized: boolean };
+  resourceHealthDialogSize: { width: number; height: number; customized: boolean };
   defaultOpenPath: string;
   recentPaths: string[];
   recentFiles: RecentFile[];
@@ -124,6 +126,7 @@ export interface PersistentAppState {
   windowBounds: { x: number | undefined; y: number | undefined; width: number; height: number };
   windowMaximized: boolean;
   settingsDialogSize: { width: number; height: number; customized: boolean };
+  resourceHealthDialogSize: { width: number; height: number; customized: boolean };
   session: AppSession;
 }
 
@@ -139,6 +142,7 @@ export const DEFAULT_PERSISTENT_APP_STATE: PersistentAppState = {
   windowBounds: { x: undefined, y: undefined, width: 1200, height: 800 },
   windowMaximized: false,
   settingsDialogSize: { width: 1080, height: 780, customized: false },
+  resourceHealthDialogSize: { width: 900, height: 680, customized: false },
   session: { schemaVersion: 1, workspacePath: '', activeFilePath: null, openFiles: [] },
 };
 
@@ -204,6 +208,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   imageMaxWidth: 1024,
   imageQuality: 0.85,
   workspaceReadDepth: WORKSPACE_READ_DEPTH_MIN,
+  resourceHealthTrashScopeWarningEnabled: true,
   paragraphBeginningSpace: false,
   fixTermTypo: false,
   gfmAutoLink: true,
@@ -218,6 +223,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   windowBounds: { x: undefined, y: undefined, width: 1200, height: 800 },
   windowMaximized: false,
   settingsDialogSize: { width: 1080, height: 780, customized: false },
+  resourceHealthDialogSize: { width: 900, height: 680, customized: false },
   defaultOpenPath: '',
   recentPaths: [],
   recentFiles: [],

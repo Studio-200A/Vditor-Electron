@@ -102,8 +102,9 @@ export class MenuController {
     this.fillPopup(popup, this.options.getMenu(trigger.dataset.menu ?? ''));
     document.body.appendChild(popup);
     const rect = trigger.getBoundingClientRect();
+    const titlebarRect = this.options.titlebar.getBoundingClientRect();
     popup.style.left = `${rect.left}px`;
-    popup.style.top = `${rect.bottom}px`;
+    popup.style.top = `${titlebarRect.bottom}px`;
   }
 
   private fillPopup(popup: HTMLElement, items: readonly MenuItem[]): void {

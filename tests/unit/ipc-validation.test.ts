@@ -96,6 +96,7 @@ describe('IPC request validation', () => {
       { pasteImagesDir: '\\\\server\\share' },
       { windowBounds: { width: 16_385, height: 800 } },
       { settingsDialogSize: { width: 16_385, height: 780, customized: true } },
+      { resourceHealthDialogSize: { width: 16_385, height: 680, customized: true } },
     ]) {
       expect(() => parseSettingsPatch(patch)).toThrow('IPC_INVALID_ARGUMENT');
     }

@@ -720,6 +720,70 @@ describe('Vditor DOM compatibility adapter', () => {
     expect(onInput).toHaveBeenCalledTimes(1);
   });
 
+  it('removes one exact missing image reference through Vditor input paths', () => {
+    const host = createHost();
+    window.document.body.append(host);
+    const source = adapter.editorParts(host).source;
+    source.innerHTML = '<span>before ![gone](assets/missing.png) after</span>';
+    const sourceInput = vi.fn();
+    const addToUndoStack = vi.fn();
+    const recordFirstPosition = vi.fn();
+    source.addEventListener('input', sourceInput);
+
+    expect(
+      adapter.removeImageReference(
+        host,
+        'sv',
+        '![gone](assets/missing.png)',
+        'assets/missing.png',
+        {
+          undo: { addToUndoStack, recordFirstPosition },
+        },
+      ),
+    ).toBe(true);
+    expect(source.textContent).toBe('before  after');
+    expect(sourceInput).toHaveBeenCalledOnce();
+    expect(recordFirstPosition).toHaveBeenCalledWith(
+      expect.objectContaining({ undo: expect.any(Object) }),
+      { key: 'ResourceHealth' },
+    );
+    expect(addToUndoStack).toHaveBeenCalledTimes(2);
+
+    const wysiwyg = adapter.editorParts(host).wysiwyg;
+    wysiwyg.innerHTML =
+      '<p>before <img src="local-file://workspace/assets/missing.png" data-vditor-desktop-original-src="assets/missing.png"> after</p>';
+    const wysiwygInput = vi.fn();
+    wysiwyg.addEventListener('input', wysiwygInput);
+    expect(
+      adapter.removeImageReference(
+        host,
+        'wysiwyg',
+        '<img src="assets/missing.png">',
+        'assets/missing.png',
+      ),
+    ).toBe(true);
+    expect(wysiwyg.querySelector('img')).toBeNull();
+    expect(wysiwygInput).toHaveBeenCalledOnce();
+  });
+
+  it('refuses an ambiguous rendered image URL instead of removing a different reference', () => {
+    const host = createHost();
+    window.document.body.append(host);
+    const wysiwyg = adapter.editorParts(host).wysiwyg;
+    wysiwyg.innerHTML =
+      '<p><img data-vditor-desktop-original-src="assets/shared.png"><img data-vditor-desktop-original-src="assets/shared.png"></p>';
+
+    expect(
+      adapter.removeImageReference(
+        host,
+        'wysiwyg',
+        '![first](assets/shared.png)',
+        'assets/shared.png',
+      ),
+    ).toBe(false);
+    expect(wysiwyg.querySelectorAll('img')).toHaveLength(2);
+  });
+
   it('selects the current rendered block before the whole editor', () => {
     const host = createHost();
     window.document.body.append(host);

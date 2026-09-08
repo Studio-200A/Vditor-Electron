@@ -65,6 +65,7 @@ describe('NotificationsController', () => {
       <div class="confirm-content">
         <p id="confirmMessage"></p>
         <p id="confirmDetail"></p>
+        <div id="confirmExtra"></div>
       </div>
       <footer id="confirmActions"></footer>
     </div>
@@ -179,6 +180,23 @@ describe('NotificationsController', () => {
       const result = await promise;
       expect(result).toBe('confirm');
       expect(modal?.classList.contains('hidden')).toBe(true);
+    });
+
+    it('reports a checked optional acknowledgement only for the confirmed action', async () => {
+      const onAction = vi.fn();
+      const promise = controller.showConfirmDialog({
+        message: 'Scope warning',
+        checkbox: { label: 'Do not show again' },
+        onAction,
+      });
+      const checkbox = document.querySelector<HTMLInputElement>('#confirmExtra input');
+      expect(checkbox?.checked).toBe(false);
+      checkbox?.click();
+      (document.querySelector('#confirmActions button.primary') as HTMLElement).click();
+
+      await expect(promise).resolves.toBe('confirm');
+      expect(onAction).toHaveBeenCalledWith('confirm', true);
+      expect(document.getElementById('confirmExtra')?.children).toHaveLength(0);
     });
 
     it('auto-cancels a previous dialog when a new one opens', async () => {

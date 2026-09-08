@@ -97,6 +97,7 @@ Vditor-Electron/
 │   │       ├── recovery-store.ts  # 私有恢复快照的校验、原子写入、读取与清理
 │   │       ├── settings-store.ts  # 仅用户偏好的 TOML 读写、加载校验、深合并、原子保存
 │   │       ├── persistent-state-store.ts # 版本化 state.json 白名单、迁移、串行原子写入
+│   │       ├── resource-health-service.ts # 已保存文档的工作区图片引用扫描、受控候选 revision 与回收站前复核
 │   │       ├── window-close-confirmation.ts # 按 BrowserWindow 绑定的关闭确认状态
 │   │       └── app-state.ts       # AppSettings / PersistentAppState 接口与默认值定义
 ├── src/renderer/                  # 渲染进程（TypeScript 入口 + 组合 JavaScript + HTML + CSS）
@@ -109,6 +110,8 @@ Vditor-Electron/
 │   │   ├── session-restore-controller.ts # session DTO 投影、workspace/document 恢复交易与恢复收尾
 │   │   └── app-composition.js     # controller 实例装配、跨域 callback 和剩余组合交易
 │   ├── vditor-adapter.js          # Vditor 私有 DOM 适配层（集中选择器与结构假设）
+│   ├── resource-health/            # 资源健康页面与其扫描、选择、预览和覆盖层生命周期
+│   │   └── resource-health-controller.ts # 只消费窄 bridge 与语义 adapter API 的页面 controller
 │   ├── locales.js                 # 三语字典（en_US / zh_Hans / zh_Hant）
 │   ├── types/                     # renderer TypeScript 类型声明
 │   │   ├── bridges.d.ts           # window.appAPI / window.fileAPI 类型
@@ -857,6 +860,11 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `app:exportPDF`              | `html, defaultPath?, defaultDirectory?` | `string \| null`                        | 隐藏 BrowserWindow 加载 HTML 后 `printToPDF` |
 | `app:readClipboard`          | 无                                | `{ text: string, html: string }`             | 读取编辑区右键菜单所需的系统剪贴板文本和 HTML 数据 |
 | `app:writeClipboard`         | `text: string`                    | `void`                                        | 在用户确认重建文件后写入冻结的此前正文备份       |
+| `app:resourceHealthEligible` | `documentPath, workspacePath`     | `boolean`                                     | 主进程 canonical 路径资格检查，并刷新 macOS 原生菜单禁用状态 |
+| `app:resourceHealthScan`     | `documentPath, workspacePath`     | `ResourceHealthScanSummary`                   | 扫描已保存版本、工作区 Markdown/HTML 引用和当前图片目录；DTO 不含绝对路径 |
+| `app:resourceHealthReveal`   | `revision, candidateId`           | `void`                                        | 仅显示该 revision 中受控候选所在位置             |
+| `app:resourceHealthPreview`  | `revision, candidateId`           | `string \| null`                              | 为可预览受控候选生成 local-file URL              |
+| `app:resourceHealthTrash`    | `revision, candidateIds`          | `ResourceHealthActionResult[]`                | 重新扫描、核验候选身份/引用状态后调用系统回收站   |
 | `app:getRecoveryCandidates`  | 无                                | `{ id, title, updatedAt }[]`                  | 返回不含正文的有效恢复快照元数据              |
 | `app:restoreRecovery`        | `id: string`                      | 恢复快照或 `null`                              | 校验快照并标记 `unchanged` / `changed` / `unavailable` 磁盘状态 |
 | `app:saveRecovery`           | 恢复快照                          | `void`                                        | 校验大小/字段后原子写入私有 recovery 目录     |
@@ -867,6 +875,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | 通道名                 | 入参 | 处理逻辑                                             |
 | ---------------------- | ---- | ---------------------------------------------------- |
 | `app:rendererReady`    | 无   | 标记 `rendererReady = true`，推送 `pendingOpenFiles` |
+| `app:resourceHealthDiscard` | 无 | 丢弃短生命周期扫描 revision，撤销 renderer 已获得的候选能力 |
 | `app:toggleFullscreen` | 无   | `mainWindow.setFullScreen(!isFullScreen)`            |
 | `window:minimize`      | 无   | `mainWindow.minimize()`                              |
 | `window:maximize`      | 无   | `toggleWindowMaximized()`（含 Linux bounds 修复）    |

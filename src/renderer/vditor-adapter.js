@@ -1466,7 +1466,31 @@
     return true;
   }
 
-  function replaceTextMatch(host, mode, query, occurrence, replacement, caseSensitive = false) {
+  function execEditorCommand(editor, command, value, inputType) {
+    let receivedInput = false;
+    const observeInput = () => {
+      receivedInput = true;
+    };
+    editor.addEventListener('input', observeInput, { capture: true });
+    const succeeded = document.execCommand?.(command, false, value);
+    editor.removeEventListener('input', observeInput, { capture: true });
+    if (!succeeded) return false;
+    // Vditor 3.11.3 records undo from its input listener. Chromium normally dispatches an
+    // input event for execCommand, but synthetic selection edits can omit it in Split View.
+    if (!receivedInput || (command === 'insertText' && value === ''))
+      editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType, data: value }));
+    return true;
+  }
+
+  function replaceTextMatch(
+    host,
+    mode,
+    query,
+    occurrence,
+    replacement,
+    caseSensitive = false,
+    undoInstance,
+  ) {
     const matches = textMatches(host, mode, query, caseSensitive);
     const match = matches[occurrence];
     const editor = activeEditor(host, mode);
@@ -1478,9 +1502,10 @@
       selection.removeAllRanges();
       selection.addRange(match.range);
       editor.focus({ preventScroll: true });
+      recordImageReferenceUndoBefore(undoInstance);
       // Keep replacement on Vditor's native editable/input path so its mode
       // serialization, selection and undo stack remain authoritative.
-      if (document.execCommand?.('insertText', false, replacement)) return true;
+      if (execEditorCommand(editor, 'insertText', replacement, 'insertText')) return true;
       match.range.deleteContents();
       match.range.insertNode(document.createTextNode(replacement));
       editor.dispatchEvent(
@@ -1488,6 +1513,76 @@
       );
       return true;
     });
+  }
+
+  function localImageSource(value) {
+    const source = String(value || '')
+      .trim()
+      .replace(/^<|>$/g, '');
+    if (!source || /^[a-z][a-z0-9+.-]*:/i.test(source) || source.startsWith('//')) return null;
+    try {
+      return decodeURIComponent(source.split(/[?#]/, 1)[0]);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function replaceSelectedRange(host, editor, range, undoInstance) {
+    // Keep this on Vditor's editable/input path: directly removing an image node would bypass
+    // the 3.11.3 serializer and lose the undo transaction in rendered editing modes.
+    return withOriginalImageSources(host, () => {
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      editor.focus({ preventScroll: true });
+      recordImageReferenceUndoBefore(undoInstance);
+      if (execEditorCommand(editor, 'delete', undefined, 'deleteContent')) return true;
+      range.deleteContents();
+      editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContent' }));
+      return true;
+    });
+  }
+
+  function recordImageReferenceUndo(instance) {
+    if (typeof instance?.undo?.addToUndoStack !== 'function') return;
+    // Vditor 3.11.3 owns the per-mode patch stack. Record this semantic edit after its input
+    // normalization, because a programmatic selection replacement has no keyboard prelude.
+    instance.undo.addToUndoStack(instance);
+  }
+
+  function recordImageReferenceUndoBefore(instance) {
+    if (typeof instance?.undo?.recordFirstPosition !== 'function') return;
+    instance.undo.recordFirstPosition(instance, { key: 'ResourceHealth' });
+    instance.undo.addToUndoStack?.(instance);
+  }
+
+  function removeImageReference(host, mode, raw, source, instance) {
+    const editor = activeEditor(host, mode);
+    if (!editor || !raw || !source) return false;
+    if (mode === 'sv') {
+      const removed = replaceTextMatch(host, mode, raw, 0, '', true, instance);
+      if (removed) recordImageReferenceUndo(instance);
+      return removed;
+    }
+
+    const expectedSource = localImageSource(source);
+    if (!expectedSource) return false;
+    const images = Array.from(editor.querySelectorAll('img')).filter((candidate) => {
+      const original = candidate.dataset.vditorDesktopOriginalSrc || candidate.getAttribute('src');
+      return localImageSource(original) === expectedSource;
+    });
+    // The rendered DOM does not preserve every Markdown spelling. Refuse duplicate URLs so a
+    // confirmed saved-reference location can never delete a different rendered image.
+    if (images.length !== 1) return false;
+    const [image] = images;
+    if (!image) return false;
+    const range = document.createRange();
+    // In IR the image marker is the smallest serializable unit; WYSIWYG stores the img itself.
+    const unit = mode === 'ir' ? image.closest('[data-type="img"]') || image : image;
+    range.selectNode(unit);
+    const removed = replaceSelectedRange(host, editor, range, instance);
+    if (removed) recordImageReferenceUndo(instance);
+    return removed;
   }
 
   function normalizedAnchor(value) {
@@ -1890,6 +1985,7 @@
     revealTextMatch,
     selectTextMatch,
     replaceTextMatch,
+    removeImageReference,
     documentAnchor,
     documentLink,
     setDocumentLinkHint,

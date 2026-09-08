@@ -26,6 +26,50 @@ export interface FileInfo {
 
 export type Unsubscribe = () => void;
 
+export type ResourceHealthActionCode =
+  | 'trashed'
+  | 'revalidated-as-referenced'
+  | 'changed-since-scan'
+  | 'outside-workspace'
+  | 'unsupported'
+  | 'scan-incomplete'
+  | 'not-found'
+  | 'failed';
+
+export interface ResourceHealthScanSummary {
+  schemaVersion: 1;
+  revision: string;
+  documentRelativePath: string;
+  imageDirectoryRelativePath: string;
+  workspaceName: string;
+  savedAt: number;
+  completedAt: number;
+  scannedSourceFiles: number;
+  candidates: readonly {
+    id: string;
+    relativePath: string;
+    name: string;
+    size: number;
+    modifiedAt: number;
+    previewAvailable: boolean;
+  }[];
+  missingReferences: readonly {
+    targetPath: string;
+    source: string;
+    locations: readonly { line: number; column: number; raw: string }[];
+  }[];
+  candidateBytes: number;
+  limitations: {
+    complete: boolean;
+    skipped: Readonly<Record<string, number>>;
+  };
+}
+
+export interface ResourceHealthActionResult {
+  id: string;
+  code: ResourceHealthActionCode;
+}
+
 export interface FileAPI {
   openFileDialog(defaultDirectory?: string): Promise<string | null>;
   openFolderDialog(defaultDirectory?: string): Promise<string | null>;
@@ -101,6 +145,18 @@ export interface AppAPI {
   openExternal(url: string): Promise<void>;
   showItemInFolder(filePath: string): Promise<void>;
   openDirectory(dirPath: string): Promise<void>;
+  isResourceHealthEligible(documentPath: string, workspacePath: string): Promise<boolean>;
+  scanResourceHealth(
+    documentPath: string,
+    workspacePath: string,
+  ): Promise<ResourceHealthScanSummary>;
+  revealResourceHealthCandidate(revision: string, candidateId: string): Promise<void>;
+  previewResourceHealthCandidate(revision: string, candidateId: string): Promise<string | null>;
+  trashResourceHealthCandidates(
+    revision: string,
+    candidateIds: string[],
+  ): Promise<readonly ResourceHealthActionResult[]>;
+  discardResourceHealthScans(): void;
   exportPDF(html: string, defaultPath?: string, defaultDirectory?: string): Promise<string | null>;
   toggleFullscreen(): void;
   onMenuAction(callback: (action: string, value?: string) => void): Unsubscribe;

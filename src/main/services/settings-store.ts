@@ -91,6 +91,7 @@ type SettingsDocument = {
     | 'imageMaxWidth'
     | 'imageQuality'
     | 'workspaceReadDepth'
+    | 'resourceHealthTrashScopeWarningEnabled'
   >;
   workspace: Pick<AppSettings, 'fileExplorer'>;
   /** Accepted only as an upgrade input; new config.toml files never write these fields. */
@@ -223,6 +224,7 @@ export class SettingsStore {
       windowBounds: structuredClone(settings.windowBounds),
       windowMaximized: settings.windowMaximized,
       settingsDialogSize: structuredClone(settings.settingsDialogSize),
+      resourceHealthDialogSize: structuredClone(settings.resourceHealthDialogSize),
       session: structuredClone(settings.session),
     };
   }
@@ -332,6 +334,7 @@ export class SettingsStore {
         'imageMaxWidth',
         'imageQuality',
         'workspaceReadDepth',
+        'resourceHealthTrashScopeWarningEnabled',
       ]),
       workspace: pick(settings, ['fileExplorer']),
     };

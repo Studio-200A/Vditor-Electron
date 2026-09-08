@@ -1,240 +1,253 @@
-# Cross-Platform Implementation and Verification
+# 跨平台实现与验证
 
-## 1. Purpose and scope
+## 1. 目的与范围
 
-This document is the central record for Vditor-Electron cross-platform implementation boundaries and verification evidence. It covers Linux, Windows, and macOS behavior that can affect file editing, workspaces, watchers, paths, permissions, windows, menus, packaging, and system integration.
+本文档是 Vditor-Electron 跨平台实现边界与验证证据的集中记录。它涵盖 Linux、Windows 和 macOS 上可能影响文件编辑、工作区、文件监视器、路径、权限、窗口、菜单、打包和系统集成的行为。
 
-It is intentionally separate from the 0.2.0 execution tracker. The tracker records which batch owns a risk; this document records the platform rule, the test method, and the evidence.
+本文档有意与 0.2.0 执行跟踪器（execution tracker）分开。跟踪器记录哪个批次拥有某风险；本文档记录平台规则、测试方法和证据。
 
-The version-independent file-safety contract, including the remaining non-atomic compare-and-replace boundary for an existing target, is maintained in [`docs/05-FILE-SAFETY.md`](05-FILE-SAFETY.md). This document records only the platform-specific behavior and evidence needed to validate that contract.
+与版本无关的文件安全契约（包括针对现有目标仍存在的非原子 compare-and-replace 边界）维护在 [`docs/05-FILE-SAFETY.md`](05-FILE-SAFETY.md) 中。本文档只记录验证该契约所需的平台特定行为和证据。
 
-The current development and validation platform is Linux. Cross-platform work is scheduled to begin after the 0.2.5 renderer refactor and after Windows/macOS test environments are available. Until then, Linux tests may prevent platform-agnostic regressions, but must not be reported as Windows or macOS validation.
+当前的开发与验证平台是 Linux。跨平台工作计划在 0.2.5 渲染器重构之后、且 Windows/macOS 测试环境就绪后开始。在此之前，Linux 测试可以防止平台无关的回归，但不得被报告为 Windows 或 macOS 验证。
 
-Linux full-suite evidence for the in-progress 0.2.5 renderer review is retained in [`docs/15-0.2.5-EXECUTION-TRACKER.md`](15-0.2.5-EXECUTION-TRACKER.md). A Linux retry after a resource-sensitive Electron E2E result is still Linux-only evidence and does not satisfy any Windows or macOS row.
+正在进行的 0.2.5 渲染器审查的 Linux 全量套件证据保留在 [`docs/15-0.2.5-EXECUTION-TRACKER.md`](15-0.2.5-EXECUTION-TRACKER.md) 中。在一次资源敏感的 Electron E2E 结果之后进行的 Linux 重试，仍只是 Linux 证据，不能满足任何 Windows 或 macOS 行。
 
-## 2. Product and architecture boundaries
+## 2. 产品与架构边界
 
-- Keep ordinary Markdown files as the source of truth. Do not introduce a platform-specific document format.
-- Prefer Electron and Node.js APIs over shell commands or platform-specific executables.
-- Keep filesystem, window, menu, dialog, watcher, clipboard, and external-navigation differences in main-process services or narrow bridge capabilities.
-- Keep renderer behavior independent of path syntax and operating-system names wherever possible.
-- Use `node:path` for native paths and URL APIs for application-protocol paths. Do not infer the platform from a path string.
-- Keep Vditor pinned to 3.11.3 and keep its private DOM access inside `src/renderer/vditor-adapter.js`.
-- The project pins Electron 44.1.0. Electron 44 requires macOS 13 or later and no longer ships prebuilt Windows 32-bit or Linux ARMv7 runtimes; the repository's Linux release script targets x86_64.
+- 将普通 Markdown 文件作为事实来源（source of truth）。不要引入平台特定的文档格式。
+- 优先使用 Electron 和 Node.js API，而非 shell 命令或平台特定可执行文件。
+- 将文件系统、窗口、菜单、对话框、文件监视器、剪贴板和外部导航的差异保留在主进程服务或窄化的 bridge 能力中。
+- 尽可能让渲染器行为不依赖路径语法和操作系统名称。
+- 对原生路径使用 `node:path`，对应用程序协议路径使用 URL API。不要从路径字符串推断平台。
+- 将 Vditor 固定为 3.11.3，并将其私有 DOM 访问保留在 `src/renderer/vditor-adapter.js` 中。
+- 项目固定使用 Electron 44.1.0。Electron 44 要求 macOS 13 或更高版本，并且不再提供预编译的 Windows 32 位或 Linux ARMv7 运行时；仓库的 Linux 发布脚本面向 x86_64。
 
-## 3. What Linux can and cannot prove
+## 3. Linux 能证明什么、不能证明什么
 
-### 3.1 Suitable for Linux unit or integration tests
+### 3.1 适合用 Linux 单元或集成测试验证
 
-Linux can validate platform-independent algorithms and POSIX-like behavior, including:
+Linux 可以验证平台无关算法和类 POSIX 行为，包括：
 
-- `path.posix` and path normalization rules using synthetic `/Users/user/...` inputs
-- Windows path parsing through `path.win32`, including drive letters and backslashes
-- containment checks, relative paths, directory-depth calculations, and symlink cycle detection
-- ordinary symlink and `realpath` behavior
-- UTF-8, BOM, line endings, safe same-directory replacement, and failure cleanup
-- ordinary permission failures, missing paths, renames, deletes, and watcher cleanup
-- injected platform capabilities and fake bridge results
-- localization, UI state, and renderer behavior that does not depend on native OS integration
+- 使用合成的 `/Users/user/...` 输入验证 `path.posix` 和路径规范化规则
+- 通过 `path.win32` 验证 Windows 路径解析，包括盘符和反斜杠
+- 包含性检查（containment checks）、相对路径、目录深度计算和符号链接循环检测
+- 普通符号链接和 `realpath` 行为
+- UTF-8、BOM、行尾、安全的同目录替换和失败清理
+- 普通权限失败、路径缺失、重命名、删除和文件监视器清理
+- 注入的平台能力和伪造的 bridge 结果
+- 不依赖原生 OS 集成的本地化、UI 状态和渲染器行为
 
-Using `/Users/user` instead of `/home/user` only tests a path-shaped input. It does not emulate macOS filesystem or system behavior.
+使用 `/Users/user` 而不是 `/home/user` 只是测试一个路径形状的输入。它并不模拟 macOS 文件系统或系统行为。
 
-### 3.2 Requires a real platform
+### 3.2 需要真实平台验证
 
-The following must be verified on the target operating system and must not be marked complete from Linux-only evidence:
+以下内容必须在目标操作系统上验证，且不得仅凭 Linux 证据标记为完成：
 
-- actual default filesystem case behavior and Unicode filename behavior
-- filesystem ACLs, extended attributes, file flags, ownership, and permission errors
-- watcher event source, timing, coalescing, rename behavior, and recovery after a directory move
-- atomic replacement of open, locked, read-only, or externally modified files
-- Windows junctions, Windows `.lnk` shortcuts, and macOS Finder aliases
-- native open/save dialogs, recycle-bin behavior, clipboard integration, and external navigation
-- macOS traffic-light title-bar safe areas and native menus
-- Windows and Linux custom window controls, high-DPI behavior, and packaging integration
-- installer, portable package, AppImage, signing, quarantine, and launch behavior
+- 实际默认文件系统大小写行为和 Unicode 文件名行为
+- 文件系统 ACL、扩展属性、文件标志、所有权和权限错误
+- 文件监视器的事件源、时序、合并（coalescing）、重命名行为以及目录移动后的恢复
+- 打开、锁定、只读或外部修改文件的原子替换
+- Windows junction、Windows `.lnk` 快捷方式和 macOS Finder 别名
+- 原生打开/保存对话框、回收站行为、剪贴板集成和外部导航
+- macOS 红绿灯标题栏安全区和原生菜单
+- Windows 和 Linux 自定义窗口控件、高 DPI 行为和打包集成
+- 安装程序、便携包、AppImage、签名、隔离（quarantine）和启动行为
 
-Node's `path` implementation varies with the host platform, and some `fs` operations are explicitly platform-specific. A path string cannot change those runtime semantics. macOS APFS is case-insensitive by default but can be configured case-sensitive, so both the actual volume and the test result must be recorded.
+Node 的 `path` 实现随宿主平台而异，且某些 `fs` 操作是明确平台特定的。路径字符串无法改变这些运行时语义。macOS APFS 默认大小写不敏感，但可以配置为大小写敏感，因此实际卷和测试结果都必须记录。
 
-## 4. Platform behavior matrix
+## 4. 平台行为矩阵
 
-| Area | Linux | Windows | macOS | Verification requirement |
+| 领域 | Linux | Windows | macOS | 验证要求 |
 | --- | --- | --- | --- | --- |
-| Native path | POSIX path, `/` | Drive/UNC paths, `\\` and `/` inputs | POSIX path, `/` | Unit-test path algorithms; run native path smoke tests on each OS |
-| Case behavior | Usually case-sensitive | Usually case-insensitive | APFS usually case-insensitive, but configurable | Real filesystem test with case-collision fixtures |
-| Directory links | symlink | symlink and junction | symlink; Finder alias is a separate format | Test real link types on target OS |
-| Shortcut files | ordinary files | `.lnk` currently ordinary files | Finder alias currently ordinary files | Keep current limitation until separately designed |
-| Directory watcher | Linux backend and event timing | Windows backend and event timing | FSEvents behavior and coalescing | Create/change/rename/delete/reappear tests on each OS |
-| Permissions | POSIX mode/ACL behavior | Windows permission model and sharing/lock rules | POSIX mode plus ACL and filesystem metadata | Test readable, writable, locked, and unavailable states on each OS |
-| Safe replacement | Linux rename and open-file semantics | Windows replacement and sharing semantics | macOS rename and open-file semantics | Test manual and automatic save with open/locked targets |
-| Window chrome | Custom controls | Custom controls | Native traffic lights plus safe area | Real-window visual and interaction test; on macOS, also verify Dock activation creates a fresh close-confirmation cycle |
-| Menus | Renderer menu | Renderer menu | Renderer plus native menu | Verify menu parity and platform conventions |
-| Data paths | XDG config/data paths | APPDATA/LOCALAPPDATA | Library/Application Support | Unit tests plus one installed/runtime smoke test per OS |
+| 原生路径 | POSIX 路径，`/` | 盘符/UNC 路径，`\\` 和 `/` 输入 | POSIX 路径，`/` | 对路径算法做单元测试；在每个 OS 上运行原生路径冒烟测试 |
+| 大小写行为 | 通常大小写敏感 | 通常大小写不敏感 | APFS 通常大小写不敏感，但可配置 | 用大小写冲突夹具做真实文件系统测试 |
+| 目录链接 | 符号链接 | 符号链接和 junction | 符号链接；Finder 别名是独立格式 | 在目标 OS 上测试真实链接类型 |
+| 快捷方式文件 | 普通文件 | `.lnk` 当前作为普通文件 | Finder 别名当前作为普通文件 | 在单独设计之前保留当前限制 |
+| 目录监视器 | Linux 后端和事件时序 | Windows 后端和事件时序 | FSEvents 行为和合并 | 在每个 OS 上做创建/变更/重命名/删除/重现测试 |
+| 权限 | POSIX 模式/ACL 行为 | Windows 权限模型和共享/锁定规则 | POSIX 模式加 ACL 和文件系统元数据 | 在每个 OS 上测试可读、可写、锁定和不可用状态 |
+| 安全替换 | Linux 重命名和打开文件语义 | Windows 替换和共享语义 | macOS 重命名和打开文件语义 | 测试打开/锁定目标上的手动和自动保存 |
+| 窗口装饰 | 自定义控件 | 自定义控件 | 原生红绿灯加安全区 | 真实窗口视觉和交互测试；在 macOS 上还需验证 Dock 激活会创建全新的关闭确认循环 |
+| 菜单 | 渲染器菜单 | 渲染器菜单 | 渲染器加原生菜单 | 验证菜单对等性和平台惯例 |
+| 数据路径 | XDG config/data 路径 | APPDATA/LOCALAPPDATA | Library/Application Support | 单元测试加每个 OS 一次安装/运行时冒烟测试 |
 
-## 5. Current implementation status
+## 5. 当前实现状态
 
-### Implemented and Linux-tested
+### 已实现并经过 Linux 测试
 
-- Platform data/config/recovery paths are centralized in `src/main/app-paths.ts`; every platform uses the resolved configuration directory for both preference-only `config.toml` and versioned `state.json`.
-- Workspace directory links that resolve through `realpath` are classified as inside or outside the workspace. Internal links use the target's workspace depth; outside and cyclic links remain visible but cannot expand.
-- Workspace monitoring does not follow symlinks and uses the selected 7–12 directory depth.
-- `.lnk` and Finder alias are intentionally treated as ordinary files. Supporting them requires a separate product and security decision.
-- Safe document writes use a same-directory temporary file and replacement flow; failure paths preserve the original file.
-- The 0.2.0 file-state flows cover external modification, deletion, reappearance, and unreadable/permission states.
-- Directory rename, directory deletion, Save As watcher rebinding, descendant path updates, invalid workspace-root reset, and externally renamed parent-directory binding reconciliation are implemented and Linux-tested; Windows/macOS filesystem semantics remain unvalidated.
-- On Fedora Workstation, the custom-titlebar Restore button can intermittently miss clicks after maximization while dragging the titlebar still restores the window. The same observation reproduces in other Linux Electron applications; Vditor-Electron's `unmaximize()` command and automated state transition pass, so this remains a Linux Electron/window-manager compatibility observation rather than an application regression.
-- Batch 12 scopes a renderer-approved window close to its originating `BrowserWindow`; Linux state and focused Electron close-flow tests pass, while the macOS Dock activation lifecycle remains unvalidated in section 13.
+- 平台数据/配置/恢复路径集中在 `src/main/app-paths.ts`；每个平台都使用解析出的配置目录存放仅偏好设置的 `config.toml` 和带版本的 `state.json`。
+- 通过 `realpath` 解析的工作区目录链接被归类为工作区内或工作区外。内部链接使用目标的工作区深度；外部和循环链接保持可见但不能展开。
+- 工作区监视不跟随符号链接，并使用选定的 7–12 层目录深度。
+- `.lnk` 和 Finder 别名有意作为普通文件处理。支持它们需要单独的产品和安全决策。
+- 安全的文档写入使用同目录临时文件和替换流程；失败路径保留原文件。
+- 0.2.0 文件状态流程覆盖外部修改、删除、重现和不可读/权限状态。
+- 目录重命名、目录删除、Save As 监视器重新绑定、后代路径更新、无效工作区根重置，以及外部重命名的父目录绑定调和均已实现并经过 Linux 测试；Windows/macOS 文件系统语义仍未验证。
+- 在 Fedora Workstation 上，自定义标题栏的 Restore 按钮在最大化后可能间歇性漏掉点击，而拖动标题栏仍能还原窗口。相同的观察在其他 Linux Electron 应用中也能复现；Vditor-Electron 的 `unmaximize()` 命令和自动化状态转换都通过，因此这仍是 Linux Electron/窗口管理器兼容性观察，而非应用回归。
+- 批次 12 将渲染器批准的窗口关闭限定到其来源 `BrowserWindow`；Linux 状态和聚焦的 Electron 关闭流程测试通过，而 macOS Dock 激活生命周期仍留待第 13 节验证。
 
-As of 2026-08-28, 0.2.0 development tracker batches 7, 7.1, and 8 are closed for the Linux-local implementation and regression scope. The user-run Linux `npm run check:all` passed its required static and Electron checks; the dated evidence is retained in the relevant Tracker records. Batch 8's dangerous-protocol and normal external-link manual checks also passed. This is local regression evidence only; it does not close any Windows or macOS row below.
+截至 2026-08-28，0.2.0 开发跟踪器的批次 7、7.1 和 8 已就 Linux 本地实现和回归范围关闭。用户运行的 Linux `npm run check:all` 通过了其必需的静态和 Electron 检查；带日期的证据保留在相关跟踪器记录中。批次 8 的危险协议和普通外链手动检查也通过。这只是本地回归证据；它不关闭下面的任何 Windows 或 macOS 行。
 
-Batch 10 has since completed its Linux-local implementation, focused automation, user manual validation, and user-run full-check pass. P12 subsequently added the window-scoped close-confirmation test and also has a passing Linux full-check record. P15 now pins Electron 44.1.0, updates the asynchronous clipboard boundary, and has a user-run passing Linux full-check record. The dated totals, exact reruns, and affected test scope belong to their Tracker records rather than this platform boundary document. Windows drive/UNC and junction verification remains explicitly deferred to sections 12.1–12.3, and macOS remains a separate native-runtime task; Electron 44's macOS 13 minimum must be used for that validation.
+批次 10 此后完成了其 Linux 本地实现、聚焦的自动化、用户手动验证以及用户运行的全量检查通过。P12 随后新增了窗口范围关闭确认测试，也有通过的 Linux 全量检查记录。P15 现在固定 Electron 44.1.0，更新了异步剪贴板边界，并有用户运行的通过 Linux 全量检查记录。带日期的总数、精确重跑和受影响的测试范围属于它们的跟踪器记录，而非本平台边界文档。Windows 盘符/UNC 和 junction 验证仍明确推迟到第 12.1–12.3 节，macOS 仍是单独的原生运行时任务；该验证必须使用 Electron 44 的 macOS 13 最低版本要求。
 
-### Not yet platform-validated
+### 尚未进行平台验证
 
-- Windows/macOS watcher event ordering, path casing, permissions, and atomic replacement
-- Windows junction behavior and macOS symlink/Finder alias behavior
-- Native dialogs, menus, title bars, clipboard, packaging, signing, and installed-app data paths
-- macOS Dock activation after the last window closes, including a fresh unsaved-document close confirmation in the replacement window
-- Filesystem-specific Unicode normalization and case-collision behavior
+- Windows/macOS 文件监视器事件顺序、路径大小写、权限和原子替换
+- Windows junction 行为和 macOS 符号链接/Finder 别名行为
+- 原生对话框、菜单、标题栏、剪贴板、打包、签名和已安装应用的数据路径
+- 最后一个窗口关闭后的 macOS Dock 激活，包括替换窗口中的全新未保存文档关闭确认
+- 文件系统特定的 Unicode 规范化和大小写冲突行为
 
-The current batch and release status remains in [`docs/13-0.2.0-EXECUTION-TRACKER.md`](13-0.2.0-EXECUTION-TRACKER.md). Do not duplicate detailed platform evidence there.
+当前批次和发布状态仍在 [`docs/13-0.2.0-EXECUTION-TRACKER.md`](13-0.2.0-EXECUTION-TRACKER.md) 中。不要在那里重复详细的平台证据。
 
-## 6. Test strategy
+## 6. 测试策略
 
-### 6.1 Linux preflight
+### 6.1 Linux 预检
 
-Before real platform work begins, keep the following coverage green on Linux:
+在开始真实平台工作之前，在 Linux 上保持以下覆盖为绿色：
 
-- pure path tests using both `path.posix` and `path.win32` inputs
-- injected platform/environment tests for `app-paths.ts`
-- FileManager tests for missing paths, permissions, safe replacement, symlinks, containment, and depth
-- FileWatchService tests for cleanup, stale events, depth, symlink non-following, and event deduplication
-- renderer shell and localization tests for platform-independent UI behavior
-- Electron E2E for ordinary file editing, workspace depth, directory links, recovery, conflicts, and menus
+- 同时使用 `path.posix` 和 `path.win32` 输入的纯路径测试
+- 针对 `app-paths.ts` 的注入平台/环境测试
+- FileManager 测试，覆盖路径缺失、权限、安全替换、符号链接、包含性和深度
+- FileWatchService 测试，覆盖清理、过期事件、深度、符号链接不跟随和事件去重
+- 渲染器 shell 和本地化测试，覆盖平台无关 UI 行为
+- Electron E2E，覆盖普通文件编辑、工作区深度、目录链接、恢复、冲突和菜单
 
-### 6.2 Per-platform filesystem scenarios
+### 6.2 各平台文件系统场景
 
-Run the following with a fresh test workspace and record the OS version, filesystem type, Electron/Node versions, and result:
+使用全新的测试工作区运行以下内容，并记录 OS 版本、文件系统类型、Electron/Node 版本和结果：
 
-1. Open a workspace containing ordinary files and nested directories.
-2. Create and open a Markdown file, then save it manually and with autosave.
-3. Modify the file from another application and verify reload or conflict behavior.
-4. Delete the file, edit during the persistent unavailable state, restore it, and verify the explicit resolution flow.
-5. Remove and recreate a directory link; verify internal, external, and cyclic link handling.
-6. Rename and replace files while they are open in Vditor and in another application.
-7. Exercise read-only, permission-denied, locked, missing, and externally replaced targets.
-8. Use filenames differing only by case and filenames containing non-ASCII/normalization-sensitive characters.
-9. Close and reopen the app with workspace restoration enabled; verify paths and watchers.
+1. 打开一个包含普通文件和嵌套目录的工作区。
+2. 创建并打开一个 Markdown 文件，然后手动保存并使用自动保存。
+3. 从另一个应用修改该文件，验证重载或冲突行为。
+4. 删除该文件，在持续的不可用状态下编辑，恢复它，并验证显式解决流程。
+5. 删除并重建一个目录链接；验证内部、外部和循环链接处理。
+6. 在 Vditor 和另一个应用中打开文件的同时重命名和替换文件。
+7. 演练只读、权限拒绝、锁定、缺失和外部替换的目标。
+8. 使用仅大小写不同的文件名，以及包含非 ASCII/规范化敏感字符的文件名。
+9. 在启用工作区恢复的情况下关闭并重新打开应用；验证路径和文件监视器。
 
-### 6.3 Platform UI and packaging scenarios
+### 6.3 平台 UI 和打包场景
 
-- Open/save dialogs return native paths that can be reopened and saved.
-- Clipboard copy and paste work through the native system clipboard.
-- External links use the platform handler and reject unsupported schemes.
-- Window controls, title-bar drag regions, menus, fullscreen, high-DPI scaling, and keyboard modifiers follow platform conventions.
-- A packaged build starts with clean user data, stores config/data in the expected location, and can edit, save, recover, and export.
+- 打开/保存对话框返回可以重新打开和保存的原生路径。
+- 剪贴板复制和粘贴通过原生系统剪贴板工作。
+- 外部链接使用平台处理器并拒绝不支持的 scheme。
+- 窗口控件、标题栏拖动区域、菜单、全屏、高 DPI 缩放和键盘修饰键遵循平台惯例。
+- 打包构建以干净的用户数据启动，将配置/数据存储在预期位置，并可以编辑、保存、恢复和导出。
 
-## 7. Test fixtures and evidence format
+## 7. 测试夹具和证据格式
 
-Each platform test run should record:
+每次平台测试运行都应记录：
 
-- OS name and exact version
-- filesystem type and whether the volume is case-sensitive
-- Electron, Node.js, and Vditor versions
-- workspace path and link types used
-- command or manual steps
-- expected result and observed result
-- relevant console output, screenshots, and package identifier
-- whether the result is a product failure, an environment limitation, or an intentional limitation
+- OS 名称和确切版本
+- 文件系统类型以及卷是否大小写敏感
+- Electron、Node.js 和 Vditor 版本
+- 使用的工作区路径和链接类型
+- 命令或手动步骤
+- 预期结果和观察到的结果
+- 相关控制台输出、截图和包标识符
+- 结果是产品故障、环境限制还是有意限制
 
-Linux synthetic paths such as `/Users/user` belong in unit fixtures only. They must not be presented as macOS evidence.
+诸如 `/Users/user` 之类的 Linux 合成路径只属于单元夹具。它们不得被呈现为 macOS 证据。
 
-## 8. Open decisions and limitations
+## 8. 未决决策与限制
 
-- `.lnk` and Finder alias support is deferred. If enabled later, define target resolution, authorization, missing-target behavior, cycle handling, icon/tooltip/accessibility text, and real-platform tests before implementation.
-- Case-insensitive behavior must not be assumed globally because macOS can use a case-sensitive APFS volume and Linux can also use different filesystem types.
-- Cross-platform changes should begin only when real Windows and macOS environments are available. Until then, keep platform-neutral abstractions testable without adding speculative workarounds.
+- `.lnk` 和 Finder 别名支持被推迟。如果以后启用，需在实现前定义目标解析、授权、目标缺失行为、循环处理、图标/工具提示/无障碍文本和真实平台测试。
+- 不得全局假设大小写不敏感行为，因为 macOS 可以使用大小写敏感的 APFS 卷，Linux 也可以使用不同的文件系统类型。
+- 只有在真实 Windows 和 macOS 环境可用后才应开始跨平台更改。在此之前，保持平台中立抽象可测试，而不添加推测性的变通方法。
 
-## 9. 0.2.0 batch 7 deferred platform validation
+## 9. 0.2.0 批次 7 推迟的平台验证
 
-### 9.1 Ownership and start condition
+### 9.1 所有权和开始条件
 
-Batch 7 keeps ownership of platform-neutral correctness fixes in [`docs/13-0.2.0-EXECUTION-TRACKER.md`](13-0.2.0-EXECUTION-TRACKER.md): save/recovery state closure, canonical file identity contracts, directory-rename transaction convergence, and their Linux regression coverage. That local scope is complete as of 2026-08-27. This section owns only the native-platform evidence that cannot be produced from the current Linux development environment; no Windows/macOS row is closed yet.
+批次 7 在 [`docs/13-0.2.0-EXECUTION-TRACKER.md`](13-0.2.0-EXECUTION-TRACKER.md) 中保留平台中立正确性修复的所有权：保存/恢复状态闭合、规范文件身份契约、目录重命名事务收敛及其 Linux 回归覆盖。该本地范围截至 2026-08-27 已完成。本节仅拥有当前 Linux 开发环境无法产出的原生平台证据；尚无 Windows/macOS 行被关闭。
 
-The related long-term invariants and the exact remaining TOCTOU limitation are defined in [`docs/05-FILE-SAFETY.md` §7](05-FILE-SAFETY.md#7-已知原子性边界已有目标的-toctou). A platform result here updates that contract's evidence; it does not replace the contract with a version-specific checkbox.
+相关的长期不变量和确切的剩余 TOCTOU 限制定义在 [`docs/05-FILE-SAFETY.md` §7](05-FILE-SAFETY.md#7-已知原子性边界已有目标的-toctou) 中。此处的平台结果更新该契约的证据；它不会用版本特定的复选框取代契约。
 
-Start this section after the 0.2.5 renderer refactor has a stable branch and real Windows and macOS test environments are available. A Linux path-shaped fixture, injected platform value, or successful Linux E2E is not evidence for a Windows or macOS row.
+在 0.2.5 渲染器重构有了稳定分支、且真实 Windows 和 macOS 测试环境可用后开始本节。Linux 路径形状夹具、注入的平台值或成功的 Linux E2E 都不是 Windows 或 macOS 行的证据。
 
-### 9.2 Deferred verification matrix
+### 9.2 推迟的验证矩阵
 
-| Area | Windows evidence required | macOS evidence required | Expected safe result |
+| 领域 | 所需 Windows 证据 | 所需 macOS 证据 | 预期安全结果 |
 | --- | --- | --- | --- |
-| File identity and casing | Same file through case variants, symlink/junction alias, deleted path, and Save As destination | Same matrix on both the tested APFS volume type and recorded case behavior | One open-tab identity per physical file; no unintended tab merge or watcher release |
-| Safe write and conflict | Manual/autosave against open, read-only, locked, and externally replaced files | Manual/autosave against read-only, locked, and externally replaced files | Baseline mismatch never replaces disk; lock/permission errors preserve both versions |
-| Watcher reconciliation | Modify during watch suspend/rebind; directory rename; delete/reappear; rapid consecutive writes | The same scenarios under FSEvents coalescing and directory moves | Latest disk fact wins; no stale reload, missed conflict, or orphaned watcher |
-| Directory rename | Existing destination, case-only rename, busy descendant, and failure after filesystem rename | Existing destination, case-only rename where applicable, busy descendant, and recovery after move | No destination overwrite; all open descendants converge on one path/watch state |
-| Native dialogs and session recovery | Open/Save As native paths, restart with recovery and restored tabs | Open/Save As native paths, restart with recovery and restored tabs | Dialog paths resolve to the same canonical identity; recovery does not duplicate a session tab |
+| 文件身份与大小写 | 通过大小写变体、符号链接/junction 别名、已删除路径和 Save As 目标访问同一文件 | 在所测试的 APFS 卷类型和记录的大小写行为上使用相同矩阵 | 每个物理文件一个打开标签身份；无意外标签合并或监视器释放 |
+| 安全写入与冲突 | 针对打开、只读、锁定和外部替换文件的手动/自动保存 | 针对只读、锁定和外部替换文件的手动/自动保存 | 基线不匹配绝不替换磁盘；锁定/权限错误保留两个版本 |
+| 监视器调和 | 在监视挂起/重新绑定期间修改；目录重命名；删除/重现；快速连续写入 | FSEvents 合并和目录移动下的相同场景 | 磁盘最新事实获胜；无过期重载、遗漏冲突或孤立监视器 |
+| 目录重命名 | 现有目标、仅大小写重命名、忙后代以及文件系统重命名后失败 | 现有目标、适用的仅大小写重命名、忙后代以及移动后恢复 | 无目标覆盖；所有打开的后代收敛到同一路径/监视状态 |
+| 原生对话框与会话恢复 | Open/Save As 原生路径，带恢复和已还原标签重启 | Open/Save As 原生路径，带恢复和已还原标签重启 | 对话框路径解析到同一规范身份；恢复不会重复会话标签 |
 
-### 9.3 Evidence and closure rule
+### 9.3 证据与关闭规则
 
-For every matrix row, record the evidence format from section 7, including filesystem case behavior and the exact Electron/Node versions. A platform failure reopens the linked Tracker risk with a concise reproduction; a passing native run closes only that platform row. Completing Linux batch work must not imply Windows/macOS validation, and later platform validation must not rewrite the 0.2.0 batch's Linux verification result. The current status is therefore: Linux-local batch 7 closure recorded, all native Windows/macOS rows deferred.
+对于每个矩阵行，记录第 7 节的证据格式，包括文件系统大小写行为和确切的 Electron/Node 版本。平台失败会用简明复现重新打开链接的跟踪器风险；通过的原生运行只关闭该平台行。完成 Linux 批次工作不得暗示 Windows/macOS 验证，后续平台验证也不得改写 0.2.0 批次的 Linux 验证结果。因此当前状态为：已记录 Linux 本地批次 7 关闭，所有原生 Windows/macOS 行均推迟。
 
-## 10. 0.2.0 batch 10 Windows preflight observation
+## 10. 0.2.0 批次 10 Windows 预检观察
 
-This is a read-only Windows observation recorded before batch 10 starts. It is a reproduction clue for the Linux implementation phase, not Windows platform validation and not a reason to begin the deferred cross-platform work early.
+这是在批次 10 开始前记录的只读 Windows 观察。它是 Linux 实现阶段的复现线索，不是 Windows 平台验证，也不是提前开始推迟的跨平台工作的理由。
 
-On 2026-08-29, the current renderer URL construction and protocol parsing were evaluated with the representative document directory `C:\\Users\\test\\Documents\\project` and relative image `assets/pixel.png`. The current `localResourceBase()` logic produces `local-file://rootC%3A%5CUsers%5Ctest%5CDocuments%5Cproject/`: the drive path is parsed as the URL host, while resolving the relative image leaves the pathname as `/assets/pixel.png`. The current `local-file` protocol handler decodes and passes that pathname to `path.resolve()`, which on this Windows workspace resolves it to `D:\\assets\\pixel.png`, rather than the document asset path.
+在 2026-08-29，用代表性文档目录 `C:\\Users\\test\\Documents\\project` 和相对图片 `assets/pixel.png` 评估了当前渲染器 URL 构造和协议解析。当前 `localResourceBase()` 逻辑产生 `local-file://rootC%3A%5CUsers%5Ctest%5CDocuments%5Cproject/`：盘符路径被解析为 URL 主机，而解析相对图片时 pathname 仍为 `/assets/pixel.png`。当前 `local-file` 协议处理器解码该 pathname 并传给 `path.resolve()`，后者在此 Windows 工作区上将其解析为 `D:\\assets\\pixel.png`，而非文档资源路径。
 
-Batch 10 must therefore define and unit-test a platform-neutral conversion contract before it implements authorization:
+因此批次 10 在实现授权之前必须定义并单元测试一个平台中立的转换契约：
 
-- A local-resource URL must use an explicit, fixed authority and a pathname that represents the complete encoded native path; an authority must never be formed by concatenating a path after `local-file://`.
-- The URL-to-native-path conversion must reject unexpected authority values and must map Windows drive paths, POSIX paths, encoded separators, malformed percent encoding, `..`, and backslash confusion deliberately before `path.resolve()`, `realpath()`, or containment checks.
-- Unit tests must exercise `path.win32` drive-letter and UNC inputs without requiring Windows, while native Windows verification later confirms actual filesystem and junction semantics.
-- Resource E2E must cover a workspace image, an out-of-workspace document image, and a pasted image on Windows after the Linux batch implementation is stable.
+- 本地资源 URL 必须使用显式、固定的 authority，以及表示完整编码原生路径的 pathname；authority 绝不能在 `local-file://` 之后通过拼接路径来形成。
+- URL 到原生路径的转换必须在 `path.resolve()`、`realpath()` 或包含性检查之前，拒绝意外的 authority 值，并有意地映射 Windows 盘符路径、POSIX 路径、编码的分隔符、畸形的百分号编码、`..` 和反斜杠混淆。
+- 单元测试必须在不需要 Windows 的情况下演练 `path.win32` 盘符和 UNC 输入，而后续原生 Windows 验证确认实际文件系统和 junction 语义。
+- 资源 E2E 在 Linux 批次实现稳定后，必须覆盖 Windows 上的工作区图片、工作区外文档图片和粘贴的图片。
 
-The current checkout has no installed Vitest or Playwright dependencies, so the existing resource unit and Electron E2E suites could not be run during this observation. That is an environment limitation, not an automated test result.
+当前检出的代码没有安装 Vitest 或 Playwright 依赖，因此在此观察期间无法运行现有的资源单元和 Electron E2E 套件。这是环境限制，而非自动化测试结果。
 
-## 11. 0.2.0 batch 10 Linux implementation checkpoint
+## 11. 0.2.0 批次 10 Linux 实现检查点
 
-Batch 10 was implemented on the Linux `dev-0.2.0` checkout on 2026-08-31. The implementation uses `local-file://root/<encoded-path>` with a fixed authority. POSIX absolute paths retain the leading slash in the pathname, Windows drive and UNC conversion are exercised through `path.win32`, and the old malformed `local-file://rootC%3A...` shape is rejected before any filesystem access.
+批次 10 于 2026-08-31 在 Linux `dev-0.2.0` 检出上实现。该实现使用 `local-file://root/<encoded-path>` 并采用固定 authority。POSIX 绝对路径在 pathname 中保留前导斜杠，Windows 盘符和 UNC 转换通过 `path.win32` 演练，旧的畸形 `local-file://rootC%3A...` 形状在任何文件系统访问之前被拒绝。
 
-The renderer synchronizes the current workspace and every open document parent directory through the narrow `file:setResourceRoots` bridge. Opening, closing, Save As, directory rename, recovery restoration, and workspace changes refresh the root set. The main process rejects malformed URL paths, applies lexical and canonical path boundaries, blocks configured config/Chromium/recovery roots, rejects symlink/junction-equivalent canonical escapes, and returns the same 404/plain-text/`nosniff`/`no-store` response for missing, unauthorized, unsupported, and SVG resources. Only the currently used raster image types receive an allowlisted MIME response. Internal diagnostics retain only a rejection category.
+渲染器通过窄化的 `file:setResourceRoots` bridge 同步当前工作区和每个打开文档的父目录。打开、关闭、Save As、目录重命名、恢复还原和工作区变更都会刷新根集合。主进程拒绝畸形 URL 路径，应用词法和规范路径边界，阻止已配置的 config/Chromium/recovery 根，拒绝符号链接/junction 等价的规范逃逸，并对缺失、未授权、不支持的和 SVG 资源返回相同的 404/纯文本/`nosniff`/`no-store` 响应。只有当前使用的光栅图片类型会收到允许列表中的 MIME 响应。内部诊断只保留拒绝类别。
 
-Focused Linux evidence at this checkpoint:
+本检查点的聚焦 Linux 证据：
 
-- `npm run typecheck`, `npm run lint`, and the focused Vitest selection: 41/41 tests passed, including POSIX/Windows URL and boundary policy cases, private roots, canonical escape, stale root revocation, MIME allowlist, and bounded IPC roots.
-- After `npm run build`, focused Electron Playwright coverage passed 9/9: malformed high-risk IPC arguments, authorized/unauthorized local resources and response headers, root revocation after closing an outside document, restored relative images, raw HTML images, HTTPS images, uploaded/pasted images, and directory-rename resource rebinding.
-- The user-run 2026-08-31 full check passed formatting, lint, typecheck, Vditor-version, build, and 181/181 unit tests. Its 126 Electron cases first produced a single mode-shortcut timing failure (125/126); the exact failed case then passed 1/1. No Windows or macOS runtime result is claimed here; Windows native filesystem, junction, casing, dialog, and installed-build behavior remain pending.
+- `npm run typecheck`、`npm run lint` 和聚焦的 Vitest 选择：41/41 测试通过，包括 POSIX/Windows URL 和边界策略用例、私有根、规范逃逸、过期根撤销、MIME 允许列表和有界 IPC 根。
+- `npm run build` 之后，聚焦的 Electron Playwright 覆盖 9/9 通过：畸形高风险 IPC 参数、授权/未授权本地资源及响应头、关闭外部文档后的根撤销、还原的相对图片、原始 HTML 图片、HTTPS 图片、上传/粘贴图片，以及目录重命名的资源重新绑定。
+- 用户运行的 2026-08-31 全量检查通过格式化、lint、typecheck、Vditor 版本、构建和 181/181 单元测试。其 126 个 Electron 用例首先产生了一个单一的模式快捷键时序失败（125/126）；该确切失败用例随后 1/1 通过。此处不声明任何 Windows 或 macOS 运行时结果；Windows 原生文件系统、junction、大小写、对话框和已安装构建行为仍待处理。
 
-## 12. 0.2.0 batch 10 deferred Windows resource validation
+## 12. 0.2.0 批次 10 推迟的 Windows 资源验证
 
-The batch 10 Linux implementation and `path.win32` unit tests do not prove real Windows URL loading, filesystem behavior, or junction resolution. Run this section only on a native Windows installation after the current batch has a stable build. It is intentionally deferred rather than inferred from Linux results.
+批次 10 的 Linux 实现和 `path.win32` 单元测试不能证明真实的 Windows URL 加载、文件系统行为或 junction 解析。仅在当前批次有稳定构建后，在原生 Windows 安装上运行本节。它是有意推迟的，而非从 Linux 结果推断。
 
-### 12.1 Drive and UNC resource URLs
+### 12.1 盘符和 UNC 资源 URL
 
-Copy the batch 10 manual fixture to a local Windows path, then open `workspace/README.md` and the separate `outside-document/outside.md`. Confirm that each relative image displays, including after changing editor mode, and that closing the outside document makes its previously captured `local-file:` image URL return the neutral 404 response.
+将批次 10 手动夹具复制到本地 Windows 路径，然后打开 `workspace/README.md` 和独立的 `outside-document/outside.md`。确认每张相对图片都能显示，包括更改编辑器模式之后，并且关闭外部文档会使其先前捕获的 `local-file:` 图片 URL 返回中性 404 响应。
 
-For a drive path, `data-local-resource-base` must retain the fixed `root` authority and encode the drive letter in the pathname, for example `local-file://root/C%3A/Users/<user>/Downloads/...`; it must never use a drive path as the URL authority. If an accessible UNC share is in scope, repeat the same document/image and close-revocation checks from `\\server\\share\\...`, recording the share, authentication context, and any policy restriction. A malformed legacy shape such as `local-file://rootC%3A...` must fail without reading a disk resource.
+对于盘符路径，`data-local-resource-base` 必须保留固定的 `root` authority，并在 pathname 中编码盘符，例如 `local-file://root/C%3A/Users/<user>/Downloads/...`；它绝不能将盘符路径用作 URL authority。如果可访问的 UNC 共享在范围内，则从 `\\server\\share\\...` 重复相同的文档/图片和关闭撤销检查，记录共享、认证上下文和任何策略限制。诸如 `local-file://rootC%3A...` 之类的畸形旧形状必须在不读取磁盘资源的情况下失败。
 
-### 12.2 Junction canonical escape
+### 12.2 Junction 规范逃逸
 
-Within the fixture workspace, create a directory junction that points to `outside-document`, then open a Markdown file whose image points through the junction. The image must not display; a direct fetch of its `local-file:` URL must return the same 404/plain-text/`nosniff`/`no-store` result as a missing resource. Delete the junction itself after the test, without deleting its target.
+在夹具工作区内，创建一个指向 `outside-document` 的目录 junction，然后打开一个其图片经由该 junction 指向的 Markdown 文件。该图片不得显示；直接抓取其 `local-file:` URL 必须返回与缺失资源相同的 404/纯文本/`nosniff`/`no-store` 结果。测试结束后删除 junction 本身，而不删除其目标。
 
-### 12.3 Windows pathname edge cases
+### 12.3 Windows pathname 边界用例
 
-Use document and asset names containing spaces, Chinese characters, `#`, and `%`; their legitimate relative images must display. A `..` reference outside the authorized root must not display. Record whether the tested volume is case-sensitive and retain the exact Windows, filesystem, Electron, Node, Vditor, and application commit versions with the result.
+使用包含空格、中文字符、`#` 和 `%` 的文档和资源名称；其合法相对图片必须显示。授权根之外的 `..` 引用不得显示。记录所测试卷是否大小写敏感，并随结果保留确切的 Windows、文件系统、Electron、Node、Vditor 和应用提交版本。
 
-### 12.4 Closure rule
+### 12.4 关闭规则
 
-Each row above requires a real Windows result and its supporting screenshot or DevTools response evidence. A passing Linux E2E or `path.win32` unit test remains supporting evidence only; it does not close the Windows validation row. macOS resource behavior remains a separate native validation task.
+上述每一行都需要真实 Windows 结果及其配套截图或 DevTools 响应证据。通过的 Linux E2E 或 `path.win32` 单元测试仍是支持性证据；它不关闭 Windows 验证行。macOS 资源行为仍是单独的原生验证任务。
 
-## 13. 0.2.0 batch 12 deferred macOS window lifecycle validation
+## 13. 0.2.0 批次 12 推迟的 macOS 窗口生命周期验证
 
-The batch 12 implementation keeps close confirmation associated with the exact `BrowserWindow` that received the renderer's explicit confirmation. Its unit test proves a replacement window cannot inherit that state, and the passing Linux full-check record includes the existing close-dialog IPC flow; exact results are retained in the batch 12 Tracker record. Neither can prove macOS behavior after the final window closes while the application remains active. The user has explicitly deferred this native test until a macOS environment is available.
+批次 12 的实现将关闭确认与接收到渲染器显式确认的确切 `BrowserWindow` 相关联。其单元测试证明替换窗口无法继承该状态，且通过的 Linux 全量检查记录包括现有的关闭对话框 IPC 流程；确切结果保留在批次 12 跟踪器记录中。两者都无法证明最后一个窗口关闭后、应用仍保持活跃时的 macOS 行为。用户已明确将此原生测试推迟到 macOS 环境可用时。
 
-Run this only on a native macOS installation after building the current branch:
+仅在构建当前分支后，在原生 macOS 安装上运行：
 
-1. Open a new untitled document, enter text without saving, close the window, and select **Don't Save**.
-2. Click the application icon in the Dock to trigger `activate` and create a replacement window.
-3. Open another new untitled document, enter text without saving, and close that replacement window.
+1. 打开一个新的未命名文档，不保存输入文本，关闭窗口，并选择 **Don't Save**。
+2. 点击 Dock 中的应用图标以触发 `activate` 并创建替换窗口。
+3. 打开另一个新的未命名文档，不保存输入文本，并关闭该替换窗口。
 
-The second close must display the unsaved-changes confirmation. Record the macOS version, Electron and Node versions, application commit, whether the original window disappeared before Dock activation, the final result, and a screenshot or screen recording. A missing confirmation is a batch 12 product failure; a passing native result closes only this macOS lifecycle row and updates the corresponding Tracker hand-test record.
+第二次关闭必须显示未保存更改确认。记录 macOS 版本、Electron 和 Node 版本、应用提交、原窗口是否在 Dock 激活前消失、最终结果，以及截图或屏幕录制。缺少确认是批次 12 产品故障；通过的原生结果仅关闭此 macOS 生命周期行，并更新相应的跟踪器手动测试记录。
+
+## 14. 0.2.5 资源健康（Resource Health）推迟的 Windows/macOS 原生验证
+
+资源健康仅在主进程重新扫描和候选重新验证之后使用 Electron `shell.trashItem`。Linux 自动化验证窄化的 IPC 契约、范围警告偏好和拒绝路径，但无法证明 Windows 回收站、macOS 废纸篓/Finder 恢复，或 macOS 原生 **Tools** 菜单。不要用 Linux 证据关闭任一平台行。
+
+在目标平台上构建当前分支，并为这些场景创建隔离的临时工作区。记录应用提交、OS 版本、文件系统、Electron 版本、桌面环境或 Finder 版本、每项结果，以及截图或简短屏幕录制。在删除临时工作区之前，通过操作系统 UI 恢复每个测试项。
+
+| 平台 | 所需原生验证 | 预期结果 |
+| --- | --- | --- |
+| Windows | 在工作区中，准备一张未被引用的 PNG 和一张被另一个 Markdown/HTML 文档共享的 PNG；在可行时使用夹具的自定义 `pasteImagesDir`、Unicode/带空格路径、未保存的编辑器更改和 SVG 设置边界重复。仅选择未被引用的候选，将其移到回收站，在资源管理器中恢复，然后重新扫描。 | 共享/被引用的内容绝不提供；只有显式选择的候选被移动；该项在回收站中可见且可恢复，回到其原始路径，并可由新扫描找到。未保存的编辑器文本不改变已保存快照的结果。 |
+| macOS | 运行相同的候选、自定义目录、未保存更改和 SVG 场景；将选定的候选移到废纸篓并在 Finder 中恢复。在资源健康页面关闭时，在工作区内已保存文档与工作区外或不可用文档之间切换活动标签，然后打开原生应用菜单。 | Finder 将该项恢复到其原始路径，新扫描反映它。原生 **Tools > Resource Health** 项仅对符合条件的工作区内已保存文档启用，并对工作区外/不可用文档立即禁用。 |
+
+对于两个平台，还需验证：不完整的扫描会禁用移动操作，扫描后发生变化的文件被拒绝而非移入回收站，范围警告偏好不会抑制每次操作的危险确认，以及任何部分失败都会标识被保留的项。这些结果是产品安全要求；平台特定失败必须在补救之前在 0.2.5 跟踪器中记录。

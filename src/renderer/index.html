@@ -1519,6 +1519,12 @@
                   max="1"
                   step="0.05"
               /></label>
+              <label class="check"
+                ><input name="resourceHealthTrashScopeWarningEnabled" type="checkbox" />
+                <span data-i18n="settings.resourceHealthTrashScopeWarning"
+                  >Show the resource-health scan scope reminder before deletion</span
+                ></label
+              >
             </section>
             <section data-settings-panel="about" class="about-panel">
               <div class="about-main">
@@ -1615,6 +1621,7 @@
           <div>
             <p id="confirmMessage"></p>
             <p id="confirmDetail"></p>
+            <div id="confirmExtra"></div>
           </div>
         </div>
         <footer id="confirmActions"></footer>

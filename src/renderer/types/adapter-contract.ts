@@ -58,6 +58,7 @@ export const ADAPTER_PUBLIC_KEYS = [
   'revealTextMatch',
   'selectTextMatch',
   'replaceTextMatch',
+  'removeImageReference',
   'documentAnchor',
   'documentLink',
   'setDocumentLinkHint',
@@ -139,6 +140,12 @@ export function verifyAdapterCallContract(adapter: VditorDesktopAdapter, host: H
   adapter.revealTextMatch(host, 'ir', 'text');
   adapter.selectTextMatch(host, 'ir', 'text');
   adapter.replaceTextMatch(host, 'ir', 'text', 0, 'replacement');
+  adapter.removeImageReference(host, 'ir', '![text](assets/missing.png)', 'assets/missing.png', {
+    undo: {
+      recordFirstPosition: () => undefined,
+      addToUndoStack: () => undefined,
+    },
+  });
   adapter.documentAnchor(host, host);
   adapter.setDocumentLinkHint(link, 'hint', 'pointer');
   adapter.setDocumentLinkCursor(link, 'text');

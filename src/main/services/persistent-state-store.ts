@@ -110,6 +110,7 @@ export class PersistentStateStore {
       workspaceTreeStates: structuredClone(merged.workspaceTreeStates),
       windowBounds: structuredClone(merged.windowBounds),
       settingsDialogSize: structuredClone(merged.settingsDialogSize),
+      resourceHealthDialogSize: structuredClone(merged.resourceHealthDialogSize),
       session: structuredClone(merged.session),
     };
   }

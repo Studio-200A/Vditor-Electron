@@ -115,6 +115,17 @@ contextBridge.exposeInMainWorld('appAPI', {
   showItemInFolder: (filePath: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.appShowItemInFolder, filePath),
   openDirectory: (dirPath: string) => ipcRenderer.invoke(IPC_CHANNELS.appOpenDirectory, dirPath),
+  isResourceHealthEligible: (documentPath: string, workspacePath: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.appResourceHealthEligible, documentPath, workspacePath),
+  scanResourceHealth: (documentPath: string, workspacePath: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.appResourceHealthScan, documentPath, workspacePath),
+  revealResourceHealthCandidate: (revision: string, candidateId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.appResourceHealthReveal, revision, candidateId),
+  previewResourceHealthCandidate: (revision: string, candidateId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.appResourceHealthPreview, revision, candidateId),
+  trashResourceHealthCandidates: (revision: string, candidateIds: string[]) =>
+    ipcRenderer.invoke(IPC_CHANNELS.appResourceHealthTrash, revision, candidateIds),
+  discardResourceHealthScans: () => ipcRenderer.send(IPC_CHANNELS.appResourceHealthDiscard),
   exportPDF: (html: string, defaultPath?: string, defaultDirectory?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.appExportPdf, html, defaultPath, defaultDirectory),
   toggleFullscreen: () => ipcRenderer.send(IPC_CHANNELS.appToggleFullscreen),

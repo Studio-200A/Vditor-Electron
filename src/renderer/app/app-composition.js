@@ -25,6 +25,7 @@
     'windowBounds',
     'windowMaximized',
     'settingsDialogSize',
+    'resourceHealthDialogSize',
     'session',
   ]);
   const state = {
@@ -68,6 +69,7 @@
     },
     toolbarWrapHeight: 0,
   };
+  let resourceHealthMenuEligible = false;
   const RUNTIME_TAB_FIELDS = [
     'vditor',
     'ready',
@@ -764,6 +766,90 @@
     modal: $('#settingsModal'),
     onClosed: (applyPresentation) => {
       if (applyPresentation) applyPresentationSettings();
+    },
+  });
+  const resourceHealthController = new PURE.ResourceHealthController({
+    document,
+    appAPI: window.appAPI,
+    getActiveDocument: () => activeTab(),
+    getWorkspacePath: () => state.workspace,
+    getDialogSize: () => state.settings.resourceHealthDialogSize,
+    persistDialogSize: (resourceHealthDialogSize) => {
+      state.settings.resourceHealthDialogSize = resourceHealthDialogSize;
+      void queueSettingsSave({ resourceHealthDialogSize });
+    },
+    getActiveEditor: () => {
+      const tab = activeTab();
+      if (!tab?.vditor || !tab.ready) return null;
+      return {
+        host: tab.host,
+        mode: tab.vditor.getCurrentMode() || tab.mode,
+        content: currentContent(tab),
+      };
+    },
+    removeImageReference: (editor, raw, source) =>
+      VDITOR.removeImageReference(
+        editor.host,
+        editor.mode,
+        raw,
+        source,
+        activeTab()?.vditor?.vditor,
+      ),
+    confirmRemoveReferences: async (entries) =>
+      (await showConfirmDialog({
+        title: t('resourceHealth.removeConfirmTitle'),
+        message: t('resourceHealth.removeConfirmMessage', {
+          targetPath: entries[0].targetPath,
+          count: entries.length,
+        }),
+        detail: entries.map((entry) => `${entry.targetPath}\n${entry.raw}`).join('\n\n'),
+        actions: [
+          { id: 'cancel', label: t('dialog.cancel') },
+          {
+            id: 'confirm',
+            label: t('resourceHealth.removeReference'),
+            primary: true,
+            danger: true,
+          },
+        ],
+        draggable: true,
+      })) === 'confirm',
+    translate: t,
+    showMessage,
+    openWorkspace: () => void chooseFolder(),
+    confirmMoveToTrash: async (candidates) => {
+      const showScopeWarning = state.settings.resourceHealthTrashScopeWarningEnabled;
+      let acknowledgeScopeWarning = false;
+      const action = await showConfirmDialog({
+        title: t('resourceHealth.trashConfirmTitle'),
+        message: t('resourceHealth.trashConfirmMessage', { count: candidates.length }),
+        detail: `${showScopeWarning ? `${t('resourceHealth.trashScopeDetail')}\n\n` : ''}${t('resourceHealth.trashConfirmDetail')}\n\n${candidates
+          .map((candidate) => `${candidate.relativePath} (${candidate.size} B)`)
+          .join('\n')}`,
+        checkbox: showScopeWarning
+          ? { label: t('resourceHealth.trashScopeAcknowledge') }
+          : undefined,
+        onAction: (selectedAction, checked) => {
+          acknowledgeScopeWarning = selectedAction === 'confirm' && checked;
+        },
+        actions: [
+          { id: 'cancel', label: t('dialog.cancel') },
+          { id: 'confirm', label: t('resourceHealth.moveToTrash'), primary: true, danger: true },
+        ],
+        draggable: true,
+      });
+      if (action !== 'confirm') return false;
+      if (acknowledgeScopeWarning) {
+        try {
+          state.settings = await queueSettingsSave(
+            { resourceHealthTrashScopeWarningEnabled: false },
+            { throwOnFailure: true },
+          );
+        } catch (error) {
+          showMessage(ipcErrorMessage(error), true);
+        }
+      }
+      return true;
     },
   });
   const settingsDialogLayoutController = new PURE.SettingsDialogLayoutController({
@@ -1821,6 +1907,19 @@
 
   function switchTab(id) {
     documentTabWorkflowController.activate(id);
+    resourceHealthController.invalidate();
+    void refreshResourceHealthEligibility();
+  }
+
+  async function refreshResourceHealthEligibility() {
+    const tab = activeTab();
+    const filePath = tab?.filePath;
+    const workspacePath = state.workspace;
+    resourceHealthMenuEligible = Boolean(
+      filePath &&
+      workspacePath &&
+      (await window.appAPI.isResourceHealthEligible(filePath, workspacePath).catch(() => false)),
+    );
   }
 
   async function closeTab(id, { discard = false } = {}) {
@@ -1925,14 +2024,22 @@
     recreateFileState = null,
   ) {
     if (!tab) return Promise.resolve(false);
-    return documentController.save(tab, () =>
-      documentSaveExternalWorkflowController.save(
-        tab,
-        saveAs,
-        overwriteConflict,
-        recreateFileState,
-      ),
-    );
+    return documentController
+      .save(tab, () =>
+        documentSaveExternalWorkflowController.save(
+          tab,
+          saveAs,
+          overwriteConflict,
+          recreateFileState,
+        ),
+      )
+      .then((saved) => {
+        if (saved) {
+          resourceHealthController.invalidate();
+          void refreshResourceHealthEligibility();
+        }
+        return saved;
+      });
   }
 
   function queueSettingsSave(settings, { throwOnFailure = false } = {}) {
@@ -2175,6 +2282,8 @@
 
   async function setWorkspace(folder) {
     await workspaceController.setWorkspace(folder);
+    resourceHealthController.invalidate();
+    await refreshResourceHealthEligibility();
   }
 
   async function refreshTree() {
@@ -2408,6 +2517,7 @@
       quit: () => window.appAPI.closeWindow(),
       'toggle-sidebar': toggleSidebar,
       settings: openSettings,
+      'resource-health': () => resourceHealthController.open(),
       'export-html': exportHTML,
       'export-pdf': exportPDF,
       about: () => {
@@ -2462,6 +2572,17 @@
         ...(state.tabs.length
           ? [{ label: 'menu.closeTab', action: run('close-tab'), shortcut: 'Ctrl+W' }]
           : []),
+        null,
+        {
+          label: 'menu.tools',
+          children: [
+            {
+              label: 'menu.resourceHealth',
+              action: run('resource-health'),
+              disabled: () => !resourceHealthMenuEligible,
+            },
+          ],
+        },
         null,
         {
           label: 'menu.editMode',
@@ -3005,6 +3126,7 @@
 
   async function finishAppRestoration() {
     await sessionRestoreController.finishRestoration();
+    await refreshResourceHealthEligibility();
   }
 
   function disposeAppDomains() {
@@ -3013,6 +3135,7 @@
     appTooltipController.dispose();
     settingsDialogLayoutController.dispose();
     settingsWindow.dispose();
+    resourceHealthController.dispose();
     settingsRuntimeController.dispose();
     localizationController.dispose();
     windowController.dispose();

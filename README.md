@@ -51,7 +51,6 @@ Vditor Desktop takes the writing experience of [Vditor](https://github.com/Vanes
 
 ## Editing modes
 
-
 | Mode                  | Best for                                                                                |
 | --------------------- | --------------------------------------------------------------------------------------- |
 | **WYSIWYG**           | Writing and formatting while seeing the final document appearance.                      |
@@ -78,6 +77,14 @@ Directory renames/deletes and workspace-level resource limits remain planned wor
 ## <u>Protecting</u> You and Your Content, Thoughtfully
 
 Vditor Desktop treats your writing as something to protect, not something to overwrite. Behind the simple Markdown workflow are several safeguards designed to keep an unexpected exit, a second editor, or a changing file system from silently taking your work away:
+
+### Star Feature: Resource Health
+
+**Resource Health gives your image folder the same care as your writing:** Open it from **Tools → Resource Health** to map the image references in the document you are focused on, then review unreferenced and missing images in one clear place. Before you manage an image resource, it checks every accessible Markdown and HTML document in the workspace, helping a shared assets folder stay tidy without removing a picture another document still needs.
+
+![Resource Health](assets/resource-health.webp)
+
+### Other Safety Guards
 
 - **Safer links, by design.** Links in your Markdown only hand clearly supported `http:`, `https:`, and `mailto:` destinations to the system. Scripts, dangerous schemes, and untrusted in-app pages are stopped at the boundary, so one stray link cannot take your editor somewhere it should not go.
 - **Scoped local previews.** Local images are served only from the active workspace or the parent directories of documents you have open. Missing, outside, active, and unknown resources fail uniformly; the Markdown source keeps its ordinary relative paths.
@@ -109,7 +116,6 @@ Built-in application themes:
 
 ## Everyday shortcuts
 
-
 | Action                                | Shortcut               |
 | ------------------------------------- | ---------------------- |
 | New file                              | `Ctrl/Cmd + N`         |
@@ -128,7 +134,6 @@ Built-in application themes:
 ## Configuration and data
 
 Application configuration and Chromium user data are kept separate:
-
 
 | Platform | Configuration                                                                             | Chromium data                                                                    | Recovery data                                                                    |
 | -------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
@@ -203,6 +208,7 @@ npm run check:all
 ```
 
 The Vditor dependency is intentionally pinned to 3.11.3. Refer to [the Vditor upgrade notes](docs/06-VDITOR-UPGRADE.md).
+
 </details>
 
 ## Open-source software
@@ -211,7 +217,6 @@ Vditor Desktop is made possible by the following open-source projects. Their aut
 
 <details>
 <summary>Runtime and direct dependencies</summary>
-
 
 | Project                                                        | Role                               | License                 |
 | -------------------------------------------------------------- | ---------------------------------- | ----------------------- |

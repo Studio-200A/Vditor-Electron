@@ -34,6 +34,23 @@ test('forwards Markdown files from a second application invocation', async () =>
   }
 });
 
+test('aligns the primary app menu with the titlebar lower edge', async () => {
+  const running = await launchApp();
+  try {
+    const { page } = running;
+    await page.locator('[data-menu="main"]').click();
+    const menuPosition = await page.evaluate(() => {
+      const popup = document.querySelector('.app-menu-popup')?.getBoundingClientRect();
+      const titlebar = document.querySelector('#windowTitlebar')?.getBoundingClientRect();
+      if (!popup || !titlebar) throw new Error('Application menu or titlebar is unavailable.');
+      return { popupTop: popup.top, titlebarBottom: titlebar.bottom };
+    });
+    expect(Math.abs(menuPosition.popupTop - menuPosition.titlebarBottom)).toBeLessThan(1);
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('creates numbered tabs and shows the empty state after closing all tabs', async () => {
   const running = await launchApp();
   try {

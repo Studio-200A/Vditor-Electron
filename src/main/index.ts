@@ -20,7 +20,7 @@ import { extractOpenFilePaths } from './open-files';
 import { allowedExternalUrl } from './external-url';
 import { invalidIpcArgument, normalizeIpcError, requireTrustedMainFrame } from './ipc-guard';
 import { IPC_CHANNELS } from './ipc-contract';
-import { LocalResourcePolicy } from './local-resource';
+import { formatLocalResourceBase, LocalResourcePolicy } from './local-resource';
 import {
   parseAbsolutePath,
   parseBinary,
@@ -32,6 +32,7 @@ import {
   parseOptionalInteger,
   parseOptionalText,
   parsePersistentStatePatch,
+  parseResourceHealthCandidateIds,
   parseResourceRootPaths,
   parseSettingsPatch,
   parseText,
@@ -44,6 +45,7 @@ import { FileWatchService } from './services/file-watch-service';
 import { RecoveryStore } from './services/recovery-store';
 import { SettingsStore } from './services/settings-store';
 import { PersistentStateStore } from './services/persistent-state-store';
+import { ResourceHealthService } from './services/resource-health-service';
 import { WindowCloseConfirmation } from './services/window-close-confirmation';
 import {
   AppSettings,
@@ -58,6 +60,8 @@ let settingsStore: SettingsStore;
 let persistentStateStore: PersistentStateStore;
 let recoveryStore: RecoveryStore;
 let fileWatchService: FileWatchService;
+const resourceHealthService = new ResourceHealthService();
+let resourceHealthMenuEligible = false;
 const windowCloseConfirmation = new WindowCloseConfirmation<BrowserWindow>();
 let boundsBeforeMaximize: Electron.Rectangle | null = null;
 let windowMaximizedState = false;
@@ -281,7 +285,9 @@ function updateApplicationMenu(settings = settingsStore.getAll()): void {
     Menu.setApplicationMenu(null);
     return;
   }
-  Menu.setApplicationMenu(createAppMenu(getEffectiveLocale(settings), settings.editMode));
+  Menu.setApplicationMenu(
+    createAppMenu(getEffectiveLocale(settings), settings.editMode, resourceHealthMenuEligible),
+  );
 }
 
 function createWindow(): void {
@@ -736,6 +742,57 @@ function registerIpcHandlers(): void {
     requireArgumentCount(args, 1);
     return shell.openPath(parseAbsolutePath(args[0]));
   });
+  handleTrusted(IPC_CHANNELS.appResourceHealthEligible, async (_event, ...args) => {
+    requireArgumentCount(args, 2);
+    const eligible = await resourceHealthService.isEligible({
+      documentPath: parseAbsolutePath(args[0]),
+      workspacePath: parseAbsolutePath(args[1]),
+    });
+    if (resourceHealthMenuEligible !== eligible) {
+      resourceHealthMenuEligible = eligible;
+      updateApplicationMenu();
+    }
+    return eligible;
+  });
+  handleTrusted(IPC_CHANNELS.appResourceHealthScan, (_event, ...args) => {
+    requireArgumentCount(args, 2);
+    return resourceHealthService.scan({
+      documentPath: parseAbsolutePath(args[0]),
+      workspacePath: parseAbsolutePath(args[1]),
+      pasteImagesDir: settingsStore.get('pasteImagesDir'),
+      allowSvgImages: settingsStore.get('allowSvgImages'),
+    });
+  });
+  handleTrusted(IPC_CHANNELS.appResourceHealthReveal, (_event, ...args) => {
+    requireArgumentCount(args, 2);
+    const candidatePath = resourceHealthService.resolveCandidate(
+      parseText(args[0], 128),
+      parseText(args[1], 128),
+    );
+    if (!candidatePath) invalidIpcArgument();
+    shell.showItemInFolder(candidatePath);
+  });
+  handleTrusted(IPC_CHANNELS.appResourceHealthPreview, (_event, ...args) => {
+    requireArgumentCount(args, 2);
+    const candidatePath = resourceHealthService.resolvePreviewCandidate(
+      parseText(args[0], 128),
+      parseText(args[1], 128),
+    );
+    if (!candidatePath) return null;
+    return `${formatLocalResourceBase(path.dirname(candidatePath))}${encodeURIComponent(path.basename(candidatePath))}`;
+  });
+  handleTrusted(IPC_CHANNELS.appResourceHealthTrash, (_event, ...args) => {
+    requireArgumentCount(args, 2);
+    return resourceHealthService.trashCandidates(
+      parseText(args[0], 128),
+      parseResourceHealthCandidateIds(args[1]),
+      (candidatePath) => shell.trashItem(candidatePath),
+    );
+  });
+  onTrusted(IPC_CHANNELS.appResourceHealthDiscard, (_event, ...args) => {
+    requireArgumentCount(args, 0);
+    resourceHealthService.clear();
+  });
   handleTrusted(IPC_CHANNELS.appExportPdf, async (_event, ...args) => {
     requireArgumentCount(args, 1, 3);
     const html = parseText(args[0]);
@@ -854,6 +911,7 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 app.on('before-quit', () => {
+  resourceHealthService.clear();
   localResourcePolicy.clear();
   void fileWatchService?.dispose();
 });

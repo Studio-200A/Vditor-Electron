@@ -272,6 +272,13 @@ export interface VditorDesktopAdapter {
     replacement: string,
     caseSensitive?: boolean,
   ): boolean;
+  removeImageReference(
+    host: HTMLElement | null | undefined,
+    mode: AdapterEditMode,
+    raw: string,
+    source: string,
+    instance?: VditorTableAdapterSurface,
+  ): boolean;
   documentAnchor(
     target: EventTarget | null | undefined,
     host: HTMLElement | null | undefined,

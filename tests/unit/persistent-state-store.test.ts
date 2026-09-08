@@ -74,4 +74,22 @@ describe('PersistentStateStore', () => {
     expect(state.getAll()).toEqual(DEFAULT_PERSISTENT_APP_STATE);
     expect(new SettingsStore(configDir).get('locale')).toBe('zh_Hans');
   });
+
+  it('persists the resource-health dialog size separately from TOML preferences', async () => {
+    const settings = new SettingsStore(configDir);
+    const state = new PersistentStateStore(configDir, settings.getLegacyPersistentState());
+
+    await state.updateOrThrow({
+      resourceHealthDialogSize: { width: 960, height: 720, customized: true },
+    });
+
+    expect(
+      new PersistentStateStore(configDir, DEFAULT_PERSISTENT_APP_STATE).getAll()
+        .resourceHealthDialogSize,
+    ).toEqual({ width: 960, height: 720, customized: true });
+    const configPath = path.join(configDir, 'config.toml');
+    expect(fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : '').not.toContain(
+      'resourceHealthDialogSize',
+    );
+  });
 });

@@ -33,6 +33,7 @@ const LUCIDE_ICON_ASSETS = [
   ['file.svg', 'tree-file.svg'],
   ['folder.svg', 'tree-folder.svg'],
   ['folder-symlink.svg', 'tree-folder-symlink.svg'],
+  ['lightbulb.svg', 'resource-health-notice.svg'],
 ];
 
 function ensureDir(dir) {

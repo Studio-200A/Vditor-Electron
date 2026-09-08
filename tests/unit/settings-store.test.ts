@@ -150,6 +150,16 @@ describe('SettingsStore', () => {
     expect(fs.readFileSync(store.getPath(), 'utf8')).toContain('workspaceReadDepth = 12');
   });
 
+  it('persists the resource-health scan scope reminder preference', () => {
+    const store = new SettingsStore(configDir);
+    store.set('resourceHealthTrashScopeWarningEnabled', false);
+
+    expect(new SettingsStore(configDir).get('resourceHealthTrashScopeWarningEnabled')).toBe(false);
+    expect(fs.readFileSync(store.getPath(), 'utf8')).toContain(
+      'resourceHealthTrashScopeWarningEnabled = false',
+    );
+  });
+
   it('updates multiple values in a single settings snapshot', () => {
     const store = new SettingsStore(configDir);
     const settings = store.update({
