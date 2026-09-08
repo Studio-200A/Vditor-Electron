@@ -15,6 +15,15 @@ export const RESOURCE_HEALTH_LIMITS = {
 
 const MARKDOWN_EXTENSIONS = new Set(['.md', '.markdown', '.mdown', '.mkd', '.mkdn']);
 const SOURCE_EXTENSIONS = new Set([...MARKDOWN_EXTENSIONS, '.html', '.htm']);
+const EXCLUDED_HIDDEN_SOURCE_DIRECTORIES = new Set(['.cache', '.git', '.hg', '.svn']);
+const HTML_ENTITY_CODE_POINTS: Readonly<Record<string, number>> = {
+  amp: 38,
+  apos: 39,
+  gt: 62,
+  lt: 60,
+  nbsp: 160,
+  quot: 34,
+};
 
 export type ResourceHealthSkipReason =
   | 'permission-denied'
@@ -23,6 +32,7 @@ export type ResourceHealthSkipReason =
   | 'source-file-too-large'
   | 'source-byte-limit'
   | 'image-entry-limit'
+  | 'symbolic-link'
   | 'timeout'
   | 'unparseable';
 
@@ -43,7 +53,7 @@ export interface ResourceHealthCandidate {
 export interface MissingImageReference {
   readonly targetPath: string;
   readonly source: string;
-  readonly locations: readonly { line: number; column: number; raw: string }[];
+  readonly locations: readonly { line: number; column: number; raw: string; removable: boolean }[];
 }
 
 export interface ResourceHealthScanSummary {
@@ -98,6 +108,7 @@ interface ExtractedReference {
   readonly raw: string;
   readonly line: number;
   readonly column: number;
+  readonly removable: boolean;
 }
 
 function isWithin(rootPath: string, candidatePath: string): boolean {
@@ -194,9 +205,29 @@ function stripInlineCode(source: string): string {
 
 function stripCode(source: string): string {
   return stripInlineCode(
-    source.replace(/^\s*(```|~~~)[\s\S]*?^\s*\1\s*$/gm, (match) =>
-      '\n'.repeat(match.split('\n').length - 1),
-    ),
+    source.replace(/^\s*(```|~~~)[\s\S]*?^\s*\1\s*$/gm, (match) => match.replace(/[^\n]/g, ' ')),
+  );
+}
+
+function decodeHtmlEntities(value: string): string {
+  return value.replace(/&(?:#(\d+)|#x([\da-f]+)|([a-z]+));/gi, (match, decimal, hex, named) => {
+    const codePoint = decimal
+      ? Number.parseInt(decimal, 10)
+      : hex
+        ? Number.parseInt(hex, 16)
+        : (HTML_ENTITY_CODE_POINTS[String(named).toLowerCase()] ?? 0);
+    if (!codePoint || codePoint > 0x10ffff) return match;
+    try {
+      return String.fromCodePoint(codePoint);
+    } catch {
+      return match;
+    }
+  });
+}
+
+function hasUnsupportedHtmlEntity(value: string): boolean {
+  return /&(?:#\d+|#x[\da-f]+|[a-z]+);/gi.test(
+    value.replace(/&(?:#\d+|#x[\da-f]+|amp|apos|gt|lt|nbsp|quot);/gi, ''),
   );
 }
 
@@ -213,9 +244,9 @@ function parseSrcset(value: string): readonly string[] | null {
 
 function htmlResourceAttributes(
   source: string,
-): readonly { name: string; value: string; index: number }[] {
-  const attributes: { name: string; value: string; index: number }[] = [];
-  const tags = /<[^>]+>/g;
+): readonly { name: string; value: string; decodedValue: string; index: number }[] {
+  const attributes: { name: string; value: string; decodedValue: string; index: number }[] = [];
+  const tags = /<(?:(?:"[^"]*"|'[^']*')|[^'">])*>/g;
   for (const tag of source.matchAll(tags)) {
     const tagSource = tag[0];
     const tagIndex = tag.index ?? 0;
@@ -227,6 +258,7 @@ function htmlResourceAttributes(
       attributes.push({
         name: match[1].toLocaleLowerCase(),
         value,
+        decodedValue: decodeHtmlEntities(value),
         index: tagIndex + (match.index ?? 0) + match[0].indexOf(value),
       });
     }
@@ -273,8 +305,9 @@ function hasAmbiguousLocalReferenceSyntax(source: string): boolean {
     markdownTargets.some((match) => hasUndecodableLocalTarget(match[1])) ||
     htmlResourceAttributes(parseable).some(
       (attribute) =>
-        (attribute.name === 'srcset' && !parseSrcset(attribute.value)) ||
-        (attribute.name !== 'srcset' && hasUndecodableLocalTarget(attribute.value)),
+        hasUnsupportedHtmlEntity(attribute.value) ||
+        (attribute.name === 'srcset' && !parseSrcset(attribute.decodedValue)) ||
+        (attribute.name !== 'srcset' && hasUndecodableLocalTarget(attribute.decodedValue)),
     )
   );
 }
@@ -303,11 +336,11 @@ function cleanReference(raw: string): string | null {
 export function extractLocalReferences(source: string): readonly ExtractedReference[] {
   const parseable = stripCode(source);
   const references: ExtractedReference[] = [];
-  const add = (raw: string, index: number, reference = raw): void => {
+  const add = (raw: string, index: number, reference = raw, removable = true): void => {
     const cleaned = cleanReference(raw);
     if (!cleaned) return;
     const location = lineAndColumn(source, index);
-    references.push({ source: cleaned, raw: reference, ...location });
+    references.push({ source: cleaned, raw: reference, removable, ...location });
   };
 
   const markdownInline =
@@ -326,15 +359,16 @@ export function extractLocalReferences(source: string): readonly ExtractedRefere
   }
   for (const attribute of htmlResourceAttributes(parseable)) {
     if (attribute.name === 'srcset') {
-      for (const value of parseSrcset(attribute.value) ?? [])
-        add(value, attribute.index, attribute.value);
-    } else add(attribute.value, attribute.index, attribute.value);
+      for (const value of parseSrcset(attribute.decodedValue) ?? [])
+        add(value, attribute.index, attribute.value, false);
+    } else add(attribute.decodedValue, attribute.index, attribute.value, false);
   }
   return references;
 }
 
 export class ResourceHealthService {
   private readonly scans = new Map<string, StoredScan>();
+  private scanEpoch = 0;
 
   /** Returns only an eligibility decision; canonical paths remain main-process data. */
   async isEligible(
@@ -349,6 +383,7 @@ export class ResourceHealthService {
   }
 
   async scan(input: ResourceHealthScanInput): Promise<ResourceHealthScanSummary> {
+    const scanEpoch = ++this.scanEpoch;
     const normalizedInput = await this.normalizeInput(input);
     const startedAt = Date.now();
     const skipped = this.emptySkipped();
@@ -356,7 +391,10 @@ export class ResourceHealthService {
     const protectedDirectories: string[] = [];
     const missing = new Map<
       string,
-      { source: string; locations: { line: number; column: number; raw: string }[] }
+      {
+        source: string;
+        locations: { line: number; column: number; raw: string; removable: boolean }[];
+      }
     >();
     let scannedSourceFiles = 0;
     let sourceBytes = 0;
@@ -381,11 +419,12 @@ export class ResourceHealthService {
         return;
       }
       for (const entry of entries) {
-        if (stop || entry.name.startsWith('.')) continue;
+        if (stop) continue;
         const entryPath = path.join(directory, entry.name);
         if (entry.isSymbolicLink()) continue;
-        if (entry.isDirectory()) await visitWorkspace(entryPath);
-        else if (entry.isFile() && isSourcePath(entryPath)) {
+        if (entry.isDirectory()) {
+          if (!EXCLUDED_HIDDEN_SOURCE_DIRECTORIES.has(entry.name)) await visitWorkspace(entryPath);
+        } else if (entry.isFile() && isSourcePath(entryPath)) {
           if (sourceFiles.length >= RESOURCE_HEALTH_LIMITS.maximumSourceFiles) {
             note('source-file-limit');
             return;
@@ -454,6 +493,7 @@ export class ResourceHealthService {
             line: reference.line,
             column: reference.column,
             raw: reference.raw,
+            removable: reference.removable,
           });
           missing.set(key, entry);
         }
@@ -480,18 +520,21 @@ export class ResourceHealthService {
         return;
       }
       for (const entry of entries) {
-        if (stop || entry.name.startsWith('.')) continue;
+        if (stop) continue;
+        if (entry.isSymbolicLink()) {
+          note('symbolic-link');
+          return;
+        }
+        if (entry.name.startsWith('.')) continue;
         imageEntries += 1;
         if (imageEntries > RESOURCE_HEALTH_LIMITS.maximumImageEntries) {
           note('image-entry-limit');
           return;
         }
         const entryPath = path.join(directory, entry.name);
-        if (entry.isSymbolicLink()) continue;
-        if (entry.isDirectory()) {
-          await visitImages(entryPath);
-          continue;
-        }
+        // Candidates are deliberately limited to direct image-directory entries. Nested paths
+        // are outside this cleanup scope and cannot become destructive-action targets.
+        if (entry.isDirectory()) continue;
         if (!entry.isFile() || !isImagePath(entryPath, normalizedInput.allowSvgImages)) continue;
         if (
           referencedPaths.has(entryPath) ||
@@ -549,11 +592,14 @@ export class ResourceHealthService {
       candidateBytes: candidates.reduce((total, candidate) => total + candidate.size, 0),
       limitations: { complete: !stop, skipped },
     };
-    this.scans.set(revision, {
-      input: normalizedInput,
-      summary,
-      candidates: new Map(candidates.map((item) => [item.id, item])),
-    });
+    if (scanEpoch === this.scanEpoch) {
+      this.scans.clear();
+      this.scans.set(revision, {
+        input: normalizedInput,
+        summary,
+        candidates: new Map(candidates.map((item) => [item.id, item])),
+      });
+    }
     return summary;
   }
 
@@ -571,28 +617,30 @@ export class ResourceHealthService {
     candidateIds: readonly string[],
     trash: (filePath: string) => Promise<void>,
   ): Promise<readonly ResourceHealthActionResult[]> {
+    const uniqueCandidateIds = [...new Set(candidateIds)];
     const stored = this.scans.get(revision);
-    if (!stored) return candidateIds.map((id) => ({ id, code: 'not-found' }));
+    if (!stored) return uniqueCandidateIds.map((id) => ({ id, code: 'not-found' }));
     if (!stored.summary.limitations.complete)
-      return candidateIds.map((id) => ({ id, code: 'scan-incomplete' }));
+      return uniqueCandidateIds.map((id) => ({ id, code: 'scan-incomplete' }));
     const refreshed = await this.scan(stored.input);
     if (!refreshed.limitations.complete)
-      return candidateIds.map((id) => ({ id, code: 'scan-incomplete' }));
-    const fresh = this.scans.get(refreshed.revision);
+      return uniqueCandidateIds.map((id) => ({ id, code: 'scan-incomplete' }));
     return Promise.all(
-      candidateIds.map(async (id) => {
+      uniqueCandidateIds.map(async (id) => {
         const original = stored.candidates.get(id);
         if (!original) return { id, code: 'not-found' as const };
         if (!isWithin(stored.input.workspacePath, original.absolutePath))
           return { id, code: 'outside-workspace' as const };
-        const current = [...(fresh?.candidates.values() ?? [])].find(
-          (candidate) => candidate.absolutePath === original.absolutePath,
+        const current = refreshed.candidates.find(
+          (candidate) => candidate.relativePath === original.relativePath,
         );
         if (!current) return { id, code: 'revalidated-as-referenced' as const };
         if (current.modifiedAt !== original.modifiedAt || current.size !== original.size)
           return { id, code: 'changed-since-scan' as const };
+        if (!(await this.isSafeTrashPath(stored.input.workspacePath, original.absolutePath)))
+          return { id, code: 'outside-workspace' as const };
         try {
-          await trash(current.absolutePath);
+          await trash(original.absolutePath);
           return { id, code: 'trashed' as const };
         } catch {
           return { id, code: 'failed' as const };
@@ -602,6 +650,7 @@ export class ResourceHealthService {
   }
 
   clear(): void {
+    this.scanEpoch += 1;
     this.scans.clear();
   }
 
@@ -652,6 +701,18 @@ export class ResourceHealthService {
     }
   }
 
+  private async isSafeTrashPath(workspacePath: string, candidatePath: string): Promise<boolean> {
+    if (!isWithin(workspacePath, candidatePath)) return false;
+    try {
+      await this.assertImageDirectoryHasNoSymbolicLinks(workspacePath, path.dirname(candidatePath));
+      const stat = await fs.lstat(candidatePath);
+      if (!stat.isFile() || stat.isSymbolicLink()) return false;
+      return isWithin(workspacePath, await fs.realpath(candidatePath));
+    } catch {
+      return false;
+    }
+  }
+
   private emptySkipped(): Record<ResourceHealthSkipReason, number> {
     return {
       'permission-denied': 0,
@@ -660,6 +721,7 @@ export class ResourceHealthService {
       'source-file-too-large': 0,
       'source-byte-limit': 0,
       'image-entry-limit': 0,
+      'symbolic-link': 0,
       timeout: 0,
       unparseable: 0,
     };

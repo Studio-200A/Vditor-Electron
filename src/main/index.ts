@@ -24,6 +24,7 @@ import { formatLocalResourceBase, LocalResourcePolicy } from './local-resource';
 import {
   parseAbsolutePath,
   parseBinary,
+  parseBoolean,
   parseEnum,
   parseFileName,
   parseFiniteNumber,
@@ -744,15 +745,18 @@ function registerIpcHandlers(): void {
   });
   handleTrusted(IPC_CHANNELS.appResourceHealthEligible, async (_event, ...args) => {
     requireArgumentCount(args, 2);
-    const eligible = await resourceHealthService.isEligible({
+    return resourceHealthService.isEligible({
       documentPath: parseAbsolutePath(args[0]),
       workspacePath: parseAbsolutePath(args[1]),
     });
+  });
+  handleTrusted(IPC_CHANNELS.appSetResourceHealthEligible, (_event, ...args) => {
+    requireArgumentCount(args, 1);
+    const eligible = parseBoolean(args[0]);
     if (resourceHealthMenuEligible !== eligible) {
       resourceHealthMenuEligible = eligible;
       updateApplicationMenu();
     }
-    return eligible;
   });
   handleTrusted(IPC_CHANNELS.appResourceHealthScan, (_event, ...args) => {
     requireArgumentCount(args, 2);

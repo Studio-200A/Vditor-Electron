@@ -173,7 +173,9 @@ export function parseResourceRootPaths(value: unknown): string[] {
 
 export function parseResourceHealthCandidateIds(value: unknown): string[] {
   if (!Array.isArray(value) || value.length === 0 || value.length > 100) invalidIpcArgument();
-  return value.map((item) => parseText(item, 128));
+  const candidateIds = value.map((item) => parseText(item, 128));
+  if (new Set(candidateIds).size !== candidateIds.length) invalidIpcArgument();
+  return candidateIds;
 }
 
 function parseAbsolutePathOrEmpty(value: unknown): string {

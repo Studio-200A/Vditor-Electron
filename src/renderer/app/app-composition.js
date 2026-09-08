@@ -815,6 +815,7 @@
         draggable: true,
       })) === 'confirm',
     translate: t,
+    getLocale: () => state.locale,
     showMessage,
     openWorkspace: () => void chooseFolder(),
     confirmMoveToTrash: async (candidates) => {
@@ -1931,12 +1932,14 @@
     const filePath = tab?.filePath;
     const workspacePath = state.workspace;
     resourceHealthMenuEligible = false;
+    void window.appAPI.setResourceHealthEligible(false);
     if ($('#appMenuBar')?.dataset.ready === 'true') setupAppMenus();
     if (!filePath || !workspacePath) return;
     resourceHealthMenuEligible = Boolean(
       await window.appAPI.isResourceHealthEligible(filePath, workspacePath).catch(() => false),
     );
     if (activeTab()?.filePath !== filePath || state.workspace !== workspacePath) return;
+    void window.appAPI.setResourceHealthEligible(resourceHealthMenuEligible);
     if ($('#appMenuBar')?.dataset.ready === 'true') setupAppMenus();
   }
 
@@ -2521,7 +2524,7 @@
 
   async function handleExternalChange(change) {
     await externalFileChangeController.handle(change);
-    if (activeTab()?.externalFileState?.kind === 'deleted') resourceHealthController.invalidate();
+    resourceHealthController.invalidate();
   }
 
   function handleMenu(action, value) {

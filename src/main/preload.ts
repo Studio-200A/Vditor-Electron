@@ -117,6 +117,8 @@ contextBridge.exposeInMainWorld('appAPI', {
   openDirectory: (dirPath: string) => ipcRenderer.invoke(IPC_CHANNELS.appOpenDirectory, dirPath),
   isResourceHealthEligible: (documentPath: string, workspacePath: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.appResourceHealthEligible, documentPath, workspacePath),
+  setResourceHealthEligible: (eligible: boolean) =>
+    ipcRenderer.invoke(IPC_CHANNELS.appSetResourceHealthEligible, eligible),
   scanResourceHealth: (documentPath: string, workspacePath: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.appResourceHealthScan, documentPath, workspacePath),
   revealResourceHealthCandidate: (revision: string, candidateId: string) =>

@@ -65,6 +65,46 @@ describe('resource health service', () => {
     ]);
   });
 
+  it('decodes HTML character references before resolving local resources', () => {
+    expect(extractLocalReferences('<img src="assets/used&#46;png">')).toEqual([
+      expect.objectContaining({ source: 'assets/used.png', raw: 'assets/used&#46;png' }),
+    ]);
+  });
+
+  it('treats unsupported HTML entities as an incomplete scan instead of risking cleanup', async () => {
+    const root = workspace();
+    const documentPath = write(root, 'notes/current.md', '<img src="assets&sol;used.png">');
+    write(root, 'notes/assets/used.png', PNG_HEADER);
+    write(root, 'notes/assets/orphan.png', PNG_HEADER);
+
+    const result = await new ResourceHealthService().scan({
+      documentPath,
+      workspacePath: root,
+      pasteImagesDir: './assets',
+      allowSvgImages: false,
+    });
+
+    expect(result.limitations.complete).toBe(false);
+    expect(result.limitations.skipped.unparseable).toBe(1);
+    expect(result.candidates).toEqual([]);
+  });
+
+  it('parses a quoted HTML resource attribute containing a greater-than character', () => {
+    expect(extractLocalReferences('<img src="assets/used.png?value=>">')).toEqual([
+      expect.objectContaining({ source: 'assets/used.png' }),
+    ]);
+  });
+
+  it('keeps locations aligned with the original source after fenced code', () => {
+    const references = extractLocalReferences(
+      ['```md', '![ignored](assets/ignored.png)', '```', '', '![used](assets/used.png)'].join('\n'),
+    );
+
+    expect(references).toEqual([
+      expect.objectContaining({ source: 'assets/used.png', line: 5, column: 9 }),
+    ]);
+  });
+
   it('ignores escaped Markdown links', () => {
     expect(extractLocalReferences('\\![literal](assets/not-a-reference.png)')).toEqual([]);
   });
@@ -116,6 +156,40 @@ describe('resource health service', () => {
         locations: [expect.objectContaining({ raw: '![missing](assets/missing.png)' })],
       }),
     ]);
+  });
+
+  it('keeps images referenced by hidden workspace documents out of candidates', async () => {
+    const root = workspace();
+    const documentPath = write(root, 'notes/current.md', '# Current');
+    write(root, '.notes/reference.md', '![used](../notes/assets/used.png)');
+    write(root, 'notes/assets/used.png', PNG_HEADER);
+
+    const result = await new ResourceHealthService().scan({
+      documentPath,
+      workspacePath: root,
+      pasteImagesDir: './assets',
+      allowSvgImages: false,
+    });
+
+    expect(result.candidates).toEqual([]);
+  });
+
+  it('skips VCS metadata while still scanning hidden workspace documents', async () => {
+    const root = workspace();
+    const documentPath = write(root, 'notes/current.md', '# Current');
+    write(root, '.notes/reference.md', '![used](../notes/assets/used.png)');
+    write(root, '.git/large.md', Buffer.alloc(RESOURCE_HEALTH_LIMITS.maximumSourceFileBytes + 1));
+    write(root, 'notes/assets/used.png', PNG_HEADER);
+
+    const result = await new ResourceHealthService().scan({
+      documentPath,
+      workspacePath: root,
+      pasteImagesDir: './assets',
+      allowSvgImages: false,
+    });
+
+    expect(result.limitations.complete).toBe(true);
+    expect(result.candidates).toEqual([]);
   });
 
   it('does not report remote, data, or workspace-external current-document references as missing', async () => {
@@ -234,6 +308,25 @@ describe('resource health service', () => {
     ]);
   });
 
+  it('limits cleanup candidates to direct image-directory files', async () => {
+    const root = workspace();
+    const documentPath = write(root, 'notes/current.md', '# Current');
+    write(root, 'notes/assets/direct.png', PNG_HEADER);
+    write(root, 'notes/assets/nested/deep.png', PNG_HEADER);
+
+    const result = await new ResourceHealthService().scan({
+      documentPath,
+      workspacePath: root,
+      pasteImagesDir: './assets',
+      allowSvgImages: false,
+    });
+
+    expect(result.limitations.complete).toBe(true);
+    expect(result.candidates.map((candidate) => candidate.relativePath)).toEqual([
+      'notes/assets/direct.png',
+    ]);
+  });
+
   it('blocks trash when a newly added reference protects a former candidate', async () => {
     const root = workspace();
     const documentPath = write(root, 'notes/current.md', '# Current');
@@ -281,6 +374,28 @@ describe('resource health service', () => {
     expect(trashedPaths).toEqual([selectedPath]);
     expect(fs.existsSync(selectedPath)).toBe(false);
     expect(fs.existsSync(untouchedPath)).toBe(true);
+  });
+
+  it('expires a prior revision when a newer scan completes', async () => {
+    const root = workspace();
+    const documentPath = write(root, 'notes/current.md', '# Current');
+    write(root, 'notes/assets/orphan.png', PNG_HEADER);
+    const service = new ResourceHealthService();
+    const first = await service.scan({
+      documentPath,
+      workspacePath: root,
+      pasteImagesDir: './assets',
+      allowSvgImages: false,
+    });
+    const second = await service.scan({
+      documentPath,
+      workspacePath: root,
+      pasteImagesDir: './assets',
+      allowSvgImages: false,
+    });
+
+    expect(service.resolveCandidate(first.revision, first.candidates[0].id)).toBeNull();
+    expect(service.resolveCandidate(second.revision, second.candidates[0].id)).not.toBeNull();
   });
 
   it('blocks trash when a document contains an ambiguous Markdown destination', async () => {
@@ -417,6 +532,29 @@ describe('resource health service', () => {
       await expect(
         new ResourceHealthService().isEligible({ documentPath, workspacePath: root }),
       ).resolves.toBe(true);
+    },
+  );
+
+  it.runIf(process.platform !== 'win32')(
+    'marks the scan incomplete and excludes direct symbolic links from candidates',
+    async () => {
+      const root = workspace();
+      const outsideRoot = workspace();
+      const documentPath = write(root, 'notes/current.md', '# Current');
+      const originalPath = write(outsideRoot, 'original.png', PNG_HEADER);
+      write(root, 'notes/assets/direct.png', PNG_HEADER);
+      fs.symlinkSync(originalPath, path.join(root, 'notes/assets/linked.png'), 'file');
+
+      const result = await new ResourceHealthService().scan({
+        documentPath,
+        workspacePath: root,
+        pasteImagesDir: './assets',
+        allowSvgImages: false,
+      });
+
+      expect(result.limitations.complete).toBe(false);
+      expect(result.limitations.skipped['symbolic-link']).toBe(1);
+      expect(result.candidates.map((candidate) => candidate.name)).not.toContain('linked.png');
     },
   );
 });

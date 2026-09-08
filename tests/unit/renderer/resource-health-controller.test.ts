@@ -658,6 +658,57 @@ describe('ResourceHealthController', () => {
     controller.dispose();
   });
 
+  it('does not remove an HTML-derived missing reference with an incomplete edit range', async () => {
+    const removeImageReference = vi.fn();
+    const controller = new ResourceHealthController({
+      document,
+      appAPI: {
+        scanResourceHealth: vi.fn().mockResolvedValue({
+          revision: 'scan-html-reference',
+          candidates: [],
+          missingReferences: [
+            {
+              targetPath: 'assets/missing.png',
+              source: 'assets/missing.png',
+              locations: [{ line: 1, column: 10, raw: 'assets/missing.png', removable: false }],
+            },
+          ],
+          candidateBytes: 0,
+          scannedSourceFiles: 1,
+          limitations: { complete: true, skipped: {} },
+        }),
+        revealResourceHealthCandidate: vi.fn(),
+        previewResourceHealthCandidate: vi.fn(),
+        writeClipboard: vi.fn(),
+        trashResourceHealthCandidates: vi.fn(),
+      },
+      getActiveDocument: () => ({ filePath: '/workspace/note.md', title: 'note.md' }),
+      getWorkspacePath: () => '/workspace',
+      getActiveEditor: () => ({
+        host: document.body,
+        mode: 'sv',
+        content: '<img src="assets/missing.png">',
+      }),
+      removeImageReference,
+      confirmRemoveReference: vi.fn().mockResolvedValue(true),
+      translate,
+      openWorkspace: vi.fn(),
+      confirmMoveToTrash: vi.fn(),
+    });
+    controller.open();
+    await vi.waitFor(() =>
+      expect(
+        document.querySelector<HTMLButtonElement>('.resource-health-missing-item button:last-child')
+          ?.disabled,
+      ).toBe(true),
+    );
+    document
+      .querySelector<HTMLButtonElement>('.resource-health-missing-item button:last-child')
+      ?.click();
+    expect(removeImageReference).not.toHaveBeenCalled();
+    controller.dispose();
+  });
+
   it('removes selected missing targets in one confirmed batch', async () => {
     const removeImageReference = vi.fn().mockReturnValue(true);
     const confirmRemoveReferences = vi.fn().mockResolvedValue(true);
@@ -715,40 +766,41 @@ describe('ResourceHealthController', () => {
     controller.dispose();
   });
 
-  it('shows each untrashed outcome after a partially successful Trash operation', async () => {
+  it('refreshes the scan after a partially successful Trash operation', async () => {
     const confirmMoveToTrash = vi.fn().mockResolvedValue(true);
     const trashResourceHealthCandidates = vi.fn().mockResolvedValue([
       { id: 'candidate-a', code: 'trashed' },
       { id: 'candidate-b', code: 'changed-since-scan' },
     ]);
+    const scanResourceHealth = vi.fn().mockResolvedValue({
+      revision: 'scan-partial-trash',
+      candidates: [
+        {
+          id: 'candidate-a',
+          relativePath: 'assets/a.png',
+          name: 'a.png',
+          size: 128,
+          modifiedAt: 1,
+          previewAvailable: false,
+        },
+        {
+          id: 'candidate-b',
+          relativePath: 'assets/b.png',
+          name: 'b.png',
+          size: 256,
+          modifiedAt: 2,
+          previewAvailable: false,
+        },
+      ],
+      missingReferences: [],
+      candidateBytes: 384,
+      scannedSourceFiles: 1,
+      limitations: { complete: true, skipped: {} },
+    });
     const controller = new ResourceHealthController({
       document,
       appAPI: {
-        scanResourceHealth: vi.fn().mockResolvedValue({
-          revision: 'scan-partial-trash',
-          candidates: [
-            {
-              id: 'candidate-a',
-              relativePath: 'assets/a.png',
-              name: 'a.png',
-              size: 128,
-              modifiedAt: 1,
-              previewAvailable: false,
-            },
-            {
-              id: 'candidate-b',
-              relativePath: 'assets/b.png',
-              name: 'b.png',
-              size: 256,
-              modifiedAt: 2,
-              previewAvailable: false,
-            },
-          ],
-          missingReferences: [],
-          candidateBytes: 384,
-          scannedSourceFiles: 1,
-          limitations: { complete: true, skipped: {} },
-        }),
+        scanResourceHealth,
         revealResourceHealthCandidate: vi.fn(),
         previewResourceHealthCandidate: vi.fn(),
         writeClipboard: vi.fn(),
@@ -777,11 +829,7 @@ describe('ResourceHealthController', () => {
         expect.objectContaining({ relativePath: 'assets/b.png', size: 256 }),
       ]),
     );
-    await vi.waitFor(() =>
-      expect(document.querySelector('.resource-health-action-result')?.textContent).toContain(
-        'resourceHealth.action.changed-since-scan',
-      ),
-    );
+    await vi.waitFor(() => expect(scanResourceHealth).toHaveBeenCalledTimes(2));
     controller.dispose();
   });
 });

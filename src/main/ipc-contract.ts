@@ -52,6 +52,7 @@ export const IPC_CHANNELS = {
   appShowItemInFolder: 'app:showItemInFolder',
   appOpenDirectory: 'app:openDirectory',
   appResourceHealthEligible: 'app:resourceHealthEligible',
+  appSetResourceHealthEligible: 'app:setResourceHealthEligible',
   appResourceHealthScan: 'app:resourceHealthScan',
   appResourceHealthReveal: 'app:resourceHealthReveal',
   appResourceHealthPreview: 'app:resourceHealthPreview',

@@ -321,6 +321,8 @@
         'Saved snapshot: {documentPath} in {workspace}, saved {savedAt}. Image directory: {imageDirectory}. Scanned {scanned} Markdown/HTML files. Unsaved editor changes and references outside this workspace are not included.',
       'resourceHealth.incomplete':
         'Some workspace documents could not be safely scanned. Moving items to Trash is disabled.',
+      'resourceHealth.symbolicLinkWarning':
+        'The image directory contains symbolic links. To protect your files, moving items to Trash is disabled. Replace each symbolic link with its original image, then scan again.',
       'resourceHealth.noCandidates': 'No unreferenced images were found.',
       'resourceHealth.candidates': 'Unreferenced images ({count})',
       'resourceHealth.missing': 'Missing references ({count})',
@@ -689,6 +691,8 @@
         '已保存快照：{workspace} 中的 {documentPath}，保存时间 {savedAt}。图片目录：{imageDirectory}。已扫描 {scanned} 个 Markdown/HTML 文件；未保存编辑和工作区外引用不参与扫描。',
       'resourceHealth.incomplete':
         '工作区内部分文档无法安全扫描，为避免删除仍被引用的图片，已禁止移至系统回收站。',
+      'resourceHealth.symbolicLinkWarning':
+        '当前图片目录内有符号链接。为保护文件安全，已禁止移至系统回收站。请将符号链接替换为原始图片后重新扫描。',
       'resourceHealth.noCandidates': '未发现未引用图片。',
       'resourceHealth.candidates': '未引用图片（{count}）',
       'resourceHealth.missing': '缺失图片引用（{count}）',
@@ -1052,6 +1056,8 @@
         '已儲存快照：{workspace} 中的 {documentPath}，儲存時間 {savedAt}。圖片目錄：{imageDirectory}。已掃描 {scanned} 個 Markdown/HTML 檔案；未儲存編輯和工作區外引用不參與掃描。',
       'resourceHealth.incomplete':
         '工作區內部分文件無法安全掃描，為避免刪除仍被引用的圖片，已禁止移至系統回收筒。',
+      'resourceHealth.symbolicLinkWarning':
+        '目前圖片目錄內有符號連結。為保護檔案安全，已禁止移至系統回收筒。請將符號連結替換為原始圖片後重新掃描。',
       'resourceHealth.noCandidates': '未發現未引用圖片。',
       'resourceHealth.candidates': '未引用圖片（{count}）',
       'resourceHealth.missing': '缺失圖片引用（{count}）',

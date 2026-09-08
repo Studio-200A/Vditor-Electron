@@ -43,6 +43,7 @@ export interface ResourceHealthControllerOptions {
   ) => Promise<boolean>;
   readonly confirmRemoveReference?: (targetPath: string, raw: string) => Promise<boolean>;
   readonly translate: (key: string, variables?: Record<string, string | number>) => string;
+  readonly getLocale?: () => string;
   readonly openWorkspace: () => void;
   readonly confirmMoveToTrash: (
     candidates: readonly { relativePath: string; size: number }[],
@@ -158,16 +159,27 @@ export class ResourceHealthController {
     this.unsavedNotice.append(unsavedNoticeIcon, this.unsavedNoticeText);
     this.limitations = element(document, 'p', 'resource-health-limitations hidden');
     const tabs = element(document, 'div', 'resource-health-tabs');
+    tabs.setAttribute('role', 'tablist');
     this.candidatesTab = element(document, 'button', 'active');
     this.candidatesTab.type = 'button';
+    this.candidatesTab.id = 'resource-health-candidates-tab';
+    this.candidatesTab.setAttribute('role', 'tab');
+    this.candidatesTab.setAttribute('aria-controls', 'resource-health-candidates-panel');
     this.candidatesTab.textContent = options.translate('resourceHealth.candidates');
     this.candidatesTab.addEventListener('click', () => this.showTab('candidates'));
     this.missingTab = element(document, 'button');
     this.missingTab.type = 'button';
+    this.missingTab.id = 'resource-health-missing-tab';
+    this.missingTab.setAttribute('role', 'tab');
+    this.missingTab.setAttribute('aria-controls', 'resource-health-missing-panel');
     this.missingTab.textContent = options.translate('resourceHealth.missing');
     this.missingTab.addEventListener('click', () => this.showTab('missing'));
+    tabs.addEventListener('keydown', this.onTabKeyDown);
     tabs.append(this.candidatesTab, this.missingTab);
     this.candidates = element(document, 'div', 'resource-health-candidates');
+    this.candidates.id = 'resource-health-candidates-panel';
+    this.candidates.setAttribute('role', 'tabpanel');
+    this.candidates.setAttribute('aria-labelledby', this.candidatesTab.id);
     this.candidateList = element(document, 'div', 'resource-health-candidate-list');
     this.candidateDetail = element(document, 'aside', 'resource-health-candidate-detail');
     this.candidatePreview = element(document, 'img');
@@ -184,6 +196,9 @@ export class ResourceHealthController {
     this.candidateDetail.append(this.candidatePreview, this.candidatePreviewPlaceholder);
     this.candidates.append(this.candidateList);
     this.missing = element(document, 'div', 'resource-health-missing');
+    this.missing.id = 'resource-health-missing-panel';
+    this.missing.setAttribute('role', 'tabpanel');
+    this.missing.setAttribute('aria-labelledby', this.missingTab.id);
     this.results = element(document, 'div', 'resource-health-results');
     this.results.append(this.candidates, this.missing, this.candidateDetail);
     this.rescanButton = element(document, 'button', 'resource-health-rescan');
@@ -632,6 +647,8 @@ export class ResourceHealthController {
     this.missingTab.classList.toggle('active', !candidatesActive);
     this.candidatesTab.setAttribute('aria-selected', String(candidatesActive));
     this.missingTab.setAttribute('aria-selected', String(!candidatesActive));
+    this.candidatesTab.tabIndex = candidatesActive ? 0 : -1;
+    this.missingTab.tabIndex = candidatesActive ? -1 : 0;
     this.actions.replaceChildren(
       this.selectionSummary,
       ...(candidatesActive
@@ -640,6 +657,14 @@ export class ResourceHealthController {
     );
     this.renderActions();
   }
+
+  private readonly onTabKeyDown = (event: KeyboardEvent): void => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const tab = event.key === 'ArrowLeft' || event.key === 'Home' ? 'candidates' : 'missing';
+    this.showTab(tab);
+    (tab === 'candidates' ? this.candidatesTab : this.missingTab).focus();
+  };
 
   private renderSummary(summary: ResourceHealthScanSummary, title: string): void {
     this.candidatesTab.textContent = this.options.translate('resourceHealth.candidates', {
@@ -673,7 +698,9 @@ export class ResourceHealthController {
     this.actionResult.classList.add('hidden');
     this.limitations.textContent = summary.limitations.complete
       ? ''
-      : this.options.translate('resourceHealth.incomplete');
+      : summary.limitations.skipped['symbolic-link']
+        ? this.options.translate('resourceHealth.symbolicLinkWarning')
+        : this.options.translate('resourceHealth.incomplete');
     this.limitations.classList.toggle('hidden', summary.limitations.complete);
     this.candidateList.replaceChildren();
     this.renderCandidateDetail(null, '');
@@ -732,6 +759,10 @@ export class ResourceHealthController {
       const item = element(this.options.document, 'div', 'resource-health-missing-item');
       const checkbox = element(this.options.document, 'input');
       checkbox.type = 'checkbox';
+      const hasRemovableLocation = missing.locations.some(
+        (location) => location.removable !== false,
+      );
+      checkbox.disabled = !hasRemovableLocation;
       checkbox.addEventListener('change', () => {
         if (checkbox.checked) this.selectedMissing.add(missing.targetPath);
         else this.selectedMissing.delete(missing.targetPath);
@@ -751,13 +782,19 @@ export class ResourceHealthController {
       for (const location of missing.locations) {
         const locationItem = element(this.options.document, 'li');
         const locationText = element(this.options.document, 'code');
-        locationText.textContent = `${this.options.translate('resourceHealth.location', location)}: ${location.raw}`;
+        const locationVariables = {
+          line: location.line,
+          column: location.column,
+          raw: location.raw,
+        };
+        locationText.textContent = `${this.options.translate('resourceHealth.location', locationVariables)}: ${location.raw}`;
         const remove = element(this.options.document, 'button');
         remove.type = 'button';
         remove.textContent = this.options.translate('resourceHealth.removeReference');
+        remove.disabled = location.removable === false;
         remove.setAttribute(
           'aria-label',
-          `${this.options.translate('resourceHealth.removeReference')}: ${this.options.translate('resourceHealth.location', location)}`,
+          `${this.options.translate('resourceHealth.removeReference')}: ${this.options.translate('resourceHealth.location', locationVariables)}`,
         );
         remove.addEventListener(
           'click',
@@ -777,29 +814,42 @@ export class ResourceHealthController {
 
   private async trashSelected(): Promise<void> {
     if (!this.current || !this.current.limitations.complete || !this.selected.size) return;
-    const selectedCandidates = this.current.candidates.filter((candidate) =>
-      this.selected.has(candidate.id),
+    const scan = this.current;
+    const generation = this.scanGeneration;
+    const documentPath = this.options.getActiveDocument()?.filePath;
+    const workspacePath = this.options.getWorkspacePath();
+    const candidateIds = [...this.selected];
+    const selectedCandidates = scan.candidates.filter((candidate) =>
+      candidateIds.includes(candidate.id),
     );
     if (!(await this.options.confirmMoveToTrash(selectedCandidates))) return;
+    if (!this.isCurrentScan(scan, generation, documentPath, workspacePath)) {
+      this.renderUnavailable('resourceHealth.stale');
+      return;
+    }
     this.trashButton.disabled = true;
     let results: readonly ResourceHealthActionResult[];
     try {
-      results = await this.options.appAPI.trashResourceHealthCandidates(this.current.revision, [
-        ...this.selected,
-      ]);
+      results = await this.options.appAPI.trashResourceHealthCandidates(
+        scan.revision,
+        candidateIds,
+      );
     } catch {
+      if (!this.isCurrentScan(scan, generation, documentPath, workspacePath)) return;
       this.options.showMessage?.(this.options.translate('resourceHealth.scanFailed'), true);
       this.renderActions();
       return;
     }
+    if (!this.isCurrentScan(scan, generation, documentPath, workspacePath)) return;
     const trashed = results.filter(
       (result: ResourceHealthActionResult) => result.code === 'trashed',
     ).length;
     const changedSinceScan = results.some((result) => result.code === 'changed-since-scan');
     if (changedSinceScan && this.options.showChangedSinceScanDialog) {
       const shouldRescan = await this.options.showChangedSinceScanDialog();
+      if (!this.isCurrentScan(scan, generation, documentPath, workspacePath)) return;
       if (shouldRescan || trashed) await this.scan();
-      else this.renderActions();
+      else this.renderUnavailable('resourceHealth.stale');
       return;
     }
     this.options.showMessage?.(
@@ -816,8 +866,8 @@ export class ResourceHealthController {
             .join(', '),
         })
       : '';
-    if (trashed) await this.scan();
-    else this.renderActions();
+    await this.scan();
+    if (!this.isCurrentScan(scan, generation, documentPath, workspacePath)) return;
     this.actionResult.textContent = partialResult;
     this.actionResult.classList.toggle('hidden', !partialResult);
   }
@@ -835,11 +885,13 @@ export class ResourceHealthController {
     const entries = this.current.missingReferences
       .filter((missing) => this.selectedMissing.has(missing.targetPath))
       .flatMap((missing) =>
-        missing.locations.map((location) => ({
-          targetPath: missing.targetPath,
-          raw: location.raw,
-          source: missing.source,
-        })),
+        missing.locations
+          .filter((location) => location.removable !== false)
+          .map((location) => ({
+            targetPath: missing.targetPath,
+            raw: location.raw,
+            source: missing.source,
+          })),
       );
     await this.removeMissingReferences(entries);
   }
@@ -847,8 +899,12 @@ export class ResourceHealthController {
   private async removeMissingReferences(
     entries: readonly { targetPath: string; raw: string; source: string }[],
   ): Promise<void> {
+    const scan = this.current;
+    const generation = this.scanGeneration;
+    const documentPath = this.options.getActiveDocument()?.filePath;
+    const workspacePath = this.options.getWorkspacePath();
     const editor = this.options.getActiveEditor();
-    if (!editor || !entries.length) return;
+    if (!scan || !documentPath || !editor || !entries.length) return;
     const matching = entries.filter((entry) => editor.content.includes(entry.raw));
     if (!matching.length) {
       this.options.showMessage?.(this.options.translate('resourceHealth.removeSkipped'), true);
@@ -858,11 +914,21 @@ export class ResourceHealthController {
       ? await this.options.confirmRemoveReferences(matching)
       : await this.options.confirmRemoveReference?.(matching[0].targetPath, matching[0].raw);
     if (!confirmed) return;
+    const currentEditor = this.options.getActiveEditor();
+    if (
+      this.current !== scan ||
+      this.scanGeneration !== generation ||
+      this.options.getActiveDocument()?.filePath !== documentPath ||
+      this.options.getWorkspacePath() !== workspacePath ||
+      currentEditor?.host !== editor.host
+    ) {
+      this.renderUnavailable('resourceHealth.stale');
+      return;
+    }
     let removed = 0;
     for (const entry of matching) {
-      const currentEditor = this.options.getActiveEditor();
       if (
-        currentEditor?.content.includes(entry.raw) &&
+        currentEditor.content.includes(entry.raw) &&
         this.options.removeImageReference(currentEditor, entry.raw, entry.source)
       )
         removed += 1;
@@ -889,6 +955,22 @@ export class ResourceHealthController {
       !this.current?.missingReferences.length || this.selectedMissing.size === 0;
     this.rescanButton.disabled =
       !this.options.getActiveDocument()?.filePath || !this.options.getWorkspacePath();
+  }
+
+  private isCurrentScan(
+    scan: ResourceHealthScanSummary,
+    generation: number,
+    documentPath: string | null | undefined,
+    workspacePath: string,
+  ): boolean {
+    return (
+      this.current === scan &&
+      this.scanGeneration === generation &&
+      this.options.getActiveDocument()?.filePath === documentPath &&
+      this.options.getWorkspacePath() === workspacePath &&
+      !this.modal.classList.contains('hidden') &&
+      !this.modal.classList.contains('modal-closing')
+    );
   }
 
   private renderScanStatus(key: string, variables?: Record<string, string | number>): void {
@@ -986,9 +1068,10 @@ export class ResourceHealthController {
   }
 
   private formatDate(value: number): string {
-    return new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'short' }).format(
-      new Date(value),
-    );
+    return new Intl.DateTimeFormat(this.options.getLocale?.().replace('_', '-') ?? undefined, {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    }).format(new Date(value));
   }
 
   private createAnalyzingImage(document: Document): HTMLElement {

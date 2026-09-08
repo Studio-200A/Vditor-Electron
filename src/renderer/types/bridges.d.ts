@@ -56,7 +56,7 @@ export interface ResourceHealthScanSummary {
   missingReferences: readonly {
     targetPath: string;
     source: string;
-    locations: readonly { line: number; column: number; raw: string }[];
+    locations: readonly { line: number; column: number; raw: string; removable?: boolean }[];
   }[];
   candidateBytes: number;
   limitations: {
@@ -146,6 +146,7 @@ export interface AppAPI {
   showItemInFolder(filePath: string): Promise<void>;
   openDirectory(dirPath: string): Promise<void>;
   isResourceHealthEligible(documentPath: string, workspacePath: string): Promise<boolean>;
+  setResourceHealthEligible(eligible: boolean): Promise<void>;
   scanResourceHealth(
     documentPath: string,
     workspacePath: string,
