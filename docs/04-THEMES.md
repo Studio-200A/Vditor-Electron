@@ -28,7 +28,7 @@ Monokai Pro Dark 和 Monokai Pro Light 是历史实现中的例外：应用 CSS 
 | 设置界面 | `src/renderer/index.html` | 渲染亮色/暗色独立 radio 组和主题预览 SVG；系统匹配模式由状态栏菜单控制，不在设置页重复提供 |
 | 主题纯函数 | `src/renderer/ui/theme.ts` | 主题常量（`DARK_THEMES`、`LIGHT_THEMES`、`ALL_THEMES`、`THEME_MODES`）和判定函数（`isDarkTheme`） |
 | 主题控制器纯函数 | `src/renderer/ui/theme-controller.ts` | 主题解析与校验：`resolveEffectiveTheme`、`resolveThemeMode`、`validateDarkTheme`、`validateLightTheme`、`getPreferredCodeTheme`、`resolveContentTheme` |
-| 主题 DOM 操作 | `src/renderer/app.js` | 应用 `data-theme`、切换 Vditor 内容/代码主题、同步状态栏三态主题菜单（调用 `window.__vditorDesktopPureFunctions` 中的纯函数） |
+| 主题 DOM 操作 | `src/renderer/ui/theme-coordinator.ts` | 应用 `data-theme`、切换 Vditor 内容/代码主题、同步状态栏三态主题菜单和设置控件（依赖注入的 `theme-controller.ts` 纯函数与 `vditor-adapter.js` 语义回调） |
 | 应用视觉变量 | `src/renderer/styles/app.css` | 布局、通用组件、共享语义变量；`:root` 默认主题变量（classic） |
 | 主题样式文件 | `src/renderer/styles/themes/*.css` | 各主题独立 CSS 文件（dark、claude-light、claude-dark、monokai-pro-light、monokai-pro-dark） |
 | Vditor 边界 | `src/renderer/vditor-adapter.js` | 集中处理 Vditor toolbar、主题菜单和私有 DOM 结构访问 |

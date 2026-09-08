@@ -98,6 +98,17 @@ rename(临时文件, 目标文件)
 
 在此之前，问题 7 的本地修复状态是“风险窗口已缩小并可显式处理”，不是“绝对不会覆盖”。Windows/macOS 的原生行为验证和平台方案决策继续记录在 [`docs/03-CROSS-PLATFORM.md` §9](03-CROSS-PLATFORM.md#9-020-batch-7-deferred-platform-validation)，不再依赖 0.2.0 tracker 的日常关注度。
 
+### 7.4 资源健康回收站：路径化 `shell.trashItem` 的符号链接窗口
+
+资源健康页面的“移至系统回收站”在逐项复核候选仍位于工作区内、不是符号链接、仍未被最新磁盘扫描引用且文件身份/修改时间未变化之后，通过 Electron `shell.trashItem(path)` 按路径移入系统回收站。复核和 `trashItem` 之间仍存在与第 7.1 节同类的竞争窗口：外部进程可在最后一次路径复核后、调用回收站前，把候选或其父目录替换为符号链接，从而使按路径的删除作用于链接目标。Node/Electron 未提供跨平台的无跟随目录句柄 Trash 原语；现有 npm `trash` 等封装同样基于路径，无法消除该窗口。
+
+为此，资源健康将删除范围保守收束并保持“只读优先”：
+
+- 候选只枚举当前文档图片目录的直接常规图片文件，不递归进入二级目录，二级目录内容不能成为回收站目标；
+- 不跟随符号链接；图片目录直接子项中发现符号链接即把扫描标记为不完整，该链接不进入候选列表，并禁止本次 revision 的回收站操作，页面提示用户将链接替换为原始图片后重新扫描。
+
+这些措施缩小了可攻击面和误跟随链接的风险，但属于产品边界而非目录句柄级原子文件操作；在引入跨平台原生组件（Linux `openat2` 的 beneath/no-symlink 解析、macOS `openat`/`renameat` 与原生废纸篓、Windows reparse-point 安全 handle 与 `IFileOperation`）之前，本窗口保持开放。相关设计和处理办法见 [`docs/18-0.2.5-RESOURCE-HEALTH.md` §6.3.1](18-0.2.5-RESOURCE-HEALTH.md#631-符号链接与二级目录)。
+
 ## 8. 维护入口与验证
 
 修改相关行为时，至少回查以下实现和测试：
@@ -105,7 +116,7 @@ rename(临时文件, 目标文件)
 - `src/main/services/file-manager.ts` 与 `src/main/services/safe-file-writer.ts`：基线、临时文件、替换和错误结果；
 - `src/main/services/file-identity.ts`：已存在、缺失祖先、大小写和符号链接 identity；
 - `src/main/services/file-watch-service.ts`：ready/reconciliation、generation、read revision 和 cleanup；
-- `src/renderer/app.js`：content revision 与保存/外部变化交易组合；
+- `src/renderer/app/app-composition.js`：content revision 与保存/外部变化交易组合；
 - `src/renderer/documents/document-save-controller.ts`：按 document ID 与 canonical identity 持有两级保存串行队列；
 - `src/renderer/documents/document-controller.ts`：打开、canonical identity 去重与 `transitionBindings()` 路径重绑定；
 - `src/renderer/state/store.ts`：`setExternalConflict` / `setExternalFileState` / `setRecoveryState` 等命名状态命令；

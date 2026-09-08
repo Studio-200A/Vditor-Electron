@@ -11,6 +11,7 @@
 - **feat(resource health):**
   - **Description:** Added **Tools → Resource Health** for saved documents in the active workspace.
   - **Functionality:** Maps the focused document's image references, lists unreferenced and missing images for management, and checks every accessible Markdown/HTML document in the workspace before image resources are moved to the system trash.
+  - **Safety:** Only direct image-directory files become cleanup candidates; nested directories are not scanned and symbolic links make the scan incomplete, disable moving to Trash, and prompt the user to replace the link with the original image. Moving to Trash always re-validates each selected candidate first.
 - **fix(app menu):** Align the custom Windows/Linux app-menu popup with the lower edge of the window titlebar.
 - **feat(custom caret)**: Underline, Bar and Block style custom caret.
 - **fix(toolbar/sidebar cohesion):** Files and Outline now belong to the sidebar. With the editor toolbar visible they form the sidebar-aligned top navigation beside it; when the toolbar is hidden they become the first sidebar-content navigation row, with no leftover toolbar slot. The selected view remains stable across layout changes.

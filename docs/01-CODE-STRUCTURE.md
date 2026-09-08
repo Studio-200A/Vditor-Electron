@@ -1764,7 +1764,8 @@ flowchart TB
 | `tests/unit/settings-store.test.ts` | `src/main/services/settings-store.ts`   | 首次加载返回默认值、TOML 部分深合并与默认值、未知字段丢弃、`set` 持久化（含 TOML 段结构验证）、`update` 多字段快照（含 `workspaceTreeStates` 数组和 `workspaceReadDepth` 边界）、设置对话框尺寸持久化（`window.settingsDialog`）、`getAll` 返回克隆副本、`reset` 重置内存和磁盘                                                                                                                                                                                                                                                               |
 | `tests/unit/recovery-store.test.ts` | `src/main/services/recovery-store.ts` | 私有目录/文件权限、候选元数据不含正文、原子写入与显式清理、损坏/未知 schema/超限快照移除，以及 `unchanged` / `changed` / `unavailable` 三种磁盘状态 |
 | `tests/unit/persistent-state-store.test.ts` | `src/main/services/persistent-state-store.ts` | 旧 TOML 状态仅迁移一次且保持 config.toml 偏好化、损坏/未知 schema 安全默认值不阻塞启动、串行原子更新、清空状态时保留用户偏好 |
-| `tests/unit/vditor-adapter.test.ts` | `src/renderer/vditor-adapter.js` 与 adapter 类型 manifest | 冻结的 selectors 对象、运行时 71 个导出键与声明 manifest 的精确一致性、`validateHost` 成功（toolbar 通过 `mountedToolbar` 参数提供）、代码主题亮/暗分界点（`ant-design` 前为 dark 组）、DOM 漂移检测（缺少 source 节点时 `valid: false`）、SV divider 创建与 pane 语义可见性、列表 `marker`/`padding` 解析、动态尾部留白写入全部 Vditor 表面、SVG 开关热更新的图片原始来源与缓存隔离、WYSIWYG 替换期间恢复原始 SVG URL、hash anchor 到标题索引（IR 内部链接 + 元素 id + slug）、原生大纲 snapshot、标题间普通块时的准确目标节点及 SV preview 外层滚动容器、跨多 span 文本节点的匹配与选区、自绘光标代理的滚动同步/越界隐藏/闪烁重启与快照滚动偏移复制 |
+| `tests/unit/resource-health-service.test.ts` | `src/main/services/resource-health-service.ts` | Markdown/HTML 本地引用提取（数字实体、未支持命名实体保守阻断、引号属性中的 `>`、代码围栏遮蔽、远程/`data:`/工作区外排除）、候选仅枚举图片目录直接常规文件、直接符号链接阻断与二级目录排除、隐藏用户文档保护与 VCS/缓存目录排除、scan epoch/revision 生命周期、回收站前复核、读取/数量/目录项/时长上限只读结果 |
+| `tests/unit/vditor-adapter.test.ts` | `src/renderer/vditor-adapter.js` 与 adapter 类型 manifest | 冻结的 selectors 对象、运行时 72 个导出键与声明 manifest 的精确一致性、`validateHost` 成功（toolbar 通过 `mountedToolbar` 参数提供）、代码主题亮/暗分界点（`ant-design` 前为 dark 组）、DOM 漂移检测（缺少 source 节点时 `valid: false`）、SV divider 创建与 pane 语义可见性、列表 `marker`/`padding` 解析、动态尾部留白写入全部 Vditor 表面、SVG 开关热更新的图片原始来源与缓存隔离、WYSIWYG 替换期间恢复原始 SVG URL、hash anchor 到标题索引（IR 内部链接 + 元素 id + slug）、原生大纲 snapshot、标题间普通块时的准确目标节点及 SV preview 外层滚动容器、跨多 span 文本节点的匹配与选区、自绘光标代理的滚动同步/越界隐藏/闪烁重启与快照滚动偏移复制 |
 | `tests/unit/renderer-shell.test.ts` | 渲染器壳（HTML/CSS/JS/preload）静态结构 | 标题栏 / 菜单 / 窗口控件 DOM；en/zh_Hans/zh_Hant 键完整性对等；Linux 发布脚本；自动隐藏滚动条样式；第二实例文件转发；确认对话框（未保存变更可拖动、无调整尺寸手柄）；设置对话框 8 方向调整手柄；空标签恢复；查找替换控件带 SVG；文件树无 draggable；折叠/展开/中间省略；链接目录斜体下划线与 SVG 资产；设置面板分类；关于面板；UI/编辑器/预览缩放；状态栏三态主题控件与无旧 checkbox；CSP img-src/connect-src；大纲无标题态；Monokai Pro Light / Dark 主题；亮/暗代码主题分离；字体子分组；工作区头部；编辑文本宽度范围；无过时占位符/工具栏设置项；适配器脚本加载顺序；设置路径页脚/重置当前页 |
 | `tests/unit/renderer/editor-controller.test.ts`、`editor-options.test.ts`、`editor-runtime-coordinator.test.ts` | 编辑器实例、构造选项与 tab 激活协调 | generation、幂等 destroy、rebuild 正文/滚动恢复、auto-save cleanup、pending content、constructor-only 设置、快速切换的 stale rAF 拒绝与 toolbar hand-off |
 | `tests/unit/renderer/split-view-controller.test.ts`、`toolbar-controller.test.ts`、`outline-controller.test.ts`、`find-controller.test.ts` | Split View、共享工具栏、大纲与查找 UI | divider/行号/缩进、observer/listener/timer cleanup、toolbar owner 交接、outline stale refresh、find reveal 与窗口快捷键 |
@@ -1785,6 +1786,7 @@ flowchart TB
 | `tests/unit/renderer/settings-controller.test.ts`、`settings-window.test.ts`、`settings-persistence.test.ts`、`settings-runtime-controller.test.ts`、`settings-dialog-layout-controller.test.ts` | 设置保存分类、持久化与设置窗口 | classifySettingsChange 将展示/constructor-only 设置分开；SettingsController 加载保存后保持 Store；SettingsPersistence 分离 TOML 偏好与 state.json 队列；SettingsRuntimeController 表单同步/风险确认/live save 分发；SettingsWindow/SettingsDialogLayoutController 负责动画、尺寸拖动和 cleanup |
 | `tests/unit/renderer/workspace-controller.test.ts`、`external-file-change-controller.test.ts` | 工作区、文件树与 watcher 事件路由 | 根路径/revision/watch 刷新与持久化、不可用工作区路径路由到 document-binding owner、未信任名称按 text 渲染与展开回调、绑定提交失败恢复、ExplorerController 懒加载，以及外部删除/重出现/冲突/干净重载路由 |
 | `tests/unit/renderer/export-controller.test.ts` | 导出事务 | 对话框前快照 HTML、确认路径后写可移植输出、PDF 资源规范化与嵌入、无活动文档时不导出 |
+| `tests/unit/renderer/resource-health-controller.test.ts` | `src/renderer/resource-health/resource-health-controller.ts` | 页面状态/覆盖层生命周期、候选与缺失引用选择、HTML 派生缺失引用不可删除、Trash 后强制刷新扫描、确认弹窗与异步返回的 scan generation / 页面身份校验、符号链接不完整提示与 Trash 禁用、过期 revision 失效 |
 
 ### 15.2 E2E 测试（Playwright Electron，按行为域拆分）
 
@@ -1795,7 +1797,7 @@ flowchart TB
 | `app-shell.spec.ts` | 应用启动与单实例、标题栏/菜单/标签、主题、设置、窗口与本地化壳层（含三语言运行时切换的菜单/dialog/空态/通知），以及侧栏过渡期间的编辑器几何与反向切换 |
 | `editor-modes.spec.ts` | 查找替换、WYSIWYG / IR / SV、工具栏、选择、表格、分栏、滚动与 Vditor DOM 契约 |
 | `document-lifecycle.spec.ts` | 保存、恢复、工作区、文件树、原生打开对话框、导出资源、watcher、外部冲突、删除、重命名与 Save As 路径一致性 |
-| `navigation-and-resources.spec.ts` | Markdown/大纲导航、外部 URL 边界，以及受控根下的本地/HTTPS/上传图片资源和统一 SVG 渲染开关 |
+| `navigation-and-resources.spec.ts` | Markdown/大纲导航、外部 URL 边界，受控根下的本地/HTTPS/上传图片资源与统一 SVG 渲染开关，以及资源健康扫描、缺失引用删除、回收站确认和已保存快照 |
 
 下列用例按功能域覆盖核心场景；具体数量以 Playwright 测试清单为准：
 
@@ -1876,6 +1878,14 @@ flowchart TB
 - session 与 recovery 同 identity 合并；watcher 重绑后即时 reconciliation、读取乱序、符号链接祖先和工作区切换迟到结果均有回归覆盖
 - 文件/文件夹打开与 HTML/PDF 导出对话框共用并持久化最后确认目录；HTML 导出不保留应用内部资源 URL，PDF 导出将可读取的本地图片嵌入为 `data:` URL
 
+#### 资源健康
+
+- 打开资源健康后扫描工作区文档并列出未引用图片候选与缺失图片引用；工作区外或不可用文档入口灰置并显示不可用覆盖层
+- 缺失图片引用在 Split View 中经 adapter 语义删除，不自动写盘、保留 Vditor undo 恢复；确认后结果过期
+- 回收站确认框保留“扫描范围提示”确认状态，仅显式选择的候选进入逐项重新验证后移入系统回收站
+- 扫描基于已保存磁盘快照而非未保存的 Split View 编辑；保存后当前 scan revision 过期
+- 候选预览/复制相对路径/在文件管理器中显示与 SVG 开关一致，未引用候选不包含资源目录二级内容或符号链接
+
 #### 查找替换
 
 - `Ctrl+F` 打开，CSS Highlights API 匹配高亮
@@ -1931,7 +1941,7 @@ flowchart TB
 | `src/main/services/file-manager.ts` | 单元测试较完善                             | 已覆盖 `exists()`、空目录 `listDir`、创建/重命名目标冲突、路径逃逸、safe writer 基线和失败回滚；Windows/macOS 的权限、占用和目录级 no-replace 原生语义仍见 [`docs/03-CROSS-PLATFORM.md` §9](03-CROSS-PLATFORM.md#9-020-batch-7-deferred-platform-validation) |
 | `src/main/services/file-identity.ts` | 单元测试已覆盖 Linux 与注入路径模型       | Windows/macOS 实际卷大小写、Unicode 规范化、junction/Finder alias 和平台原生 identity 语义仍待实体机验证 |
 | `src/main/services/file-watch-service.ts` | 单元测试已覆盖 revision、ready/reconciliation 和 cleanup | 真实 Windows/macOS watcher 事件来源、合并时序、权限/占用反馈仍待实体机验证 |
-| `src/renderer/vditor-adapter.js`    | 单元测试与 E2E 均有                        | 覆盖 DOM 结构、链接交互、IR 展开切换、相对图片（含 Vditor 提前转换的 `app://app/` 路径）、`withOriginalImageSources` 替换恢复、`setDocumentLinkCursor` 不抑制标题、71 个导出键 manifest；仍缺少 `observeRelativeImageSources` 观察者回调直接单测与 `toolbarButton` 选择器注入防御 |
+| `src/renderer/vditor-adapter.js`    | 单元测试与 E2E 均有                        | 覆盖 DOM 结构、链接交互、IR 展开切换、相对图片（含 Vditor 提前转换的 `app://app/` 路径）、`withOriginalImageSources` 替换恢复、`setDocumentLinkCursor` 不抑制标题、72 个导出键 manifest；仍缺少 `observeRelativeImageSources` 观察者回调直接单测与 `toolbarButton` 选择器注入防御 |
 | `src/renderer/app/app-composition.js` | 组合层通过各 domain controller 与 E2E 间接覆盖 | 剩余保存交易、标签命令、设置/session 组合和部分壳事件属过渡期组合协调；不再存在 `src/renderer/app.js` 旧入口源码字符串断言 |
 | `src/renderer/locales.js`           | `renderer-shell` 键完整性对等测试          | 无占位符参数替换 / 三语言字典完整性的独立单元测试                                                                                                                             |
 
@@ -1969,6 +1979,8 @@ flowchart TB
 9. **无近期文件 UI**：`recentFiles` 数据已写入 `state.json`，但无 UI 入口展示。
 
 10. **已有目标仍存在最终替换 TOCTOU 边界**：安全写入器会携带 expected bytes 并在临近替换处复核，但当前 Node/Electron 文件 API 没有跨平台的通用原子 CAS；长期边界和关闭条件见 [`docs/05-FILE-SAFETY.md` §7](05-FILE-SAFETY.md#7-已知原子性边界已有目标的-toctou)。
+
+11. **资源健康回收站仍存在路径化符号链接 TOCTOU 窗口**：`shell.trashItem(path)` 只接受路径字符串，复核与调用之间父目录仍可能被替换为符号链接。已通过“仅枚举直接图片文件 + 发现符号链接即只读禁用回收站”收束范围，但未消除该窗口；见 [`docs/05-FILE-SAFETY.md` §7.4](05-FILE-SAFETY.md#74-资源健康回收站路径化-shelltrashitem-的符号链接窗口) 与 [`docs/18-0.2.5-RESOURCE-HEALTH.md` §6.3.1](18-0.2.5-RESOURCE-HEALTH.md#631-符号链接与二级目录)。
 
 ### 16.3 改进建议（按优先级）
 
