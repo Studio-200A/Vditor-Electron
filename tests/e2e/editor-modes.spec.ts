@@ -595,6 +595,29 @@ test('switches to split view and renders source line numbers', async () => {
   }
 });
 
+test('closes a split-view tab after a toolbar layout refresh settles', async () => {
+  const running = await launchApp(
+    { editMode: 'sv' },
+    { 'late-split-refresh.md': 'line one\nline two' },
+  );
+  try {
+    const { page } = running;
+    const pageErrors: Error[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error));
+    await expect(page.locator('.editor-host.active .vditor-sv')).toBeVisible();
+    await page.locator('#vditorToolbarMount button[data-type="both"]').click();
+    await page.locator('.document-tab.active b').click();
+    const discard = page.locator('#confirmActions [data-action="discard"]');
+    if (await discard.isVisible()) await discard.click();
+    await expect(page.locator('.document-tab')).toHaveCount(0);
+    await expect(page.locator('.editor-host.active')).toHaveCount(0);
+    await page.waitForTimeout(100);
+    expect(pageErrors).toEqual([]);
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('does not number Vditor SV bottom spacer after README source', async () => {
   const markdown = fs.readFileSync(path.join(projectRoot, 'README_CN.md'), 'utf8');
   const running = await launchApp({ editMode: 'sv' }, { 'README_CN.md': markdown });

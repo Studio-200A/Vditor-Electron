@@ -312,6 +312,15 @@ describe('EditorController', () => {
 
     expect(tab.mode).toBe('sv');
     expect(onModeChanged).toHaveBeenCalledWith(tab);
+
+    const staleGeneration = tab.editorRuntimeGeneration!;
+    tab.editorRuntimeGeneration = staleGeneration + 1;
+    tab.mode = 'ir';
+    onModeChanged.mockClear();
+    controller.synchronizeMode(tab, staleGeneration);
+
+    expect(tab.mode).toBe('ir');
+    expect(onModeChanged).not.toHaveBeenCalled();
   });
 
   it('cancels a pending mode transition when the runtime is destroyed', () => {

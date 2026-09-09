@@ -16,6 +16,8 @@ export interface SplitViewControllerOptions<TTab extends SplitViewTab> {
   readonly persistRatio: () => void;
   readonly onLayoutChanged: (tab: TTab) => void;
   readonly refreshLineNumbers: (tab: TTab) => void;
+  /** Rejects delayed work after the editor runtime for a tab has been destroyed. */
+  readonly canScheduleLineNumbers: (tab: TTab, generation?: number) => boolean;
   readonly shouldDeferLineNumberResize: () => boolean;
   readonly syncScroll: (tab: TTab) => void;
   readonly installScrollEnhancement: (tab: TTab) => (() => void) | null;
@@ -46,6 +48,7 @@ export class SplitViewController<TTab extends SplitViewTab> {
   private readonly persistRatio: () => void;
   private readonly onLayoutChanged: (tab: TTab) => void;
   private readonly refreshLineNumbers: (tab: TTab) => void;
+  private readonly canScheduleLineNumbers: (tab: TTab, generation?: number) => boolean;
   private readonly shouldDeferLineNumberResize: () => boolean;
   private readonly syncScroll: (tab: TTab) => void;
   private readonly installScrollEnhancement: (tab: TTab) => (() => void) | null;
@@ -73,6 +76,7 @@ export class SplitViewController<TTab extends SplitViewTab> {
     this.persistRatio = options.persistRatio;
     this.onLayoutChanged = options.onLayoutChanged;
     this.refreshLineNumbers = options.refreshLineNumbers;
+    this.canScheduleLineNumbers = options.canScheduleLineNumbers;
     this.shouldDeferLineNumberResize = options.shouldDeferLineNumberResize;
     this.syncScroll = options.syncScroll;
     this.installScrollEnhancement = options.installScrollEnhancement;
@@ -118,7 +122,8 @@ export class SplitViewController<TTab extends SplitViewTab> {
     return visibility;
   }
 
-  scheduleLineNumbers(tab: TTab): void {
+  scheduleLineNumbers(tab: TTab, generation?: number): void {
+    if (!this.canScheduleLineNumbers(tab, generation)) return;
     const runtime = this.runtimeFor(tab);
     if (runtime.lineNumberFrame !== null) cancelAnimationFrame(runtime.lineNumberFrame);
     runtime.lineNumberFrame = requestAnimationFrame(() => {

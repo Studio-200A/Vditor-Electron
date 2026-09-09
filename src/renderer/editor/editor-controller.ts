@@ -378,7 +378,8 @@ export class EditorController<TTab extends EditorRuntimeTab> {
     restoreUntilStable();
   }
 
-  synchronizeMode(tab: TTab): void {
+  synchronizeMode(tab: TTab, generation?: number): void {
+    if (generation !== undefined && tab.editorRuntimeGeneration !== generation) return;
     const mode = tab.vditor?.getCurrentMode();
     if (!mode || mode === tab.mode) return;
     this.updateDocument(tab, { mode });

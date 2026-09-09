@@ -33,6 +33,7 @@ describe('SplitViewController', () => {
       persistRatio,
       onLayoutChanged: () => {},
       refreshLineNumbers: () => {},
+      canScheduleLineNumbers: () => true,
       shouldDeferLineNumberResize: () => false,
       syncScroll: () => {},
       installScrollEnhancement: () => null,
@@ -73,6 +74,7 @@ describe('SplitViewController', () => {
       persistRatio: () => {},
       onLayoutChanged: () => {},
       refreshLineNumbers: () => {},
+      canScheduleLineNumbers: () => true,
       shouldDeferLineNumberResize: () => false,
       syncScroll: () => {},
       installScrollEnhancement: () => null,
@@ -119,6 +121,7 @@ describe('SplitViewController', () => {
       persistRatio: () => {},
       onLayoutChanged: () => {},
       refreshLineNumbers,
+      canScheduleLineNumbers: () => true,
       shouldDeferLineNumberResize: () => false,
       syncScroll: () => {},
       installScrollEnhancement: () => null,
@@ -132,6 +135,76 @@ describe('SplitViewController', () => {
     queuedFrames.forEach((callback) => callback(0));
     expect(refreshLineNumbers).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
+  });
+
+  it('ignores a late refresh after disposal and permits the same tab after rebuild', () => {
+    const host = document.createElement('section');
+    const source = document.createElement('div');
+    const tab = { host, splitResizer: null as HTMLElement | null };
+    const refreshLineNumbers = vi.fn();
+    const addEventListener = vi.spyOn(source, 'addEventListener');
+    const queuedFrames = new Map<number, FrameRequestCallback>();
+    let frameId = 0;
+    let canSchedule = true;
+    let runtimeGeneration = 1;
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frameId += 1;
+      queuedFrames.set(frameId, callback);
+      return frameId;
+    });
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => queuedFrames.delete(id));
+    const controller = new SplitViewController({
+      getContent: () => null,
+      getSource: () => source,
+      ensureResizer: () => null,
+      getVisibility: () => null,
+      getRatio: () => 50,
+      setRatio: () => {},
+      persistRatio: () => {},
+      onLayoutChanged: () => {},
+      refreshLineNumbers,
+      canScheduleLineNumbers: (_tab, generation) =>
+        canSchedule && (generation === undefined || generation === runtimeGeneration),
+      shouldDeferLineNumberResize: () => false,
+      syncScroll: () => {},
+      installScrollEnhancement: () => null,
+      installAutoIndent: () => null,
+      captureIndentSelection: () => null,
+      applyIndent: () => false,
+    });
+    const flushFrames = () => {
+      const callbacks = [...queuedFrames.values()];
+      queuedFrames.clear();
+      callbacks.forEach((callback) => callback(0));
+    };
+
+    try {
+      controller.scheduleLineNumbers(tab);
+      flushFrames();
+      expect(refreshLineNumbers).toHaveBeenCalledTimes(1);
+      expect(addEventListener).toHaveBeenCalledWith('scroll', expect.any(Function));
+
+      controller.dispose(tab);
+      canSchedule = false;
+      runtimeGeneration = 2;
+      refreshLineNumbers.mockClear();
+      addEventListener.mockClear();
+      controller.scheduleLineNumbers(tab, 1);
+      expect(queuedFrames).toHaveLength(0);
+      expect(refreshLineNumbers).not.toHaveBeenCalled();
+      expect(addEventListener).not.toHaveBeenCalled();
+
+      canSchedule = true;
+      controller.scheduleLineNumbers(tab, 2);
+      expect(queuedFrames).toHaveLength(1);
+      flushFrames();
+      expect(refreshLineNumbers).toHaveBeenCalledTimes(1);
+      expect(addEventListener).toHaveBeenCalledWith('scroll', expect.any(Function));
+    } finally {
+      controller.dispose(tab);
+      addEventListener.mockRestore();
+      vi.unstubAllGlobals();
+    }
   });
 
   it('defers expensive split decoration refreshes until source scrolling stops', () => {
@@ -159,6 +232,7 @@ describe('SplitViewController', () => {
       persistRatio: () => {},
       onLayoutChanged: () => {},
       refreshLineNumbers,
+      canScheduleLineNumbers: () => true,
       shouldDeferLineNumberResize: () => false,
       syncScroll,
       installScrollEnhancement: () => null,
@@ -218,6 +292,7 @@ describe('SplitViewController', () => {
       persistRatio: () => {},
       onLayoutChanged: () => {},
       refreshLineNumbers: () => {},
+      canScheduleLineNumbers: () => true,
       shouldDeferLineNumberResize: () => false,
       syncScroll: () => {},
       installScrollEnhancement: () => null,
@@ -254,6 +329,7 @@ describe('SplitViewController', () => {
       persistRatio: () => {},
       onLayoutChanged: () => {},
       refreshLineNumbers: () => {},
+      canScheduleLineNumbers: () => true,
       shouldDeferLineNumberResize: () => false,
       syncScroll: () => {},
       installScrollEnhancement,

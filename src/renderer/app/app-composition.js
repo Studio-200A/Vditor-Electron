@@ -745,6 +745,8 @@
     persistRatio: () => void queueSettingsSave({ splitRatio: state.settings.splitRatio }),
     onLayoutChanged: (tab) => scheduleSplitLineNumbers(tab),
     refreshLineNumbers: (tab) => updateSplitLineNumbers(tab),
+    canScheduleLineNumbers: (tab, generation) =>
+      tab.ready && (generation === undefined || tab.editorRuntimeGeneration === generation),
     shouldDeferLineNumberResize: () => $('#app').classList.contains('sidebar-transitioning'),
     syncScroll: (tab) => VDITOR.syncSplitDecorationScroll(tab.host),
     installScrollEnhancement: (tab) => setupAutoHideScrollbar(VDITOR.editorParts(tab.host).source),
@@ -1484,8 +1486,8 @@
     else editorController.installCustomCaret(tab, () => state.settings.caretStyle);
   }
 
-  function scheduleSplitLineNumbers(tab) {
-    if (tab) splitViewController.scheduleLineNumbers(tab);
+  function scheduleSplitLineNumbers(tab, generation) {
+    if (tab) splitViewController.scheduleLineNumbers(tab, generation);
   }
 
   function observeSplitLineNumbers(tab) {
@@ -1681,10 +1683,12 @@
       }, 0);
     }
     if (button === trigger) {
-      if (type === 'both' || type === 'preview')
+      if (type === 'both' || type === 'preview') {
+        const generation = tab.editorRuntimeGeneration;
         setTimeout(() => {
-          scheduleSplitLineNumbers(tab);
+          scheduleSplitLineNumbers(tab, generation);
         }, 50);
+      }
       return;
     }
     if (type === 'edit-mode' && ['wysiwyg', 'ir', 'sv'].includes(button.dataset.mode)) {
@@ -1719,8 +1723,8 @@
     editorController.restoreScroll(tab, () => scheduleSplitLineNumbers(tab), afterSettled);
   }
 
-  function synchronizeVditorMode(tab) {
-    if (tab) editorController.synchronizeMode(tab);
+  function synchronizeVditorMode(tab, generation) {
+    if (tab) editorController.synchronizeMode(tab, generation);
   }
 
   function prepareVditorModeTransition(tab, targetMode) {
@@ -1863,8 +1867,9 @@
       (event) => {
         const modeButton = event.target.closest && event.target.closest('[data-mode]');
         if (!modeButton || !['wysiwyg', 'ir', 'sv'].includes(modeButton.dataset.mode)) return;
+        const generation = tab.editorRuntimeGeneration;
         setTimeout(() => {
-          synchronizeVditorMode(tab);
+          synchronizeVditorMode(tab, generation);
         }, 50);
       },
       true,
