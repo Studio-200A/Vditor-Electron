@@ -103,6 +103,7 @@ export {
   effectiveToolbarItems,
   VDITOR_INITIALIZATION_SETTINGS,
 } from './editor/editor-options.js';
+export { restoreGitHubAlertHeaders } from './editor/github-alerts.js';
 export type {
   EditorOptionsDependencies,
   EditorOptionsSettings,

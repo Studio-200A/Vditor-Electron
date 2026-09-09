@@ -48,6 +48,7 @@ This release is primarily an internal renderer-architecture upgrade. It preserve
 - **fix(editor layout):** Delay paragraph-width application until range selection is committed, avoiding repeated long-document layout work while the slider is dragged.
 - **fix(editor runtime):** Preserve editor-destroy failures for rebuild callers after cleanup, restore the rename warning when every affected editor cannot rebuild, and clear stale SV whitespace scroll compensation after a redraw.
 - **fix(editor runtime):** Reject delayed scroll-restoration callbacks when a Vditor rebuild advances the tab runtime generation.
+- **fix(editor GitHub alerts):** Keep GitHub alert source headers unchanged when Vditor/Lute adds presentation-only default icons or titles during serialization, while retaining normal callout rendering in the editor.
 - **fix(find and replace):** Preserve allowed SVG images during native WYSIWYG replacements by restoring original image URLs while Vditor serializes the changed block.
 - **fix(find and replace):** Clear the active-match selection and highlight state immediately when the search query stops matching or is emptied, instead of leaving the previous query's stale highlights rendered.
 - **fix(document links):** Show a text cursor, rather than a navigation affordance, for blocked link schemes while preserving any author-supplied title.

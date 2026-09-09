@@ -469,3 +469,35 @@ Vditor 3.11.3 的 IR 标题在未展开时使用 `.vditor-ir__marker--heading` �
 - `tests/unit/vditor-adapter.test.ts` 覆盖 marker 内与 marker 后边界的隐藏行为，以及展开 marker 的正常绘制。
 - `tests/e2e/editor-modes.spec.ts` 覆盖首行标题、标题下方编辑、等待 Vditor undo history、撤销后恢复到折叠 marker selection 的真实 Electron 路径。
 - 不要恢复“测量标题正文首字”或基于保存状态、`modified`、快捷键接管来抑制 caret 的方案；它们不描述实际 DOM/selection 根因，并可能破坏正常编辑或 undo 行为。
+
+# GitHub Alerts 的上游展示文本回写
+
+## 记录版本：0.2.5 / 2026-09-10
+
+## 现象
+
+GitHub 风格的 warning block quote 使用以下语法：
+
+```markdown
+> [!NOTE]
+> 正文
+```
+
+Vditor 3.11.3 开启 `preview.markdown.callout` 后可以正常渲染这类 alert，但其底层 Lute 会把展示用的默认 emoji 和标题加入编辑器 DOM。无标题的 `NOTE` 会出现 `✏️ Note`，其他内置类型也会出现对应的 `💡 Tip`、`❗ Important`、`⚠️ Warning` 或 `🚨 Caution`。当 Vditor 调用 `getValue()` 或触发内容回调时，这些展示文本可能被重新序列化为 Markdown。
+
+该写回不一定触发 `input`，因此文档可能没有 dirty 标记；用户打开后即使没有输入，后续保存也可能把展示性文本写进原始文件。该现象在 Vditor 作者部署的网页版同样存在，属于 Vditor/Lute 的上游 round-trip 缺陷，而非 Electron 文件写入层造成。
+
+## Desktop 兼容策略
+
+Desktop 保持 callout 渲染开启，不通过关闭 `callout` 来牺牲预览效果。`src/renderer/editor/github-alerts.ts` 的 `restoreGitHubAlertHeaders(markdown, previousMarkdown)` 使用编辑前的 Markdown 作为来源基线：
+
+- 无标题 alert 只移除 Lute 补入的完整默认 emoji/标题；
+- 有用户标题的 alert 只移除 Lute 补入的前置 emoji；
+- 用户原本显式写入的 emoji/标题保持不变；
+- 非五种内置 GitHub alert 和无法确认来源的文本保持不变。
+
+该函数在初始化对账、`input`、`blur`、重建前读取和保存读取边界复用，确保展示文本不会进入 `tab.content`、recovery 或最终写盘。它是纯 Markdown 规范化，不访问 Vditor 私有 DOM，因此不应迁移到 `vditor-adapter.js`。
+
+## 已知边界与升级复核
+
+SV 模式另有 Vditor 自身的空引用行/文末换行格式化差异；那是独立的序列化格式问题，本节的兼容层不回滚该差异。Vditor/Lute 升级时需要重新核对五种 alert 的无标题、自定义标题、显式 emoji、三种编辑模式和保存路径；若上游为 alert DOM 增加“标题是否由源 Markdown 显式提供”的可逆信息，应优先移除 Desktop 兼容层并改用上游公共语义。

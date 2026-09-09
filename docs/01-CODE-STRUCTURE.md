@@ -162,6 +162,7 @@ Vditor-Electron/
 │   ├── editor/                    # 批次 5 编辑器 runtime 与 UI 域迁移
 │   │   ├── editor-controller.ts   # Vditor 实例、rebuild、输入与 auto-save runtime 生命周期
 │   │   ├── editor-options.ts      # Vditor 3.11.3 构造选项与 constructor-only 设置
+│   │   ├── github-alerts.ts       # 还原 Vditor/Lute 序列化时补入的 GitHub alert 展示标题
 │   │   ├── editor-runtime-coordinator.ts # tab 激活后的 host、toolbar 与 editor 协调
 │   │   ├── split-view-controller.ts # SV divider、行号、缩进与 tab-scoped cleanup
 │   │   ├── toolbar-controller.ts  # 共享 toolbar mount 与 preview hand-off
@@ -639,8 +640,8 @@ function mountEditorToolbar(tab) {
 ### 7.4 内容同步机制
 
 ```
-用户编辑 → Vditor input 回调 → onEditorInput(tab, value)
-  ├── tab.content = value
+用户编辑 → Vditor input 回调 → restoreGitHubAlertHeaders(value, tab.content) → onEditorInput(tab, value)
+  ├── tab.content = 规范化后的 Markdown
   ├── tab.modified = value !== tab.savedContent
   ├── 渲染标签列表（更新 ● 脏标记）
   ├── 更新状态栏（词数/字符数/行数）
@@ -655,11 +656,14 @@ function mountEditorToolbar(tab) {
 - 横幅保存：外部冲突可选择重载、另存当前内容或明确覆盖；另存沿用 `saveTab(tab, true)`，明确覆盖沿用既有确认对话框
 - 自动保存：`onEditorInput` 通过 `EditorController.scheduleAutoSave()` 设置 per-tab 防抖计时器，默认 2000ms；有 `filePath`、无外部冲突时触发，冲突/不可用/关闭/rebuild 统一调用 `cancelAutoSave()`
 - 内容标准化：写入前统一将换行符转换为文件原始行结尾（CRLF 或 LF）
+- GitHub alert 兼容：`src/renderer/editor/github-alerts.ts` 以编辑前的 `tab.content` 为来源基线，只移除 Lute 为五种 GitHub alert（`NOTE` / `TIP` / `IMPORTANT` / `WARNING` / `CAUTION`）补入的展示 emoji/默认标题；alert 仍由 `preview.markdown.callout` 正常渲染。该纯函数在 `input`、`blur`、初始化对账、重建读取和保存读取边界复用，避免展示文本进入文件、recovery 或 dirty 状态。
 - 并发保护：保存捕获 `contentRevision`、目标 `fileIdentity` 和 expected content/absence 基线；同一 identity 的保存通过共享队列串行提交，完成后仅在 revision 未变化时清除 dirty/recovery。新目标使用 no-replace hard-link，已有目标的最终 compare-and-replace 边界见 [`docs/06-FILE-SAFETY.md` §7](06-FILE-SAFETY.md#7-已知原子性边界已有目标的-toctou)。
 
 ### 7.5 Markdown 解析配置
 
 参见 §7.1 `preview.markdown` 字段，支持 callout、footnotes、mark、sub/sup、TOC、auto-space、auto-link、list-style 等扩展语法，均可通过设置面板独立控制。`sanitize` 默认启用，传入 Vditor 的 `preview.markdown.sanitize`；它清理 Markdown 中的原始 HTML。关闭时，Vditor 仍可能按编辑模式把原始 HTML 显示为字面源码或在聚焦后显示源码，这不是主动内容已执行的信号。
+
+Vditor 3.11.3 内置的 Lute 会将 GitHub alert 的展示 emoji 和默认标题放入编辑器 DOM，并可能在 `getValue()` 序列化时把它们带回 Markdown；这属于上游 round-trip 缺陷。Desktop 保持 `callout: true` 以正常渲染，并在编辑器内容边界调用 `restoreGitHubAlertHeaders()` 还原源 Markdown。该兼容层不在 `vditor-adapter.js` 中，因为它处理的是纯 Markdown 序列化而非 Vditor 私有 DOM；升级 Vditor/Lute 时仍需复核五种 alert 的初始加载、输入、保存和自定义标题行为。
 
 ### 7.6 主题适配
 
@@ -687,8 +691,8 @@ function mountEditorToolbar(tab) {
 | Vditor 事件/回调 | 处理逻辑                                                                     |
 | ---------------- | ---------------------------------------------------------------------------- |
 | `after`          | 验证 DOM 契约、安装资源观察者、绑定 toolbar 事件、挂载工具栏、初始化行号增强；长文档仍在构建时不读取 host 高度或 toolbar 几何，交由 ResizeObserver/后续帧完成 |
-| `input(value)`   | `onEditorInput` → 更新脏标记、触发自动保存、刷新查找高亮                     |
-| `blur(value)`    | 更新 `tab.content`                                                           |
+| `input(value)`   | 经 `restoreGitHubAlertHeaders(value, tab.content)` 还原展示性 GitHub alert 标题，再进入 `onEditorInput` 更新脏标记、自动保存和查找高亮 |
+| `blur(value)`    | 经同一 alert 规范化后更新 `tab.content`                                     |
 
 活动 tab host 的 capture `keydown` listener 同时协调模式快捷键和原生 `Ctrl/Cmd+V`：后者保存可编辑 Range，经 `app:readClipboard` 取得 `{ text, html }` 后恢复选区，并以 adapter 合成 paste 事件重新进入 Vditor 的模式专属处理；它不在 renderer 解析 HTML 或改变 Vditor 的 undo/序列化路径。
 
@@ -1776,6 +1780,7 @@ flowchart TB
 | `tests/unit/vditor-adapter.test.ts` | `src/renderer/vditor-adapter.js` 与 adapter 类型 manifest | 运行时全部导出键与声明 manifest（`ADAPTER_PUBLIC_KEYS`）的精确一致性、`validateHost` 成功（toolbar 通过 `mountedToolbar` 参数提供）、代码主题亮/暗分界点（`ant-design` 前为 dark 组）、DOM 漂移检测（缺少 source 节点时 `valid: false`）、SV divider 创建与 pane 语义可见性、列表 `marker`/`padding` 解析、动态尾部留白写入全部 Vditor 表面、SVG 开关热更新的图片原始来源与缓存隔离、WYSIWYG 替换期间恢复原始 SVG URL、hash anchor 到标题索引（IR 内部链接 + 元素 id + slug）、原生大纲 snapshot、标题间普通块时的准确目标节点及 SV preview 外层滚动容器、跨多 span 文本节点的匹配与选区、自绘光标代理的滚动同步/越界隐藏/闪烁重启与快照滚动偏移复制 |
 | `tests/unit/renderer-shell.test.ts` | 渲染器壳（HTML/CSS/JS/preload）静态结构 | 标题栏 / 菜单 / 窗口控件 DOM；en/zh_Hans/zh_Hant 键完整性对等；Linux 发布脚本；自动隐藏滚动条样式；第二实例文件转发；确认对话框（未保存变更可拖动、无调整尺寸手柄）；设置对话框 8 方向调整手柄；空标签恢复；查找替换控件带 SVG；文件树无 draggable；折叠/展开/中间省略；链接目录斜体下划线与 SVG 资产；设置面板分类；关于面板；UI/编辑器/预览缩放；状态栏三态主题控件与无旧 checkbox；CSP img-src/connect-src；大纲无标题态；Monokai Pro Light / Dark 主题；亮/暗代码主题分离；字体子分组；工作区头部；编辑文本宽度范围；无过时占位符/工具栏设置项；适配器脚本加载顺序；设置路径页脚/重置当前页 |
 | `tests/unit/renderer/editor-controller.test.ts`、`editor-options.test.ts`、`editor-runtime-coordinator.test.ts` | 编辑器实例、构造选项与 tab 激活协调 | generation、幂等 destroy、rebuild 正文/滚动恢复、auto-save cleanup、pending content、constructor-only 设置、快速切换的 stale rAF 拒绝与 toolbar hand-off |
+| `tests/unit/renderer/github-alerts.test.ts` | `src/renderer/editor/github-alerts.ts` | 五种 GitHub alert 的默认 emoji/标题还原、自定义标题的展示 emoji 还原、源文件显式 emoji 保留及无关文本不变 |
 | `tests/unit/renderer/split-view-controller.test.ts`、`toolbar-controller.test.ts`、`outline-controller.test.ts`、`find-controller.test.ts` | Split View、共享工具栏、大纲与查找 UI | divider/行号/缩进、observer/listener/timer cleanup、toolbar owner 交接、outline stale refresh、find reveal 与窗口快捷键 |
 | `tests/unit/renderer/image-controller.test.ts`、`recovery-runtime-controller.test.ts`、`recovery-banner-controller.test.ts` | 图片与 recovery editor runtime | 图片文件名/写入边界、资源 observer、recovery debounce 替换、串行 save/discard、不可用文件保存、非致命 I/O 失败、三种 recovery banner 状态与动作路由 |
 | `tests/unit/renderer/document-controller.test.ts`、`document-controller.integration.test.ts`、`document-save-controller.test.ts`、`document-close-controller.test.ts`、`external-change-controller.test.ts` | 文档生命周期命令 | canonical identity、保存队列、关闭顺序、外部变化分类，以及与 editor runtime 的安全组合边界 |

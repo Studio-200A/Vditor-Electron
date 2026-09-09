@@ -10,6 +10,7 @@
   const stripExtension = PURE.stripExtension;
   const detectLineEnding = PURE.detectLineEnding;
   const isDarkTheme = PURE.isDarkTheme;
+  const restoreGitHubAlertHeaders = PURE.restoreGitHubAlertHeaders;
   const translateImpl = PURE.translate;
   const formatIpcErrorMessageImpl = PURE.formatIpcErrorMessage;
   const AppStore = PURE.AppStore;
@@ -434,19 +435,22 @@
     },
     readContent: (tab) => {
       try {
-        return tab.vditor && tab.ready
-          ? VDITOR.withOriginalImageSources(tab.host, () => tab.vditor.getValue())
-          : tab.content;
+        const content =
+          tab.vditor && tab.ready
+            ? VDITOR.withOriginalImageSources(tab.host, () => tab.vditor.getValue())
+            : tab.content;
+        return restoreGitHubAlertHeaders(content, tab.content);
       } catch (_) {
         return tab.content;
       }
     },
     readRuntimeContent: (tab) => {
       try {
-        return VDITOR.withOriginalImageSources(
+        const content = VDITOR.withOriginalImageSources(
           tab.host,
           () => tab.vditor?.getValue() ?? tab.content,
         );
+        return restoreGitHubAlertHeaders(content, tab.content);
       } catch (_) {
         return tab.content;
       }
@@ -1642,11 +1646,14 @@
           requestAnimationFrame(() => scrollToPendingAnchor(tab));
         },
         input: (value) => {
-          if (editorController.isCurrent(tab, runtimeGeneration)) onEditorInput(tab, value);
+          if (editorController.isCurrent(tab, runtimeGeneration))
+            onEditorInput(tab, restoreGitHubAlertHeaders(value, tab.content));
         },
         blur: (value) => {
           if (editorController.isCurrent(tab, runtimeGeneration))
-            updateTabDocument(tab, { content: value });
+            updateTabDocument(tab, {
+              content: restoreGitHubAlertHeaders(value, tab.content),
+            });
         },
       },
     });
