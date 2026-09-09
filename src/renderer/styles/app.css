@@ -1446,9 +1446,9 @@ html[data-scrollbar-mode='hidden'] .editor-host .vditor-reset table::-webkit-scr
 
 /* Ant Design and WeChat content themes are authored for light documents.
    Re-map their explicit light colors when the application uses a dark surface. */
-:root:is([data-theme='dark'], [data-theme='monokai-pro-dark'])
+:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
   .editor-host[data-content-theme='ant-design'],
-:root:is([data-theme='dark'], [data-theme='monokai-pro-dark'])
+:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
   .editor-host[data-content-theme='wechat'] {
   --content-dark-text: var(--text);
   --content-dark-muted: var(--muted);
@@ -1456,46 +1456,46 @@ html[data-scrollbar-mode='hidden'] .editor-host .vditor-reset table::-webkit-scr
   --content-dark-surface-alt: var(--panel-2);
   --content-dark-border: var(--border);
 }
-:root:is([data-theme='dark'], [data-theme='monokai-pro-dark'])
+:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
   .editor-host[data-content-theme='ant-design']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset,
-:root:is([data-theme='dark'], [data-theme='monokai-pro-dark'])
+:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
   .editor-host[data-content-theme='wechat']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset {
   color: var(--content-dark-text) !important;
 }
-:root:is([data-theme='dark'], [data-theme='monokai-pro-dark'])
+:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
   .editor-host[data-content-theme='ant-design']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
   :is(a, .vditor-ir__link),
-:root:is([data-theme='dark'], [data-theme='monokai-pro-dark'])
+:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
   .editor-host[data-content-theme='wechat']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
   :is(a, .vditor-ir__link) {
   color: var(--accent) !important;
 }
-:root:is([data-theme='dark'], [data-theme='monokai-pro-dark'])
+:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
   .editor-host[data-content-theme='ant-design']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
   :is(blockquote, .language-abc svg, .language-abc path),
-:root:is([data-theme='dark'], [data-theme='monokai-pro-dark'])
+:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
   .editor-host[data-content-theme='wechat']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
   :is(blockquote, .language-abc svg, .language-abc path) {
   color: var(--content-dark-muted) !important;
 }
-:root:is([data-theme='dark'], [data-theme='monokai-pro-dark'])
+:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
   .editor-host[data-content-theme='ant-design']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
   code:not(.hljs):not(.highlight-chroma),
-:root:is([data-theme='dark'], [data-theme='monokai-pro-dark'])
+:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
   .editor-host[data-content-theme='wechat']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
@@ -1504,12 +1504,12 @@ html[data-scrollbar-mode='hidden'] .editor-host .vditor-reset table::-webkit-scr
   background-color: var(--content-dark-surface-alt) !important;
   border-color: var(--content-dark-border) !important;
 }
-:root:is([data-theme='dark'], [data-theme='monokai-pro-dark'])
+:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
   .editor-host[data-content-theme='ant-design']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
   table,
-:root:is([data-theme='dark'], [data-theme='monokai-pro-dark'])
+:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
   .editor-host[data-content-theme='wechat']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
@@ -1518,13 +1518,13 @@ html[data-scrollbar-mode='hidden'] .editor-host .vditor-reset table::-webkit-scr
   background: var(--content-dark-surface) !important;
   border-color: var(--content-dark-border) !important;
 }
-:root:is([data-theme='dark'], [data-theme='monokai-pro-dark'])
+:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
   .editor-host[data-content-theme='ant-design']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
   table
   tr,
-:root:is([data-theme='dark'], [data-theme='monokai-pro-dark'])
+:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
   .editor-host[data-content-theme='wechat']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
@@ -1534,14 +1534,14 @@ html[data-scrollbar-mode='hidden'] .editor-host .vditor-reset table::-webkit-scr
   background: var(--content-dark-surface-alt) !important;
   border-color: var(--content-dark-border) !important;
 }
-:root:is([data-theme='dark'], [data-theme='monokai-pro-dark'])
+:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
   .editor-host[data-content-theme='ant-design']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
   table
   tbody
   tr:nth-child(2n),
-:root:is([data-theme='dark'], [data-theme='monokai-pro-dark'])
+:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
   .editor-host[data-content-theme='wechat']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
@@ -1550,13 +1550,13 @@ html[data-scrollbar-mode='hidden'] .editor-host .vditor-reset table::-webkit-scr
   tr:nth-child(2n) {
   background: var(--content-dark-surface) !important;
 }
-:root:is([data-theme='dark'], [data-theme='monokai-pro-dark'])
+:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
   .editor-host[data-content-theme='ant-design']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
   table
   :is(th, td),
-:root:is([data-theme='dark'], [data-theme='monokai-pro-dark'])
+:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
   .editor-host[data-content-theme='wechat']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
@@ -1566,12 +1566,12 @@ html[data-scrollbar-mode='hidden'] .editor-host .vditor-reset table::-webkit-scr
   background: inherit !important;
   border-color: var(--content-dark-border) !important;
 }
-:root[data-theme='dark']
+:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
   .editor-host[data-content-theme='ant-design']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
   :is(h1, h2, h3, h4, h5, h6),
-:root[data-theme='dark']
+:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
   .editor-host[data-content-theme='wechat']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset

@@ -850,7 +850,7 @@ test('offers three theme modes from the status bar and removes the settings chec
   }
 });
 
-for (const appTheme of ['dark', 'monokai-pro-dark'] as const) {
+for (const appTheme of ['dark', 'claude-dark', 'monokai-pro-dark'] as const) {
   for (const contentTheme of ['ant-design', 'wechat'] as const) {
     test(`keeps ${contentTheme} content readable in ${appTheme}`, async () => {
       const running = await launchApp({
