@@ -1,6 +1,6 @@
 export const WORKSPACE_READ_DEPTH_MIN = 7;
 export const WORKSPACE_READ_DEPTH_MAX = 12;
-export type CaretStyle = 'underline' | 'bar' | 'block';
+export type CaretStyle = 'native' | 'underline' | 'bar' | 'block';
 
 export function normalizeWorkspaceReadDepth(value: unknown): number {
   const depth =

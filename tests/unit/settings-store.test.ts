@@ -112,8 +112,8 @@ describe('SettingsStore', () => {
 
     const store = new SettingsStore(configDir);
     expect(store.get('caretStyle')).toBe('bar');
-    store.set('caretStyle', 'block');
-    expect(new SettingsStore(configDir).get('caretStyle')).toBe('block');
+    store.set('caretStyle', 'native');
+    expect(new SettingsStore(configDir).get('caretStyle')).toBe('native');
   });
 
   it('reports strict persistence failures without changing in-memory settings', () => {

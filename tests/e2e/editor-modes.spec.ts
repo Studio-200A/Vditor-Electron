@@ -176,6 +176,33 @@ test('keeps the custom caret visible at the new line after Enter', async () => {
   }
 });
 
+test('uses Chromium native caret when selected in editor settings', async () => {
+  const running = await launchApp({ editMode: 'ir', caretStyle: 'bar' });
+  try {
+    const { page, testRoot } = running;
+    await createNewTab(page);
+    const host = page.locator('.editor-host.active');
+    const editor = host.locator('.vditor-ir .vditor-reset');
+    await editor.click();
+    await page.keyboard.type('native caret');
+
+    await expect(page.locator('[data-vditor-desktop-caret="true"]')).toHaveCount(1);
+    await page.locator('#statusSettings').click();
+    await page.locator('.settings-nav [data-panel="editor"]').click();
+    await page.locator('[name="caretStyle"]').selectOption('native');
+    await page.locator('#saveSettings').click();
+
+    await expect(host).not.toHaveAttribute('data-vditor-desktop-custom-caret');
+    await expect(page.locator('[data-vditor-desktop-caret="true"]')).toHaveCount(0);
+    await expect.poll(() => readSetting(testRoot, 'editor', 'caretStyle')).toBe('native');
+    expect(await editor.evaluate((node) => getComputedStyle(node).caretColor)).not.toBe(
+      'rgba(0, 0, 0, 0)',
+    );
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('switches among all three modes from the View > Editing Mode submenu', async () => {
   const running = await launchApp({ editMode: 'ir' });
   try {

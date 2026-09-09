@@ -430,8 +430,7 @@
     onModeChanged: (tab) => {
       if (tab.id === state.activeId) updateActiveUI();
       scheduleSplitLineNumbers(tab);
-      if (!tab.toolbarPreview)
-        editorController.installCustomCaret(tab, () => state.settings.caretStyle);
+      if (!tab.toolbarPreview) syncCaretStyle(tab);
     },
     readContent: (tab) => {
       try {
@@ -1476,9 +1475,13 @@
       if (!tab.vditor || !tab.ready || tab.toolbarPreview) return;
       if (changedSettings.includes('previewMode'))
         tab.vditor.setPreviewMode(state.settings.previewMode);
-      if (changedSettings.includes('caretStyle'))
-        editorController.installCustomCaret(tab, () => state.settings.caretStyle);
+      if (changedSettings.includes('caretStyle')) syncCaretStyle(tab);
     });
+  }
+
+  function syncCaretStyle(tab) {
+    if (state.settings.caretStyle === 'native') editorController.suspendCustomCaret(tab);
+    else editorController.installCustomCaret(tab, () => state.settings.caretStyle);
   }
 
   function scheduleSplitLineNumbers(tab) {
@@ -1603,8 +1606,7 @@
           editorController.restoreRebuildUndoHistory(tab);
           tab.ready = true;
           tab.host.dataset.editorReady = 'true';
-          if (!tab.toolbarPreview)
-            editorController.installCustomCaret(tab, () => state.settings.caretStyle);
+          if (!tab.toolbarPreview) syncCaretStyle(tab);
           tab.toolbar = VDITOR.editorParts(tab.host).toolbar;
           VDITOR.hideNativeOutlineControl(tab.toolbar);
           VDITOR.keepSplitToolbarActionsAvailable(tab.toolbar);
