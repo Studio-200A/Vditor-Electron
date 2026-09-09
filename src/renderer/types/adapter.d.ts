@@ -182,6 +182,12 @@ export interface VditorDesktopAdapter {
     getMode: () => AdapterEditMode,
     getStyle: () => CaretStyle,
   ): () => void;
+  captureUndoHistory(instance: unknown): unknown;
+  scheduleUndoHistoryRestore(
+    instance: unknown,
+    history: unknown,
+    onRestored: () => void,
+  ): () => void;
   preserveTableScrollDuringInput(
     host: HTMLElement | null | undefined,
     getMode: () => AdapterEditMode,

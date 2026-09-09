@@ -32,6 +32,8 @@ describe('EditorController', () => {
   let observeOutlineChanges: ReturnType<typeof vi.fn>;
   let preserveTableScrollDuringInput: ReturnType<typeof vi.fn>;
   let installCustomCaret: ReturnType<typeof vi.fn>;
+  let captureUndoHistory: ReturnType<typeof vi.fn>;
+  let scheduleUndoHistoryRestore: ReturnType<typeof vi.fn>;
   let createRebuildSnapshot: ReturnType<typeof vi.fn>;
   let scrollContainers: ReturnType<typeof vi.fn>;
   let installScrollEnhancement: ReturnType<typeof vi.fn>;
@@ -50,6 +52,8 @@ describe('EditorController', () => {
     observeOutlineChanges = vi.fn(() => ({ disconnect: vi.fn() }));
     preserveTableScrollDuringInput = vi.fn(() => vi.fn());
     installCustomCaret = vi.fn(() => vi.fn());
+    captureUndoHistory = vi.fn(() => null);
+    scheduleUndoHistoryRestore = vi.fn(() => vi.fn());
     createRebuildSnapshot = vi.fn(() => vi.fn());
     scrollContainers = vi.fn(() => []);
     installScrollEnhancement = vi.fn(() => null);
@@ -98,6 +102,8 @@ describe('EditorController', () => {
         observeOutlineChanges,
         preserveTableScrollDuringInput,
         installCustomCaret,
+        captureUndoHistory,
+        scheduleUndoHistoryRestore,
         scrollContainers,
         installScrollEnhancement,
       },
@@ -130,6 +136,31 @@ describe('EditorController', () => {
 
     expect(readRuntimeContent).toHaveBeenCalledWith(tab);
     expect(tab.content).toBe('latest runtime content');
+  });
+
+  it('keeps captured undo history through a replacement runtime until the adapter restores it', () => {
+    const history = { undo: vi.fn() };
+    const cancelRestore = vi.fn();
+    captureUndoHistory.mockReturnValue(history);
+    scheduleUndoHistoryRestore.mockReturnValue(cancelRestore);
+    controller.ensure(tab);
+
+    controller.rebuild(tab);
+    controller.restoreRebuildUndoHistory(tab);
+
+    expect(captureUndoHistory).toHaveBeenCalledTimes(1);
+    expect(scheduleUndoHistoryRestore).toHaveBeenCalledWith(
+      tab.vditor,
+      history,
+      expect.any(Function),
+    );
+
+    const onRestored = scheduleUndoHistoryRestore.mock.calls[0][2] as () => void;
+    onRestored();
+    controller.rebuild(tab);
+
+    expect(captureUndoHistory).toHaveBeenCalledTimes(2);
+    expect(cancelRestore).not.toHaveBeenCalled();
   });
 
   it('keeps an active editor snapshot until the rebuilt runtime releases it', () => {
@@ -261,6 +292,8 @@ describe('EditorController', () => {
         observeOutlineChanges,
         preserveTableScrollDuringInput,
         installCustomCaret,
+        captureUndoHistory,
+        scheduleUndoHistoryRestore,
         scrollContainers,
         installScrollEnhancement,
       },
@@ -323,6 +356,8 @@ describe('EditorController', () => {
         observeOutlineChanges,
         preserveTableScrollDuringInput,
         installCustomCaret,
+        captureUndoHistory,
+        scheduleUndoHistoryRestore,
         scrollContainers,
         installScrollEnhancement,
       },

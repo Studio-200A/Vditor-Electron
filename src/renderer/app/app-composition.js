@@ -405,6 +405,9 @@
         VDITOR.preserveTableScrollDuringInput(host, getMode),
       installCustomCaret: (host, getMode, getStyle) =>
         VDITOR.installCustomCaret(host, getMode, getStyle),
+      captureUndoHistory: (instance) => VDITOR.captureUndoHistory(instance),
+      scheduleUndoHistoryRestore: (instance, history, onRestored) =>
+        VDITOR.scheduleUndoHistoryRestore(instance, history, onRestored),
       scrollContainers: (host) => VDITOR.scrollContainers(host),
       installScrollEnhancement: setupAutoHideScrollbar,
     },
@@ -1597,6 +1600,7 @@
           editorController.installScrollEnhancements(tab, splitSource);
           editorController.preserveTableScrollDuringInput(tab);
           editorController.reconcileInitializedContent(tab, wasModified);
+          editorController.restoreRebuildUndoHistory(tab);
           tab.ready = true;
           tab.host.dataset.editorReady = 'true';
           if (!tab.toolbarPreview)

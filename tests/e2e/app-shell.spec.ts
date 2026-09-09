@@ -1407,15 +1407,31 @@ test('keeps undo history when presentation settings update without rebuilding th
   }
 });
 
-test('preserves the editor scroll position when an initialization setting rebuilds the editor', async () => {
+test('preserves scroll position and undo history when an initialization setting rebuilds the editor', async () => {
   const running = await launchApp({ editMode: 'ir' });
   try {
     const { page } = running;
     await createNewTab(page);
-    const markdown = Array.from({ length: 100 }, (_, index) => `paragraph ${index + 1}`).join('\n');
     const reset = page.locator('.editor-host.active .vditor-ir .vditor-reset');
-    await reset.fill(markdown);
-    await expect(reset).toContainText('paragraph 100');
+    await reset.click();
+    for (let index = 1; index <= 10; index += 1) {
+      await reset.pressSequentially('x');
+      if (index < 10) await reset.press('Enter');
+    }
+    await expect(reset).toContainText('x');
+    await page.waitForTimeout(600);
+    await reset.press('End');
+    await reset.pressSequentially('\nreversible change');
+    await page.waitForTimeout(600);
+    await expect(page.locator('#vditorToolbarMount button[data-type="undo"]')).not.toHaveClass(
+      /vditor-menu--disabled/,
+    );
+    await page.evaluate(() => {
+      const style = document.createElement('style');
+      style.textContent =
+        '.editor-host .vditor-ir .vditor-reset { line-height: 100px !important; }';
+      document.head.append(style);
+    });
     await reset.evaluate((node) => {
       node.scrollTop = 420;
       node.parentElement.scrollTop = 420;
@@ -1439,6 +1455,11 @@ test('preserves the editor scroll position when an initialization setting rebuil
       )
       .toBeGreaterThan(300);
     await expect(page.locator('.editor-rebuild-snapshot')).toHaveCount(0);
+    await expect(page.locator('#vditorToolbarMount button[data-type="undo"]')).not.toHaveClass(
+      /vditor-menu--disabled/,
+    );
+    await page.locator('#vditorToolbarMount button[data-type="undo"]').click();
+    await expect(reset).not.toContainText('reversible change');
   } finally {
     await closeApp(running);
   }

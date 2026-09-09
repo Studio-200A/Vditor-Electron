@@ -159,6 +159,23 @@ test('keeps one custom caret proxy across all editor modes and releases it on ta
   }
 });
 
+test('keeps the custom caret visible at the new line after Enter', async () => {
+  const running = await launchApp({ editMode: 'ir', caretStyle: 'bar' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    const editor = page.locator('.editor-host.active .vditor-ir .vditor-reset');
+    await editor.fill('before enter');
+    await editor.click();
+    await page.keyboard.press('End');
+    await page.keyboard.press('Enter');
+    const caret = page.locator('[data-vditor-desktop-caret="true"]');
+    await expect(caret).toBeVisible();
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('switches among all three modes from the View > Editing Mode submenu', async () => {
   const running = await launchApp({ editMode: 'ir' });
   try {
@@ -1172,6 +1189,51 @@ test('moves a long table only enough to keep a pasted middle caret visible', asy
     } finally {
       await closeApp(running);
     }
+  }
+});
+
+test('hides the custom caret when a table clips its selection', async () => {
+  const markdown = `| content |\n| --- |\n| ${'x'.repeat(1024)} |`;
+  const running = await launchApp(
+    { editMode: 'ir', caretStyle: 'block' },
+    { 'table-caret.md': markdown },
+  );
+  try {
+    const { page } = running;
+    const table = page.locator('.editor-host.active table');
+    await table.evaluate((node) => {
+      const cell = node.querySelector('tbody td');
+      const text = cell?.firstChild;
+      if (!cell || !text) throw new Error('Expected a populated table cell.');
+      const range = document.createRange();
+      range.setStart(text, text.textContent?.length || 0);
+      range.collapse(true);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      node.scrollLeft = 0;
+      cell.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    });
+    await expect(page.locator('[data-vditor-desktop-caret="true"]')).toBeHidden();
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps a block caret to one line in an empty table cell', async () => {
+  const running = await launchApp(
+    { editMode: 'ir', caretStyle: 'block' },
+    { 'empty-table-cell.md': '| content |\n| --- |\n| |' },
+  );
+  try {
+    const { page } = running;
+    const cell = page.locator('.editor-host.active table tbody td');
+    await cell.click();
+    const caret = page.locator('[data-vditor-desktop-caret="true"]');
+    await expect(caret).toBeVisible();
+    await expect(caret).toHaveCSS('height', '24px');
+  } finally {
+    await closeApp(running);
   }
 });
 

@@ -10,7 +10,7 @@
 
 - 本文档记录长期有效的行为契约、风险边界和关闭条件。
 - [`docs/13-0.2.0-EXECUTION-TRACKER.md`](13-0.2.0-EXECUTION-TRACKER.md) 记录 0.2.0 批次 7 的历史发现、实施过程和 Linux 验证证据。
-- [`docs/03-CROSS-PLATFORM.md`](03-CROSS-PLATFORM.md) 记录 Windows/macOS/Linux 的平台差异、实体机验证方法和证据；它不替代本文档的通用安全契约。
+- [`docs/04-CROSS-PLATFORM.md`](04-CROSS-PLATFORM.md) 记录 Windows/macOS/Linux 的平台差异、实体机验证方法和证据；它不替代本文档的通用安全契约。
 - [`docs/14-0.2.5-RENDERER-REFACTOR-PLAN.md`](14-0.2.5-RENDERER-REFACTOR-PLAN.md) 记录重构时必须原样保留的契约和迁移要求。
 
 后续只要修改保存、Save As、文件/目录重命名、恢复、外部冲突或 watcher，就必须同时检查本文档；若不变量、缓解措施或已知边界发生变化，应在同一变更中更新本文档。
@@ -46,7 +46,7 @@
 
 主进程的 `FileManagerService.writeDocument()` 负责把基线正文读取为原始字节，使用这同一份字节完成解码后的基线确认，并把它传给 `SafeFileWriter`。写入器在目标同目录创建唯一临时文件，以排他方式写入、同步、关闭，尽可能保留原文件权限，再执行最终替换；失败时清理临时文件但不主动删除原目标。
 
-当调用方声明目标应当不存在时，当前实现使用临时文件的原子 hard-link 创建最终名称，目标已被占用会返回可处理的外部变化结果。该 no-replace 原语在 Windows/macOS 上的真实权限、占用和失败语义仍由 [`docs/03-CROSS-PLATFORM.md` §9](03-CROSS-PLATFORM.md#9-020-batch-7-deferred-platform-validation) 验证。
+当调用方声明目标应当不存在时，当前实现使用临时文件的原子 hard-link 创建最终名称，目标已被占用会返回可处理的外部变化结果。该 no-replace 原语在 Windows/macOS 上的真实权限、占用和失败语义仍由 [`docs/04-CROSS-PLATFORM.md` §9](04-CROSS-PLATFORM.md#9-020-batch-7-deferred-platform-validation) 验证。
 
 ## 5. 外部变化与恢复
 
@@ -96,7 +96,7 @@ rename(临时文件, 目标文件)
 
 只有在选定的目标平台上具备可验证的条件替换/锁定方案，且该方案覆盖权限、占用、外部修改、失败清理和 watcher 反馈后，才能把本边界改记为已关闭。届时必须同时更新实现、聚焦回归测试、平台验证矩阵和本文档；仅增加重试、延迟或 watcher 抑制时间不构成关闭证据。
 
-在此之前，问题 7 的本地修复状态是“风险窗口已缩小并可显式处理”，不是“绝对不会覆盖”。Windows/macOS 的原生行为验证和平台方案决策继续记录在 [`docs/03-CROSS-PLATFORM.md` §9](03-CROSS-PLATFORM.md#9-020-batch-7-deferred-platform-validation)，不再依赖 0.2.0 tracker 的日常关注度。
+在此之前，问题 7 的本地修复状态是“风险窗口已缩小并可显式处理”，不是“绝对不会覆盖”。Windows/macOS 的原生行为验证和平台方案决策继续记录在 [`docs/04-CROSS-PLATFORM.md` §9](04-CROSS-PLATFORM.md#9-020-batch-7-deferred-platform-validation)，不再依赖 0.2.0 tracker 的日常关注度。
 
 ### 7.4 资源健康回收站：路径化 `shell.trashItem` 的符号链接窗口
 
@@ -124,7 +124,7 @@ rename(临时文件, 目标文件)
 - `src/renderer/documents/document-close-controller.ts` 与 `src/renderer/editor/recovery-runtime-controller.ts`：关闭去重、recovery timer/队列与失败后的 snapshot ID 保留；
 - `tests/unit/` 中对应的文件管理、identity、watcher、recovery 测试，以及 `tests/e2e/document-lifecycle.spec.ts` 中的文件生命周期回归。
 
-截至 2026-08-27，用户在 Linux 手动运行的 `npm run check:all` 已通过；该次运行的精确结果记录在 [`docs/13-0.2.0-EXECUTION-TRACKER.md` 的批次 7](13-0.2.0-EXECUTION-TRACKER.md#批次-7阶段-b-独立复核)。该证据证明当前本地回归闭环，不关闭第 7 节的已有目标 TOCTOU 边界，也不替代 [`docs/03-CROSS-PLATFORM.md` §9](03-CROSS-PLATFORM.md#9-020-batch-7-deferred-platform-validation) 的 Windows/macOS 实机证据。
+截至 2026-08-27，用户在 Linux 手动运行的 `npm run check:all` 已通过；该次运行的精确结果记录在 [`docs/13-0.2.0-EXECUTION-TRACKER.md` 的批次 7](13-0.2.0-EXECUTION-TRACKER.md#批次-7阶段-b-独立复核)。该证据证明当前本地回归闭环，不关闭第 7 节的已有目标 TOCTOU 边界，也不替代 [`docs/04-CROSS-PLATFORM.md` §9](04-CROSS-PLATFORM.md#9-020-batch-7-deferred-platform-validation) 的 Windows/macOS 实机证据。
 
 0.2.5 批次 7 对 renderer 文档边界的修复和本地全量验证状态记录在 [`docs/15-0.2.5-EXECUTION-TRACKER.md`](15-0.2.5-EXECUTION-TRACKER.md#批次-7阶段独立复核批次-1-6)。该记录不会改变本文件的 TOCTOU 或跨平台限制。
 

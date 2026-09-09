@@ -39,6 +39,8 @@ export const ADAPTER_PUBLIC_KEYS = [
   'activeEditor',
   'editorScrollContainer',
   'installCustomCaret',
+  'captureUndoHistory',
+  'scheduleUndoHistoryRestore',
   'preserveTableScrollDuringInput',
   'isEditableTarget',
   'captureEditorSelection',
@@ -123,6 +125,8 @@ export function verifyAdapterCallContract(adapter: VditorDesktopAdapter, host: H
     () => 'ir',
     () => 'bar',
   );
+  adapter.captureUndoHistory(null);
+  adapter.scheduleUndoHistoryRestore(null, null, () => undefined);
   adapter.preserveTableScrollDuringInput(host, () => 'ir');
   adapter.isEditableTarget(host, 'ir', host);
   adapter.restoreEditorSelection(adapter.captureEditorSelection(host, 'ir', host, 0, 0));

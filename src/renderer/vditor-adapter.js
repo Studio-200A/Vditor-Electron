@@ -643,21 +643,32 @@
       caret.classList.add('is-blinking');
     };
     const caretRect = (range, editor) => {
-      const rects =
-        typeof range.getClientRects === 'function' ? Array.from(range.getClientRects()) : [];
-      const rect = rects.at(-1) || range.getBoundingClientRect?.();
-      if (rect && Number.isFinite(rect.left) && Number.isFinite(rect.top)) {
-        const container = elementForNode(range.startContainer);
-        const style = getComputedStyle(
-          container && editor.contains(container) ? container : editor,
-        );
+      const lineHeightFor = (target) => {
+        const style = getComputedStyle(target);
         const lineHeight = Number.parseFloat(style.lineHeight);
         const fontSize = Number.parseFloat(style.fontSize);
-        const expectedHeight = Number.isFinite(lineHeight)
+        return Number.isFinite(lineHeight)
           ? lineHeight
           : Number.isFinite(fontSize)
             ? fontSize * 1.2
             : 16;
+      };
+      const rects =
+        typeof range.getClientRects === 'function' ? Array.from(range.getClientRects()) : [];
+      const rect = rects.at(-1) || range.getBoundingClientRect?.();
+      if (
+        rect &&
+        Number.isFinite(rect.left) &&
+        Number.isFinite(rect.top) &&
+        (rect.width > 0 || rect.height > 0)
+      ) {
+        const container = elementForNode(range.startContainer);
+        const styleTarget = closestWithin(range.startContainer, selectors.table, editor)
+          ? editor
+          : container && editor.contains(container)
+            ? container
+            : editor;
+        const expectedHeight = lineHeightFor(styleTarget);
         // A collapsed Range at a Vditor block boundary can report its whole
         // replaced block after delete or history restore. Keep its insertion
         // coordinate, but use the current line height for the visual caret.
@@ -672,12 +683,53 @@
           height,
         };
       }
-      const container = elementForNode(range.startContainer);
+      const nextNode =
+        range.startContainer.nodeType === Node.ELEMENT_NODE
+          ? range.startContainer.childNodes[range.startOffset] || null
+          : null;
+      const container = elementForNode(nextNode) || elementForNode(range.startContainer);
       const fallback =
         container && container !== editor && editor.contains(container)
           ? container.getBoundingClientRect()
           : null;
-      return fallback?.height ? fallback : null;
+      if (fallback?.height) {
+        const expectedHeight = lineHeightFor(
+          closestWithin(range.startContainer, selectors.table, editor) ? editor : container,
+        );
+        return {
+          left: fallback.left,
+          top: fallback.top,
+          right: fallback.left,
+          bottom: fallback.top + expectedHeight,
+          width: 0,
+          height: expectedHeight,
+        };
+      }
+      // Vditor 3.11.3 can place a collapsed selection between empty IR blocks,
+      // where Chromium reports a zero rect. A short-lived probe obtains the
+      // insertion line geometry without replacing Vditor content or dispatching input.
+      const probe = document.createElement('span');
+      probe.textContent = '\u200b';
+      probe.setAttribute('aria-hidden', 'true');
+      try {
+        const probeRange = range.cloneRange();
+        probeRange.insertNode(probe);
+        const probeRect = probe.getBoundingClientRect();
+        return probeRect.height ? probeRect : null;
+      } finally {
+        probe.remove();
+      }
+    };
+    const isInTableViewport = (range, rect, editor) => {
+      const table = closestWithin(range.startContainer, selectors.table, editor);
+      if (!table) return true;
+      const tableRect = table.getBoundingClientRect();
+      return (
+        rect.bottom > tableRect.top &&
+        rect.top < tableRect.bottom &&
+        rect.left >= tableRect.left &&
+        rect.right <= tableRect.right
+      );
     };
     const followingCharacterWidth = (range) => {
       if (range.startContainer.nodeType !== Node.TEXT_NODE) return null;
@@ -738,7 +790,7 @@
         hide();
         return;
       }
-      if (!isInEditorViewport(rect, mode)) {
+      if (!isInEditorViewport(rect, mode) || !isInTableViewport(range, rect, editor)) {
         hide();
         return;
       }
@@ -1016,6 +1068,30 @@
       host.removeEventListener('paste', onPasteCapture, true);
       host.removeEventListener('input', onInput);
     };
+  }
+
+  function captureUndoHistory(instance) {
+    const undo = instance?.vditor?.undo;
+    // Vditor 3.11.3 debounces normal input history. Flush the current DOM through
+    // its own undo path before a controlled rebuild so a recent edit is not lost
+    // merely because the debounce has not fired yet.
+    if (undo?.addToUndoStack) undo.addToUndoStack(instance.vditor);
+    return undo?.resetIcon && undo?.undo && undo?.redo ? undo : null;
+  }
+
+  function scheduleUndoHistoryRestore(instance, history, onRestored) {
+    const runtime = instance?.vditor;
+    if (!runtime || !history?.resetIcon || !history?.undo || !history?.redo) return () => {};
+    // Vditor 3.11.3 queues its initial undo baseline for `undoDelay` after its
+    // `after` callback. Replacing the owner earlier appends that baseline to the
+    // old history, so the first Undo only removes Vditor's internal caret marker.
+    const delay = Number(runtime.options?.undoDelay) || 500;
+    const timer = window.setTimeout(() => {
+      runtime.undo = history;
+      history.resetIcon(runtime);
+      onRestored?.();
+    }, delay + 25);
+    return () => window.clearTimeout(timer);
   }
 
   function elementForNode(node) {
@@ -2000,6 +2076,8 @@
     activeEditor,
     editorScrollContainer,
     installCustomCaret,
+    captureUndoHistory,
+    scheduleUndoHistoryRestore,
     preserveTableScrollDuringInput,
     isEditableTarget,
     captureEditorSelection,

@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Studio-200A/Vditor-Electron/releases"><img src="https://img.shields.io/badge/version-0.2.0-blue" alt="Version 0.2.0" /></a>
+  <a href="https://github.com/Studio-200A/Vditor-Electron/releases"><img src="https://img.shields.io/badge/version-0.2.5-blue" alt="Version 0.2.5" /></a>
   <a href="https://github.com/Studio-200A/Vditor-Electron/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License" /></a>
   <a href="https://github.com/Studio-200A/Vditor-Electron"><img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey" alt="Linux, Windows and macOS" /></a>
   <a href="https://github.com/prettier/prettier"><img src="https://img.shields.io/badge/code_style-prettier-ff69b4.svg" alt="code style: prettier" /></a>
@@ -202,12 +202,14 @@ npm run format:check
 npm run check:project
 npm run lint
 npm run typecheck
+npm run typecheck:renderer
 npm run check:vditor
 npm test
-npm run check:all
+npm run build
+npm run test:e2e
 ```
 
-The Vditor dependency is intentionally pinned to 3.11.3. Refer to [the Vditor upgrade notes](docs/06-VDITOR-UPGRADE.md).
+The Vditor dependency is intentionally pinned to 3.11.3. Refer to [the Vditor upgrade notes](docs/07-VDITOR-UPGRADE.md).
 
 </details>
 

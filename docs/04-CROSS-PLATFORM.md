@@ -6,7 +6,7 @@
 
 本文档有意与 0.2.0 执行跟踪器（execution tracker）分开。跟踪器记录哪个批次拥有某风险；本文档记录平台规则、测试方法和证据。
 
-与版本无关的文件安全契约（包括针对现有目标仍存在的非原子 compare-and-replace 边界）维护在 [`docs/05-FILE-SAFETY.md`](05-FILE-SAFETY.md) 中。本文档只记录验证该契约所需的平台特定行为和证据。
+与版本无关的文件安全契约（包括针对现有目标仍存在的非原子 compare-and-replace 边界）维护在 [`docs/06-FILE-SAFETY.md`](06-FILE-SAFETY.md) 中。本文档只记录验证该契约所需的平台特定行为和证据。
 
 当前的开发与验证平台是 Linux。跨平台工作计划在 0.2.5 渲染器重构之后、且 Windows/macOS 测试环境就绪后开始。在此之前，Linux 测试可以防止平台无关的回归，但不得被报告为 Windows 或 macOS 验证。
 
@@ -160,7 +160,7 @@ Node 的 `path` 实现随宿主平台而异，且某些 `fs` 操作是明确平�
 
 批次 7 在 [`docs/13-0.2.0-EXECUTION-TRACKER.md`](13-0.2.0-EXECUTION-TRACKER.md) 中保留平台中立正确性修复的所有权：保存/恢复状态闭合、规范文件身份契约、目录重命名事务收敛及其 Linux 回归覆盖。该本地范围截至 2026-08-27 已完成。本节仅拥有当前 Linux 开发环境无法产出的原生平台证据；尚无 Windows/macOS 行被关闭。
 
-相关的长期不变量和确切的剩余 TOCTOU 限制定义在 [`docs/05-FILE-SAFETY.md` §7](05-FILE-SAFETY.md#7-已知原子性边界已有目标的-toctou) 中。此处的平台结果更新该契约的证据；它不会用版本特定的复选框取代契约。
+相关的长期不变量和确切的剩余 TOCTOU 限制定义在 [`docs/06-FILE-SAFETY.md` §7](06-FILE-SAFETY.md#7-已知原子性边界已有目标的-toctou) 中。此处的平台结果更新该契约的证据；它不会用版本特定的复选框取代契约。
 
 在 0.2.5 渲染器重构有了稳定分支、且真实 Windows 和 macOS 测试环境可用后开始本节。Linux 路径形状夹具、注入的平台值或成功的 Linux E2E 都不是 Windows 或 macOS 行的证据。
 

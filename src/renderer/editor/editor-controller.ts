@@ -41,6 +41,12 @@ export interface EditorControllerOptions<TTab extends EditorRuntimeTab> {
       getMode: () => EditMode,
       getStyle: () => 'underline' | 'bar' | 'block',
     ): () => void;
+    captureUndoHistory(instance: unknown): unknown;
+    scheduleUndoHistoryRestore(
+      instance: unknown,
+      history: unknown,
+      onRestored: () => void,
+    ): () => void;
     scrollContainers(host: HTMLElement): HTMLElement[];
     installScrollEnhancement(element: HTMLElement): (() => void) | null;
   };
@@ -94,6 +100,8 @@ export class EditorController<TTab extends EditorRuntimeTab> {
   private readonly outlineObservers = new Map<TTab, { disconnect(): void }>();
   private readonly tableCompositionScrollCleanups = new Map<TTab, () => void>();
   private readonly customCaretCleanups = new Map<TTab, () => void>();
+  private readonly rebuildUndoHistories = new Map<TTab, unknown>();
+  private readonly rebuildUndoRestoreCleanups = new Map<TTab, () => void>();
   private readonly rebuildSnapshotCleanups = new Map<TTab, () => void>();
   private readonly scrollEnhancementCleanups = new Map<TTab, Array<() => void>>();
   private readonly documentAnchorNavigationCleanups = new Map<TTab, () => void>();
@@ -444,6 +452,9 @@ export class EditorController<TTab extends EditorRuntimeTab> {
   }
 
   rebuild(tab: TTab, mode?: EditMode): Error | null {
+    this.cancelRebuildUndoRestore(tab);
+    if (tab.vditor && !this.rebuildUndoHistories.has(tab))
+      this.rebuildUndoHistories.set(tab, this.adapter.captureUndoHistory(tab.vditor));
     if (tab.vditor) this.updateDocument(tab, { content: this.readRuntimeContent(tab) });
     this.releaseRebuildSnapshot(tab);
     if (tab.host.classList.contains('active'))
@@ -462,6 +473,33 @@ export class EditorController<TTab extends EditorRuntimeTab> {
     return rebuildError;
   }
 
+  restoreRebuildUndoHistory(tab: TTab): void {
+    const history = this.rebuildUndoHistories.get(tab);
+    if (history === undefined) return;
+    this.cancelRebuildUndoRestore(tab);
+    if (!tab.vditor) {
+      // Vditor 3.11.3 can invoke `after` synchronously from its constructor,
+      // before JavaScript assigns the replacement instance to the tab.
+      const frame = requestAnimationFrame(() => this.restoreRebuildUndoHistory(tab));
+      this.rebuildUndoRestoreCleanups.set(tab, () => {
+        cancelAnimationFrame(frame);
+        this.rebuildUndoRestoreCleanups.delete(tab);
+      });
+      return;
+    }
+    const generation = tab.editorRuntimeGeneration;
+    const instance = tab.vditor;
+    const cancel = this.adapter.scheduleUndoHistoryRestore(instance, history, () => {
+      if (tab.editorRuntimeGeneration !== generation || tab.vditor !== instance) return;
+      this.rebuildUndoHistories.delete(tab);
+      this.rebuildUndoRestoreCleanups.delete(tab);
+    });
+    this.rebuildUndoRestoreCleanups.set(tab, () => {
+      cancel();
+      this.rebuildUndoRestoreCleanups.delete(tab);
+    });
+  }
+
   destroy(tab: TTab, disposeTabResources = true): Error | null {
     this.cancelAutoSave(tab);
     this.cancelModeTransition(tab);
@@ -470,6 +508,7 @@ export class EditorController<TTab extends EditorRuntimeTab> {
     this.tableCompositionScrollCleanups.get(tab)?.();
     this.tableCompositionScrollCleanups.delete(tab);
     this.suspendCustomCaret(tab);
+    this.cancelRebuildUndoRestore(tab);
     if (disposeTabResources) this.releaseRebuildSnapshot(tab);
     this.clearScrollEnhancements(tab);
     this.toolbarHandlerCleanups.get(tab)?.();
@@ -489,6 +528,7 @@ export class EditorController<TTab extends EditorRuntimeTab> {
         error instanceof Error ? error : new Error('The editor could not be destroyed.');
     }
     tab.vditor = null;
+    if (disposeTabResources) this.rebuildUndoHistories.delete(tab);
     tab.toolbar = null;
     tab.ready = false;
     return destroyError;
@@ -505,6 +545,11 @@ export class EditorController<TTab extends EditorRuntimeTab> {
       window.clearTimeout(timer);
       this.modeTransitionTimers.delete(tab);
     }
+  }
+
+  private cancelRebuildUndoRestore(tab: TTab): void {
+    this.rebuildUndoRestoreCleanups.get(tab)?.();
+    this.rebuildUndoRestoreCleanups.delete(tab);
   }
 
   private disconnectOutlineObserver(tab: TTab): void {

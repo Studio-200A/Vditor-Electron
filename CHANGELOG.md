@@ -2,6 +2,8 @@
 
 ## 0.2.5 - Modularized Refactor
 
+This release is primarily an internal renderer-architecture upgrade. It preserves the existing local Markdown editing experience and file-safety contracts; the user-visible additions and fixes below are documented separately.
+
 ### Development
 
 - **build(Electron downloads):** Configured npm installation and electron-builder to retrieve pinned Electron binaries from the npmmirror registry instead of Electron's official release host.
@@ -93,6 +95,8 @@
 - **refactor(export):** Centralized HTML/PDF export transaction ordering in `ExportController`, preserving pre-dialog snapshots, portable HTML resource rewriting, local-image PDF embedding, and the isolated main-process PDF window.
 
 ### Editor Runtime
+
+- **fix(editor undo):** Preserve pending edits' undo history when an initialization-only setting rebuilds the editor, so Ctrl/Cmd+Z and the Undo toolbar action continue to revert the edit after the rebuilt editor is ready.
 
 - **fix(editor rebuild):** Initialization-only settings now preserve a non-interactive snapshot of the active editor, including its scroll position, until replacement Vditor content is ready and the scroll position is restored. The existing shared toolbar remains mounted until its replacement takes over, eliminating the visible empty toolbar, document flash, and jump-to-top during live settings saves.
 

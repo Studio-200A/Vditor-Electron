@@ -2,7 +2,7 @@
   "name": "vditor-electron",
   "productName": "Vditor Desktop",
   "desktopName": "com.github.studio-200a.vditor-electron",
-  "version": "0.2.0",
+  "version": "0.2.5",
   "description": "A local-first Markdown desktop editor powered by Electron and Vditor",
   "author": "Studio 200A",
   "engines": {
@@ -65,7 +65,8 @@
     "files": [
       "dist/**/*",
       "static/**/*",
-      "package.json"
+      "package.json",
+      "!node_modules/vditor/src/**"
     ],
     "electronDownload": {
       "mirrorOptions": {

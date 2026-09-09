@@ -105,6 +105,12 @@ Only read multiple sections when the task crosses architectural boundaries, such
 - Do not add direct Store writes, bridge subscriptions, timers, observers, event listeners, watcher ownership, or Vditor private-DOM access to the composition layer when an existing domain controller can own the behavior.
 - A composition callback must name the coordinated use case and remain narrow. If it accumulates state transitions, resource lifecycle, or reusable business rules, move the behavior to a focused controller with tests and an explicit cleanup path.
 
+### Renderer module placement
+
+- Put a new renderer module in the owning domain directory: `documents/` for document identity, save, watcher and recovery transitions; `editor/` for Vditor runtime and editor-owned UI lifecycle; `workspace/` for workspace and explorer behavior; `settings/` for preference/state persistence and settings UI; `ui/` for application-owned presentation; `export/` for export transactions; and `resource-health/` for the isolated resource-health workflow.
+- Keep cross-domain construction and narrow named orchestration in `app/app-composition.js`; do not create a catch-all renderer utility directory or return business state to the composition layer.
+- Put renderer-wide runtime types and browser global declarations in `src/renderer/types/`, pure side-effect-free helpers in `src/renderer/utils/`, and serializable cross-process DTOs in `src/shared/contracts/`. A new Vditor private-DOM dependency belongs in `vditor-adapter.js` with its focused contract test.
+
 ### Comments and error handling
 
 - Comments explain a non-obvious constraint, compatibility assumption, security boundary, platform behavior, or cleanup reason. They do not paraphrase the next statement, narrate edits, or preserve obsolete implementation history.
