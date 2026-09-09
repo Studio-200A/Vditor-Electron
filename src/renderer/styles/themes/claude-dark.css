@@ -1,0 +1,18 @@
+:root[data-theme='claude-dark'] {
+  --bg: #141413;
+  --panel: #30302e;
+  --sidebar-surface: #30302e;
+  --editor-surface: #262624;
+  --settings-control-surface: #30302e;
+  --panel-2: #262624;
+  --hover: #3d3d3a;
+  --text: #faf9f5;
+  --muted: #c2c0b6;
+  --border: rgb(222 220 209 / 12%);
+  --accent: #d97757;
+  --on-accent: #141413;
+  --brand-accent: #d97757;
+  --danger: #ee8884;
+  --top-surface-shadow: 0 5px 13px -7px rgb(0 0 0 / 0.82), 0 2px 6px -4px rgb(0 0 0 / 0.5);
+  color-scheme: dark;
+}

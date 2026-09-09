@@ -1,0 +1,18 @@
+:root[data-theme='dark'] {
+  --bg: #17181a;
+  --panel: #202124;
+  --sidebar-surface: #202124;
+  --editor-surface: #18191c;
+  --settings-control-surface: #202124;
+  --panel-2: #292b2f;
+  --hover: #34373c;
+  --text: #e3e5e8;
+  --muted: #9ba0a8;
+  --border: #3b3e44;
+  --accent: #69a2ff;
+  --on-accent: #fff;
+  --brand-accent: #69a2ff;
+  --danger: #ff7777;
+  --top-surface-shadow: 0 5px 13px -7px rgb(0 0 0 / 0.82), 0 2px 6px -4px rgb(0 0 0 / 0.5);
+  color-scheme: dark;
+}

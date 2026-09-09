@@ -5,6 +5,7 @@ import {
   parseFileName,
   parseFiniteNumber,
   parseResourceRootPaths,
+  parsePersistentStatePatch,
   parseSettingsPatch,
   requireArgumentCount,
 } from '../../src/main/ipc-validation';
@@ -48,6 +49,7 @@ describe('IPC request validation', () => {
       parseSettingsPatch({
         locale: 'zh_Hans',
         editMode: 'sv',
+        caretStyle: 'native',
         workspaceReadDepth: 12,
         toolbarConfig: { hide: true, pin: false },
         session: { workspacePath: '', activeFilePath: null, openFiles: [] },
@@ -55,9 +57,10 @@ describe('IPC request validation', () => {
     ).toEqual({
       locale: 'zh_Hans',
       editMode: 'sv',
+      caretStyle: 'native',
       workspaceReadDepth: 12,
       toolbarConfig: { hide: true, pin: false },
-      session: { workspacePath: '', activeFilePath: null, openFiles: [] },
+      session: { schemaVersion: 1, workspacePath: '', activeFilePath: null, openFiles: [] },
     });
   });
 
@@ -65,12 +68,14 @@ describe('IPC request validation', () => {
     for (const patch of [
       { unknownSetting: true },
       { editMode: 'source' },
+      { caretStyle: 'beam' },
       { workspaceReadDepth: 99 },
       { toolbarConfig: { hide: true, unsafe: true } },
       { recentFiles: [{ path: 'relative.md', title: 'relative', openedAt: 1 }] },
       { recentPaths: ['relative/path'] },
       { defaultOpenPath: 'relative/path' },
       { session: { workspacePath: 'relative', activeFilePath: null, openFiles: [] } },
+      { session: { schemaVersion: 2, workspacePath: '', activeFilePath: null, openFiles: [] } },
       {
         workspaceTreeStates: [{ workspacePath: '/notes', expandedPaths: ['relative/path'] }],
       },
@@ -81,7 +86,7 @@ describe('IPC request validation', () => {
       { splitRatio: 81 },
       { previewMaxWidth: 319 },
       { imageQuality: 0.09 },
-      { sidebarWidth: 501 },
+      { sidebarWidth: 10_001 },
       { contentTheme: 'unknown-theme' },
       { codeTheme: '../untrusted-theme' },
       { pasteImagesDir: '../outside' },
@@ -91,6 +96,7 @@ describe('IPC request validation', () => {
       { pasteImagesDir: '\\\\server\\share' },
       { windowBounds: { width: 16_385, height: 800 } },
       { settingsDialogSize: { width: 16_385, height: 780, customized: true } },
+      { resourceHealthDialogSize: { width: 16_385, height: 680, customized: true } },
     ]) {
       expect(() => parseSettingsPatch(patch)).toThrow('IPC_INVALID_ARGUMENT');
     }
@@ -103,6 +109,7 @@ describe('IPC request validation', () => {
         pasteImagesDir: './assets/images',
         recentPaths: ['/notes', '/archive'],
         session: {
+          schemaVersion: 1,
           workspacePath: '',
           activeFilePath: null,
           openFiles: ['/notes/readme.md'],
@@ -117,7 +124,7 @@ describe('IPC request validation', () => {
         splitRatio: 20,
         previewMaxWidth: 2_400,
         imageQuality: 0.1,
-        sidebarWidth: 500,
+        sidebarWidth: 10_000,
       }),
     ).toMatchObject({
       defaultOpenPath: '/notes',
@@ -127,5 +134,13 @@ describe('IPC request validation', () => {
       uiZoom: 200,
       splitRatio: 20,
     });
+  });
+
+  it('accepts only versioned persistent-state fields', () => {
+    expect(
+      parsePersistentStatePatch({ schemaVersion: 1, defaultOpenPath: '/notes', recentPaths: [] }),
+    ).toMatchObject({ schemaVersion: 1, defaultOpenPath: '/notes' });
+    expect(() => parsePersistentStatePatch({ schemaVersion: 2 })).toThrow('IPC_INVALID_ARGUMENT');
+    expect(() => parsePersistentStatePatch({ locale: 'zh_Hans' })).toThrow('IPC_INVALID_ARGUMENT');
   });
 });

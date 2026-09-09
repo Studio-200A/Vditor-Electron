@@ -1,5 +1,6 @@
 export const WORKSPACE_READ_DEPTH_MIN = 7;
 export const WORKSPACE_READ_DEPTH_MAX = 12;
+export type CaretStyle = 'native' | 'underline' | 'bar' | 'block';
 
 export function normalizeWorkspaceReadDepth(value: unknown): number {
   const depth =
@@ -34,6 +35,7 @@ export interface AppSettings {
   previewZoom: number;
   scrollbarMode: 'always' | 'auto' | 'hidden';
   editMode: 'wysiwyg' | 'ir' | 'sv';
+  caretStyle: CaretStyle;
   previewMode: 'both' | 'editor';
   placeholder: string;
   typewriterMode: boolean;
@@ -69,6 +71,7 @@ export interface AppSettings {
   imageMaxWidth: number;
   imageQuality: number;
   workspaceReadDepth: number;
+  resourceHealthTrashScopeWarningEnabled: boolean;
   paragraphBeginningSpace: boolean;
   fixTermTypo: boolean;
   gfmAutoLink: boolean;
@@ -83,6 +86,7 @@ export interface AppSettings {
   windowBounds: { x: number | undefined; y: number | undefined; width: number; height: number };
   windowMaximized: boolean;
   settingsDialogSize: { width: number; height: number; customized: boolean };
+  resourceHealthDialogSize: { width: number; height: number; customized: boolean };
   defaultOpenPath: string;
   recentPaths: string[];
   recentFiles: RecentFile[];
@@ -97,6 +101,7 @@ export interface WorkspaceTreeState {
 }
 
 export interface AppSession {
+  schemaVersion: 1;
   workspacePath: string;
   activeFilePath: string | null;
   openFiles: string[];
@@ -107,6 +112,39 @@ export interface RecentFile {
   title: string;
   openedAt: number;
 }
+
+/** Data restored across launches, deliberately separate from user-selected preferences. */
+export interface PersistentAppState {
+  schemaVersion: 1;
+  defaultOpenPath: string;
+  recentPaths: string[];
+  recentFiles: RecentFile[];
+  workspaceTreeStates: WorkspaceTreeState[];
+  sidebarWidth: number;
+  sidebarVisible: boolean;
+  toolbarVisible: boolean;
+  windowBounds: { x: number | undefined; y: number | undefined; width: number; height: number };
+  windowMaximized: boolean;
+  settingsDialogSize: { width: number; height: number; customized: boolean };
+  resourceHealthDialogSize: { width: number; height: number; customized: boolean };
+  session: AppSession;
+}
+
+export const DEFAULT_PERSISTENT_APP_STATE: PersistentAppState = {
+  schemaVersion: 1,
+  defaultOpenPath: '',
+  recentPaths: [],
+  recentFiles: [],
+  workspaceTreeStates: [],
+  sidebarWidth: 260,
+  sidebarVisible: false,
+  toolbarVisible: true,
+  windowBounds: { x: undefined, y: undefined, width: 1200, height: 800 },
+  windowMaximized: false,
+  settingsDialogSize: { width: 1080, height: 780, customized: false },
+  resourceHealthDialogSize: { width: 900, height: 680, customized: false },
+  session: { schemaVersion: 1, workspacePath: '', activeFilePath: null, openFiles: [] },
+};
 
 export const DEFAULT_SETTINGS: AppSettings = {
   restoreTabs: true,
@@ -134,6 +172,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   previewZoom: 100,
   scrollbarMode: 'auto',
   editMode: 'ir',
+  caretStyle: 'bar',
   previewMode: 'both',
   placeholder: '',
   typewriterMode: false,
@@ -169,6 +208,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   imageMaxWidth: 1024,
   imageQuality: 0.85,
   workspaceReadDepth: WORKSPACE_READ_DEPTH_MIN,
+  resourceHealthTrashScopeWarningEnabled: true,
   paragraphBeginningSpace: false,
   fixTermTypo: false,
   gfmAutoLink: true,
@@ -183,10 +223,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   windowBounds: { x: undefined, y: undefined, width: 1200, height: 800 },
   windowMaximized: false,
   settingsDialogSize: { width: 1080, height: 780, customized: false },
+  resourceHealthDialogSize: { width: 900, height: 680, customized: false },
   defaultOpenPath: '',
   recentPaths: [],
   recentFiles: [],
   fileExplorer: { visibleExtensions: ['md'] },
   workspaceTreeStates: [],
-  session: { workspacePath: '', activeFilePath: null, openFiles: [] },
+  session: { schemaVersion: 1, workspacePath: '', activeFilePath: null, openFiles: [] },
 };

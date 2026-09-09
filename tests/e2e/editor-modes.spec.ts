@@ -109,6 +109,137 @@ test('keeps Vditor formatting shortcuts from invoking application commands', asy
   }
 });
 
+test('keeps one custom caret proxy across all editor modes and releases it on tab close', async () => {
+  const running = await launchApp({ editMode: 'ir', caretStyle: 'block' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    await expect(page.locator('.editor-host.active')).toHaveAttribute(
+      'data-vditor-desktop-custom-caret',
+      'true',
+    );
+    const editorFor = (mode: 'wysiwyg' | 'ir' | 'sv') =>
+      page.locator(
+        `.editor-host.active .${mode === 'sv' ? 'vditor-sv' : `vditor-${mode} .vditor-reset`}`,
+      );
+    const activate = async (mode: 'wysiwyg' | 'ir' | 'sv') => {
+      if (mode !== 'ir') {
+        await page.locator('#vditorToolbarMount button[data-type="edit-mode"]').click();
+        await page.locator(`#vditorToolbarMount button[data-mode="${mode}"]`).click();
+      }
+      const editor = editorFor(mode);
+      await expect(editor).toBeVisible();
+      await expect(page.locator('.editor-host.active')).toHaveAttribute(
+        'data-editor-ready',
+        'true',
+      );
+      await expect(page.locator('.editor-host.active')).toHaveAttribute(
+        'data-vditor-desktop-custom-caret',
+        'true',
+      );
+      await editor.fill('caret target');
+      await editor.click();
+      await page.keyboard.press('End');
+      await expect.poll(() => page.locator('[data-vditor-desktop-caret="true"]').count()).toBe(1);
+      const caret = page.locator('[data-vditor-desktop-caret="true"]');
+      await expect(caret).toHaveAttribute('data-style', 'block');
+      await expect(caret).toHaveCSS('position', 'absolute');
+      expect(await caret.evaluate((node) => node.parentElement?.id)).toBe('editorArea');
+      await page.keyboard.press('ArrowLeft');
+    };
+
+    await activate('ir');
+    await activate('wysiwyg');
+    await activate('sv');
+    await page.locator('.document-tab.active b').click();
+    await page.locator('#confirmActions [data-action="discard"]').click();
+    await expect(page.locator('[data-vditor-desktop-caret="true"]')).toHaveCount(0);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps the custom caret visible at the new line after Enter', async () => {
+  const running = await launchApp({ editMode: 'ir', caretStyle: 'bar' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    const editor = page.locator('.editor-host.active .vditor-ir .vditor-reset');
+    await editor.fill('before enter');
+    await editor.click();
+    await page.keyboard.press('End');
+    await page.keyboard.press('Enter');
+    const caret = page.locator('[data-vditor-desktop-caret="true"]');
+    await expect(caret).toBeVisible();
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('uses Chromium native caret when selected in editor settings', async () => {
+  const running = await launchApp({ editMode: 'ir', caretStyle: 'bar' });
+  try {
+    const { page, testRoot } = running;
+    await createNewTab(page);
+    const host = page.locator('.editor-host.active');
+    const editor = host.locator('.vditor-ir .vditor-reset');
+    await editor.click();
+    await page.keyboard.type('native caret');
+
+    await expect(page.locator('[data-vditor-desktop-caret="true"]')).toHaveCount(1);
+    await page.locator('#statusSettings').click();
+    await page.locator('.settings-nav [data-panel="editor"]').click();
+    await page.locator('[name="caretStyle"]').selectOption('native');
+    await page.locator('#saveSettings').click();
+
+    await expect(host).not.toHaveAttribute('data-vditor-desktop-custom-caret');
+    await expect(page.locator('[data-vditor-desktop-caret="true"]')).toHaveCount(0);
+    await expect.poll(() => readSetting(testRoot, 'editor', 'caretStyle')).toBe('native');
+    expect(await editor.evaluate((node) => getComputedStyle(node).caretColor)).not.toBe(
+      'rgba(0, 0, 0, 0)',
+    );
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('hides the custom caret after undo restores a collapsed IR heading marker selection', async () => {
+  const running = await launchApp(
+    { editMode: 'ir', caretStyle: 'bar' },
+    { 'heading.md': '# Heading' },
+  );
+  try {
+    const { page } = running;
+    const modifier =
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+    const editor = page.locator('.editor-host.active .vditor-ir .vditor-reset');
+    await page.waitForTimeout(700);
+    const headingBox = await editor.locator('h1').boundingBox();
+    if (!headingBox) throw new Error('Expected heading bounds');
+    await page.mouse.click(headingBox.x + 20, headingBox.y + headingBox.height + 12);
+    await page.keyboard.type('x');
+    await page.waitForTimeout(800);
+    await page.keyboard.press(`${modifier}+z`);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const range = window.getSelection()?.getRangeAt(0);
+          return Boolean(
+            range &&
+            range.startContainer.parentElement?.matches('.vditor-ir__marker--heading') &&
+            !range.startContainer.parentElement.parentElement?.classList.contains(
+              'vditor-ir__node--expand',
+            ),
+          );
+        }),
+      )
+      .toBe(true);
+    await expect(page.locator('[data-vditor-desktop-caret="true"]')).toBeHidden();
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('switches among all three modes from the View > Editing Mode submenu', async () => {
   const running = await launchApp({ editMode: 'ir' });
   try {
@@ -206,6 +337,73 @@ test('synchronizes status and preserves document position for Vditor mode shortc
     const wysiwygProgress = await progressFor('wysiwyg');
     await scrollToProgress('wysiwyg', wysiwygProgress);
     await switchWithShortcut('9', 'sv', 'SV', wysiwygProgress);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('preserves the Vditor instance when switching modes with Vditor shortcuts', async () => {
+  const running = await launchApp(
+    { editMode: 'wysiwyg' },
+    { 'undo-modes.md': '# Heading\n\nBody' },
+  );
+  try {
+    const { page } = running;
+    const modifier =
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+    await expect(page.locator('.editor-host.active .vditor-wysiwyg')).toBeVisible();
+    await page.evaluate(() => {
+      const content = document.querySelector('.editor-host.active .vditor-content');
+      if (!content) throw new Error('Expected .vditor-content element');
+      content.setAttribute('data-baseline-instance', 'original');
+    });
+
+    await page.keyboard.press(`${modifier}+Alt+9`);
+    await expect(page.locator('.editor-host.active .vditor-sv')).toBeVisible();
+    await page.keyboard.press(`${modifier}+Alt+8`);
+    await expect(page.locator('.editor-host.active .vditor-ir')).toBeVisible();
+    await page.keyboard.press(`${modifier}+Alt+7`);
+    await expect(page.locator('.editor-host.active .vditor-wysiwyg')).toBeVisible();
+
+    await expect(
+      page.locator('.editor-host.active .vditor-content[data-baseline-instance="original"]'),
+    ).toBeVisible();
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('returns the inactive toolbar to its owner host when switching tabs', async () => {
+  const running = await launchApp({ editMode: 'ir' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    await page.waitForSelector('#vditorToolbarMount[data-toolbar-pending="false"]');
+    await page.evaluate(() => {
+      const toolbar = document.querySelector('#vditorToolbarMount .vditor-toolbar');
+      if (!toolbar) throw new Error('Expected the mounted toolbar');
+      toolbar.setAttribute('data-owner-test', 'first-tab');
+    });
+
+    await createNewTab(page);
+    await page.waitForSelector('#vditorToolbarMount[data-toolbar-pending="false"]');
+    await expect(page.locator('#vditorToolbarMount .vditor-toolbar')).not.toHaveAttribute(
+      'data-owner-test',
+      'first-tab',
+    );
+    await expect(
+      page.locator('.editor-host:not(.active) .vditor-toolbar[data-owner-test="first-tab"]'),
+    ).toHaveCount(1);
+
+    await page.locator('.document-tab').first().click();
+    await page.waitForSelector('#vditorToolbarMount[data-toolbar-pending="false"]');
+    await expect(page.locator('#vditorToolbarMount .vditor-toolbar')).toHaveAttribute(
+      'data-owner-test',
+      'first-tab',
+    );
+    await expect(
+      page.locator('.editor-host:not(.active) .vditor-toolbar:not([data-owner-test])'),
+    ).toHaveCount(1);
   } finally {
     await closeApp(running);
   }
@@ -392,6 +590,29 @@ test('switches to split view and renders source line numbers', async () => {
     await page.keyboard.press('Control+Alt+8');
     await expect(page.locator('.editor-host.active .vditor-ir')).toBeVisible();
     await expect(page.locator('.editor-host.active .sv-line-numbers')).toBeHidden();
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('closes a split-view tab after a toolbar layout refresh settles', async () => {
+  const running = await launchApp(
+    { editMode: 'sv' },
+    { 'late-split-refresh.md': 'line one\nline two' },
+  );
+  try {
+    const { page } = running;
+    const pageErrors: Error[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error));
+    await expect(page.locator('.editor-host.active .vditor-sv')).toBeVisible();
+    await page.locator('#vditorToolbarMount button[data-type="both"]').click();
+    await page.locator('.document-tab.active b').click();
+    const discard = page.locator('#confirmActions [data-action="discard"]');
+    if (await discard.isVisible()) await discard.click();
+    await expect(page.locator('.document-tab')).toHaveCount(0);
+    await expect(page.locator('.editor-host.active')).toHaveCount(0);
+    await page.waitForTimeout(100);
+    expect(pageErrors).toEqual([]);
   } finally {
     await closeApp(running);
   }
@@ -658,6 +879,192 @@ test('disables context-menu paste actions when the clipboard is empty', async ()
   }
 });
 
+test('preserves rich clipboard content from the editor context menu', async () => {
+  const running = await launchApp({ editMode: 'wysiwyg' }, { 'context-paste.md': 'before' });
+  try {
+    const { app, page } = running;
+    await app.evaluate(({ clipboard }) => {
+      clipboard.readText = async () => 'rich content';
+      clipboard.read = async () => [
+        {
+          types: ['text/html'],
+          getType: async () => new Blob(['<p><strong>rich</strong> content</p>']),
+        },
+      ];
+    });
+    const editor = page.locator('.editor-host.active .vditor-wysiwyg .vditor-reset');
+    await editor.click();
+    await editor.press('End');
+    await editor.click({ button: 'right' });
+    const menu = page.locator('#contextMenu');
+    await expect(menu).toBeVisible();
+    await menu.locator('[data-context-action="paste"]').click();
+    await expect.poll(() => editor.locator('strong').count()).toBeGreaterThan(0);
+    await expect(editor.locator('strong')).toHaveText('rich');
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('preserves rich clipboard content from the native paste shortcut', async () => {
+  const running = await launchApp({ editMode: 'wysiwyg' }, { 'native-paste.md': 'before' });
+  try {
+    const { app, page } = running;
+    await app.evaluate(async ({ clipboard, ClipboardItem }) => {
+      await clipboard.write([
+        new ClipboardItem({
+          'text/html': new Blob(['<p><strong>rich</strong> content</p>'], { type: 'text/html' }),
+          'text/plain': new Blob(['rich content'], { type: 'text/plain' }),
+        }),
+      ]);
+    });
+    await expect
+      .poll(() => page.evaluate(() => window.appAPI.readClipboard().then(({ html }) => html)))
+      .toContain('<strong>rich</strong>');
+    const modifier =
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+    const editor = page.locator('.editor-host.active .vditor-wysiwyg .vditor-reset');
+    await editor.click();
+    await editor.press('End');
+    await page.keyboard.press(`${modifier}+V`);
+    await expect.poll(() => editor.locator('strong').count()).toBeGreaterThan(0);
+    await expect(editor.locator('strong')).toHaveText('rich');
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('parses Markdown clipboard text from the native paste shortcut', async () => {
+  const running = await launchApp({ editMode: 'wysiwyg' }, { 'markdown-paste.md': 'before' });
+  try {
+    const { app, page } = running;
+    await app.evaluate(async ({ clipboard, ClipboardItem }) => {
+      await clipboard.write([
+        new ClipboardItem({
+          'text/plain': new Blob(['**Markdown** content'], { type: 'text/plain' }),
+        }),
+      ]);
+    });
+    const modifier =
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+    const editor = page.locator('.editor-host.active .vditor-wysiwyg .vditor-reset');
+    await editor.click();
+    await editor.press('End');
+    await page.keyboard.press(`${modifier}+V`);
+    await expect.poll(() => editor.locator('strong').count()).toBeGreaterThan(0);
+    await expect(editor.locator('strong')).toHaveText('Markdown');
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('round-trips Markdown semantics when copying within WYSIWYG and Instant Rendering', async () => {
+  const markdown = '**bold** [link](https://example.com)\n\n- first\n- second';
+  for (const mode of ['wysiwyg', 'ir'] as const) {
+    const running = await launchApp({ editMode: mode }, { 'internal-copy.md': markdown });
+    try {
+      const { page } = running;
+      const modifier =
+        (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+      const source = page.locator(`.editor-host.active .vditor-${mode} .vditor-reset`);
+      await source.evaluate((editor) => {
+        const range = document.createRange();
+        range.selectNodeContents(editor);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        editor.focus({ preventScroll: true });
+      });
+      await page.keyboard.press(`${modifier}+C`);
+      await expect
+        .poll(() => page.evaluate(() => window.appAPI.readClipboard()))
+        .toMatchObject({ html: '' });
+      await expect
+        .poll(() => page.evaluate(() => window.appAPI.readClipboard().then(({ text }) => text)))
+        .toContain('**bold**');
+      await expect
+        .poll(() => page.evaluate(() => window.appAPI.readClipboard().then(({ text }) => text)))
+        .toContain('[link](https://example.com)');
+      const sourceClipboardText = await page.evaluate(() =>
+        window.appAPI.readClipboard().then(({ text }) => text),
+      );
+
+      await createNewTab(page);
+      const target = page.locator(`.editor-host.active .vditor-${mode} .vditor-reset`);
+      await target.click();
+      await page.keyboard.press(`${modifier}+V`);
+      await expect.poll(() => target.locator('strong').count()).toBeGreaterThan(0);
+      await expect(target.locator('strong')).toHaveText('bold');
+      await expect(target.locator('li')).toHaveCount(2);
+      await target.evaluate((editor) => {
+        const range = document.createRange();
+        range.selectNodeContents(editor);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        editor.focus({ preventScroll: true });
+      });
+      await page.keyboard.press(`${modifier}+C`);
+      await expect
+        .poll(() => page.evaluate(() => window.appAPI.readClipboard().then(({ text }) => text)))
+        .toBe(sourceClipboardText);
+    } finally {
+      await closeApp(running);
+    }
+  }
+});
+
+test('round-trips Markdown semantics through the editor context menu', async () => {
+  const markdown = '**bold** [link](https://example.com)\n\n- first\n- second';
+  for (const mode of ['wysiwyg', 'ir'] as const) {
+    const running = await launchApp({ editMode: mode }, { 'internal-menu-copy.md': markdown });
+    try {
+      const { page } = running;
+      const source = page.locator(`.editor-host.active .vditor-${mode} .vditor-reset`);
+      await source.evaluate((editor) => {
+        const range = document.createRange();
+        range.selectNodeContents(editor);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      });
+      await source.dispatchEvent('contextmenu', { button: 2, clientX: 100, clientY: 100 });
+      const menu = page.locator('#contextMenu');
+      await menu.locator('[data-context-action="copy"]').click();
+      await expect
+        .poll(() => page.evaluate(() => window.appAPI.readClipboard()))
+        .toMatchObject({ html: '' });
+      const sourceClipboardText = await page.evaluate(() =>
+        window.appAPI.readClipboard().then(({ text }) => text),
+      );
+      expect(sourceClipboardText).toContain('**bold**');
+      expect(sourceClipboardText).toContain('[link](https://example.com)');
+
+      await createNewTab(page);
+      const target = page.locator(`.editor-host.active .vditor-${mode} .vditor-reset`);
+      await target.dispatchEvent('contextmenu', { button: 2, clientX: 100, clientY: 100 });
+      await menu.locator('[data-context-action="paste"]').click();
+      await expect.poll(() => target.locator('strong').count()).toBeGreaterThan(0);
+      await expect(target.locator('strong')).toHaveText('bold');
+      await expect(target.locator('li')).toHaveCount(2);
+      await target.evaluate((editor) => {
+        const range = document.createRange();
+        range.selectNodeContents(editor);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      });
+      await target.dispatchEvent('contextmenu', { button: 2, clientX: 100, clientY: 100 });
+      await menu.locator('[data-context-action="copy"]').click();
+      await expect
+        .poll(() => page.evaluate(() => window.appAPI.readClipboard().then(({ text }) => text)))
+        .toBe(sourceClipboardText);
+    } finally {
+      await closeApp(running);
+    }
+  }
+});
+
 test('performs table context-menu actions in WYSIWYG and Instant Rendering', async () => {
   const markdown = '| left | right |\n| --- | --- |\n| alpha | beta |\n| gamma | delta |';
   for (const mode of ['ir', 'wysiwyg'] as const) {
@@ -872,6 +1279,51 @@ test('moves a long table only enough to keep a pasted middle caret visible', asy
   }
 });
 
+test('hides the custom caret when a table clips its selection', async () => {
+  const markdown = `| content |\n| --- |\n| ${'x'.repeat(1024)} |`;
+  const running = await launchApp(
+    { editMode: 'ir', caretStyle: 'block' },
+    { 'table-caret.md': markdown },
+  );
+  try {
+    const { page } = running;
+    const table = page.locator('.editor-host.active table');
+    await table.evaluate((node) => {
+      const cell = node.querySelector('tbody td');
+      const text = cell?.firstChild;
+      if (!cell || !text) throw new Error('Expected a populated table cell.');
+      const range = document.createRange();
+      range.setStart(text, text.textContent?.length || 0);
+      range.collapse(true);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      node.scrollLeft = 0;
+      cell.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    });
+    await expect(page.locator('[data-vditor-desktop-caret="true"]')).toBeHidden();
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps a block caret to one line in an empty table cell', async () => {
+  const running = await launchApp(
+    { editMode: 'ir', caretStyle: 'block' },
+    { 'empty-table-cell.md': '| content |\n| --- |\n| |' },
+  );
+  try {
+    const { page } = running;
+    const cell = page.locator('.editor-host.active table tbody td');
+    await cell.click();
+    const caret = page.locator('[data-vditor-desktop-caret="true"]');
+    await expect(caret).toBeVisible();
+    await expect(caret).toHaveCSS('height', '24px');
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('satisfies the Vditor DOM integration contract', async () => {
   const running = await launchApp({ editMode: 'sv' });
   try {
@@ -890,10 +1342,7 @@ test('satisfies the Vditor DOM integration contract', async () => {
       .poll(() =>
         source.evaluate((editor) => {
           const adapter = window.VditorDesktopAdapter;
-          return (
-            adapter.sourceNewlines(editor).length >= 1 &&
-            Boolean(editor.querySelector(adapter.selectors.listMarker))
-          );
+          return adapter.sourceNewlines(editor).length >= 1 && adapter.hasListMarker(editor);
         }),
       )
       .toBe(true);
@@ -1134,7 +1583,6 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
     await expect.poll(() => scrollTop(ir)).toBe(0);
     await irLink.click({ modifiers: [linkModifier] });
     await expect.poll(() => scrollTop(ir)).toBeGreaterThan(0);
-    await page.waitForTimeout(300);
     await ir.evaluate((node) => {
       node.scrollTop = 0;
       const reset = node.querySelector(':scope > .vditor-reset');
@@ -1167,7 +1615,6 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
     });
     await wysiwyg.locator('a[href="#target"]').click({ modifiers: [linkModifier] });
     await expect.poll(() => scrollTop(wysiwyg)).toBeGreaterThan(0);
-    await page.waitForTimeout(300);
     await wysiwyg.evaluate((node) => {
       node.scrollTop = 0;
       const reset = node.querySelector(':scope > .vditor-reset');
@@ -1190,7 +1637,6 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
     });
     await preview.locator('a[href="#target"]').click({ modifiers: [linkModifier] });
     await expect.poll(() => preview.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
-    await page.waitForTimeout(300);
     await source.evaluate((node) => {
       node.scrollTop = 0;
     });
@@ -1447,6 +1893,27 @@ test('keeps list indentation actions available in split-view mode', async () => 
     await indent.click();
     await expect.poll(() => source.textContent()).toMatch(/^\s+- item/);
     await outdent.click();
+    await expect.poll(() => source.textContent()).toMatch(/^- item/);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps list indentation shortcuts available in split-view mode', async () => {
+  const running = await launchApp({ editMode: 'sv' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    const source = page.locator('.editor-host.active .vditor-sv');
+    const modifier =
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+    await source.fill('- item');
+    await source.press('Home');
+    await source.press('ArrowRight');
+    await source.press('ArrowRight');
+    await source.press(`${modifier}+Shift+O`);
+    await expect.poll(() => source.textContent()).toMatch(/^\s+- item/);
+    await source.press(`${modifier}+Shift+I`);
     await expect.poll(() => source.textContent()).toMatch(/^- item/);
   } finally {
     await closeApp(running);

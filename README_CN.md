@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Studio-200A/Vditor-Electron/releases"><img src="https://img.shields.io/badge/version-0.2.0-blue" alt="Version 0.2.0" /></a>
+  <a href="https://github.com/Studio-200A/Vditor-Electron/releases"><img src="https://img.shields.io/badge/version-0.2.5-blue" alt="Version 0.2.5" /></a>
   <a href="https://github.com/Studio-200A/Vditor-Electron/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License" /></a>
   <a href="https://github.com/Studio-200A/Vditor-Electron"><img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey" alt="Linux, Windows and macOS" /></a>
   <a href="https://github.com/prettier/prettier"><img src="https://img.shields.io/badge/code_style-prettier-ff69b4.svg" alt="code style: prettier" /></a>
@@ -20,21 +20,20 @@
 
 Vditor Desktop 把 [Vditor](https://github.com/Vanessa219/vditor)——**最好用的 Markdown 编辑内核之一**——装进了它本该拥有的桌面外壳。没有专有格式，也没有任何锁定：你写下的内容，任何时候落在磁盘上的都是一份最普通的 `.md` 文件。在此基础上，软件补全了一款真正的桌面工具该有、而网页版编辑器给不了的部分：多标签、工作区、资源管理器、Vditor 自带大纲、主题、会话恢复和桌面文件关联。
 
-![Vditor Desktop 浅色主题](assets/screenshot-light.webp)
+![Vditor Desktop 浅色主题](assets/screenshot-light.webp?__vditor_svg_policy=1788986293141-81exm0ptqvo)
 
-![Vditor Desktop Monokai Pro Dark 主题](assets/screenshot-monokai-dark.webp)
+![Vditor Desktop Monokai Pro Dark 主题](assets/screenshot-monokai-dark.webp?__vditor_svg_policy=1788986293141-81exm0ptqvo)
 
 ## 目录
 
-- [为什么选择 Vditor Desktop](#为什么选择-vditor-desktop)
+- [为什么选择 Vditor Desktop](#为什么选择-Vditor-Desktop)
 - [三种编辑模式](#三种编辑模式)
 - [不打扰写作的工作区](#不打扰写作的工作区)
 - [尽心保护你和你的内容](#尽心保护你和你的内容)
 - [主题与语言](#主题与语言)
-- [安装与运行](#安装与运行)
 - [常用快捷键](#常用快捷键)
 - [配置与数据目录](#配置与数据目录)
-- [构建与测试](#构建与测试)
+- [安装与运行](#安装与运行)
 - [开源项目](#开源项目)
 - [免责声明](#免责声明)
 - [许可证](#许可证)
@@ -80,6 +79,14 @@ Vditor Desktop 把 [Vditor](https://github.com/Vanessa219/vditor)——**最好�
 
 Vditor Desktop 把你的写作当作需要保护的内容，而不是可以随时覆盖的数据。在简洁的 Markdown 工作流背后，我们加入了多重保护设计，尽量避免异常退出、其他软件修改文件或文件系统变化时，你的内容被悄悄带走：
 
+### 主打功能：资源健康
+
+**资源健康会像照看你的写作一样照看图片资源：** 从“工具 → 资源健康”打开后，它会从当前焦点文档出发梳理图片引用，把未引用图片和丢失图片放到一个清晰的管理界面里。管理图片资源前，它还会扫描工作区内所有具有访问权限的 Markdown 和 HTML 文档，让共用资源目录保持整洁，也尽量避免误删仍被其他文档需要的图片。
+
+![资源健康](assets/resource-health.webp?__vditor_svg_policy=1788986293141-81exm0ptqvo)
+
+### 其他安全防线
+
 - **让每一次跳转都更有分寸：** Markdown 里的网页和邮件链接只会把明确支持的 `http:`、`https:` 和 `mailto:` 交给系统处理；脚本、危险协议和不受信任的应用页面会被拦截，不让一条链接把编辑器带到不该去的地方。
 - **本地预览有边界：** 本地图片只会从当前工作区或已打开文档的父目录提供；不存在、越界、主动内容和未知类型都会统一失败，Markdown 源文仍保持普通相对路径。
 - **需要时再启用 SVG：** SVG 预览默认关闭，打开陌生文档时更安心，也更可预期。当文档确实需要 SVG 时，可在“设置 → 编辑器 → 安全性”开启，并确认提示。遇到不熟悉的 SVG，尤其是来自网络的图片，建议先核对来源；本地文件也可以先用文本编辑器看看内容。
@@ -95,55 +102,18 @@ Vditor Desktop 把你的写作当作需要保护的内容，而不是可以随�
 
 内置应用主题：
 
-- 浅色
-- 深色
-- Claude Light
-- Claude Dark
-- Monokai Pro Light，包含独立的 H1–H6 标题配色
-- Monokai Pro Dark，包含独立的 H1–H6 标题配色
+- **浅色**
+- **深色**
+- **Claude Light**
+- **Claude Dark**
+- **Monokai Pro Light**，包含独立的 H1–H6 标题配色
+- **Monokai Pro Dark**，包含独立的 H1–H6 标题配色
 
-可在设置中分别选择浅色与深色应用主题，状态栏主题模式菜单可选择固定浅色、固定深色或跟随系统；常驻图标会显示当前模式。应用主题只改变应用自身的颜色；内容主题和代码块预览主题仍由 Vditor 控制，并分别保留用户在浅色/深色环境中的最后选择。需要时可以启用多平台排版预览。
-
-界面目前支持 English（`en_US`）、简体中文（`zh_Hans`）、繁體中文（`zh_Hant`）以及跟随系统语言。
-
-## 安装与运行
-
-### 从源码运行
-
-源码开发需要 Node.js 22.x（22.22.2 及以上）、24.x（24.15.0 及以上）或 26+，以及 npm。当前依赖不支持 Node.js 23 和 25：
-
-```bash
-git clone https://github.com/Studio-200A/Vditor-Electron.git
-cd Vditor-Electron
-npm ci
-npm start
-```
-
-在 Linux 上，`npm run test:e2e` 会优先复用已解压的 `node_modules/electron/dist` 运行时，再决定是否下载。其他首次启动或打包 Electron 的命令可能会把固定版本 Electron 44.1.0 的运行时下载到 Electron 本地缓存；这一步独立于 `npm ci`，不会修改 lockfile。该运行时要求 macOS 13 或更高版本，Electron 44 也不再提供 Windows 32 位或 Linux ARMv7 预构建程序。本仓库的 Linux 发布脚本目前只生成 x86_64；Windows/macOS 打包和实体机验证仍是独立的平台工作。
-
-构建过程会将 Vditor 的资源复制到本地，运行时不依赖 Vditor CDN。
-
-### Linux 构建
-
-项目可以生成 Linux unpacked 目录、Portable 压缩包和 AppImage：
-
-```bash
-npm run pack                 # release/linux-unpacked
-npm run release:linux       # 全部 Linux 产物
-```
-
-发行命令会生成：
-
-```text
-release/vditor-desktop-x86_64-<版本号>-portable.tar.gz
-release/vditor-desktop-x86_64-<版本号>-portable.AppImage
-```
-
-Portable 压缩包中的 desktop 文件使用 `/path/to/vditor-desktop` 作为安装路径占位符。安装到桌面环境前，请将其替换为实际解压路径。AppImage 添加可执行权限后即可运行。
-
-发行脚本会在打包前校验项目 metadata 以及固定的 AppImage 工具/runtime SHA-256。由于 appimagetool 内置的 advisory 校验器会拒绝本项目稳定的、包含连字符的反向域名 ID，脚本传入 `--no-appstream`；项目自身的 metadata 检查仍会强制 AppStream 和 desktop 引用使用完整且一致的应用 ID。
-
-目前 Linux 是主要开发和验证平台；项目已经包含 Windows 和 macOS 的窗口及数据目录适配，但文件监听（watcher）、权限、路径大小写、打包和发布仍需在实体设备上验证。
+> [!NOTE]
+>
+> 可在设置中分别选择浅色与深色应用主题，状态栏主题模式菜单可选择固定浅色、固定深色或跟随系统；常驻图标会显示当前模式。应用主题只改变应用自身的颜色；内容主题和代码块预览主题仍由 Vditor 控制，并分别保留用户在浅色/深色环境中的最后选择。需要时可以启用多平台排版预览。
+>
+> 界面目前支持 English（`en_US`）、简体中文（`zh_Hans`）、繁體中文（`zh_Hant`）以及跟随系统语言。
 
 ## 常用快捷键
 
@@ -174,23 +144,75 @@ Portable 压缩包中的 desktop 文件使用 `/path/to/vditor-desktop` 作为�
 | Windows | `%APPDATA%\\vditor-desktop\\config.toml`                                                  | `%LOCALAPPDATA%\\vditor-desktop\\chromium\\`                                     | `%LOCALAPPDATA%\\vditor-desktop\\recovery\\`                                     |
 | macOS   | `~/Library/Application Support/com.github.studio-200a.vditor-electron/Config/config.toml` | `~/Library/Application Support/com.github.studio-200a.vditor-electron/Chromium/` | `~/Library/Application Support/com.github.studio-200a.vditor-electron/recovery/` |
 
-TOML 配置文件可直接阅读，按应用、外观、字体、编辑器、预览、文件、工作区、窗口和会话设置分类。外观部分分别保存 `lightTheme` 和 `darkTheme`；状态栏主题模式菜单提供固定浅色、固定深色和跟随系统三种模式，`systemTheme` 记录第三种选择，并根据这两项偏好解析当前主题。Claude 应用主题只定义应用颜色，不替代 Vditor 的内容主题或代码块主题设置。
+> [!NOTE]
+>
+> TOML 配置文件可直接阅读，按应用、外观、字体、编辑器、预览、文件、工作区、窗口和会话设置分类。外观部分分别保存 `lightTheme` 和 `darkTheme`；状态栏主题模式菜单提供固定浅色、固定深色和跟随系统三种模式，`systemTheme` 记录第三种选择，并根据这两项偏好解析当前主题。Claude 应用主题只定义应用颜色，不替代 Vditor 的内容主题或代码块主题设置。
+>
+> 异常恢复快照单独存放在上表所列的私有应用数据目录中；保存或放弃恢复后会删除，且不会被作为本地文档资源提供。
 
-异常恢复快照单独存放在上表所列的私有应用数据目录中；保存或放弃恢复后会删除，且不会被作为本地文档资源提供。
+## 安装与运行
 
-## 构建与测试
+<details>
+<summary>从源码运行</summary>
+
+源码开发需要 Node.js 22.x（22.22.2 及以上）、24.x（24.15.0 及以上）或 26+，以及 npm。当前依赖不支持 Node.js 23 和 25：
+
+```bash
+git clone https://github.com/Studio-200A/Vditor-Electron.git
+cd Vditor-Electron
+npm ci
+npm start
+```
+
+`npm ci` 和 electron-builder 的 Electron 二进制下载均使用 npmmirror 源（`https://registry.npmmirror.com/-/binary/electron/`）。在 Linux 上，`npm run test:e2e` 会优先复用已解压的 `node_modules/electron/dist` 运行时，再决定是否下载。固定版本 Electron 44.1.0 的运行时会缓存在本地，不会修改 lockfile。该运行时要求 macOS 13 或更高版本，Electron 44 也不再提供 Windows 32 位或 Linux ARMv7 预构建程序。本仓库的 Linux 发布脚本目前只生成 x86_64；Windows/macOS 打包和实体机验证仍是独立的平台工作。
+
+构建过程会将 Vditor 的资源复制到本地，运行时不依赖 Vditor CDN。
+
+</details>
+
+<details>
+<summary>Linux 构建</summary>
+
+项目可以生成 Linux unpacked 目录、Portable 压缩包和 AppImage：
+
+```bash
+npm run pack                 # release/linux-unpacked
+npm run release:linux       # 全部 Linux 产物
+```
+
+发行命令会生成：
+
+```text
+release/vditor-desktop-x86_64-<版本号>-portable.tar.gz
+release/vditor-desktop-x86_64-<版本号>-portable.AppImage
+```
+
+Portable 压缩包中的 desktop 文件使用 `/path/to/vditor-desktop` 作为安装路径占位符。安装到桌面环境前，请将其替换为实际解压路径。AppImage 添加可执行权限后即可运行。
+
+发行脚本会在打包前校验项目 metadata 以及固定的 AppImage 工具/runtime SHA-256。由于 appimagetool 内置的 advisory 校验器会拒绝本项目稳定的、包含连字符的反向域名 ID，脚本传入 `--no-appstream`；项目自身的 metadata 检查仍会强制 AppStream 和 desktop 引用使用完整且一致的应用 ID。
+
+目前 Linux 是主要开发和验证平台；项目已经包含 Windows 和 macOS 的窗口及数据目录适配，但文件监听（watcher）、权限、路径大小写、打包和发布仍需在实体设备上验证。
+
+</details>
+
+<details>
+<summary>构建与测试</summary>
 
 ```bash
 npm run format:check
 npm run check:project
 npm run lint
 npm run typecheck
+npm run typecheck:renderer
 npm run check:vditor
 npm test
-npm run check:all
+npm run build
+npm run test:e2e
 ```
 
-Vditor 依赖固定为 3.11.3。升级前请先阅读 [Vditor 升级说明](docs/20-VDITOR-UPGRADE.md)，并检查适配层边界和 Electron 回归测试。
+Vditor 依赖固定为 3.11.3。参考 [Vditor 升级说明](docs/07-VDITOR-UPGRADE.md)。
+
+</details>
 
 ## 开源项目
 
@@ -235,7 +257,9 @@ Vditor Desktop 的实现离不开以下开源项目。各项目作者保留其�
 
 ## 免责声明
 
-Vditor Desktop 用于本地 Markdown 编辑，软件仍在持续完善。请为重要文件保留备份，并在正式使用导出的内容前先检查一遍。作者及贡献者不对因使用本项目造成的任何文件丢失、损坏、数据错误或其他损失和责任承担责任。
+> [!WARNING]
+>
+> Vditor Desktop 用于本地 Markdown 编辑，软件仍在持续完善。请为重要文件保留备份，并在正式使用导出的内容前先检查一遍。作者及贡献者不对因使用本项目造成的任何文件丢失、损坏、数据错误或其他损失和责任承担责任。
 
 ## 许可证
 

@@ -302,6 +302,76 @@ test('prevents direct overwrite when a recovered document conflicts with disk', 
   }
 });
 
+test('restores an unavailable recovery snapshot as a save-as-only recovery tab', async () => {
+  const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-recovery-unavailable-e2e-'));
+  const configDir = path.join(testRoot, 'config');
+  const filePath = path.join(testRoot, 'gone.md');
+  fs.mkdirSync(configDir);
+  new SettingsStore(configDir).update({
+    locale: 'en_US',
+    systemTheme: false,
+    editMode: 'sv',
+    autoSave: false,
+    restoreTabs: false,
+    restoreWorkspace: false,
+  });
+  const recoveryDir = path.join(testRoot, 'recovery');
+  await new RecoveryStore(recoveryDir).save({
+    schemaVersion: RECOVERY_SCHEMA_VERSION,
+    id: '4d2c0f6a-9b3e-4c1d-8a2f-6e5d4c3b2a10',
+    filePath,
+    title: 'gone.md',
+    content: 'Recovered after crash',
+    savedContent: 'Original content',
+    encoding: 'utf-8',
+    lineEnding: 'LF',
+    mode: 'sv',
+    updatedAt: Date.now(),
+  });
+  let restored: ElectronApplication | null = null;
+  try {
+    restored = await electron.launch({
+      args: ['.'],
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        ELECTRON_DISABLE_SECURITY_WARNINGS: 'true',
+        VDITOR_DESKTOP_CONFIG_DIR: configDir,
+        VDITOR_DESKTOP_DATA_DIR: path.join(testRoot, 'chromium'),
+      },
+    });
+    const restoredPage = await restored.firstWindow();
+    await restoredPage.waitForSelector('#appMenuBar[data-ready="true"]');
+    await expect(restoredPage.locator('.editor-host.active .vditor-sv')).toContainText(
+      'Recovered after crash',
+    );
+    await expect(restoredPage.locator('.document-tab.active > span')).toHaveText(
+      'Recovered gone.md',
+    );
+    await expect(restoredPage.locator('#recoveryBanner')).toBeVisible();
+    await expect(restoredPage.locator('#recoveryMessage')).toHaveText(
+      'Recovered unsaved changes, but the original file no longer exists or cannot be read.',
+    );
+    await expect(restoredPage.locator('#recoveryDetail')).toHaveText(
+      'Save the recovered content to another location.',
+    );
+    await expect(restoredPage.locator('#recoverySave')).toBeHidden();
+    await expect(restoredPage.locator('#recoverySaveAs')).toBeVisible();
+    await expect(restoredPage.locator('#recoveryDiscard')).toBeVisible();
+    expect(fs.existsSync(filePath)).toBe(false);
+
+    await restoredPage.locator('#recoveryDiscard').click();
+    await expect(restoredPage.locator('.document-tab')).toHaveCount(0);
+    await expect(restoredPage.locator('#recoveryBanner')).toBeHidden();
+    await expect.poll(() => fs.readdirSync(recoveryDir)).toEqual([]);
+  } finally {
+    if (restored) {
+      restored.process().kill('SIGKILL');
+    }
+    fs.rmSync(testRoot, { recursive: true, force: true });
+  }
+});
+
 test('shows only the workspace name and refresh action in the explorer header', async () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-workspace-'));
   fs.mkdirSync(path.join(workspace, 'docs'));
@@ -372,6 +442,11 @@ test('shows only the workspace name and refresh action in the explorer header', 
     await topFile.locator('.tree-name').hover();
     await expect(running.page.locator('#appTooltip')).toBeVisible();
     await expect(running.page.locator('#appTooltip')).toHaveText(longFileName);
+    expect(
+      await running.page
+        .locator('#appTooltip')
+        .evaluate((node) => node.scrollWidth <= node.clientWidth),
+    ).toBe(true);
     await expect(topFile.locator('.tree-name')).toHaveText(longFileName);
     await expect(topFile.locator('.tree-name')).toHaveCSS('text-overflow', 'ellipsis');
     await expect(topFile.locator('.tree-name')).toHaveCSS('white-space', 'nowrap');
@@ -599,6 +674,39 @@ test('keeps open descendant paths, resources, recents, and watchers aligned afte
   }
 });
 
+test('rebinds an open document after its parent directory is renamed externally', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-external-directory-rename-'));
+  const oldDirectory = path.join(workspace, 'rename-folder');
+  const oldFilePath = path.join(oldDirectory, 'inside.md');
+  fs.mkdirSync(oldDirectory);
+  fs.writeFileSync(oldFilePath, 'Original content');
+  const running = await launchApp({
+    autoSave: false,
+    editMode: 'sv',
+    restoreTabs: true,
+    restoreWorkspace: true,
+    session: { workspacePath: workspace, activeFilePath: oldFilePath, openFiles: [oldFilePath] },
+  });
+  try {
+    const { page } = running;
+    const newDirectory = path.join(workspace, 'renamed-folder');
+    const newFilePath = path.join(newDirectory, 'inside.md');
+    fs.renameSync(oldDirectory, newDirectory);
+
+    await expect(page.locator('#statusPath')).toHaveText(newFilePath, { timeout: 5000 });
+    await page.locator('.editor-host.active .vditor-sv').fill('Saved after external rename');
+    await page.keyboard.press('Control+s');
+    await expect(page.locator('#externalFileStateBanner')).toBeHidden();
+    await expect
+      .poll(() => fs.readFileSync(newFilePath, 'utf8').trimEnd())
+      .toBe('Saved after external rename');
+    expect(fs.existsSync(oldFilePath)).toBe(false);
+  } finally {
+    await closeApp(running);
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 test('saves trusted tab content while the rebuilt editor is not ready', async () => {
   const running = await launchApp(
     { editMode: 'sv' },
@@ -616,7 +724,7 @@ test('saves trusted tab content while the rebuilt editor is not ready', async ()
     await page.locator('#appMenuBar [data-menu="main"]').click();
     await page.locator('.app-menu-popup button.has-submenu', { hasText: 'Editing Mode' }).hover();
     await page.locator('.app-menu-popup.submenu button', { hasText: 'WYSIWYG' }).click();
-    await expect(page.locator('.editor-host.active')).toHaveAttribute(
+    await expect(page.locator('.editor-host.active:not(.editor-rebuild-snapshot)')).toHaveAttribute(
       'data-editor-ready',
       'false',
       {
@@ -636,7 +744,9 @@ test('saves trusted tab content while the rebuilt editor is not ready', async ()
         timeout: 3000,
       },
     );
-    await expect(page.locator('.editor-host.active .vditor-wysiwyg')).toBeVisible();
+    await expect(
+      page.locator('.editor-host.active:not(.editor-rebuild-snapshot) .vditor-wysiwyg'),
+    ).toBeVisible();
   } finally {
     await closeApp(running);
   }
@@ -671,20 +781,20 @@ test('keeps the shared toolbar out of the editor while a rebuilt editor is not r
     await page.locator('.app-menu-popup button.has-submenu', { hasText: 'Editing Mode' }).hover();
     await page.locator('.app-menu-popup.submenu button', { hasText: 'WYSIWYG' }).click();
 
-    const activeHost = page.locator('.editor-host.active');
+    const activeHost = page.locator('.editor-host.active:not(.editor-rebuild-snapshot)');
     await expect(activeHost).toHaveAttribute('data-editor-ready', 'false', { timeout: 100 });
     const pendingToolbar = activeHost.locator(':scope > .vditor-toolbar');
     await expect(pendingToolbar).toHaveCount(1, { timeout: 500 });
     await expect(pendingToolbar).toBeHidden();
     await expect(pendingToolbar).toHaveCSS('pointer-events', 'none');
-    await expect(page.locator('#vditorToolbarMount > .vditor-toolbar')).toHaveCount(0);
+    await expect(page.locator('#vditorToolbarMount > .vditor-toolbar')).toBeVisible();
     await expect(page.locator('#vditorToolbarMount')).toBeVisible();
     await expect(page.locator('#vditorToolbarMount')).toHaveAttribute(
       'data-toolbar-pending',
-      'true',
+      'false',
     );
-    await expect(page.locator('#vditorToolbarMount')).toHaveAttribute('aria-busy', 'true');
-    await expect(page.locator('#toolbarSkeleton')).toBeVisible();
+    await expect(page.locator('#vditorToolbarMount')).toHaveAttribute('aria-busy', 'false');
+    await expect(page.locator('#toolbarSkeleton')).toBeHidden();
     await expect(page.locator('#toolbarSkeleton button, #toolbarSkeleton [tabindex]')).toHaveCount(
       0,
     );
@@ -765,7 +875,7 @@ test('reconciles a renamed document after repeated watcher rebind failures', asy
   }
 });
 
-test('keeps renamed document state coherent when settings persistence fails once', async () => {
+test('keeps renamed document state coherent when persistent-state persistence fails once', async () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-rename-settings-failure-'));
   const oldDirectory = path.join(workspace, 'notes');
   const filePath = path.join(oldDirectory, 'entry.md');
@@ -780,7 +890,7 @@ test('keeps renamed document state coherent when settings persistence fails once
   });
   try {
     const { app, page, testRoot } = running;
-    const configPath = path.join(testRoot, 'config', 'config.toml');
+    const statePath = path.join(testRoot, 'config', 'state.json');
     await app.evaluate((_, targetPath) => {
       const nodeFs = process.getBuiltinModule('node:fs');
       const nodePath = process.getBuiltinModule('node:path');
@@ -794,7 +904,7 @@ test('keeps renamed document state coherent when settings persistence fails once
         }
         return originalRename(oldPath, newPath);
       };
-    }, configPath);
+    }, statePath);
 
     const oldDirectoryRow = page.locator(`#fileTree .tree-dir[data-path="${oldDirectory}"]`);
     await oldDirectoryRow.click({ button: 'right' });
@@ -805,7 +915,9 @@ test('keeps renamed document state coherent when settings persistence fails once
     const newDirectory = path.join(workspace, 'renamed');
     const newFilePath = path.join(newDirectory, 'entry.md');
     await expect(page.locator('#statusPath')).toHaveText(newFilePath);
-    await expect(page.locator('#statusMessage')).toHaveText('Settings could not be saved.');
+    await expect(page.locator('#statusMessage')).toHaveText(
+      'The operation could not be completed.',
+    );
     await expect.poll(() => readSetting(testRoot, 'session', 'openFiles')).toEqual([newFilePath]);
     expect(fs.existsSync(filePath)).toBe(false);
     expect(fs.readFileSync(newFilePath, 'utf8')).toBe('Original content');
@@ -941,6 +1053,117 @@ test('refuses Save As when the chosen destination is already open in another tab
     );
   } finally {
     await closeApp(running);
+  }
+});
+
+test('opens the Save As dialog at the current file path from the main menu and shortcut', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-save-as-default-'));
+  const filePath = path.join(workspace, 'current.md');
+  fs.writeFileSync(filePath, '# Current content');
+  const running = await launchApp({
+    editMode: 'sv',
+    restoreTabs: true,
+    restoreWorkspace: true,
+    session: { workspacePath: workspace, activeFilePath: filePath, openFiles: [filePath] },
+  });
+  try {
+    const { app, page } = running;
+    await expect(page.locator('#statusPath')).toHaveText(filePath);
+    await app.evaluate(({ dialog }) => {
+      const calls: { defaultPath?: string }[] = [];
+      dialog.showSaveDialog = async (_window, options) => {
+        calls.push({ defaultPath: options.defaultPath });
+        (
+          globalThis as typeof globalThis & { __vditorSaveDialogCalls?: unknown[] }
+        ).__vditorSaveDialogCalls = calls;
+        return { canceled: true, filePath: '' };
+      };
+    });
+    const saveDialogCallCount = () =>
+      app.evaluate(
+        () =>
+          (globalThis as typeof globalThis & { __vditorSaveDialogCalls?: unknown[] })
+            .__vditorSaveDialogCalls?.length ?? 0,
+      );
+
+    await page.locator('#appMenuBar [data-menu="main"]').click();
+    await page
+      .locator('.app-menu-popup button')
+      .filter({ hasText: /^Save As/ })
+      .click();
+    await expect.poll(saveDialogCallCount).toBe(1);
+
+    const modifier =
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+    await page.keyboard.press(`${modifier}+Shift+S`);
+    await expect.poll(saveDialogCallCount).toBe(2);
+
+    const calls = await app.evaluate(
+      () =>
+        (globalThis as typeof globalThis & { __vditorSaveDialogCalls?: { defaultPath?: string }[] })
+          .__vditorSaveDialogCalls,
+    );
+    // Both entry points must default the dialog to the current file's original absolute path,
+    // never the nested `<workspace>/<absolute-path>` produced by joining the workspace twice.
+    expect(calls).toEqual([{ defaultPath: filePath }, { defaultPath: filePath }]);
+    for (const call of calls ?? []) {
+      expect(call.defaultPath).not.toContain(path.join(workspace, workspace));
+    }
+  } finally {
+    await closeApp(running);
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('prefills the Save As dialog for an untitled document under the workspace', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-save-as-untitled-'));
+  const filePath = path.join(workspace, 'current.md');
+  fs.writeFileSync(filePath, '# Current content');
+  const running = await launchApp({
+    editMode: 'sv',
+    restoreTabs: true,
+    restoreWorkspace: true,
+    session: { workspacePath: workspace, activeFilePath: filePath, openFiles: [filePath] },
+  });
+  try {
+    const { app, page } = running;
+    await page.locator('#addTab').click();
+    await page.waitForSelector('.editor-host.active .vditor-content');
+    await app.evaluate(({ dialog }) => {
+      const calls: { defaultPath?: string }[] = [];
+      dialog.showSaveDialog = async (_window, options) => {
+        calls.push({ defaultPath: options.defaultPath });
+        (
+          globalThis as typeof globalThis & { __vditorSaveDialogCalls?: unknown[] }
+        ).__vditorSaveDialogCalls = calls;
+        return { canceled: true, filePath: '' };
+      };
+    });
+    const modifier =
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+    await page.keyboard.press(`${modifier}+Shift+S`);
+    await expect
+      .poll(() =>
+        app.evaluate(
+          () =>
+            (globalThis as typeof globalThis & { __vditorSaveDialogCalls?: unknown[] })
+              .__vditorSaveDialogCalls?.length ?? 0,
+        ),
+      )
+      .toBe(1);
+    const calls = await app.evaluate(
+      () =>
+        (globalThis as typeof globalThis & { __vditorSaveDialogCalls?: { defaultPath?: string }[] })
+          .__vditorSaveDialogCalls,
+    );
+    const defaultPath = calls?.[0]?.defaultPath ?? '';
+    // An untitled document must prefill a Markdown name under the workspace, never the
+    // filesystem root or a location outside the workspace.
+    expect(path.dirname(defaultPath)).toBe(workspace);
+    expect(defaultPath.endsWith('.md')).toBe(true);
+  } finally {
+    await closeApp(running);
+    fs.rmSync(workspace, { recursive: true, force: true });
   }
 });
 
@@ -1397,18 +1620,21 @@ test('limits workspace tree reads to the selected directory depth and persists t
 
     await page.locator('#statusSettings').click();
     await page.locator('[name="locale"]').selectOption('zh_Hans');
+    await page.locator('#saveSettings').click();
+    await expect(page.locator('#settingsModal')).toBeHidden();
     await expect(
       page
         .locator('#fileTree .tree-depth-notice')
         .filter({ hasText: '已达到工作区目录最大读取深度。' }),
     ).toBeVisible();
+    await page.locator('#statusSettings').click();
     await page.locator('.settings-nav [data-panel="files"]').click();
     const depthInput = page.locator('[name="workspaceReadDepth"]');
     await depthInput.fill('12');
     await expect(page.locator('#workspaceReadDepthValue')).toHaveText('12');
-    await expect.poll(() => readSetting(running.testRoot, 'files', 'workspaceReadDepth')).toBe(12);
     await page.locator('#saveSettings').click();
     await expect(page.locator('#settingsModal')).toBeHidden();
+    await expect.poll(() => readSetting(running.testRoot, 'files', 'workspaceReadDepth')).toBe(12);
     for (const directory of directories.slice(6)) {
       await page.locator(`#fileTree .tree-dir[data-path="${directory}"]`).click();
     }
@@ -1933,8 +2159,17 @@ test('resolves external file conflicts without silently overwriting disk changes
       ['monokai-pro-light', 'rgb(255, 255, 255)'],
     ]) {
       await page.evaluate((nextTheme) => {
-        if (nextTheme) document.documentElement.dataset.theme = nextTheme;
-        else delete document.documentElement.dataset.theme;
+        if (nextTheme) {
+          document.documentElement.dataset.theme = nextTheme;
+          document.querySelectorAll<HTMLLinkElement>('link[id^="theme-"]').forEach((link) => {
+            link.disabled = link.id !== `theme-${nextTheme}`;
+          });
+        } else {
+          delete document.documentElement.dataset.theme;
+          document.querySelectorAll<HTMLLinkElement>('link[id^="theme-"]').forEach((link) => {
+            link.disabled = true;
+          });
+        }
       }, theme);
       await expect(overwriteButton).toHaveCSS('color', color);
       await expect(overwriteButton).toHaveCSS(
@@ -2030,8 +2265,20 @@ test('protects open documents when files are deleted and reappear outside the ap
     );
     await expect(reappearedFileRow).toBeVisible();
     await expect(editor).toContainText('Kept local content');
+    await page.locator('#externalFileRecreate').click();
+    await expect(confirm).toBeVisible();
+    await confirm.locator('#confirmActions [data-action="confirm"]').click();
+    await expect.poll(() => fs.readFileSync(modifiedPath, 'utf8')).toContain('Kept local content');
+    await expect(banner).toBeHidden();
+
+    fs.rmSync(modifiedPath);
+    await expect(banner).toBeVisible();
+    fs.writeFileSync(modifiedPath, 'Second reappeared disk content');
+    await expect(page.locator('#externalFileStateMessage')).toHaveText(
+      '“modified.md” is available again, but its disk version may conflict.',
+    );
     await page.locator('#externalFileReload').click();
-    await expect(editor).toContainText('Reappeared disk content');
+    await expect(editor).toContainText('Second reappeared disk content');
     await expect(banner).toBeHidden();
 
     await editor.fill('Content to recreate');
@@ -2123,6 +2370,43 @@ test('copies the last saved content when recreating a deleted file with auto-sav
         page.evaluate(() => window.appAPI.readClipboard().then(({ text }) => text.trim())),
       )
       .toBe('Last saved content');
+  } finally {
+    await closeApp(running);
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('confirms before Save As recreates an unavailable document at its original path', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-save-as-recreate-'));
+  const filePath = path.join(workspace, 'delete-me.md');
+  fs.writeFileSync(filePath, 'Saved before deletion');
+  const running = await launchApp({
+    autoSave: false,
+    editMode: 'sv',
+    restoreTabs: true,
+    restoreWorkspace: true,
+    session: { workspacePath: workspace, activeFilePath: filePath, openFiles: [filePath] },
+  });
+  try {
+    const { app, page } = running;
+    const editor = page.locator('.editor-host.active .vditor-sv');
+    const banner = page.locator('#externalFileStateBanner');
+    const confirm = page.locator('#confirmModal');
+    await editor.fill('Unsaved content recovered by Save As');
+    fs.rmSync(filePath);
+    await expect(banner).toBeVisible();
+    await app.evaluate(({ dialog }, selectedPath) => {
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: selectedPath });
+    }, filePath);
+
+    await page.locator('#externalFileSaveAs').click();
+    await expect(confirm).toBeVisible();
+    expect(fs.existsSync(filePath)).toBe(false);
+    await confirm.locator('#confirmActions [data-action="confirm"]').click();
+    await expect.poll(() => fs.existsSync(filePath)).toBe(true);
+    expect(fs.readFileSync(filePath, 'utf8')).toContain('Unsaved content recovered by Save As');
+    await expect(banner).toBeHidden();
+    await expect(page.locator('.document-tab.active .dirty')).toBeHidden();
   } finally {
     await closeApp(running);
     fs.rmSync(workspace, { recursive: true, force: true });

@@ -143,6 +143,47 @@ describe('FileWatchService', () => {
     expect(events).toEqual([{ event: 'addDir', path: newDirectory, scope: 'workspace' }]);
   });
 
+  it('reports an external directory rename for an open direct descendant', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-watch-directory-rename-'));
+    const oldDirectory = path.join(root, 'old');
+    const newDirectory = path.join(root, 'new');
+    const oldFile = path.join(oldDirectory, 'entry.md');
+    const newFile = path.join(newDirectory, 'entry.md');
+    fs.mkdirSync(oldDirectory);
+    fs.writeFileSync(oldFile, 'Original');
+    const events: FileChangeEvent[] = [];
+    const watchers: FakeWatcher[] = [];
+    const service = new FileWatchService(
+      async () => ({ content: '', encoding: 'utf-8' }),
+      (event) => events.push(event),
+      () => {
+        const watcher = new FakeWatcher();
+        watchers.push(watcher);
+        return watcher as unknown as FSWatcher;
+      },
+    );
+
+    try {
+      await service.setWorkspace(root);
+      await service.watchDocument(oldFile);
+      fs.renameSync(oldDirectory, newDirectory);
+      watchers[0].emit('addDir', newDirectory);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(events).toContainEqual({
+        event: 'rename',
+        path: newFile,
+        previousPath: oldFile,
+        identity: oldFile,
+        scope: 'workspace',
+      });
+      expect(watchers[1].closed).toBe(true);
+    } finally {
+      await service.dispose();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('degrades cleanly when creating a workspace watcher fails', async () => {
     const root = path.resolve('/workspace');
     const events: FileChangeEvent[] = [];

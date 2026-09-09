@@ -33,6 +33,8 @@ const LUCIDE_ICON_ASSETS = [
   ['file.svg', 'tree-file.svg'],
   ['folder.svg', 'tree-folder.svg'],
   ['folder-symlink.svg', 'tree-folder-symlink.svg'],
+  ['lightbulb.svg', 'resource-health-notice.svg'],
+  ['image-off.svg', 'resource-health-preview-unavailable.svg'],
 ];
 
 function ensureDir(dir) {
@@ -104,6 +106,26 @@ if (fs.existsSync(path.join(VditorSrc, 'images'))) {
 
 console.log('\nVditor assets copied successfully.');
 console.log('Copying renderer assets...');
-copyDir(RendererSrc, RendererDest);
+
+function copyRendererAssets(src, dest) {
+  if (!fs.existsSync(src)) return;
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyRendererAssets(srcPath, destPath);
+    } else if (entry.isFile()) {
+      if (entry.name.endsWith('.ts')) continue;
+      ensureDir(path.dirname(destPath));
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
+copyRendererAssets(RendererSrc, RendererDest);
+// `app.js` was the pre-0.2.5 legacy renderer entry. It can survive incremental
+// local builds after its source is removed, so remove only this known stale output.
+fs.rmSync(path.join(RendererDest, 'app.js'), { force: true });
 copyLucideIconAssets();
 console.log('Renderer assets copied successfully.');

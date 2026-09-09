@@ -16,6 +16,7 @@
     instantRendering: '.vditor-ir',
     wysiwyg: '.vditor-wysiwyg',
     preview: '.vditor-preview',
+    splitResizer: ':scope > .sv-split-resizer',
     reset: '.vditor-reset',
     sourceNewline: 'span[data-type="newline"]',
     sourceHeading: '[data-type="heading-marker"]',
@@ -41,6 +42,59 @@
       instantRendering: host?.querySelector(selectors.instantRendering) || null,
       wysiwyg: host?.querySelector(selectors.wysiwyg) || null,
       preview: host?.querySelector(selectors.preview) || null,
+    };
+  }
+
+  function mountedToolbar(mount) {
+    return mount?.querySelector(selectors.toolbar) || null;
+  }
+
+  function createRebuildSnapshot(host) {
+    if (!host?.classList.contains('active') || !host.parentElement) return () => {};
+    const snapshot = host.cloneNode(true);
+    snapshot.classList.remove('active');
+    snapshot.classList.add('editor-rebuild-snapshot');
+    snapshot.setAttribute('aria-hidden', 'true');
+    snapshot.removeAttribute('data-vditor-desktop-custom-caret');
+    snapshot.querySelectorAll('[id]').forEach((node) => node.removeAttribute('id'));
+    host.parentElement.append(snapshot);
+    // cloneNode() deliberately excludes scroll offsets. Apply every descendant's
+    // position in the same task before the snapshot can paint over the old editor.
+    const sourceElements = [host, ...host.querySelectorAll('*')];
+    const snapshotElements = [snapshot, ...snapshot.querySelectorAll('*')];
+    sourceElements.forEach((source, index) => {
+      const clone = snapshotElements[index];
+      if (!clone || (!source.scrollTop && !source.scrollLeft)) return;
+      clone.scrollTop = source.scrollTop;
+      clone.scrollLeft = source.scrollLeft;
+    });
+    return () => snapshot.remove();
+  }
+
+  function ensureSplitResizer(host) {
+    const { content, preview } = editorParts(host);
+    if (!content || !preview) return null;
+    let resizer = content.querySelector(selectors.splitResizer);
+    if (!resizer) {
+      // Vditor 3.11.3 replaces the source/preview children during SV updates.
+      // Keep Desktop's divider in that private content container so it follows
+      // the panes without exposing their structure to renderer controllers.
+      resizer = document.createElement('div');
+      resizer.className = 'sv-split-resizer hidden';
+      resizer.setAttribute('role', 'separator');
+      resizer.setAttribute('aria-orientation', 'vertical');
+      content.insertBefore(resizer, preview);
+    }
+    return resizer;
+  }
+
+  function splitViewVisibility(host, mode) {
+    const { source, preview } = editorParts(host);
+    if (!source || !preview) return null;
+    const isSplitMode = mode === 'sv';
+    return {
+      sourceVisible: isSplitMode && getComputedStyle(source).display !== 'none',
+      previewVisible: isSplitMode && getComputedStyle(preview).display !== 'none',
     };
   }
 
@@ -114,6 +168,10 @@
 
   function hoverTooltips(root = document) {
     return Array.from(root.querySelectorAll(selectors.hoverTooltip));
+  }
+
+  function clearToolbarHoverTooltips(root = document) {
+    hoverTooltips(root).forEach((tooltip) => tooltip.classList.remove('vditor-tooltipped--hover'));
   }
 
   function openSubmenus(root = document) {
@@ -192,6 +250,244 @@
     return ranges;
   }
 
+  function renderSplitDecorations(host, mode, showWhitespace, tabSize) {
+    const { content, source } = editorParts(host);
+    if (!content || !source) return false;
+    let gutter = content.querySelector(':scope > .sv-line-numbers');
+    if (!gutter) {
+      gutter = document.createElement('div');
+      gutter.className = 'sv-line-numbers';
+      content.insertBefore(gutter, content.firstChild);
+    }
+    const sourceVisible = splitViewVisibility(host, mode)?.sourceVisible || false;
+    gutter.classList.toggle('hidden', !sourceVisible);
+    let layer = content.querySelector(':scope > .sv-whitespace-layer');
+    if (!sourceVisible || !showWhitespace) {
+      layer?.remove();
+      if (!sourceVisible) return true;
+    }
+    const style = getComputedStyle(source);
+    const lineHeight =
+      Number.parseFloat(style.lineHeight) || Number.parseFloat(style.fontSize) * 1.5;
+    const sourceRect = source.getBoundingClientRect();
+    const ranges = sourceLineRanges(source);
+    if (!ranges.length) {
+      const range = document.createRange();
+      range.selectNodeContents(source);
+      ranges.push({ range, fallbackRange: range.cloneRange() });
+    }
+    const positions = [];
+    ranges.forEach(({ range, fallbackRange }, index) => {
+      const rect = Array.from(range.getClientRects())
+        .filter((item) => item.height > 0)
+        .reduce((topmost, item) => (!topmost || item.top < topmost.top ? item : topmost), null);
+      const fallbackRect = fallbackRange.getBoundingClientRect();
+      const measured = rect || (fallbackRect.height > 0 ? fallbackRect : null);
+      positions.push(
+        measured
+          ? measured.top - sourceRect.top + source.scrollTop + (measured.height - lineHeight) / 2
+          : index === 0
+            ? Number.parseFloat(style.paddingTop) || 0
+            : positions[index - 1] + lineHeight,
+      );
+    });
+    const canvas = document.createElement('div');
+    canvas.className = 'sv-line-number-canvas';
+    canvas.style.height = `${Math.max(source.scrollHeight, (positions.at(-1) || 0) + lineHeight)}px`;
+    const scrollLinked = window.CSS?.supports?.('animation-timeline: scroll()');
+    canvas.classList.toggle('scroll-linked', Boolean(scrollLinked));
+    canvas.style.setProperty(
+      '--sv-scroll-range',
+      `${Math.max(0, source.scrollHeight - source.clientHeight)}px`,
+    );
+    if (!scrollLinked) canvas.style.transform = `translateY(${-source.scrollTop}px)`;
+    positions.forEach((top, index) => {
+      const number = document.createElement('span');
+      number.className = 'sv-line-number';
+      number.style.top = `${top}px`;
+      number.textContent = String(index + 1);
+      canvas.appendChild(number);
+    });
+    gutter.replaceChildren(canvas);
+    if (!showWhitespace) return true;
+    if (!layer) {
+      layer = document.createElement('div');
+      layer.className = 'sv-whitespace-layer';
+      content.appendChild(layer);
+    }
+    layer.style.left = `${source.offsetLeft}px`;
+    layer.style.top = `${source.offsetTop}px`;
+    layer.style.width = `${source.clientWidth}px`;
+    layer.style.height = `${source.clientHeight}px`;
+    let whitespaceCanvas = layer.querySelector(':scope > .sv-whitespace-canvas');
+    if (!whitespaceCanvas) {
+      whitespaceCanvas = document.createElement('canvas');
+      whitespaceCanvas.className = 'sv-whitespace-canvas';
+      layer.appendChild(whitespaceCanvas);
+    }
+    const pixelRatio = window.devicePixelRatio || 1;
+    whitespaceCanvas.style.width = `${Math.max(1, source.clientWidth)}px`;
+    whitespaceCanvas.style.height = `${Math.max(1, source.clientHeight)}px`;
+    whitespaceCanvas.width = Math.ceil(Math.max(1, source.clientWidth) * pixelRatio);
+    whitespaceCanvas.height = Math.ceil(Math.max(1, source.clientHeight) * pixelRatio);
+    const context = whitespaceCanvas.getContext('2d');
+    if (!context) return true;
+    context.scale(pixelRatio, pixelRatio);
+    context.fillStyle = getComputedStyle(layer).color;
+    const walker = document.createTreeWalker(source, NodeFilter.SHOW_TEXT);
+    const positionsForWhitespace = [];
+    for (let textNode = walker.nextNode(); textNode; textNode = walker.nextNode()) {
+      for (let index = 0; index < textNode.data.length; index += 1) {
+        const character = textNode.data[index];
+        if (character !== ' ' && character !== '\t') continue;
+        const range = document.createRange();
+        range.setStart(textNode, index);
+        range.setEnd(textNode, index + 1);
+        const rect = Array.from(range.getClientRects()).find(
+          (item) =>
+            item.width > 0 &&
+            item.height > 0 &&
+            item.right > sourceRect.left &&
+            item.left < sourceRect.right &&
+            item.bottom > sourceRect.top &&
+            item.top < sourceRect.bottom,
+        );
+        if (!rect) continue;
+        const count = character === '\t' ? Number(tabSize) || 4 : 1;
+        for (let markerIndex = 0; markerIndex < count; markerIndex += 1) {
+          const x = rect.left - sourceRect.left + (rect.width * (markerIndex + 0.5)) / count;
+          const y = rect.top - sourceRect.top + rect.height / 2;
+          positionsForWhitespace.push({ x, y });
+          context.beginPath();
+          context.arc(x, y, Math.max(1, Math.min(1.35, rect.height / 12)), 0, Math.PI * 2);
+          context.fill();
+        }
+      }
+    }
+    whitespaceCanvas.dataset.markerCount = String(positionsForWhitespace.length);
+    whitespaceCanvas.dataset.scrollTop = String(source.scrollTop);
+    whitespaceCanvas.style.transform = 'translateY(0)';
+    whitespaceCanvas.whitespaceMarkerPositions = positionsForWhitespace;
+    return true;
+  }
+
+  function syncSplitDecorationScroll(host) {
+    const { content, source } = editorParts(host);
+    if (!content || !source) return false;
+    const lineCanvas = content.querySelector(':scope > .sv-line-numbers > .sv-line-number-canvas');
+    if (lineCanvas && !lineCanvas.classList.contains('scroll-linked'))
+      lineCanvas.style.transform = `translateY(${-source.scrollTop}px)`;
+    const whitespaceCanvas = content.querySelector(
+      ':scope > .sv-whitespace-layer > .sv-whitespace-canvas',
+    );
+    if (whitespaceCanvas) {
+      const renderedScrollTop = Number(whitespaceCanvas.dataset.scrollTop || 0);
+      whitespaceCanvas.style.transform = `translateY(${renderedScrollTop - source.scrollTop}px)`;
+    }
+    return true;
+  }
+
+  function captureSplitIndentSelection(host) {
+    const source = editorParts(host).source;
+    const selection = window.getSelection();
+    if (!source?.contains(selection?.anchorNode) || !selection.rangeCount) return null;
+    return selection.getRangeAt(0).cloneRange();
+  }
+
+  function applySplitListIndent(host, type, storedRange) {
+    if (!['indent', 'outdent'].includes(type)) return false;
+    const source = editorParts(host).source;
+    if (!source) return false;
+    if (storedRange?.startContainer?.isConnected) {
+      source.focus({ preventScroll: true });
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(storedRange);
+    }
+    const range = window.getSelection()?.rangeCount ? window.getSelection().getRangeAt(0) : null;
+    const { marker, padding } = listContext(range?.startContainer);
+    if (!marker) return false;
+    if (type === 'outdent') padding?.remove();
+    else {
+      const paddingElement = document.createElement('span');
+      paddingElement.dataset.type = 'padding';
+      paddingElement.textContent = marker.textContent.replace(/\S/g, ' ');
+      marker.before(paddingElement);
+    }
+    source.dispatchEvent(
+      new InputEvent('input', {
+        bubbles: true,
+        inputType: type === 'outdent' ? 'deleteContentBackward' : 'insertText',
+        data: type === 'outdent' ? null : ' ',
+      }),
+    );
+    return true;
+  }
+
+  function installSplitAutoIndent(host, shouldAutoIndent) {
+    const source = editorParts(host).source;
+    if (!source) return null;
+    // Vditor 3.11.3 owns SV's editable tree. Keep the Range-based Enter
+    // workaround beside that private tree and return its exact cleanup.
+    const onKeyDown = (event) => {
+      const modifierPressed = event.ctrlKey || event.metaKey;
+      const listCommand =
+        modifierPressed &&
+        event.shiftKey &&
+        !event.altKey &&
+        (event.key.toLowerCase() === 'i'
+          ? 'outdent'
+          : event.key.toLowerCase() === 'o'
+            ? 'indent'
+            : null);
+      if (listCommand && applySplitListIndent(host, listCommand, null)) {
+        // Vditor 3.11.3 disables these toolbar commands in SV before its own
+        // hotkey handler runs. Apply the same command to the current source
+        // selection while the private SV tree is still intact.
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
+      if (
+        !shouldAutoIndent() ||
+        event.key !== 'Enter' ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.metaKey ||
+        event.shiftKey
+      )
+        return;
+      const selection = window.getSelection();
+      if (!selection?.rangeCount) return;
+      const range = selection.getRangeAt(0);
+      if (!source.contains(range.startContainer)) return;
+      const beforeCursor = range.cloneRange();
+      beforeCursor.selectNodeContents(source);
+      beforeCursor.setEnd(range.startContainer, range.startOffset);
+      const currentLine = beforeCursor.toString().split('\n').at(-1) || '';
+      const indentation = currentLine.match(/^[ \t]+/)?.[0];
+      if (!indentation || /^\s*(?:[-+*]|\d+\.)\s/.test(currentLine)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      range.deleteContents();
+      const inserted = document.createTextNode(`\n${indentation}`);
+      range.insertNode(inserted);
+      range.setStartAfter(inserted);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      source.dispatchEvent(
+        new InputEvent('input', {
+          bubbles: true,
+          inputType: 'insertText',
+          data: `\n${indentation}`,
+        }),
+      );
+    };
+    source.addEventListener('keydown', onKeyDown, true);
+    return () => source.removeEventListener('keydown', onKeyDown, true);
+  }
+
   function listContext(node) {
     const element = node?.nodeType === Node.TEXT_NODE ? node.parentElement : node;
     const block = element?.closest?.(selectors.sourceBlock) || null;
@@ -200,6 +496,10 @@
       ? marker.previousElementSibling
       : null;
     return { block, marker, padding };
+  }
+
+  function hasListMarker(editor) {
+    return Boolean(editor?.querySelector(selectors.listMarker));
   }
 
   function headingTargets(host, headingIndex) {
@@ -312,6 +612,367 @@
     // In Vditor 3.11.x rendered modes scroll their private .vditor-reset child,
     // while SV scrolls its editor element directly.
     return mode === 'sv' ? editor : editor.querySelector(selectors.reset) || editor;
+  }
+
+  function installCustomCaret(host, getMode, getStyle) {
+    if (!host || typeof getMode !== 'function' || typeof getStyle !== 'function') return () => {};
+    const caret = document.createElement('div');
+    const caretLayer = host.parentElement || document.body;
+    caret.className = 'vditor-desktop-custom-caret';
+    caret.setAttribute('aria-hidden', 'true');
+    caret.dataset.vditorDesktopCaret = 'true';
+    caretLayer.append(caret);
+    host.dataset.vditorDesktopCustomCaret = 'true';
+    let frame = null;
+    let animation = null;
+    let isComposing = false;
+    let previousRect = null;
+    let disposed = false;
+    let hasUserInteraction = host.dataset.vditorDesktopCaretInteracted === 'true';
+    let pendingScrollOffsetX = 0;
+    let pendingScrollOffsetY = 0;
+    const scrollPositions = new WeakMap();
+
+    const reducedMotion = () =>
+      Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+    const hide = () => {
+      caret.style.display = 'none';
+      caret.classList.remove('is-blinking');
+    };
+    const restartBlink = () => {
+      if (reducedMotion()) return;
+      caret.classList.remove('is-blinking');
+      // Restart from a visible phase after every editing/navigation action, as native carets do.
+      void caret.offsetWidth;
+      caret.classList.add('is-blinking');
+    };
+    const isHiddenIrHeadingMarkerSelection = (range, mode, editor) => {
+      if (mode !== 'ir') return false;
+      const marker = elementForNode(range.startContainer)?.closest('.vditor-ir__marker--heading');
+      if (marker && editor.contains(marker)) {
+        const heading = marker.closest('h1, h2, h3, h4, h5, h6');
+        // Vditor 3.11.3 restores collapsed headings into their marker text. Chromium
+        // leaves its native caret unpainted until the heading syntax is expanded.
+        return !heading?.classList.contains('vditor-ir__node--expand');
+      }
+      if (range.startContainer.nodeType !== Node.ELEMENT_NODE) return false;
+      const previousNode = range.startContainer.childNodes[range.startOffset - 1];
+      // Vditor 3.11.3 also restores selection after a hidden heading marker.
+      return (
+        previousNode?.nodeType === Node.ELEMENT_NODE &&
+        previousNode.classList.contains('vditor-ir__marker--heading')
+      );
+    };
+    const caretRect = (range, editor) => {
+      const lineHeightFor = (target) => {
+        const style = getComputedStyle(target);
+        const lineHeight = Number.parseFloat(style.lineHeight);
+        const fontSize = Number.parseFloat(style.fontSize);
+        return Number.isFinite(lineHeight)
+          ? lineHeight
+          : Number.isFinite(fontSize)
+            ? fontSize * 1.2
+            : 16;
+      };
+      const rects =
+        typeof range.getClientRects === 'function' ? Array.from(range.getClientRects()) : [];
+      const rect = rects.at(-1) || range.getBoundingClientRect?.();
+      if (
+        rect &&
+        Number.isFinite(rect.left) &&
+        Number.isFinite(rect.top) &&
+        (rect.width > 0 || rect.height > 0)
+      ) {
+        const container = elementForNode(range.startContainer);
+        const styleTarget = closestWithin(range.startContainer, selectors.table, editor)
+          ? editor
+          : container && editor.contains(container)
+            ? container
+            : editor;
+        const expectedHeight = lineHeightFor(styleTarget);
+        // A collapsed Range at a Vditor block boundary can report its whole
+        // replaced block after delete or history restore. Keep its insertion
+        // coordinate, but use the current line height for the visual caret.
+        const height =
+          rect.height > expectedHeight * 1.5 || rect.height <= 0 ? expectedHeight : rect.height;
+        return {
+          left: rect.left,
+          top: rect.top,
+          right: rect.right,
+          bottom: rect.top + height,
+          width: rect.width,
+          height,
+        };
+      }
+      const nextNode =
+        range.startContainer.nodeType === Node.ELEMENT_NODE
+          ? range.startContainer.childNodes[range.startOffset] || null
+          : null;
+      const container = elementForNode(nextNode) || elementForNode(range.startContainer);
+      const fallback =
+        container && container !== editor && editor.contains(container)
+          ? container.getBoundingClientRect()
+          : null;
+      if (fallback?.height) {
+        const expectedHeight = lineHeightFor(
+          closestWithin(range.startContainer, selectors.table, editor) ? editor : container,
+        );
+        return {
+          left: fallback.left,
+          top: fallback.top,
+          right: fallback.left,
+          bottom: fallback.top + expectedHeight,
+          width: 0,
+          height: expectedHeight,
+        };
+      }
+      // Vditor 3.11.3 can place a collapsed selection between empty IR blocks,
+      // where Chromium reports a zero rect. A short-lived probe obtains the
+      // insertion line geometry without replacing Vditor content or dispatching input.
+      const probe = document.createElement('span');
+      probe.textContent = '\u200b';
+      probe.setAttribute('aria-hidden', 'true');
+      try {
+        const probeRange = range.cloneRange();
+        probeRange.insertNode(probe);
+        const probeRect = probe.getBoundingClientRect();
+        return probeRect.height ? probeRect : null;
+      } finally {
+        probe.remove();
+      }
+    };
+    const isInTableViewport = (range, rect, editor) => {
+      const table = closestWithin(range.startContainer, selectors.table, editor);
+      if (!table) return true;
+      const tableRect = table.getBoundingClientRect();
+      return (
+        rect.bottom > tableRect.top &&
+        rect.top < tableRect.bottom &&
+        rect.left >= tableRect.left &&
+        rect.right <= tableRect.right
+      );
+    };
+    const followingCharacterWidth = (range) => {
+      if (range.startContainer.nodeType !== Node.TEXT_NODE) return null;
+      const text = range.startContainer.textContent || '';
+      const character = Array.from(text.slice(range.startOffset))[0];
+      if (!character) return null;
+      const characterRange = range.cloneRange();
+      characterRange.setEnd(range.startContainer, range.startOffset + character.length);
+      const rects = Array.from(characterRange.getClientRects());
+      const rect = rects.at(-1) || characterRange.getBoundingClientRect();
+      return rect.width > 0 ? rect.width : null;
+    };
+    const isInEditorViewport = (rect, mode) => {
+      const viewportCandidates = [host, editorScrollContainer(host, mode)];
+      const right = Number.isFinite(rect.right) ? rect.right : rect.left + (rect.width || 0);
+      return viewportCandidates.every((viewport) => {
+        const viewportRect = viewport?.getBoundingClientRect?.();
+        return (
+          viewportRect &&
+          rect.bottom > viewportRect.top &&
+          rect.top < viewportRect.bottom &&
+          right > viewportRect.left &&
+          rect.left < viewportRect.right
+        );
+      });
+    };
+    const caretLayerOffset = () => {
+      if (caretLayer === document.body) return { left: 0, top: 0 };
+      const rect = caretLayer.getBoundingClientRect();
+      return { left: rect.left, top: rect.top };
+    };
+    const render = (animate, shouldRestartBlink = animate) => {
+      frame = null;
+      if (disposed || !hasUserInteraction || isComposing || document.visibilityState === 'hidden') {
+        hide();
+        return;
+      }
+      const style = getStyle();
+      if (!['underline', 'bar', 'block'].includes(style)) {
+        hide();
+        return;
+      }
+      const mode = getMode();
+      const editor = editableContent(host, mode);
+      const range = selectionRangeIn(editor);
+      const isWindowFocused = document.hasFocus();
+      if (
+        !editor ||
+        !range ||
+        !range.collapsed ||
+        (isWindowFocused && !host.matches(':focus-within'))
+      ) {
+        hide();
+        return;
+      }
+      if (isHiddenIrHeadingMarkerSelection(range, mode, editor)) {
+        hide();
+        return;
+      }
+      const rect = caretRect(range, editor);
+      if (!rect) {
+        hide();
+        return;
+      }
+      if (!isInEditorViewport(rect, mode) || !isInTableViewport(range, rect, editor)) {
+        hide();
+        return;
+      }
+      if (!isWindowFocused && style !== 'block') {
+        hide();
+        return;
+      }
+      const height = Math.max(1, rect.height);
+      const width =
+        style === 'underline'
+          ? 8
+          : style === 'block'
+            ? followingCharacterWidth(range) || Math.max(8, height * 0.55)
+            : 2;
+      caret.dataset.style = style;
+      caret.toggleAttribute('data-unfocused', !isWindowFocused);
+      const layerOffset = caretLayerOffset();
+      caret.style.width = `${width}px`;
+      caret.style.height = `${style === 'underline' ? 2 : height}px`;
+      caret.style.left = `${rect.left - layerOffset.left}px`;
+      caret.style.top = `${(style === 'underline' ? rect.bottom - 2 : rect.top) - layerOffset.top}px`;
+      pendingScrollOffsetX = 0;
+      pendingScrollOffsetY = 0;
+      caret.style.translate = '';
+      caret.style.display = 'block';
+      host.dataset.vditorDesktopCustomCaret = 'true';
+      if (animate && previousRect && !reducedMotion()) {
+        const dx = previousRect.left - rect.left;
+        const dy = previousRect.top - rect.top;
+        if (dx || dy) {
+          animation?.cancel();
+          animation = caret.animate(
+            [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0, 0)' }],
+            { duration: 120, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' },
+          );
+        }
+      }
+      if (shouldRestartBlink && isWindowFocused) restartBlink();
+      else if (!shouldRestartBlink) caret.classList.remove('is-blinking');
+      previousRect = { left: rect.left, top: rect.top };
+    };
+    const schedule = (animate = true, afterVditorFrame = true, shouldRestartBlink = animate) => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      // Vditor completes keyboard and input selection updates after its own frame work.
+      // Measure on the following frame so the visual proxy compares stable old/new geometry.
+      frame = window.requestAnimationFrame(() => {
+        if (afterVditorFrame) {
+          frame = window.requestAnimationFrame(() => render(animate, shouldRestartBlink));
+          return;
+        }
+        render(animate, shouldRestartBlink);
+      });
+    };
+    const onSelectionChange = () => {
+      if (hasUserInteraction) schedule(true);
+    };
+    const onScroll = (event) => {
+      // Range geometry is already viewport-relative after a native scroll. Keep no
+      // previous move transform alive, or it offsets the new fixed-position caret.
+      animation?.cancel();
+      animation = null;
+      const scroller = event.target instanceof HTMLElement ? event.target : null;
+      const previous = scroller ? scrollPositions.get(scroller) : null;
+      if (scroller) {
+        const current = { left: scroller.scrollLeft, top: scroller.scrollTop };
+        scrollPositions.set(scroller, current);
+        if (previous && caret.style.display === 'block') {
+          pendingScrollOffsetX += previous.left - current.left;
+          pendingScrollOffsetY += previous.top - current.top;
+          const layerOffset = caretLayerOffset();
+          const left =
+            layerOffset.left + (Number.parseFloat(caret.style.left) || 0) + pendingScrollOffsetX;
+          const top =
+            layerOffset.top + (Number.parseFloat(caret.style.top) || 0) + pendingScrollOffsetY;
+          const width = Number.parseFloat(caret.style.width) || 0;
+          const height = Number.parseFloat(caret.style.height) || 0;
+          if (
+            isInEditorViewport({ left, top, right: left + width, bottom: top + height }, getMode())
+          )
+            caret.style.translate = `${pendingScrollOffsetX}px ${pendingScrollOffsetY}px`;
+          else hide();
+        }
+      }
+      schedule(false, false, true);
+    };
+    const onUserInteraction = () => {
+      hasUserInteraction = true;
+      host.dataset.vditorDesktopCaretInteracted = 'true';
+      schedule(true);
+    };
+    const onInput = () => {
+      if (hasUserInteraction) schedule(true);
+    };
+    const onEditorMutation = () => {
+      // Vditor 3.11.3 replaces mode DOM after whole-line deletion and history
+      // restoration. Its intermediate selection geometry is not a caret line.
+      if (hasUserInteraction) schedule(true);
+    };
+    const onCompositionStart = () => {
+      hasUserInteraction = true;
+      host.dataset.vditorDesktopCaretInteracted = 'true';
+      isComposing = true;
+      hide();
+    };
+    const onCompositionEnd = () => {
+      isComposing = false;
+      schedule(false);
+    };
+    const onVisibilityChange = () => schedule(false);
+    const onWindowBlur = () => schedule(false);
+    const onWindowFocus = () => schedule(false);
+    const onEditorLayoutSettled = () => schedule(false, false, true);
+    const motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    document.addEventListener('selectionchange', onSelectionChange);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('blur', onWindowBlur);
+    window.addEventListener('focus', onWindowFocus);
+    window.addEventListener('vditor-desktop-editor-layout-settled', onEditorLayoutSettled);
+    host.addEventListener('focusin', onSelectionChange);
+    host.addEventListener('focusout', onSelectionChange);
+    host.addEventListener('pointerdown', onUserInteraction, true);
+    host.addEventListener('keydown', onUserInteraction, true);
+    host.addEventListener('input', onInput, true);
+    host.addEventListener('compositionstart', onCompositionStart, true);
+    host.addEventListener('compositionend', onCompositionEnd, true);
+    const editorObserver = new MutationObserver(onEditorMutation);
+    editorObserver.observe(host, { childList: true, characterData: true, subtree: true });
+    const scrollers = scrollContainers(host);
+    scrollers.forEach((scroller) => {
+      scrollPositions.set(scroller, { left: scroller.scrollLeft, top: scroller.scrollTop });
+      scroller.addEventListener('scroll', onScroll, true);
+    });
+    motionQuery?.addEventListener?.('change', onVisibilityChange);
+    if (hasUserInteraction) schedule(false, false, true);
+    return () => {
+      disposed = true;
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      animation?.cancel();
+      document.removeEventListener('selectionchange', onSelectionChange);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('blur', onWindowBlur);
+      window.removeEventListener('focus', onWindowFocus);
+      window.removeEventListener('vditor-desktop-editor-layout-settled', onEditorLayoutSettled);
+      host.removeEventListener('focusin', onSelectionChange);
+      host.removeEventListener('focusout', onSelectionChange);
+      host.removeEventListener('pointerdown', onUserInteraction, true);
+      host.removeEventListener('keydown', onUserInteraction, true);
+      host.removeEventListener('input', onInput, true);
+      host.removeEventListener('compositionstart', onCompositionStart, true);
+      host.removeEventListener('compositionend', onCompositionEnd, true);
+      editorObserver.disconnect();
+      scrollers.forEach((scroller) => scroller.removeEventListener('scroll', onScroll, true));
+      motionQuery?.removeEventListener?.('change', onVisibilityChange);
+      hide();
+      host.removeAttribute('data-vditor-desktop-custom-caret');
+      caret.remove();
+    };
   }
 
   function preserveTableScrollDuringInput(host, getMode) {
@@ -432,6 +1093,30 @@
       host.removeEventListener('paste', onPasteCapture, true);
       host.removeEventListener('input', onInput);
     };
+  }
+
+  function captureUndoHistory(instance) {
+    const undo = instance?.vditor?.undo;
+    // Vditor 3.11.3 debounces normal input history. Flush the current DOM through
+    // its own undo path before a controlled rebuild so a recent edit is not lost
+    // merely because the debounce has not fired yet.
+    if (undo?.addToUndoStack) undo.addToUndoStack(instance.vditor);
+    return undo?.resetIcon && undo?.undo && undo?.redo ? undo : null;
+  }
+
+  function scheduleUndoHistoryRestore(instance, history, onRestored) {
+    const runtime = instance?.vditor;
+    if (!runtime || !history?.resetIcon || !history?.undo || !history?.redo) return () => {};
+    // Vditor 3.11.3 queues its initial undo baseline for `undoDelay` after its
+    // `after` callback. Replacing the owner earlier appends that baseline to the
+    // old history, so the first Undo only removes Vditor's internal caret marker.
+    const delay = Number(runtime.options?.undoDelay) || 500;
+    const timer = window.setTimeout(() => {
+      runtime.undo = history;
+      history.resetIcon(runtime);
+      onRestored?.();
+    }, delay + 25);
+    return () => window.clearTimeout(timer);
   }
 
   function elementForNode(node) {
@@ -916,6 +1601,125 @@
     return true;
   }
 
+  function execEditorCommand(editor, command, value, inputType) {
+    let receivedInput = false;
+    const observeInput = () => {
+      receivedInput = true;
+    };
+    editor.addEventListener('input', observeInput, { capture: true });
+    const succeeded = document.execCommand?.(command, false, value);
+    editor.removeEventListener('input', observeInput, { capture: true });
+    if (!succeeded) return false;
+    // Vditor 3.11.3 records undo from its input listener. Chromium normally dispatches an
+    // input event for execCommand, but synthetic selection edits can omit it in Split View.
+    if (!receivedInput || (command === 'insertText' && value === ''))
+      editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType, data: value }));
+    return true;
+  }
+
+  function replaceTextMatch(
+    host,
+    mode,
+    query,
+    occurrence,
+    replacement,
+    caseSensitive = false,
+    undoInstance,
+  ) {
+    const matches = textMatches(host, mode, query, caseSensitive);
+    const match = matches[occurrence];
+    const editor = activeEditor(host, mode);
+    if (!match || !editor) return false;
+    // Restore policy-rewritten image URLs while Vditor serializes the changed WYSIWYG block.
+    // Otherwise Vditor 3.11.3 can discard an allowed SVG after a native replacement.
+    return withOriginalImageSources(host, () => {
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(match.range);
+      editor.focus({ preventScroll: true });
+      recordImageReferenceUndoBefore(undoInstance);
+      // Keep replacement on Vditor's native editable/input path so its mode
+      // serialization, selection and undo stack remain authoritative.
+      if (execEditorCommand(editor, 'insertText', replacement, 'insertText')) return true;
+      match.range.deleteContents();
+      match.range.insertNode(document.createTextNode(replacement));
+      editor.dispatchEvent(
+        new InputEvent('input', { bubbles: true, inputType: 'insertText', data: replacement }),
+      );
+      return true;
+    });
+  }
+
+  function localImageSource(value) {
+    const source = String(value || '')
+      .trim()
+      .replace(/^<|>$/g, '');
+    if (!source || /^[a-z][a-z0-9+.-]*:/i.test(source) || source.startsWith('//')) return null;
+    try {
+      return decodeURIComponent(source.split(/[?#]/, 1)[0]);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function replaceSelectedRange(host, editor, range, undoInstance) {
+    // Keep this on Vditor's editable/input path: directly removing an image node would bypass
+    // the 3.11.3 serializer and lose the undo transaction in rendered editing modes.
+    return withOriginalImageSources(host, () => {
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      editor.focus({ preventScroll: true });
+      recordImageReferenceUndoBefore(undoInstance);
+      if (execEditorCommand(editor, 'delete', undefined, 'deleteContent')) return true;
+      range.deleteContents();
+      editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContent' }));
+      return true;
+    });
+  }
+
+  function recordImageReferenceUndo(instance) {
+    if (typeof instance?.undo?.addToUndoStack !== 'function') return;
+    // Vditor 3.11.3 owns the per-mode patch stack. Record this semantic edit after its input
+    // normalization, because a programmatic selection replacement has no keyboard prelude.
+    instance.undo.addToUndoStack(instance);
+  }
+
+  function recordImageReferenceUndoBefore(instance) {
+    if (typeof instance?.undo?.recordFirstPosition !== 'function') return;
+    instance.undo.recordFirstPosition(instance, { key: 'ResourceHealth' });
+    instance.undo.addToUndoStack?.(instance);
+  }
+
+  function removeImageReference(host, mode, raw, source, instance) {
+    const editor = activeEditor(host, mode);
+    if (!editor || !raw || !source) return false;
+    if (mode === 'sv') {
+      const removed = replaceTextMatch(host, mode, raw, 0, '', true, instance);
+      if (removed) recordImageReferenceUndo(instance);
+      return removed;
+    }
+
+    const expectedSource = localImageSource(source);
+    if (!expectedSource) return false;
+    const images = Array.from(editor.querySelectorAll('img')).filter((candidate) => {
+      const original = candidate.dataset.vditorDesktopOriginalSrc || candidate.getAttribute('src');
+      return localImageSource(original) === expectedSource;
+    });
+    // The rendered DOM does not preserve every Markdown spelling. Refuse duplicate URLs so a
+    // confirmed saved-reference location can never delete a different rendered image.
+    if (images.length !== 1) return false;
+    const [image] = images;
+    if (!image) return false;
+    const range = document.createRange();
+    // In IR the image marker is the smallest serializable unit; WYSIWYG stores the img itself.
+    const unit = mode === 'ir' ? image.closest('[data-type="img"]') || image : image;
+    range.selectNode(unit);
+    const removed = replaceSelectedRange(host, editor, range, instance);
+    if (removed) recordImageReferenceUndo(instance);
+    return removed;
+  }
+
   function normalizedAnchor(value) {
     const fragment = String(value || '').replace(/^#/, '');
     try {
@@ -984,6 +1788,19 @@
     // The application renders the navigation hint itself. Suppress native titles
     // while hovered so author-provided titles do not create a second tooltip.
     element.removeAttribute('title');
+    element.style.cursor = cursor;
+    return true;
+  }
+
+  function setDocumentLinkCursor(link, cursor) {
+    const element = link?.element;
+    if (!element) return false;
+    if (!documentLinkPresentation.has(element)) {
+      documentLinkPresentation.set(element, {
+        title: element.getAttribute('title'),
+        cursor: element.style.cursor,
+      });
+    }
     element.style.cursor = cursor;
     return true;
   }
@@ -1197,19 +2014,23 @@
       image.setAttribute('src', image.dataset.vditorDesktopOriginalSrc);
       delete image.dataset.vditorDesktopOriginalSrc;
     });
+    const originalImages = Array.from(host?.querySelectorAll('img[src]') || []);
+    const originalSources = originalImages.map((image) => image.getAttribute('src') || '');
     try {
       return callback();
     } finally {
-      images.forEach((image) => {
-        const source = image.getAttribute('src') || '';
-        if (!isRelativeImageSource(source)) return;
-        try {
-          image.dataset.vditorDesktopOriginalSrc = source;
-          image.setAttribute('src', new URL(source, host.dataset.localResourceBase).href);
-        } catch (_) {}
+      // SpinVditorDOM can replace the edited block and its img descendants. Re-scan the
+      // current host rather than restoring only the pre-edit nodes. Vditor resolves a
+      // reconstructed relative URL against app://app/, which cannot be mapped back to the
+      // Markdown directory, so restore the original same-position source before reapplying
+      // local-resource resolution and SVG policy.
+      const currentImages = Array.from(host?.querySelectorAll('img[src]') || []);
+      currentImages.forEach((image, index) => {
+        const source = originalSources[index];
+        if (source && image !== originalImages[index]) image.setAttribute('src', source);
       });
-      const requestVersion = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      policyImages.forEach((image) => reloadImageSource(image, requestVersion));
+      resolveRelativeImageSources(host, host?.dataset.localResourceBase);
+      reloadImageSources(host);
     }
   }
 
@@ -1243,8 +2064,11 @@
   }
 
   window.VditorDesktopAdapter = Object.freeze({
-    selectors,
     editorParts,
+    mountedToolbar,
+    createRebuildSnapshot,
+    ensureSplitResizer,
+    splitViewVisibility,
     toolbarContext,
     toolbarButton,
     hideNativeOutlineControl,
@@ -1254,12 +2078,19 @@
     editModeShortcut,
     toolbarHints,
     hoverTooltips,
+    clearToolbarHoverTooltips,
     openSubmenus,
     codeThemeButtons,
     classifyCodeThemeButtons,
     sourceNewlines,
     sourceLineRanges,
+    renderSplitDecorations,
+    syncSplitDecorationScroll,
+    captureSplitIndentSelection,
+    applySplitListIndent,
+    installSplitAutoIndent,
     listContext,
+    hasListMarker,
     headingTargets,
     outlineContentElement,
     outlineSnapshot,
@@ -1270,6 +2101,9 @@
     scrollContainers,
     activeEditor,
     editorScrollContainer,
+    installCustomCaret,
+    captureUndoHistory,
+    scheduleUndoHistoryRestore,
     preserveTableScrollDuringInput,
     isEditableTarget,
     captureEditorSelection,
@@ -1288,9 +2122,12 @@
     scrollRangeIntoView,
     revealTextMatch,
     selectTextMatch,
+    replaceTextMatch,
+    removeImageReference,
     documentAnchor,
     documentLink,
     setDocumentLinkHint,
+    setDocumentLinkCursor,
     clearDocumentLinkHint,
     focusDocumentLink,
     expandInstantLinkForEditing,

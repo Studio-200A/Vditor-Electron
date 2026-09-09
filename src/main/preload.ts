@@ -58,12 +58,23 @@ contextBridge.exposeInMainWorld('fileAPI', {
     ipcRenderer.invoke(IPC_CHANNELS.fileWatchDocument, filePath, reconcile),
   unwatchDocument: (filePath: string, identity?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.fileUnwatchDocument, filePath, identity),
+  resolveRenamedDocument: (filePath: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.fileResolveRenamedDocument, filePath),
   setResourceRoots: (rootPaths: string[]) =>
     ipcRenderer.invoke(IPC_CHANNELS.fileSetResourceRoots, rootPaths),
   onChanged: (
     callback: (event: {
-      event: 'add' | 'change' | 'unlink' | 'addDir' | 'unlinkDir' | 'unreadable' | 'watch-error';
+      event:
+        | 'add'
+        | 'change'
+        | 'unlink'
+        | 'addDir'
+        | 'unlinkDir'
+        | 'rename'
+        | 'unreadable'
+        | 'watch-error';
       path: string;
+      previousPath?: string;
       identity?: string;
       scope: 'workspace' | 'document';
       content?: string;
@@ -77,6 +88,7 @@ contextBridge.exposeInMainWorld('fileAPI', {
 contextBridge.exposeInMainWorld('appAPI', {
   platform: process.platform,
   getSettings: () => ipcRenderer.invoke(IPC_CHANNELS.appGetSettings),
+  getPersistentState: () => ipcRenderer.invoke(IPC_CHANNELS.appGetPersistentState),
   getRecoveryCandidates: () => ipcRenderer.invoke(IPC_CHANNELS.appGetRecoveryCandidates),
   restoreRecovery: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.appRestoreRecovery, id),
   saveRecovery: (snapshot: Record<string, unknown>) =>
@@ -86,6 +98,9 @@ contextBridge.exposeInMainWorld('appAPI', {
   saveSettings: (settings: Record<string, unknown>) =>
     ipcRenderer.invoke(IPC_CHANNELS.appSaveSettings, settings),
   resetSettings: () => ipcRenderer.invoke(IPC_CHANNELS.appResetSettings),
+  savePersistentState: (state: Record<string, unknown>) =>
+    ipcRenderer.invoke(IPC_CHANNELS.appSavePersistentState, state),
+  clearPersistentState: () => ipcRenderer.invoke(IPC_CHANNELS.appClearPersistentState),
   getSettingsPath: () => ipcRenderer.invoke(IPC_CHANNELS.appGetSettingsPath),
   getSettingsDisplayPath: () => ipcRenderer.invoke(IPC_CHANNELS.appGetSettingsDisplayPath),
   getSystemLocale: () => ipcRenderer.invoke(IPC_CHANNELS.appGetSystemLocale),
@@ -100,6 +115,19 @@ contextBridge.exposeInMainWorld('appAPI', {
   showItemInFolder: (filePath: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.appShowItemInFolder, filePath),
   openDirectory: (dirPath: string) => ipcRenderer.invoke(IPC_CHANNELS.appOpenDirectory, dirPath),
+  isResourceHealthEligible: (documentPath: string, workspacePath: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.appResourceHealthEligible, documentPath, workspacePath),
+  setResourceHealthEligible: (eligible: boolean) =>
+    ipcRenderer.invoke(IPC_CHANNELS.appSetResourceHealthEligible, eligible),
+  scanResourceHealth: (documentPath: string, workspacePath: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.appResourceHealthScan, documentPath, workspacePath),
+  revealResourceHealthCandidate: (revision: string, candidateId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.appResourceHealthReveal, revision, candidateId),
+  previewResourceHealthCandidate: (revision: string, candidateId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.appResourceHealthPreview, revision, candidateId),
+  trashResourceHealthCandidates: (revision: string, candidateIds: string[]) =>
+    ipcRenderer.invoke(IPC_CHANNELS.appResourceHealthTrash, revision, candidateIds),
+  discardResourceHealthScans: () => ipcRenderer.send(IPC_CHANNELS.appResourceHealthDiscard),
   exportPDF: (html: string, defaultPath?: string, defaultDirectory?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.appExportPdf, html, defaultPath, defaultDirectory),
   toggleFullscreen: () => ipcRenderer.send(IPC_CHANNELS.appToggleFullscreen),

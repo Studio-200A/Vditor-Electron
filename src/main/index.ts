@@ -20,10 +20,11 @@ import { extractOpenFilePaths } from './open-files';
 import { allowedExternalUrl } from './external-url';
 import { invalidIpcArgument, normalizeIpcError, requireTrustedMainFrame } from './ipc-guard';
 import { IPC_CHANNELS } from './ipc-contract';
-import { LocalResourcePolicy } from './local-resource';
+import { formatLocalResourceBase, LocalResourcePolicy } from './local-resource';
 import {
   parseAbsolutePath,
   parseBinary,
+  parseBoolean,
   parseEnum,
   parseFileName,
   parseFiniteNumber,
@@ -31,6 +32,8 @@ import {
   parseOptionalBoolean,
   parseOptionalInteger,
   parseOptionalText,
+  parsePersistentStatePatch,
+  parseResourceHealthCandidateIds,
   parseResourceRootPaths,
   parseSettingsPatch,
   parseText,
@@ -38,10 +41,13 @@ import {
 } from './ipc-validation';
 import { classifyNavigation } from './navigation-policy';
 import { resolveRelativeMarkdownLink } from './resolve-markdown-link';
+import { resolveSaveDialogDefaultPath } from './save-dialog-path';
 import { FileManagerService } from './services/file-manager';
 import { FileWatchService } from './services/file-watch-service';
 import { RecoveryStore } from './services/recovery-store';
 import { SettingsStore } from './services/settings-store';
+import { PersistentStateStore } from './services/persistent-state-store';
+import { ResourceHealthService } from './services/resource-health-service';
 import { WindowCloseConfirmation } from './services/window-close-confirmation';
 import {
   AppSettings,
@@ -53,8 +59,11 @@ import {
 let mainWindow: BrowserWindow | null = null;
 let fileManager: FileManagerService;
 let settingsStore: SettingsStore;
+let persistentStateStore: PersistentStateStore;
 let recoveryStore: RecoveryStore;
 let fileWatchService: FileWatchService;
+const resourceHealthService = new ResourceHealthService();
+let resourceHealthMenuEligible = false;
 const windowCloseConfirmation = new WindowCloseConfirmation<BrowserWindow>();
 let boundsBeforeMaximize: Electron.Rectangle | null = null;
 let windowMaximizedState = false;
@@ -78,6 +87,12 @@ const localResourcePolicy = new LocalResourcePolicy({
 
 function isWindowMaximized(): boolean {
   return windowMaximizedState;
+}
+
+function saveWindowState(state: Parameters<PersistentStateStore['updateOrThrow']>[0]): void {
+  void persistentStateStore.updateOrThrow(state).catch((error: unknown) => {
+    console.error('Failed to persist window state:', error);
+  });
 }
 
 function registerRemoteSvgImagePolicy(): void {
@@ -105,7 +120,7 @@ function registerRemoteSvgImagePolicy(): void {
 
 function persistWindowMaximized(maximized: boolean): void {
   windowMaximizedState = maximized;
-  settingsStore.set('windowMaximized', maximized);
+  saveWindowState({ windowMaximized: maximized });
 }
 
 function persistNormalWindowBounds(): void {
@@ -114,11 +129,13 @@ function persistNormalWindowBounds(): void {
   const bounds = mainWindow.getBounds();
   if (isMaximizedLikeBounds(bounds)) return;
   boundsBeforeMaximize = { ...bounds };
-  settingsStore.set('windowBounds', {
-    x: bounds.x,
-    y: bounds.y,
-    width: bounds.width,
-    height: bounds.height,
+  saveWindowState({
+    windowBounds: {
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+    },
   });
 }
 
@@ -136,8 +153,10 @@ function isMaximizedLikeBounds(bounds: Electron.Rectangle): boolean {
   return aligned && bounds.width >= workArea.width * 0.9 && bounds.height >= workArea.height * 0.9;
 }
 
-function initialWindowBounds(settings: AppSettings): Electron.Rectangle {
-  const saved = settings.windowBounds;
+function initialWindowBounds(
+  state: import('./services/app-state').PersistentAppState,
+): Electron.Rectangle {
+  const saved = state.windowBounds;
   const display =
     saved.x !== undefined && saved.y !== undefined
       ? screen.getDisplayMatching({
@@ -166,7 +185,7 @@ function initialWindowBounds(settings: AppSettings): Electron.Rectangle {
     width,
     height,
   };
-  settingsStore.set('windowBounds', repaired);
+  saveWindowState({ windowBounds: repaired });
   return repaired;
 }
 
@@ -199,7 +218,7 @@ function toggleWindowMaximized(): void {
     mainWindow.unmaximize();
   } else {
     boundsBeforeMaximize = mainWindow.getBounds();
-    settingsStore.set('windowBounds', { ...boundsBeforeMaximize });
+    saveWindowState({ windowBounds: { ...boundsBeforeMaximize } });
     persistWindowMaximized(true);
     mainWindow.maximize();
   }
@@ -268,12 +287,15 @@ function updateApplicationMenu(settings = settingsStore.getAll()): void {
     Menu.setApplicationMenu(null);
     return;
   }
-  Menu.setApplicationMenu(createAppMenu(getEffectiveLocale(settings), settings.editMode));
+  Menu.setApplicationMenu(
+    createAppMenu(getEffectiveLocale(settings), settings.editMode, resourceHealthMenuEligible),
+  );
 }
 
 function createWindow(): void {
   const settings = settingsStore.getAll();
-  const normalBounds = initialWindowBounds(settings);
+  const persistentState = persistentStateStore.getAll();
+  const normalBounds = initialWindowBounds(persistentState);
   const options: Electron.BrowserWindowConstructorOptions = {
     width: normalBounds.width,
     height: normalBounds.height,
@@ -312,9 +334,9 @@ function createWindow(): void {
     event.preventDefault();
     if (settingsStore.get('devToolsEnabled')) createdWindow.webContents.toggleDevTools();
   });
-  windowMaximizedState = settings.windowMaximized;
+  windowMaximizedState = persistentState.windowMaximized;
   boundsBeforeMaximize = { ...normalBounds };
-  if (settings.windowMaximized) mainWindow.maximize();
+  if (persistentState.windowMaximized) mainWindow.maximize();
   mainWindow.once('ready-to-show', () => mainWindow?.show());
   mainWindow.on('enter-full-screen', () => send(IPC_CHANNELS.windowFullscreenChanged, true));
   mainWindow.on('leave-full-screen', () => send(IPC_CHANNELS.windowFullscreenChanged, false));
@@ -333,7 +355,7 @@ function createWindow(): void {
   mainWindow.on('close', (event) => {
     if (!mainWindow) return;
     if (!windowMaximizedState) persistNormalWindowBounds();
-    settingsStore.set('windowMaximized', windowMaximizedState);
+    saveWindowState({ windowMaximized: windowMaximizedState });
     if (!windowCloseConfirmation.isConfirmed(mainWindow)) {
       event.preventDefault();
       send(IPC_CHANNELS.appRequestClose);
@@ -442,9 +464,7 @@ function registerIpcHandlers(): void {
     const defaultDirectory = parseOptionalAbsolutePath(args[1]);
     return chooseSavePath(
       tr('Save Markdown File', '保存 Markdown 文件', '儲存 Markdown 檔案'),
-      defaultDirectory
-        ? path.join(defaultDirectory, defaultPath || 'untitled.md')
-        : defaultPath || 'untitled.md',
+      resolveSaveDialogDefaultPath(defaultPath, defaultDirectory),
       [
         { name: 'Markdown', extensions: ['md', 'markdown'] },
         { name: 'All Files', extensions: ['*'] },
@@ -578,6 +598,10 @@ function registerIpcHandlers(): void {
     requireArgumentCount(args, 1, 2);
     return fileWatchService.unwatchDocument(parseAbsolutePath(args[0]), parseOptionalText(args[1]));
   });
+  handleTrusted(IPC_CHANNELS.fileResolveRenamedDocument, (_event, ...args) => {
+    requireArgumentCount(args, 1);
+    return fileWatchService.resolveRenamedDocument(parseAbsolutePath(args[0]));
+  });
   handleTrusted(IPC_CHANNELS.fileSetResourceRoots, (_event, ...args) => {
     requireArgumentCount(args, 1);
     return localResourcePolicy.setRoots(parseResourceRootPaths(args[0]));
@@ -586,6 +610,10 @@ function registerIpcHandlers(): void {
   handleTrusted(IPC_CHANNELS.appGetSettings, (_event, ...args) => {
     requireArgumentCount(args, 0);
     return settingsStore.getAll();
+  });
+  handleTrusted(IPC_CHANNELS.appGetPersistentState, (_event, ...args) => {
+    requireArgumentCount(args, 0);
+    return persistentStateStore.getAll();
   });
   handleTrusted(IPC_CHANNELS.appGetRecoveryCandidates, (_event, ...args) => {
     requireArgumentCount(args, 0);
@@ -639,6 +667,14 @@ function registerIpcHandlers(): void {
     const settings = settingsStore.reset();
     updateApplicationMenu(settings);
     return settings;
+  });
+  handleTrusted(IPC_CHANNELS.appSavePersistentState, async (_event, ...args) => {
+    requireArgumentCount(args, 1);
+    return persistentStateStore.updateOrThrow(parsePersistentStatePatch(args[0]));
+  });
+  handleTrusted(IPC_CHANNELS.appClearPersistentState, async (_event, ...args) => {
+    requireArgumentCount(args, 0);
+    return persistentStateStore.clearOrThrow();
   });
   handleTrusted(IPC_CHANNELS.appGetSettingsPath, (_event, ...args) => {
     requireArgumentCount(args, 0);
@@ -705,6 +741,60 @@ function registerIpcHandlers(): void {
   handleTrusted(IPC_CHANNELS.appOpenDirectory, (_event, ...args) => {
     requireArgumentCount(args, 1);
     return shell.openPath(parseAbsolutePath(args[0]));
+  });
+  handleTrusted(IPC_CHANNELS.appResourceHealthEligible, async (_event, ...args) => {
+    requireArgumentCount(args, 2);
+    return resourceHealthService.isEligible({
+      documentPath: parseAbsolutePath(args[0]),
+      workspacePath: parseAbsolutePath(args[1]),
+    });
+  });
+  handleTrusted(IPC_CHANNELS.appSetResourceHealthEligible, (_event, ...args) => {
+    requireArgumentCount(args, 1);
+    const eligible = parseBoolean(args[0]);
+    if (resourceHealthMenuEligible !== eligible) {
+      resourceHealthMenuEligible = eligible;
+      updateApplicationMenu();
+    }
+  });
+  handleTrusted(IPC_CHANNELS.appResourceHealthScan, (_event, ...args) => {
+    requireArgumentCount(args, 2);
+    return resourceHealthService.scan({
+      documentPath: parseAbsolutePath(args[0]),
+      workspacePath: parseAbsolutePath(args[1]),
+      pasteImagesDir: settingsStore.get('pasteImagesDir'),
+      allowSvgImages: settingsStore.get('allowSvgImages'),
+    });
+  });
+  handleTrusted(IPC_CHANNELS.appResourceHealthReveal, (_event, ...args) => {
+    requireArgumentCount(args, 2);
+    const candidatePath = resourceHealthService.resolveCandidate(
+      parseText(args[0], 128),
+      parseText(args[1], 128),
+    );
+    if (!candidatePath) invalidIpcArgument();
+    shell.showItemInFolder(candidatePath);
+  });
+  handleTrusted(IPC_CHANNELS.appResourceHealthPreview, (_event, ...args) => {
+    requireArgumentCount(args, 2);
+    const candidatePath = resourceHealthService.resolvePreviewCandidate(
+      parseText(args[0], 128),
+      parseText(args[1], 128),
+    );
+    if (!candidatePath) return null;
+    return `${formatLocalResourceBase(path.dirname(candidatePath))}${encodeURIComponent(path.basename(candidatePath))}`;
+  });
+  handleTrusted(IPC_CHANNELS.appResourceHealthTrash, (_event, ...args) => {
+    requireArgumentCount(args, 2);
+    return resourceHealthService.trashCandidates(
+      parseText(args[0], 128),
+      parseResourceHealthCandidateIds(args[1]),
+      (candidatePath) => shell.trashItem(candidatePath),
+    );
+  });
+  onTrusted(IPC_CHANNELS.appResourceHealthDiscard, (_event, ...args) => {
+    requireArgumentCount(args, 0);
+    resourceHealthService.clear();
   });
   handleTrusted(IPC_CHANNELS.appExportPdf, async (_event, ...args) => {
     requireArgumentCount(args, 1, 3);
@@ -789,6 +879,15 @@ if (!ownsSingleInstanceLock) {
   void app.whenReady().then(() => {
     registerAppProtocol(localResourcePolicy, () => settingsStore.get('allowSvgImages'));
     settingsStore = new SettingsStore(applicationPaths.configDir);
+    persistentStateStore = new PersistentStateStore(
+      applicationPaths.configDir,
+      settingsStore.getLegacyPersistentState(),
+    );
+    if (
+      persistentStateStore.migratedFromToml &&
+      !settingsStore.removeLegacyPersistentStateFromDisk()
+    )
+      console.error('Failed to remove migrated application state from config.toml.');
     registerRemoteSvgImagePolicy();
     recoveryStore = new RecoveryStore(applicationPaths.recoveryDir);
     fileManager = new FileManagerService();
@@ -815,6 +914,7 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 app.on('before-quit', () => {
+  resourceHealthService.clear();
   localResourcePolicy.clear();
   void fileWatchService?.dispose();
 });

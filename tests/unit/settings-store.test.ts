@@ -98,9 +98,22 @@ describe('SettingsStore', () => {
     expect(contents).toContain('[appearance]');
     expect(contents).toContain('editorZoom = 125');
     expect(contents).toContain('[editor.toolbarConfig]');
-    expect(contents).toContain('[window.bounds]');
-    expect(contents).toContain('[window.settingsDialog]');
+    expect(contents).toContain('caretStyle = "bar"');
+    expect(contents).not.toContain('[window');
+    expect(contents).not.toContain('[session]');
     expect(fs.existsSync(path.join(configDir, 'settings.json'))).toBe(false);
+  });
+
+  it('uses the default caret style when older TOML files omit it', () => {
+    fs.writeFileSync(
+      path.join(configDir, 'config.toml'),
+      TOML.stringify({ editor: { editMode: 'sv' } }),
+    );
+
+    const store = new SettingsStore(configDir);
+    expect(store.get('caretStyle')).toBe('bar');
+    store.set('caretStyle', 'native');
+    expect(new SettingsStore(configDir).get('caretStyle')).toBe('native');
   });
 
   it('reports strict persistence failures without changing in-memory settings', () => {
@@ -137,6 +150,16 @@ describe('SettingsStore', () => {
     expect(fs.readFileSync(store.getPath(), 'utf8')).toContain('workspaceReadDepth = 12');
   });
 
+  it('persists the resource-health scan scope reminder preference', () => {
+    const store = new SettingsStore(configDir);
+    store.set('resourceHealthTrashScopeWarningEnabled', false);
+
+    expect(new SettingsStore(configDir).get('resourceHealthTrashScopeWarningEnabled')).toBe(false);
+    expect(fs.readFileSync(store.getPath(), 'utf8')).toContain(
+      'resourceHealthTrashScopeWarningEnabled = false',
+    );
+  });
+
   it('updates multiple values in a single settings snapshot', () => {
     const store = new SettingsStore(configDir);
     const settings = store.update({
@@ -147,9 +170,6 @@ describe('SettingsStore', () => {
       darkCodeTheme: 'monokai-sublime',
       editorZoom: 125,
       scrollbarMode: 'hidden',
-      workspaceTreeStates: [
-        { workspacePath: '/notes', expandedPaths: ['/notes/docs', '/notes/assets'] },
-      ],
     });
 
     expect(settings.theme).toBe('monokai-pro-dark');
@@ -159,9 +179,6 @@ describe('SettingsStore', () => {
     expect(settings.darkCodeTheme).toBe('monokai-sublime');
     expect(settings.editorZoom).toBe(125);
     expect(settings.scrollbarMode).toBe('hidden');
-    expect(settings.workspaceTreeStates).toEqual([
-      { workspacePath: '/notes', expandedPaths: ['/notes/docs', '/notes/assets'] },
-    ]);
     expect(new SettingsStore(configDir).getAll()).toEqual(settings);
   });
 
@@ -181,21 +198,12 @@ describe('SettingsStore', () => {
     expect(new SettingsStore(configDir).getAll()).toMatchObject(settings);
   });
 
-  it('persists the settings dialog size in the window section', () => {
+  it('does not write window state to config.toml', () => {
     const store = new SettingsStore(configDir);
     store.set('settingsDialogSize', { width: 920, height: 640, customized: true });
 
-    expect(new SettingsStore(configDir).get('settingsDialogSize')).toEqual({
-      width: 920,
-      height: 640,
-      customized: true,
-    });
     const document = TOML.parse(fs.readFileSync(store.getPath(), 'utf8'));
-    expect(document.window.settingsDialog).toEqual({
-      width: 920,
-      height: 640,
-      customized: true,
-    });
+    expect(document.window).toBeUndefined();
   });
 
   it('returns clones instead of mutable internal state', () => {
@@ -209,8 +217,10 @@ describe('SettingsStore', () => {
   it('resets both memory and the settings file', () => {
     const store = new SettingsStore(configDir);
     store.set('locale', 'zh_Hans');
+    store.set('caretStyle', 'block');
 
     expect(store.reset()).toEqual(DEFAULT_SETTINGS);
     expect(new SettingsStore(configDir).get('locale')).toBe(DEFAULT_SETTINGS.locale);
+    expect(new SettingsStore(configDir).get('caretStyle')).toBe('bar');
   });
 });

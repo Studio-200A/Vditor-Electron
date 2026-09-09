@@ -1,0 +1,119 @@
+:root[data-theme='monokai-pro-dark'] {
+  --bg: #2d2a2e;
+  --panel: #2d2a2e;
+  --sidebar-surface: #2d2a2e;
+  --editor-surface: #272428;
+  --settings-control-surface: #2d2a2e;
+  --panel-2: #272428;
+  --hover: #403e41;
+  --text: #fcfcfa;
+  --muted: rgb(252 252 250 / 0.6);
+  --border: #403e41;
+  --accent: #ffd866;
+  --on-accent: #2d2a2e;
+  --brand-accent: #ffd866;
+  --danger: #ff6188;
+  --monokai-code-bg: #403e41;
+  --monokai-input-bg: #221f22;
+  --monokai-h1: #ff6188;
+  --monokai-h2: #ffd866;
+  --monokai-h3: #a9dc76;
+  --monokai-h4: #78dce8;
+  --monokai-h5: #ab9df2;
+  --monokai-h6: #fc9867;
+  --top-surface-shadow: 0 5px 13px -7px rgb(0 0 0 / 0.9), 0 2px 6px -4px rgb(0 0 0 / 0.58);
+  color-scheme: dark;
+}
+
+/* Monokai Pro Dark: button overrides */
+:root[data-theme='monokai-pro-dark'] button.primary {
+  color: #2d2a2e;
+}
+:root[data-theme='monokai-pro-dark'] button.primary.danger {
+  color: white;
+}
+
+/* Monokai Pro Dark: find widget active match text color */
+:root[data-theme='monokai-pro-dark']::highlight(vditor-desktop-find-active) {
+  color: #2d2a2e;
+}
+
+/* Monokai Pro Dark: editor content readability overrides.
+   Historical exception: Monokai themes author their own content colors
+   instead of relying on Vditor's built-in content theme. */
+:root[data-theme='monokai-pro-dark'] .editor-host,
+:root[data-theme='monokai-pro-dark'] .editor-host .vditor-content,
+:root[data-theme='monokai-pro-dark'] .editor-host .vditor-sv,
+:root[data-theme='monokai-pro-dark'] .editor-host .vditor-ir,
+:root[data-theme='monokai-pro-dark'] .editor-host .vditor-wysiwyg,
+:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview,
+:root[data-theme='monokai-pro-dark'] .editor-host .vditor-reset {
+  color: #fcfcfa;
+}
+:root[data-theme='monokai-pro-dark'] input:not([type='checkbox']):not([type='radio']),
+:root[data-theme='monokai-pro-dark'] select,
+:root[data-theme='monokai-pro-dark'] textarea {
+  background-color: var(--monokai-input-bg) !important;
+}
+:root[data-theme='monokai-pro-dark']
+  .editor-host
+  :is(.vditor-ir, .vditor-wysiwyg)
+  [data-type='code-block']
+  pre,
+:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview pre,
+:root[data-theme='monokai-pro-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) code,
+:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview code {
+  background-color: var(--monokai-code-bg);
+}
+:root[data-theme='monokai-pro-dark']
+  .editor-host
+  :is(.vditor-ir, .vditor-wysiwyg)
+  :is(a, .vditor-ir__link),
+:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview a {
+  color: #78dce8;
+}
+:root[data-theme='monokai-pro-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) blockquote,
+:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview blockquote {
+  color: rgb(252 252 250 / 0.6);
+  border-color: #727072;
+}
+:root[data-theme='monokai-pro-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) mark,
+:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview mark {
+  background-color: rgb(255 216 102 / 0.6);
+}
+:root[data-theme='monokai-pro-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) hr,
+:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview hr {
+  border-color: #5b595c;
+}
+:root[data-theme='monokai-pro-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h1, .h1),
+:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview h1 {
+  color: var(--monokai-h1) !important;
+}
+:root[data-theme='monokai-pro-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h2, .h2),
+:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview h2 {
+  color: var(--monokai-h2) !important;
+}
+:root[data-theme='monokai-pro-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h3, .h3),
+:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview h3 {
+  color: var(--monokai-h3) !important;
+}
+:root[data-theme='monokai-pro-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h4, .h4),
+:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview h4 {
+  color: var(--monokai-h4) !important;
+}
+:root[data-theme='monokai-pro-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h5, .h5),
+:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview h5 {
+  color: var(--monokai-h5) !important;
+}
+:root[data-theme='monokai-pro-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h6, .h6),
+:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview h6 {
+  color: var(--monokai-h6) !important;
+}
+:root[data-theme='monokai-pro-dark']
+  .editor-host
+  :is(.vditor-ir, .vditor-wysiwyg)
+  :is(h1, .h1, h2, .h2, h3, .h3, h4, .h4, h5, .h5, h6, .h6)
+  *,
+:root[data-theme='monokai-pro-dark'] .editor-host .vditor-preview :is(h1, h2, h3, h4, h5, h6) * {
+  color: inherit !important;
+}

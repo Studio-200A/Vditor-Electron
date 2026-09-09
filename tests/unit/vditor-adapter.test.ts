@@ -1,7 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { JSDOM } from 'jsdom';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ADAPTER_PUBLIC_KEYS } from '../../src/renderer/types/adapter-contract.js';
 
 describe('Vditor DOM compatibility adapter', () => {
   let window: JSDOM['window'];
@@ -10,6 +11,8 @@ describe('Vditor DOM compatibility adapter', () => {
   beforeEach(() => {
     const dom = new JSDOM('', { runScripts: 'outside-only' });
     window = dom.window;
+    window.requestAnimationFrame = (callback) => window.setTimeout(callback, 0);
+    window.cancelAnimationFrame = (frame) => window.clearTimeout(frame);
     window.eval(fs.readFileSync(path.resolve('src/renderer/vditor-adapter.js'), 'utf8'));
     adapter = (window as any).VditorDesktopAdapter;
   });
@@ -38,13 +41,61 @@ describe('Vditor DOM compatibility adapter', () => {
     return host;
   }
 
+  function createFrameQueue() {
+    const frames = new Map<number, FrameRequestCallback>();
+    let nextFrame = 0;
+    window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+      nextFrame += 1;
+      frames.set(nextFrame, callback);
+      return nextFrame;
+    }) as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = ((frame: number) => {
+      frames.delete(frame);
+    }) as typeof window.cancelAnimationFrame;
+    return () => {
+      while (frames.size) {
+        const queued = [...frames.values()];
+        frames.clear();
+        queued.forEach((callback) => callback(0));
+      }
+    };
+  }
+
+  it('exports exactly the declared adapter facade', () => {
+    expect(Object.keys(adapter).sort()).toEqual([...ADAPTER_PUBLIC_KEYS].sort());
+  });
+
   it('centralizes and validates the supported Vditor structure', () => {
     const host = createHost();
-    expect(Object.isFrozen(adapter.selectors)).toBe(true);
     expect(adapter.validateHost(host)).toEqual({ valid: true, missing: [] });
+    expect(adapter.mountedToolbar(host)).toBe(adapter.editorParts(host).toolbar);
     expect(adapter.sourceNewlines(adapter.editorParts(host).source)).toHaveLength(1);
     expect(adapter.headingTargets(host, 0).every(({ heading }: any) => heading)).toBe(true);
     expect(adapter.scrollContainers(host).length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('keeps an inert visual snapshot over an active host until the rebuilt editor is ready', () => {
+    const host = createHost();
+    host.classList.add('active');
+    window.document.body.append(host);
+    const parts = adapter.editorParts(host);
+    parts.source.scrollTop = 120;
+    parts.instantRendering.querySelector<HTMLElement>('.vditor-reset')!.scrollLeft = 36;
+
+    const release = adapter.createRebuildSnapshot(host);
+    const snapshot = window.document.querySelector('.editor-rebuild-snapshot');
+    expect(snapshot).not.toBeNull();
+    expect(snapshot).not.toBe(host);
+    expect(snapshot?.classList.contains('active')).toBe(false);
+    expect(snapshot?.getAttribute('aria-hidden')).toBe('true');
+    const snapshotParts = adapter.editorParts(snapshot);
+    expect(snapshotParts.source.scrollTop).toBe(120);
+    expect(
+      snapshotParts.instantRendering.querySelector<HTMLElement>('.vditor-reset')!.scrollLeft,
+    ).toBe(36);
+
+    release();
+    expect(window.document.querySelector('.editor-rebuild-snapshot')).toBeNull();
   });
 
   it('applies one bottom spacer to every Vditor editing surface', () => {
@@ -56,6 +107,378 @@ describe('Vditor DOM compatibility adapter', () => {
       expect(editor.style.getPropertyValue('--editor-bottom')).toBe('242px'),
     );
     expect(adapter.setEditorBottomSpacer(host, Number.NaN)).toBe(false);
+  });
+
+  it('owns a custom-caret proxy and removes it with its listeners', () => {
+    const host = createHost();
+    window.document.body.append(host);
+    const editor = adapter.editorParts(host).instantRendering.querySelector('.vditor-reset')!;
+    editor.setAttribute('tabindex', '0');
+    const range = window.document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(true);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    Object.defineProperty(range, 'getClientRects', {
+      value: () => [{ left: 20, top: 30, bottom: 50, height: 20 }],
+    });
+    const cleanup = adapter.installCustomCaret(
+      host,
+      () => 'ir',
+      () => 'block',
+    );
+
+    expect(window.document.querySelectorAll('[data-vditor-desktop-caret="true"]')).toHaveLength(1);
+    expect(host.dataset.vditorDesktopCustomCaret).toBe('true');
+    cleanup();
+
+    expect(window.document.querySelector('[data-vditor-desktop-caret="true"]')).toBeNull();
+    expect(host.dataset.vditorDesktopCustomCaret).toBeUndefined();
+  });
+
+  it('hides the custom caret at a restored IR heading marker boundary', () => {
+    const host = createHost();
+    window.document.body.append(host);
+    const editor = adapter
+      .editorParts(host)
+      .instantRendering.querySelector<HTMLElement>('.vditor-reset')!;
+    const heading = editor.querySelector('h1')!;
+    heading.firstElementChild!.classList.add('vditor-ir__marker--heading');
+    const viewport = { bottom: 400, height: 400, left: 0, right: 600, top: 0, width: 600 };
+    Object.defineProperty(window.document, 'hasFocus', { configurable: true, value: () => true });
+    Object.defineProperty(host, 'getBoundingClientRect', { value: () => viewport });
+    Object.defineProperty(editor, 'getBoundingClientRect', { value: () => viewport });
+    editor.setAttribute('tabindex', '0');
+    editor.focus();
+    const range = window.document.createRange();
+    range.setStart(heading, 1);
+    range.collapse(true);
+    Object.defineProperty(range, 'getClientRects', {
+      value: () => [{ bottom: 50, height: 20, left: 20, right: 22, top: 30, width: 2 }],
+    });
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    const runFrames = createFrameQueue();
+
+    const cleanup = adapter.installCustomCaret(
+      host,
+      () => 'ir',
+      () => 'bar',
+    );
+    host.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+
+    runFrames();
+    expect(
+      window.document.querySelector<HTMLElement>('[data-vditor-desktop-caret="true"]')?.style
+        .display,
+    ).toBe('none');
+
+    cleanup();
+  });
+
+  it('hides the custom caret inside a collapsed IR heading marker', () => {
+    const host = createHost();
+    window.document.body.append(host);
+    const editor = adapter
+      .editorParts(host)
+      .instantRendering.querySelector<HTMLElement>('.vditor-reset')!;
+    const marker = editor.querySelector<HTMLElement>('h1 [data-type="heading-marker"]')!;
+    marker.classList.add('vditor-ir__marker--heading');
+    const viewport = { bottom: 400, height: 400, left: 0, right: 600, top: 0, width: 600 };
+    Object.defineProperty(window.document, 'hasFocus', { configurable: true, value: () => true });
+    Object.defineProperty(host, 'getBoundingClientRect', { value: () => viewport });
+    Object.defineProperty(editor, 'getBoundingClientRect', { value: () => viewport });
+    editor.setAttribute('tabindex', '0');
+    editor.focus();
+    const range = window.document.createRange();
+    range.setStart(marker.firstChild!, 0);
+    range.collapse(true);
+    Object.defineProperty(range, 'getClientRects', {
+      value: () => [{ bottom: 50, height: 36, left: 20, right: 22, top: 14, width: 2 }],
+    });
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    const runFrames = createFrameQueue();
+
+    const cleanup = adapter.installCustomCaret(
+      host,
+      () => 'ir',
+      () => 'bar',
+    );
+    host.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+
+    runFrames();
+    expect(
+      window.document.querySelector<HTMLElement>('[data-vditor-desktop-caret="true"]')?.style
+        .display,
+    ).toBe('none');
+
+    marker.parentElement!.classList.add('vditor-ir__node--expand');
+    window.document.dispatchEvent(new window.Event('selectionchange'));
+    runFrames();
+    expect(
+      window.document.querySelector<HTMLElement>('[data-vditor-desktop-caret="true"]')?.style
+        .display,
+    ).toBe('block');
+    cleanup();
+  });
+
+  it('cancels a pending caret move and redraws from current viewport geometry on scroll', () => {
+    const frames = new Map<number, FrameRequestCallback>();
+    let nextFrame = 0;
+    window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+      nextFrame += 1;
+      frames.set(nextFrame, callback);
+      return nextFrame;
+    }) as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = ((frame: number) => {
+      frames.delete(frame);
+    }) as typeof window.cancelAnimationFrame;
+    const cancelAnimation = vi.fn();
+    Object.defineProperty(window.HTMLElement.prototype, 'animate', {
+      configurable: true,
+      value: vi.fn(() => ({ cancel: cancelAnimation })),
+    });
+
+    const host = createHost();
+    window.document.body.append(host);
+    const editor = adapter.editorParts(host).instantRendering.querySelector('.vditor-reset')!;
+    const editorViewport = {
+      bottom: 400,
+      height: 400,
+      left: 0,
+      right: 600,
+      top: 0,
+      width: 600,
+    };
+    Object.defineProperty(host, 'getBoundingClientRect', { value: () => editorViewport });
+    Object.defineProperty(editor, 'getBoundingClientRect', { value: () => editorViewport });
+    editor.setAttribute('tabindex', '0');
+    Object.defineProperty(window.document, 'hasFocus', { configurable: true, value: () => true });
+    editor.focus();
+    const range = window.document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(true);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    let top = 30;
+    Object.defineProperty(range, 'getClientRects', {
+      value: () => [{ left: 20, top, bottom: top + 20, height: 20 }],
+    });
+    const cleanup = adapter.installCustomCaret(
+      host,
+      () => 'ir',
+      () => 'bar',
+    );
+    const runFrames = () => {
+      while (frames.size) {
+        const queued = [...frames.values()];
+        frames.clear();
+        queued.forEach((callback) => callback(0));
+      }
+    };
+
+    host.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+    runFrames();
+    top = 60;
+    window.document.dispatchEvent(new window.Event('selectionchange'));
+    runFrames();
+    expect(cancelAnimation).not.toHaveBeenCalled();
+
+    top = 200;
+    editor.scrollTop = 20;
+    editor.dispatchEvent(new window.Event('scroll'));
+    expect(cancelAnimation).toHaveBeenCalledTimes(1);
+    expect(
+      window.document.querySelector<HTMLElement>('[data-vditor-desktop-caret="true"]')?.style
+        .translate,
+    ).toBe('0px -20px');
+    const [scrollFrame] = frames.values();
+    frames.clear();
+    scrollFrame!(0);
+    expect(frames).toHaveLength(0);
+    const caret = window.document.querySelector<HTMLElement>('[data-vditor-desktop-caret="true"]');
+    expect(caret?.style.top).toBe('200px');
+    expect(caret?.classList.contains('is-blinking')).toBe(true);
+
+    top = 450;
+    editor.scrollTop = 500;
+    editor.dispatchEvent(new window.Event('scroll'));
+    expect(caret?.style.display).toBe('none');
+    const [outOfViewScrollFrame] = frames.values();
+    frames.clear();
+    outOfViewScrollFrame!(0);
+    expect(caret?.style.display).toBe('none');
+    cleanup();
+  });
+
+  it('redraws a normalized caret after SV deletion and IR history restoration replace DOM', async () => {
+    const frames = new Map<number, FrameRequestCallback>();
+    let nextFrame = 0;
+    window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+      nextFrame += 1;
+      frames.set(nextFrame, callback);
+      return nextFrame;
+    }) as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = ((frame: number) => {
+      frames.delete(frame);
+    }) as typeof window.cancelAnimationFrame;
+    Object.defineProperty(window.HTMLElement.prototype, 'animate', {
+      configurable: true,
+      value: () => ({ cancel: () => {} }),
+    });
+    const viewport = { bottom: 400, height: 400, left: 0, right: 600, top: 0, width: 600 };
+    Object.defineProperty(window.document, 'hasFocus', { configurable: true, value: () => true });
+    const selectAt = (node: Text, top: number, height: number) => {
+      const range = window.document.createRange();
+      range.setStart(node, 0);
+      range.collapse(true);
+      const rect = {};
+      Object.defineProperties(rect, {
+        bottom: { value: top + height },
+        height: { value: height },
+        left: { value: 20 },
+        right: { value: 22 },
+        top: { value: top },
+        width: { value: 2 },
+      });
+      Object.defineProperty(range, 'getClientRects', {
+        value: () => [rect],
+      });
+      window.getSelection()!.removeAllRanges();
+      window.getSelection()!.addRange(range);
+    };
+    const runFrames = () => {
+      while (frames.size) {
+        const queued = [...frames.values()];
+        frames.clear();
+        queued.forEach((callback) => callback(0));
+      }
+    };
+
+    for (const mode of ['sv', 'ir'] as const) {
+      const host = createHost();
+      window.document.body.append(host);
+      const parts = adapter.editorParts(host);
+      const editor =
+        mode === 'sv'
+          ? parts.source
+          : parts.instantRendering.querySelector<HTMLElement>('.vditor-reset')!;
+      Object.defineProperty(host, 'getBoundingClientRect', { value: () => viewport });
+      Object.defineProperty(editor, 'getBoundingClientRect', { value: () => viewport });
+      editor.replaceChildren(window.document.createTextNode('Original line'));
+      editor.setAttribute('tabindex', '0');
+      editor.focus();
+      selectAt(editor.firstChild as Text, 30, 160);
+      const cleanup = adapter.installCustomCaret(
+        host,
+        () => mode,
+        () => 'bar',
+      );
+      host.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+      runFrames();
+      const caret = window.document.querySelector<HTMLElement>(
+        '[data-vditor-desktop-caret="true"]',
+      )!;
+      expect(Number.parseFloat(caret.style.height)).toBeLessThan(160);
+
+      const restoredText = window.document.createTextNode('Restored line');
+      editor.replaceChildren(restoredText);
+      selectAt(restoredText, 110, 20);
+      await Promise.resolve();
+      runFrames();
+
+      expect(caret.style.top).toBe('110px');
+      expect(caret.style.height).toBe('20px');
+      cleanup();
+      host.remove();
+    }
+  });
+
+  it('owns the SV divider structure and reports pane visibility semantically', () => {
+    const host = createHost();
+    const { content, preview } = adapter.editorParts(host);
+    preview.style.display = 'block';
+
+    const resizer = adapter.ensureSplitResizer(host);
+    expect(resizer).not.toBeNull();
+    expect(content.querySelector(':scope > .sv-split-resizer')).toBe(resizer);
+    expect(adapter.ensureSplitResizer(host)).toBe(resizer);
+    expect(adapter.splitViewVisibility(host, 'sv')).toEqual({
+      sourceVisible: true,
+      previewVisible: true,
+    });
+    expect(adapter.splitViewVisibility(host, 'ir')).toEqual({
+      sourceVisible: false,
+      previewVisible: false,
+    });
+  });
+
+  it('renders SV decorations and cleans up its private auto-indent listener', () => {
+    const host = createHost();
+    const { content, source } = adapter.editorParts(host);
+    source.style.display = 'block';
+    adapter.editorParts(host).preview.style.display = 'block';
+    source.textContent = '  text';
+    Object.defineProperties(window.Range.prototype, {
+      getClientRects: { configurable: true, value: () => [] },
+      getBoundingClientRect: {
+        configurable: true,
+        value: () => ({ top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0 }),
+      },
+    });
+    const removeAutoIndent = adapter.installSplitAutoIndent(host, () => true);
+
+    expect(adapter.renderSplitDecorations(host, 'sv', true, 4)).toBe(true);
+    expect(content.querySelector(':scope > .sv-line-numbers')).not.toBeNull();
+    expect(content.querySelector(':scope > .sv-whitespace-layer')).not.toBeNull();
+    const range = window.document.createRange();
+    range.selectNodeContents(source);
+    range.collapse(false);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    removeAutoIndent();
+    const event = new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
+    source.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it('handles Vditor split-view list shortcuts before its disabled toolbar path', () => {
+    const host = createHost();
+    window.document.body.append(host);
+    const source = adapter.editorParts(host).source;
+    source.innerHTML =
+      '<span data-block="0"><span data-type="li-marker">- </span><span>item</span></span>';
+    const marker = source.querySelector('[data-type="li-marker"]')!;
+    const range = window.document.createRange();
+    range.setStart(marker.firstChild!, 1);
+    range.collapse(true);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    const cleanup = adapter.installSplitAutoIndent(host, () => false);
+
+    const indent = new window.KeyboardEvent('keydown', {
+      key: 'o',
+      ctrlKey: true,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    source.dispatchEvent(indent);
+    expect(indent.defaultPrevented).toBe(true);
+    expect(source.querySelector('[data-type="padding"]')).not.toBeNull();
+
+    const outdent = new window.KeyboardEvent('keydown', {
+      key: 'i',
+      ctrlKey: true,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    source.dispatchEvent(outdent);
+    expect(outdent.defaultPrevented).toBe(true);
+    expect(source.querySelector('[data-type="padding"]')).toBeNull();
+    cleanup();
   });
 
   it('reissues every rendered image source when an image policy changes', () => {
@@ -82,6 +505,21 @@ describe('Vditor DOM compatibility adapter', () => {
       ['monokai', 'dark'],
       ['ant-design', 'light'],
     ]);
+  });
+
+  it('clears toolbar hover tooltips without changing other toolbar nodes', () => {
+    const toolbar = adapter.editorParts(createHost()).toolbar;
+    const hoverTooltip = toolbar.querySelector<HTMLElement>('button[data-type="code-theme"]')!;
+    const unaffectedButton = toolbar.querySelector<HTMLElement>(
+      'button[data-type="content-theme"]',
+    )!;
+    hoverTooltip.classList.add('vditor-tooltipped--hover');
+    unaffectedButton.classList.add('app-submenu-open');
+
+    adapter.clearToolbarHoverTooltips(toolbar);
+
+    expect(hoverTooltip.classList.contains('vditor-tooltipped--hover')).toBe(false);
+    expect(unaffectedButton.classList.contains('app-submenu-open')).toBe(true);
   });
 
   it('maps Vditor mode shortcuts using its platform modifier contract', () => {
@@ -336,6 +774,42 @@ describe('Vditor DOM compatibility adapter', () => {
     expect(externalLink.style.cursor).toBe('');
   });
 
+  it('restores a blocked document-link cursor without suppressing its title', () => {
+    const host = createHost();
+    const externalLink = adapter.editorParts(host).wysiwyg.querySelector('a');
+    externalLink.title = 'Original title';
+    const link = adapter.documentLink(externalLink, host);
+
+    expect(adapter.setDocumentLinkCursor(link, 'text')).toBe(true);
+    expect(externalLink.title).toBe('Original title');
+    expect(externalLink.style.cursor).toBe('text');
+    expect(adapter.clearDocumentLinkHint(link)).toBe(true);
+    expect(externalLink.title).toBe('Original title');
+    expect(externalLink.style.cursor).toBe('');
+  });
+
+  it('uses original policy image URLs while replacing WYSIWYG text', () => {
+    const host = createHost();
+    host.dataset.localResourceBase = 'local-file://workspace/docs/';
+    const editor = adapter.editorParts(host).wysiwyg;
+    editor.innerHTML =
+      '<p>replace this <img src="local-file://workspace/assets/fixture.svg?__vditor_svg_policy=1" data-vditor-desktop-image-policy-source="local-file://workspace/assets/fixture.svg"></p>';
+    const image = editor.querySelector('img');
+    let replacementImage: HTMLImageElement | null = null;
+    let sourceDuringInput = '';
+    editor.addEventListener('input', () => {
+      sourceDuringInput = image.getAttribute('src') || '';
+      replacementImage = window.document.createElement('img');
+      replacementImage.setAttribute('src', 'app://app/assets/fixture.svg');
+      image.replaceWith(replacementImage);
+    });
+
+    expect(adapter.replaceTextMatch(host, 'wysiwyg', 'replace', 0, 'updated')).toBe(true);
+    expect(sourceDuringInput).toBe('local-file://workspace/assets/fixture.svg');
+    expect(replacementImage?.dataset.vditorDesktopOriginalSrc).toBe('../assets/fixture.svg');
+    expect(replacementImage?.getAttribute('src')).toContain('__vditor_svg_policy=');
+  });
+
   it('places the selection in editable document links but not preview TOC entries', () => {
     const host = createHost();
     window.document.body.append(host);
@@ -436,6 +910,83 @@ describe('Vditor DOM compatibility adapter', () => {
     expect(adapter.selectTextMatch(host, 'sv', 'alpha', 1)).toBe(true);
     expect(window.getSelection()?.toString()).toBe('alpha');
     expect(adapter.selectTextMatch(host, 'sv', 'missing', 0)).toBe(false);
+  });
+
+  it('replaces a selected match through the active editor input path', () => {
+    const host = createHost();
+    window.document.body.append(host);
+    const source = adapter.editorParts(host).source;
+    source.innerHTML = '<span>alpha beta alpha</span>';
+    const onInput = vi.fn();
+    source.addEventListener('input', onInput);
+
+    expect(adapter.replaceTextMatch(host, 'sv', 'alpha', 1, 'gamma')).toBe(true);
+    expect(source.textContent).toBe('alpha beta gamma');
+    expect(onInput).toHaveBeenCalledTimes(1);
+  });
+
+  it('removes one exact missing image reference through Vditor input paths', () => {
+    const host = createHost();
+    window.document.body.append(host);
+    const source = adapter.editorParts(host).source;
+    source.innerHTML = '<span>before ![gone](assets/missing.png) after</span>';
+    const sourceInput = vi.fn();
+    const addToUndoStack = vi.fn();
+    const recordFirstPosition = vi.fn();
+    source.addEventListener('input', sourceInput);
+
+    expect(
+      adapter.removeImageReference(
+        host,
+        'sv',
+        '![gone](assets/missing.png)',
+        'assets/missing.png',
+        {
+          undo: { addToUndoStack, recordFirstPosition },
+        },
+      ),
+    ).toBe(true);
+    expect(source.textContent).toBe('before  after');
+    expect(sourceInput).toHaveBeenCalledOnce();
+    expect(recordFirstPosition).toHaveBeenCalledWith(
+      expect.objectContaining({ undo: expect.any(Object) }),
+      { key: 'ResourceHealth' },
+    );
+    expect(addToUndoStack).toHaveBeenCalledTimes(2);
+
+    const wysiwyg = adapter.editorParts(host).wysiwyg;
+    wysiwyg.innerHTML =
+      '<p>before <img src="local-file://workspace/assets/missing.png" data-vditor-desktop-original-src="assets/missing.png"> after</p>';
+    const wysiwygInput = vi.fn();
+    wysiwyg.addEventListener('input', wysiwygInput);
+    expect(
+      adapter.removeImageReference(
+        host,
+        'wysiwyg',
+        '<img src="assets/missing.png">',
+        'assets/missing.png',
+      ),
+    ).toBe(true);
+    expect(wysiwyg.querySelector('img')).toBeNull();
+    expect(wysiwygInput).toHaveBeenCalledOnce();
+  });
+
+  it('refuses an ambiguous rendered image URL instead of removing a different reference', () => {
+    const host = createHost();
+    window.document.body.append(host);
+    const wysiwyg = adapter.editorParts(host).wysiwyg;
+    wysiwyg.innerHTML =
+      '<p><img data-vditor-desktop-original-src="assets/shared.png"><img data-vditor-desktop-original-src="assets/shared.png"></p>';
+
+    expect(
+      adapter.removeImageReference(
+        host,
+        'wysiwyg',
+        '![first](assets/shared.png)',
+        'assets/shared.png',
+      ),
+    ).toBe(false);
+    expect(wysiwyg.querySelectorAll('img')).toHaveLength(2);
   });
 
   it('selects the current rendered block before the whole editor', () => {

@@ -7,7 +7,11 @@ function emit(win: Electron.BaseWindow | undefined, action: string, value?: stri
 
 type EditMode = 'wysiwyg' | 'ir' | 'sv';
 
-export function createAppMenu(locale: string = 'en_US', editMode: EditMode = 'ir'): Menu {
+export function createAppMenu(
+  locale: string = 'en_US',
+  editMode: EditMode = 'ir',
+  resourceHealthEligible = false,
+): Menu {
   const tr = (english: string, simplifiedChinese: string, traditionalChinese: string): string => {
     if (locale === 'zh_Hans') return simplifiedChinese;
     if (locale === 'zh_Hant') return traditionalChinese;
@@ -103,6 +107,16 @@ export function createAppMenu(locale: string = 'en_US', editMode: EditMode = 'ir
         },
         { type: 'separator' },
         { role: 'togglefullscreen', accelerator: 'F11' },
+      ],
+    },
+    {
+      label: tr('Tools', '工具', '工具'),
+      submenu: [
+        {
+          label: tr('Resource Health', '资源健康', '資源健康'),
+          enabled: resourceHealthEligible,
+          click: (_i, w) => emit(w, 'resource-health'),
+        },
       ],
     },
   ];

@@ -10,6 +10,31 @@
     <title>Vditor Desktop</title>
     <link rel="stylesheet" href="app://app/vditor/dist/index.css" />
     <link rel="stylesheet" href="app://app/styles/app.css" />
+    <link id="theme-dark" rel="stylesheet" href="app://app/styles/themes/dark.css" disabled />
+    <link
+      id="theme-monokai-pro-dark"
+      rel="stylesheet"
+      href="app://app/styles/themes/monokai-pro-dark.css"
+      disabled
+    />
+    <link
+      id="theme-monokai-pro-light"
+      rel="stylesheet"
+      href="app://app/styles/themes/monokai-pro-light.css"
+      disabled
+    />
+    <link
+      id="theme-claude-light"
+      rel="stylesheet"
+      href="app://app/styles/themes/claude-light.css"
+      disabled
+    />
+    <link
+      id="theme-claude-dark"
+      rel="stylesheet"
+      href="app://app/styles/themes/claude-dark.css"
+      disabled
+    />
   </head>
   <body>
     <div id="app">
@@ -73,10 +98,6 @@
         </div>
       </div>
       <header class="titlebar" aria-label="Editor toolbar">
-        <div class="toolbar-sidebar-tabs sidebar-tabs" aria-label="Sidebar view">
-          <button data-view="files" class="active" data-i18n="sidebar.files">Files</button
-          ><button data-view="outline" data-i18n="sidebar.outline">Outline</button>
-        </div>
         <div class="legacy-file-actions hidden" aria-hidden="true">
           <button
             id="obsoleteLegacyOpenFile"
@@ -113,6 +134,26 @@
       </header>
       <div class="workbench">
         <aside id="sidebar" class="sidebar">
+          <nav class="toolbar-sidebar-tabs sidebar-tabs" aria-label="Sidebar view" role="tablist">
+            <button
+              data-view="files"
+              class="active"
+              role="tab"
+              aria-controls="filesView"
+              aria-selected="true"
+              data-i18n="sidebar.files"
+            >
+              Files</button
+            ><button
+              data-view="outline"
+              role="tab"
+              aria-controls="outlineView"
+              aria-selected="false"
+              data-i18n="sidebar.outline"
+            >
+              Outline
+            </button>
+          </nav>
           <section id="filesView" class="sidebar-view active">
             <div class="side-toolbar">
               <button
@@ -413,7 +454,7 @@
               </button>
             </div>
           </div>
-          <span id="statusVersion">v0.2.0</span>
+          <span id="statusVersion">v0.2.5</span>
         </div>
       </footer>
     </div>
@@ -1270,6 +1311,14 @@
                   <option value="sv" data-i18n="mode.sv">Split View</option>
                 </select></label
               >
+              <label data-i18n-label="settings.caretStyle"
+                >Caret style<select name="caretStyle">
+                  <option value="native" data-i18n="settings.caretNative">Native</option>
+                  <option value="underline" data-i18n="settings.caretUnderline">Underline</option>
+                  <option value="bar" data-i18n="settings.caretBar">Bar</option>
+                  <option value="block" data-i18n="settings.caretBlock">Block</option>
+                </select></label
+              >
               <label class="check"
                 ><input name="tabInsertSpaces" type="checkbox" />
                 <span data-i18n="settings.tabInsertSpaces"
@@ -1471,10 +1520,21 @@
                   max="1"
                   step="0.05"
               /></label>
+              <label class="check"
+                ><input name="resourceHealthTrashScopeWarningEnabled" type="checkbox" />
+                <span data-i18n="settings.resourceHealthTrashScopeWarning"
+                  >Show the resource-health scan scope reminder before deletion</span
+                ></label
+              >
             </section>
             <section data-settings-panel="about" class="about-panel">
               <div class="about-main">
-                <img class="about-logo" src="app://app/assets/app-icon/vditor-desktop.svg" alt="" />
+                <img
+                  class="about-logo"
+                  src="app://app/assets/app-icon/vditor-desktop.svg"
+                  alt=""
+                  data-easter-egg="vanessa"
+                />
                 <h3>Vditor Desktop</h3>
                 <p class="version-info">
                   <span id="versionInfo"></span>
@@ -1524,7 +1584,7 @@
                   Restore defaults
                 </button>
                 <label class="about-devtools-setting">
-                  <span>Chrome DevTools</span>
+                  <span>Chrome DevTools (F12)</span>
                   <span class="theme-switch">
                     <input name="devToolsEnabled" type="checkbox" />
                     <span aria-hidden="true"></span>
@@ -1562,6 +1622,7 @@
           <div>
             <p id="confirmMessage"></p>
             <p id="confirmDetail"></p>
+            <div id="confirmExtra"></div>
           </div>
         </div>
         <footer id="confirmActions"></footer>
@@ -1571,6 +1632,8 @@
     <script src="app://app/vditor/dist/index.min.js"></script>
     <script src="app://app/locales.js"></script>
     <script src="app://app/vditor-adapter.js"></script>
-    <script src="app://app/app.js"></script>
+    <script src="app://app/pure-functions.js"></script>
+    <script src="app://app/app/app-composition.js"></script>
+    <script src="app://app/main.js"></script>
   </body>
 </html>

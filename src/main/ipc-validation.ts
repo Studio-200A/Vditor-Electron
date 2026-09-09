@@ -2,6 +2,7 @@ import * as path from 'node:path';
 import {
   AppSettings,
   DEFAULT_SETTINGS,
+  PersistentAppState,
   WORKSPACE_READ_DEPTH_MAX,
   WORKSPACE_READ_DEPTH_MIN,
 } from './services/app-state';
@@ -170,6 +171,13 @@ export function parseResourceRootPaths(value: unknown): string[] {
   return parseAbsolutePathArray(value, MAX_RESOURCE_ROOTS);
 }
 
+export function parseResourceHealthCandidateIds(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 100) invalidIpcArgument();
+  const candidateIds = value.map((item) => parseText(item, 128));
+  if (new Set(candidateIds).size !== candidateIds.length) invalidIpcArgument();
+  return candidateIds;
+}
+
 function parseAbsolutePathOrEmpty(value: unknown): string {
   return value === '' ? '' : parseAbsolutePath(value);
 }
@@ -223,14 +231,22 @@ function parseWorkspaceTreeStates(value: unknown): AppSettings['workspaceTreeSta
 }
 
 function parseSession(value: unknown): AppSettings['session'] {
-  return parseSettingsObject(value, ['workspacePath', 'activeFilePath', 'openFiles'], (record) => ({
-    workspacePath: parseAbsolutePathOrEmpty(record.workspacePath),
-    activeFilePath:
-      record.activeFilePath === null
-        ? null
-        : parseOptionalAbsolutePath(record.activeFilePath) || null,
-    openFiles: parseAbsolutePathArray(record.openFiles),
-  }));
+  return parseSettingsObject(
+    value,
+    ['schemaVersion', 'workspacePath', 'activeFilePath', 'openFiles'],
+    (record) => {
+      if (record.schemaVersion !== undefined && record.schemaVersion !== 1) invalidIpcArgument();
+      return {
+        schemaVersion: 1 as const,
+        workspacePath: parseAbsolutePathOrEmpty(record.workspacePath),
+        activeFilePath:
+          record.activeFilePath === null
+            ? null
+            : parseOptionalAbsolutePath(record.activeFilePath) || null,
+        openFiles: parseAbsolutePathArray(record.openFiles),
+      };
+    },
+  );
 }
 
 function parseToolbarConfig(value: unknown): AppSettings['toolbarConfig'] {
@@ -277,6 +293,7 @@ const BOOLEAN_SETTINGS = new Set<keyof AppSettings>([
   'headingAnchor',
   'sanitize',
   'allowSvgImages',
+  'resourceHealthTrashScopeWarningEnabled',
   'sidebarVisible',
   'toolbarVisible',
   'windowMaximized',
@@ -314,7 +331,9 @@ const NUMERIC_SETTINGS = new Map<keyof AppSettings, NumericSettingRange>([
   ['previewMaxWidth', { minimum: 320, maximum: 2_400, integer: true }],
   ['imageMaxWidth', { minimum: 0, maximum: 10_000, integer: true }],
   ['imageQuality', { minimum: 0.1, maximum: 1 }],
-  ['sidebarWidth', { minimum: 0, maximum: 500, integer: true }],
+  // The renderer caps this against the live application width (two thirds). Keep the
+  // persisted value bounded without imposing a stale pixel cap on wide screens.
+  ['sidebarWidth', { minimum: 0, maximum: 10_000, integer: true }],
 ]);
 
 function parseSettingValue(key: keyof AppSettings, value: unknown): AppSettings[keyof AppSettings] {
@@ -351,6 +370,8 @@ function parseSettingValue(key: keyof AppSettings, value: unknown): AppSettings[
       return parseEnum(value, ['always', 'auto', 'hidden']);
     case 'editMode':
       return parseEnum(value, ['wysiwyg', 'ir', 'sv']);
+    case 'caretStyle':
+      return parseEnum(value, ['native', 'underline', 'bar', 'block']);
     case 'previewMode':
       return parseEnum(value, ['both', 'editor']);
     case 'tabSize': {
@@ -378,6 +399,8 @@ function parseSettingValue(key: keyof AppSettings, value: unknown): AppSettings[
       return parseWindowBounds(value);
     case 'settingsDialogSize':
       return parseSettingsDialogSize(value);
+    case 'resourceHealthDialogSize':
+      return parseSettingsDialogSize(value);
     case 'session':
       return parseSession(value);
     default:
@@ -393,6 +416,41 @@ export function parseSettingsPatch(value: unknown): Partial<AppSettings> {
     if (!(rawKey in DEFAULT_SETTINGS)) invalidIpcArgument();
     const key = rawKey as keyof AppSettings;
     patch[key] = parseSettingValue(key, rawValue) as never;
+  }
+  return patch;
+}
+
+const PERSISTENT_STATE_KEYS = [
+  'schemaVersion',
+  'defaultOpenPath',
+  'recentPaths',
+  'recentFiles',
+  'workspaceTreeStates',
+  'sidebarWidth',
+  'sidebarVisible',
+  'toolbarVisible',
+  'windowBounds',
+  'windowMaximized',
+  'settingsDialogSize',
+  'resourceHealthDialogSize',
+  'session',
+] as const satisfies readonly (keyof PersistentAppState)[];
+
+export function parsePersistentStatePatch(value: unknown): Partial<PersistentAppState> {
+  if (!isRecord(value) || Object.keys(value).length > PERSISTENT_STATE_KEYS.length)
+    invalidIpcArgument();
+  const patch: Partial<PersistentAppState> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (!(PERSISTENT_STATE_KEYS as readonly string[]).includes(key)) invalidIpcArgument();
+    if (key === 'schemaVersion') {
+      if (item !== 1) invalidIpcArgument();
+      patch.schemaVersion = 1;
+      continue;
+    }
+    patch[key as Exclude<keyof PersistentAppState, 'schemaVersion'>] = parseSettingValue(
+      key as keyof AppSettings,
+      item,
+    ) as never;
   }
   return patch;
 }

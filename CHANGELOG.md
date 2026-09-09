@@ -1,5 +1,154 @@
 # Changelog
 
+## 0.2.5 - Modularized Refactor
+
+This release is primarily an internal renderer-architecture upgrade. It preserves the existing local Markdown editing experience and file-safety contracts. User-visible features, improvements, and fixes are documented first; the internal refactoring, test, and maintenance records follow.
+
+### New Features
+
+- **feat(resource health):**
+   - **Description:** Added **Tools → Resource Health** for saved documents in the active workspace.
+   - **Functionality:** Maps the focused document's image references, lists unreferenced and missing images for management, and checks every accessible Markdown/HTML document in the workspace before image resources are moved to the system trash.
+   - **Safety:** Only direct image-directory files become cleanup candidates; nested directories are not scanned and symbolic links make the scan incomplete, disable moving to Trash, and prompt the user to replace the link with the original image. Moving to Trash always re-validates each selected candidate first.
+- **feat(custom caret)**: Underline, Bar, Block, and Native caret style options.
+
+### Improvements
+
+- **improve(tabs):** Use the themed application tooltip for document-tab paths, consistent with sidebar files.
+
+### Bug Fixes
+
+#### Vditor Adapter
+
+- **fix(adapter):** encapsulate toolbar tooltip cleanup
+
+#### Themes
+
+- **fix(ant design):** fixed an issue where ant design displays incorrect text color and table bg color in claude dark theme.
+
+#### Workbench, Sidebar, and Dialogs
+
+- **fix(app menu):** Align the custom Windows/Linux app-menu popup with the lower edge of the window titlebar.
+- **fix(sidebar cursor tooltip):** fixed an issue where text would overflow in the sidebar cursor tooltip when filenames were too long.
+- **fix(toolbar/sidebar cohesion):** Files and Outline now belong to the sidebar. With the editor toolbar visible they form the sidebar-aligned top navigation beside it; when the toolbar is hidden they become the first sidebar-content navigation row, with no leftover toolbar slot. The selected view remains stable across layout changes.
+- **fix(titlebar/sidebar transition):** Titlebar file actions and window controls remain fixed and operable while the sidebar transitions. The titlebar shadow appears only when the editor toolbar is hidden; on sidebar close the Vditor toolbar immediately fills the released area, while the sidebar navigation remains painted with the moving sidebar.
+- **fix(sidebar transition surface):** The strip exposed beside an open editor during the sidebar slide now uses the same surface as the empty editor area across themes, preventing Claude Dark from revealing the application-background color.
+- **fix(sidebar sizing):** The sidebar's rendered and draggable maximum is now two thirds of the current application width, while persisted values remain safely validated and are clamped to the live window.
+- **fix(file explorer):** Differentiate the active Markdown file from pointer hover in the sidebar with an accent-tinted selection surface across all application themes.
+- **fix(confirm dialogs):** Long document and file names embedded in confirmation messages now truncate with an ellipsis when space is constrained, preserving the surrounding prompt and keeping the complete name available on hover.
+
+#### Editor Interaction
+
+- **fix(custom caret)**: fixed an issue in ir edit mode where the position and size of the custom caret were incorrect when it was placed on a collapsed Markdown marker.
+   - Note: This case has been recorded in `docs/09-DEV-NOTE.md`
+- **fix(editor undo):** Preserve pending edits' undo history when an initialization-only setting rebuilds the editor, so Ctrl/Cmd+Z and the Undo toolbar action continue to revert the edit after the rebuilt editor is ready.
+- **fix(editor rebuild):** Initialization-only settings now preserve a non-interactive snapshot of the active editor, including its scroll position, until replacement Vditor content is ready and the scroll position is restored. The existing shared toolbar remains mounted until its replacement takes over, eliminating the visible empty toolbar, document flash, and jump-to-top during live settings saves.
+- **fix(editor paste):** Preserve rich HTML through the native Ctrl/Cmd+V path by restoring the editor selection after the narrow clipboard bridge resolves and re-entering Vditor's own paste handler; right-click Paste and Vditor serialization remain on the same path.
+- **fix(split view):** Handle Vditor's existing Ctrl/Cmd+Shift+I (outdent) and Ctrl/Cmd+Shift+O (indent) commands directly against the active SV source selection when Vditor has disabled its own SV toolbar actions.
+- **fix(editor layout):** Delay paragraph-width application until range selection is committed, avoiding repeated long-document layout work while the slider is dragged.
+- **fix(editor runtime):** Preserve editor-destroy failures for rebuild callers after cleanup, restore the rename warning when every affected editor cannot rebuild, and clear stale SV whitespace scroll compensation after a redraw.
+- **fix(editor runtime):** Reject delayed scroll-restoration callbacks when a Vditor rebuild advances the tab runtime generation.
+- **fix(editor GitHub alerts):** Keep GitHub alert source headers unchanged when Vditor/Lute adds presentation-only default icons or titles during serialization, while retaining normal callout rendering in the editor.
+- **fix(find and replace):** Preserve allowed SVG images during native WYSIWYG replacements by restoring original image URLs while Vditor serializes the changed block.
+- **fix(find and replace):** Clear the active-match selection and highlight state immediately when the search query stops matching or is emptied, instead of leaving the previous query's stale highlights rendered.
+- **fix(document links):** Show a text cursor, rather than a navigation affordance, for blocked link schemes while preserving any author-supplied title.
+- **fix(editor):** ignore stale split view callbacks
+
+#### Documents, Saving, and Recovery
+
+- **fix(save dialog):** Preserve the Save As default path so the dialog opens at the current file's location instead of a duplicated workspace prefix; only a bare file name joins onto the workspace directory, and untitled documents prefill a `.md` name under the workspace.
+- **fix(document binding):** When an opened document's parent directory is renamed outside the application, reconcile its canonical path, watcher, and local-resource roots before the next save; the save writes to the renamed path without recreating the old directory.
+- **fix(save as):** Saving an unavailable document to its original path now uses the existing explicit recreate confirmation instead of silently rejecting the operation.
+- **fix(file recovery):** Confirming recreation after a previously deleted file has reappeared now uses the watcher-provided disk snapshot as its safe write baseline. The confirmed local content replaces that version; a further external change is still rejected rather than silently overwritten.
+
+#### Settings, Persistence, and Startup
+
+- **fix(settings and save workflows):** Restored immediate `<select>` setting saves, surfaced the primary Explorer rename error instead of a generic aggregate message, and removed a save-queue reentry deadlock when confirming an overwrite after an ignored external change.
+- **fix(settings):** Apply editor and preview zoom settings as presentation updates without rebuilding the editor.
+- **fix(persistence):** Preserve loaded `state.json` data while saving TOML preferences, so changing a setting such as locale cannot clear remembered workspace expansion or other cross-launch UI state.
+- **fix(renderer startup):** Deferred localized image-upload messages until they are needed, so renderer bootstrap no longer reads the locale table before its initialization and prevents Vditor Desktop from becoming ready.
+
+### Renderer Architecture Refactoring
+
+#### Build Pipeline and Application Composition
+
+- **refactor(renderer build):** Introduced a TypeScript build pipeline for the renderer process using esbuild. Added `tsconfig.renderer.json` (strict mode), `build:renderer` script, and `typecheck:renderer` for independent renderer type checking. The renderer entry point is now `src/renderer/main.ts`, which orchestrates controller initialization and disposal in dependency order.
+- **refactor(composition entry):** Established `src/renderer/main.ts` as the application composition entry with a lifecycle manager that initializes controllers in dependency order and disposes them in reverse order on shutdown or failure. Legacy `app.js` is loaded as a controlled bootstrap module via `window.__vditorDesktopLegacyBootstrap`.
+- **refactor(app shell):** Added `AppController` as the owner of startup sequencing, window-level shortcuts, Markdown drag-and-drop, open-files/menu IPC subscriptions, partial-initialization rollback, and shutdown cleanup. `main.ts` now validates the required globals and starts the composed application through `window.__vditorDesktopApplication`.
+- **refactor(renderer entry):** Removed the legacy `src/renderer/app.js` entry. `app/app-composition.js` now contains the transitional cross-domain composition, and the asset-copy script removes only a stale `dist/renderer/app.js` left by an incremental build.
+
+#### Shared Modules and Type Contracts
+
+- **refactor(core utilities):** Established `src/renderer/core/` with type-safe DOM helpers (`requiredElement`, `optionalElement`), a `DisposableBag` for listener/timer/observer cleanup, and a `LifecycleManager` for ordered controller initialization and disposal.
+- **refactor(shared contracts):** Created `src/shared/contracts/` skeleton for cross-process serializable DTOs shared between main, preload, and renderer processes.
+- **refactor(pure functions):** Extracted pure functions from `app.js` into typed TypeScript modules (`src/renderer/utils/`, `src/renderer/ui/`). These are bundled separately as `dist/renderer/pure-functions.js` and exposed via `window.__vditorDesktopPureFunctions` for use by the legacy `app.js`. Migrated functions include: `escapeHTML`, `fileName`, `stripExtension`, `detectLineEnding`, `isDarkTheme`, `resolveLocale`, `translate`, `formatIpcErrorMessage`, and theme preference validators.
+- **refactor(type declarations):** Added TypeScript type declarations for `window.appAPI`, `window.fileAPI`, `window.VditorDesktopAdapter`, `window.VditorDesktopLocales`, and minimal Vditor types in `src/renderer/types/`.
+- **refactor(adapter type contract):** Corrected the `VditorDesktopAdapter` TypeScript facade in `src/renderer/types/adapter.d.ts` so its members, parameter order, nullability, and return shapes match the runtime `Object.freeze` export surface. Added a compile-time call contract (`adapter-contract.ts`) and a runtime export-key manifest asserted against the frozen facade in the adapter DOM tests, providing two-layer drift protection without changing Vditor 3.11.3 runtime behavior.
+
+#### Application Shell and Presentation
+
+- **refactor(notifications module):** Extracted `NotificationsController` class from `app.js` into `src/renderer/ui/notifications.ts`. Encapsulates `showMessage`, `showTemporaryDocumentNotice`, `showConfirmDialog`, `closeConfirmDialog`, `confirmDialog`, `showUnsavedDialog`, `setConfirmDialogDraggable`, and `setupConfirmDialogDrag` with proper lifecycle management (`init()`/`dispose()`) and locale switching support.
+- **refactor(menu cleanup):** Removed the uncalled duplicate `setupLegacyAppMenus()` implementation and its stale listeners; `MenuController` is now the only renderer custom-menu popup owner.
+- **refactor(window controls):** Moved application-menu popup lifecycle, non-editor context-menu rendering, and titlebar window commands/display subscriptions into dedicated controllers while preserving existing menu entries and Electron window behavior.
+- **refactor(sidebar layout):** Moved sidebar transition state, transform-based FLIP animation, reduced-motion timing, fallback completion, and cleanup into `ui/sidebar-layout-controller.ts`.
+- **refactor(theme coordination):** Extracted application theme resolution, system-theme mapping, content/code-theme linking, settings-control and status-bar synchronization, persisted linked-theme patches, and Vditor `setTheme()` application into `ui/theme-coordinator.ts`. The composition layer now only injects store, bridge, DOM, status-menu, and adapter dependencies; presentation settings still hot-apply without rebuilding Vditor or clearing undo history.
+- **refactor(CSS theme split):** Split the monolithic `app.css` into a base stylesheet and per-theme files in `src/renderer/styles/themes/`. Classic theme variables remain in `app.css` as `:root` defaults; dark, claude-light, claude-dark, monokai-pro-light, and monokai-pro-dark each have their own CSS file. Theme switching now toggles `<link>` element `disabled` attributes instead of relying on `:root[data-theme]` selectors in a single file.
+- **refactor(localization):** Moved locale resolution and application-owned DOM refresh into a typed `LocalizationController`, which resolves the three supported languages, updates the document language attribute, and rewrites `data-i18n` text, title, tooltip, placeholder, and label nodes via `textContent`; it then notifies the shell so notifications, menus, tabs, and the outline refresh together. Vditor’s own locale remains set through its public API without the controller touching Vditor private DOM.
+- **refactor(settings dialog):** Moved settings-dialog size bounds, drag/resize listeners, transition cleanup, and window-resize handling into `settings/settings-dialog-layout-controller.ts`.
+
+#### State, Documents, and Persistence
+
+- **refactor(AppStore):** Established `src/renderer/state/` with core state types (`EditMode`, `DocumentIdentity`, `DocumentState`, `EditorRuntime`, `DocumentTab`, `AppState`), `AppStore` class with controlled modification API (addDocument, removeDocument, activateDocument, updateDocument, updateDocumentRuntime, etc.), subscription mechanism (`subscribe`, `subscribeWithSelector`), and snapshot projection functions (`toSessionSnapshot`, `toRecoverySnapshot`, `restoreDocumentState`, `restoreRecoveryState`). Added comprehensive state ownership table documenting source of truth, unique business writers, public commands, and read-only consumers for each state domain.
+- **refactor(tab controller):** Moved tab-bar DOM construction, click and middle-click handling, pointer drag feedback, ordering callbacks, and deferred active-tab scrolling into the typed `TabController`. It receives immutable tab view models and UI callbacks only; file, watcher, and Vditor work remain outside the presentation controller. Its deferred drag reset is now cancelled during disposal.
+- **refactor(document opening):** Moved canonical-identity document opening into `DocumentController`. Concurrent requests for one document now share an operation, repeat identity checks after asynchronous I/O, preserve the existing untitled-target collision guard, and restore resource-root authorization if tab creation is refused; watcher registration also rejects late results after a tab closes or changes path.
+- **refactor(document saves):** Moved per-document save serialization out of runtime tab data into `DocumentSaveController`; failed writes no longer block a later save for the same document, while different documents remain independent.
+- **refactor(document close):** Centralized document-close ordering: confirmation and any requested save finish before editor-runtime cleanup, Store removal, watcher/resource cleanup, and remaining-tab activation.
+- **refactor(document safety):** Centralized save, close, and external-change command entry in `DocumentController`; added explicit external-change classification, a versioned recovery DTO, and a versioned settings-session projection with legacy-read compatibility. Recovery IPC and persisted session data are validated before becoming document state; unavailable paths and runtime handles are excluded from session persistence.
+- **refactor(save safety):** Revalidate the tab’s Store membership and canonical binding after every awaited write-related step, so a late save cannot mutate a document closed, renamed, or replaced while I/O was pending.
+- **refactor(document runtime separation):** Converged the real renderer tab wiring onto the typed state contract: `createTab()` now builds an explicit `DocumentState` plus a runtime object, keeping Vditor, DOM, observers, timers, and cleanup handles out of persisted document fields. Document safety fields (identity, save baselines, conflicts, unavailable state, recovery) are updated only through named Store commands, and `ExternalConflict` / `ExternalFileState` now retain the canonical identity, path, and version captured when the event was produced.
+- **refactor(workspace explorer):** Moved workspace-root revisions, workspace watcher refresh scheduling, explorer tree DOM, lazy expansion, and explorer context-menu composition into typed workspace controllers. File and directory rename/delete paths now submit open-document binding updates through a named DocumentController transition boundary, preserving the existing watcher and unavailable-document safeguards.
+- **refactor(settings):** Moved settings/default-settings Store ownership, runtime-impact classification, settings-modal animation cleanup, and application locale DOM refresh into typed controllers. Presentation-only settings remain hot-applied without recreating Vditor or clearing undo history.
+- **refactor(settings persistence):** Moved the serialized preference/state save queue into `settings/settings-persistence.ts`, keeping TOML preference writes separate from versioned `state.json` writes and preserving recoverable versus throwing failure behavior.
+- **refactor(persistence):** Split explicit TOML preferences from versioned cross-launch `state.json`. Recent files and directories, session/workspace expansion, confirmed dialog directory, and window/UI restore state now use a validated, atomic serialized state store with one-time legacy migration; resetting preferences leaves state intact.
+- **refactor(recovery restore):** Moved recovery candidate loading, disk-state classification, identity merging, unavailable-tab creation, resource-root synchronization, and watcher registration into `editor/recovery-restore-controller.ts`.
+- **refactor(external changes):** Moved watcher-event routing for clean reloads, conflicts, deletion, unreadable files, and reappearance into `documents/external-file-change-controller.ts`, while leaving document state transitions injected through named callbacks.
+- **refactor(document links):** Moved document-link classification, Ctrl/Cmd navigation, relative Markdown resolution, unsafe-scheme blocking, modifier hints, and tooltip coordination into `editor/document-link-navigation-controller.ts`; Vditor private DOM access remains behind the adapter.
+- **refactor(export):** Centralized HTML/PDF export transaction ordering in `ExportController`, preserving pre-dialog snapshots, portable HTML resource rewriting, local-image PDF embedding, and the isolated main-process PDF window.
+
+#### Editor Runtime
+
+- **refactor(editor runtime):** Began the editor-domain migration with typed `EditorController`, `SplitViewController`, `OutlineController`, and `FindController` ownership. Vditor runtime generations now reject callbacks from rebuilt or closed instances; Desktop outline rendering, find state, SV divider pointer lifecycle, and their deferred refresh cleanup no longer live in the application shell. Find replacement uses the selected editor range and Vditor input path, preserving undo and mode state instead of resetting the document value.
+- **refactor(editor construction and toolbar):** Moved Vditor constructor-only options, image upload/compression, and shared toolbar hand-off/wrap-height lifecycle into typed editor modules. Existing offline resources, supported toolbar show/hide behavior, image Markdown insertion, and Vditor undo paths remain unchanged.
+- **refactor(editor tab runtime):** Moved tab activation's editor-runtime coordination into `EditorRuntimeCoordinator`. It now owns toolbar hand-off, host activation, editor initialization, deferred spacer/anchor work, outline/find refresh, and session persistence ordering; stale animation-frame work is rejected after a newer tab becomes active.
+- **refactor(editor startup):** Moved initialized editor-content reconciliation into EditorController so recovery and dirty-tab save baselines remain stable across Vditor rebuilds.
+- **refactor(editor rebuild):** Moved pre-rebuild Vditor content capture into EditorController, keeping runtime teardown and content preservation in one lifecycle owner.
+- **refactor(editor mode):** Moved Vditor mode-transition scheduling into EditorController so rebuild and close cancel stale mode-sync and scroll-restore callbacks.
+- **refactor(editor focus):** Moved delayed post-initialization focus into EditorController so rebuild and close cancel stale focus callbacks and only the active tab receives focus.
+- **refactor(editor shortcuts):** Moved per-tab Vditor mode-shortcut listener ownership into EditorController, preserving it through rebuilds and releasing it when the tab closes.
+- **refactor(editor outline):** Moved per-tab Vditor outline observer ownership into EditorController, replacing it on rebuild and releasing it with the editor runtime.
+- **refactor(editor links):** Moved document-anchor navigation listener ownership into EditorController, retaining listeners across rebuilds and removing them when tabs close.
+- **refactor(editor layout):** Moved bottom-spacer ResizeObserver ownership and cleanup into EditorController while retaining the existing half-height editor layout behavior.
+- **refactor(editor table scroll):** Moved Vditor table composition-scroll cleanup into EditorController, replacing it with each editor runtime and releasing it on rebuild or close.
+- **refactor(editor scrollbars):** Moved editor-surface auto-hide scrollbar enhancements into EditorController, releasing their listeners and timers on rebuild or close.
+- **refactor(editor toolbar handlers):** Moved Vditor toolbar click and mousedown listener lifecycle into EditorController, replacing handlers with each runtime and releasing them before rebuild or close.
+- **refactor(recovery):** Moved per-tab recovery snapshot debounce timers and serialized recovery-store operations out of the renderer shell into the editor runtime domain without changing recovery payloads or file-safety decisions.
+- **refactor(recovery):** Moved recovery-content injection and pending-runtime hand-off behind EditorController, preserving recovery banners and document safety state while removing direct shell-to-Vditor writes.
+- **refactor(recovery banner):** Moved recovery-banner rendering and action listener lifecycle into a dedicated controller while preserving existing save, save-as, discard, snapshot, and file-safety command paths.
+- **refactor(external changes):** Centralized external-content runtime application behind EditorController so clean reloads and conflict resolution always cancel stale auto-save work before replacing Vditor content.
+
+### Test Coverage
+
+- **test(e2e):** Drive the paragraph-width range input through native keyboard events, matching the browser control contract instead of using unsupported text-input filling.
+- **test(localization):** Replace batch-domain source-string assertions with controller and Electron behavior coverage; runtime switching across English, Simplified Chinese, and Traditional Chinese now verifies menus, confirmation dialogs, empty state, and settings notifications refresh together.
+- **test(navigation):** Scoped the app-navigation E2E to the popup-denial boundary and added coverage that a rendered Markdown `app:` link is blocked while the settings dialog remains usable.
+
+### Project Maintenance
+
+- **build(Electron downloads):** Configured npm installation and electron-builder to retrieve pinned Electron binaries from the npmmirror registry instead of Electron's official release host.
+- **docs(batch tracker):** Updated the batch 9 execution record with the legacy-entry evidence, final migration status, scoped validation, and the completed full-check/manual-baseline gate.
+- **fix(dependencies):** Updated the transitive `fast-uri` dependency from 3.1.5 to 3.1.7 to resolve Dependabot security alerts.
+- **fix(dependencies):** Updated the transitive `@xmldom/xmldom` dependency from 0.8.14 to 0.8.15 to resolve a Dependabot security alert.
+
 ## 0.2.0 - Under-the-Hood Robustness Improvement
 
 ### New Features

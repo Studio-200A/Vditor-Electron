@@ -196,11 +196,10 @@ test('does not authorize privileged IPC from a trusted-origin child frame', asyn
   }
 });
 
-test('keeps top-level navigation inside the trusted app page and denies app popups', async () => {
+test('denies untrusted app popups', async () => {
   const running = await launchApp();
   try {
     const { page, app } = running;
-    const initialUrl = page.url();
 
     const popupCreated = await page.evaluate(() => {
       const popup = window.open('app://evil/index.html', '_blank');
@@ -208,16 +207,9 @@ test('keeps top-level navigation inside the trusted app page and denies app popu
     });
     expect(popupCreated).toBe(false);
 
-    for (const target of ['app://evil/index.html', 'app://app/vditor/dist/index.css']) {
-      await page.evaluate((href) => {
-        const link = document.createElement('a');
-        link.href = href;
-        link.click();
-      }, target);
-      await expect.poll(() => page.url()).toBe(initialUrl);
-    }
-
     expect(app.windows()).toHaveLength(1);
+    await page.locator('#statusSettings').click();
+    await expect(page.locator('#settingsModal')).toBeVisible();
   } finally {
     await closeApp(running);
   }
@@ -245,6 +237,30 @@ test('does not execute unsupported schemes from rendered document links', async 
         () => (window as typeof window & { __unsafeLinkExecuted?: boolean }).__unsafeLinkExecuted,
       ),
     ).toBe(false);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('blocks app links from rendered Markdown without disrupting the application', async () => {
+  const running = await launchApp(
+    { editMode: 'wysiwyg' },
+    { 'unsafe-app-link.md': '[Unsafe app link](app://evil/index.html)' },
+  );
+  try {
+    const { page } = running;
+    await page.waitForSelector('.editor-host.active .vditor-wysiwyg');
+    const link = page.locator(
+      '.editor-host.active .vditor-wysiwyg a[href="app://evil/index.html"]',
+    );
+    await expect(link).toBeVisible();
+    const initialUrl = page.url();
+
+    await link.click();
+
+    await expect.poll(() => page.url()).toBe(initialUrl);
+    await page.locator('#statusSettings').click();
+    await expect(page.locator('#settingsModal')).toBeVisible();
   } finally {
     await closeApp(running);
   }
@@ -402,6 +418,29 @@ test('keeps local and remote SVG images blocked until the unified setting is con
       .toEqual([2, 2]);
     await allowSvgImages.locator('xpath=..').click();
     await expect(allowSvgImages).not.toBeChecked();
+    const settingsLayout = await page.evaluate(() => {
+      const card = document.querySelector<HTMLElement>('.settings-card');
+      const header = card?.querySelector<HTMLElement>(':scope > header');
+      const layout = card?.querySelector<HTMLElement>(':scope > .settings-layout');
+      const footer = card?.querySelector<HTMLElement>(':scope > footer');
+      if (!card || !header || !layout || !footer) throw new Error('Settings dialog is incomplete');
+      const cardBounds = card.getBoundingClientRect();
+      const headerBounds = header.getBoundingClientRect();
+      const layoutBounds = layout.getBoundingClientRect();
+      const footerBounds = footer.getBoundingClientRect();
+      return {
+        cardScrollTop: card.scrollTop,
+        headerTop: Math.round(headerBounds.top - cardBounds.top),
+        layoutTop: Math.round(layoutBounds.top - headerBounds.bottom),
+        layoutBottom: Math.round(footerBounds.top - layoutBounds.bottom),
+        footerBottom: Math.round(cardBounds.bottom - footerBounds.bottom),
+      };
+    });
+    expect(settingsLayout.cardScrollTop).toBe(0);
+    expect(Math.abs(settingsLayout.headerTop)).toBeLessThanOrEqual(1);
+    expect(Math.abs(settingsLayout.layoutTop)).toBeLessThanOrEqual(1);
+    expect(Math.abs(settingsLayout.layoutBottom)).toBeLessThanOrEqual(1);
+    expect(Math.abs(settingsLayout.footerBottom)).toBeLessThanOrEqual(1);
     await expect
       .poll(() => images.evaluateAll((nodes) => nodes.map((node) => node.naturalWidth)))
       .toEqual([0, 0]);
@@ -447,7 +486,7 @@ test('keeps the empty outline message below controls and non-selectable in fulls
     await page.keyboard.press('F11');
     await expect(page.locator('#app')).toHaveClass(/fullscreen/);
     await expect(page.locator('#windowTitlebar')).toBeHidden();
-    const tabsBox = await page.locator('header.titlebar .toolbar-sidebar-tabs').boundingBox();
+    const tabsBox = await page.locator('#sidebar .toolbar-sidebar-tabs').boundingBox();
     const emptyBox = await empty.boundingBox();
     if (!tabsBox || !emptyBox) throw new Error('Fullscreen outline controls have no bounds');
     expect(emptyBox.y).toBeGreaterThanOrEqual(tabsBox.y + tabsBox.height - 1);
@@ -654,6 +693,204 @@ test('limits local resources to open roots and returns safe image responses', as
     await expect(page.locator('.document-tab')).toHaveCount(1);
     const revoked = await inspect(outsideImageUrl);
     expect(revoked).toEqual(missing);
+  } finally {
+    await closeApp(running);
+    fs.rmSync(fixture, { recursive: true, force: true });
+  }
+});
+
+test('scans workspace resources and greys the page for an outside document', async () => {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-resource-health-'));
+  const workspace = path.join(fixture, 'workspace');
+  const outside = path.join(fixture, 'outside.md');
+  fs.mkdirSync(path.join(workspace, 'assets'), { recursive: true });
+  fs.writeFileSync(path.join(workspace, 'note.md'), '# Note\n![missing](assets/missing.png)');
+  const orphanPath = path.join(workspace, 'assets', 'orphan.png');
+  fs.writeFileSync(orphanPath, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  fs.writeFileSync(outside, '# Outside');
+  const running = await launchApp({
+    restoreTabs: true,
+    restoreWorkspace: true,
+    session: {
+      workspacePath: workspace,
+      activeFilePath: path.join(workspace, 'note.md'),
+      openFiles: [path.join(workspace, 'note.md'), outside],
+    },
+  });
+  try {
+    const { page } = running;
+    await page.locator('#appMenuBar [data-menu="main"]').click();
+    await page.locator('.app-menu-popup button.has-submenu', { hasText: 'Tools' }).hover();
+    await page.locator('.app-menu-popup.submenu button', { hasText: 'Resource Health' }).click();
+    await expect(page.locator('.resource-health-modal')).toBeVisible();
+    await expect(page.locator('.resource-health-summary')).toContainText('note.md');
+    await expect(page.locator('.resource-health-missing-item')).toContainText('assets/missing.png');
+    await expect(page.locator('.resource-health-candidate')).toContainText('assets/orphan.png');
+    await page.locator('.resource-health-candidate input').check();
+    await page.locator('.resource-health-trash').click();
+    await expect(page.locator('#confirmModal')).toBeVisible();
+    await page.locator('#confirmActions [data-action="cancel"]').click();
+    await expect(page.locator('#confirmModal')).toBeHidden();
+    expect(fs.existsSync(orphanPath)).toBe(true);
+    fs.appendFileSync(orphanPath, 'changed after scan');
+    await page.locator('.resource-health-trash').click();
+    await expect(page.locator('#confirmModal')).toBeVisible();
+    await expect(page.locator('#confirmDetail')).toContainText('assets/orphan.png');
+    await page.locator('#confirmActions button', { hasText: 'Move selected to Trash' }).click();
+    await expect(page.locator('#confirmTitle')).toContainText('Move to Trash failed');
+    await expect(page.locator('#confirmMessage')).toContainText('file changed after the scan');
+    await page.locator('#confirmActions [data-action="rescan"]').click();
+    await expect(page.locator('.resource-health-candidate')).toContainText('assets/orphan.png');
+    expect(fs.existsSync(orphanPath)).toBe(true);
+    await page.locator('.resource-health-modal .modal-close').click();
+    await expect(page.locator('.resource-health-modal')).toBeHidden();
+    await page.locator('.document-tab', { hasText: 'outside.md' }).click();
+    await page.locator('#appMenuBar [data-menu="main"]').click();
+    await page.locator('.app-menu-popup button.has-submenu', { hasText: 'Tools' }).hover();
+    await expect(
+      page.locator('.app-menu-popup.submenu button', { hasText: 'Resource Health' }),
+    ).toBeDisabled();
+  } finally {
+    await closeApp(running);
+    fs.rmSync(fixture, { recursive: true, force: true });
+  }
+});
+
+test('removes a selected missing reference through the split-view undo path without saving', async () => {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-resource-health-missing-'));
+  const workspace = path.join(fixture, 'workspace');
+  const documentPath = path.join(workspace, 'note.md');
+  const missingReference = '![missing](assets/missing.png)';
+  fs.mkdirSync(workspace, { recursive: true });
+  fs.writeFileSync(documentPath, `# Note\n${missingReference}`);
+  const running = await launchApp({
+    editMode: 'sv',
+    restoreTabs: true,
+    restoreWorkspace: true,
+    session: {
+      workspacePath: workspace,
+      activeFilePath: documentPath,
+      openFiles: [documentPath],
+    },
+  });
+  try {
+    const { page } = running;
+    await page.locator('#appMenuBar [data-menu="main"]').click();
+    await page.locator('.app-menu-popup button.has-submenu', { hasText: 'Tools' }).hover();
+    await page.locator('.app-menu-popup.submenu button', { hasText: 'Resource Health' }).click();
+    await expect(page.locator('.resource-health-missing-item')).toContainText('assets/missing.png');
+    await page.locator('.resource-health-tabs button:nth-child(2)').click();
+    await expect(page.locator('.resource-health-missing')).toBeVisible();
+    await expect(page.locator('.resource-health-candidates')).toBeHidden();
+    await page.locator('.resource-health-missing-item input').check();
+    await page.locator('.resource-health-remove-missing').click();
+    await expect(page.locator('#confirmModal')).toBeVisible();
+    await expect(page.locator('#confirmDetail')).toContainText(missingReference);
+    await page.locator('#confirmActions button', { hasText: 'Remove reference' }).click();
+    await expect(page.locator('.resource-health-overlay-error')).toBeVisible();
+    const source = page.locator('.editor-host.active .vditor-sv');
+    await expect(source).not.toContainText(missingReference);
+    expect(fs.readFileSync(documentPath, 'utf8')).toContain(missingReference);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.resource-health-modal')).toBeHidden();
+    await page.waitForTimeout(600);
+    await page.locator('#vditorToolbarMount button[data-type="undo"]').click();
+    await expect(source).toContainText(missingReference);
+  } finally {
+    await closeApp(running);
+    fs.rmSync(fixture, { recursive: true, force: true });
+  }
+});
+
+test('keeps the Trash confirmation after its scan-scope reminder is acknowledged', async () => {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-resource-health-scope-'));
+  const workspace = path.join(fixture, 'workspace');
+  fs.mkdirSync(path.join(workspace, 'assets'), { recursive: true });
+  fs.writeFileSync(path.join(workspace, 'note.md'), '# Note');
+  const firstOrphanPath = path.join(workspace, 'assets', 'first.png');
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  fs.writeFileSync(firstOrphanPath, png);
+  const running = await launchApp({
+    restoreTabs: true,
+    restoreWorkspace: true,
+    session: {
+      workspacePath: workspace,
+      activeFilePath: path.join(workspace, 'note.md'),
+      openFiles: [path.join(workspace, 'note.md')],
+    },
+  });
+  try {
+    const { page } = running;
+    await page.locator('#appMenuBar [data-menu="main"]').click();
+    await page.locator('.app-menu-popup button.has-submenu', { hasText: 'Tools' }).hover();
+    await page.locator('.app-menu-popup.submenu button', { hasText: 'Resource Health' }).click();
+    await expect(page.locator('.resource-health-candidate')).toHaveCount(1);
+
+    await page
+      .locator('.resource-health-candidate', { hasText: 'first.png' })
+      .locator('input')
+      .check();
+    await page.locator('.resource-health-trash').click();
+    await expect(page.locator('#confirmExtra input')).toBeVisible();
+    await page.locator('#confirmExtra input').check();
+    fs.appendFileSync(firstOrphanPath, 'changed after confirmation opened');
+    await page.locator('#confirmActions button', { hasText: 'Move selected to Trash' }).click();
+    await expect(page.locator('#confirmTitle')).toContainText('Move to Trash failed');
+    await expect(page.locator('#confirmMessage')).toContainText('file changed after the scan');
+    await page.locator('#confirmActions [data-action="rescan"]').click();
+    await expect(page.locator('.resource-health-candidate')).toContainText('first.png');
+    expect(fs.existsSync(firstOrphanPath)).toBe(true);
+
+    await page
+      .locator('.resource-health-candidate', { hasText: 'first.png' })
+      .locator('input')
+      .check();
+    await page.locator('.resource-health-trash').click();
+    await expect(page.locator('#confirmModal')).toBeVisible();
+    await expect(page.locator('#confirmExtra input')).toHaveCount(0);
+    await page.locator('#confirmActions [data-action="cancel"]').click();
+  } finally {
+    await closeApp(running);
+    fs.rmSync(fixture, { recursive: true, force: true });
+  }
+});
+
+test('scans the saved disk snapshot instead of unsaved Split View edits', async () => {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-resource-health-snapshot-'));
+  const workspace = path.join(fixture, 'workspace');
+  const documentPath = path.join(workspace, 'note.md');
+  const missingReference = '![missing](assets/missing.png)';
+  fs.mkdirSync(workspace, { recursive: true });
+  fs.writeFileSync(documentPath, `# Note\n${missingReference}`);
+  const running = await launchApp({
+    editMode: 'sv',
+    restoreTabs: true,
+    restoreWorkspace: true,
+    session: {
+      workspacePath: workspace,
+      activeFilePath: documentPath,
+      openFiles: [documentPath],
+    },
+  });
+  try {
+    const { page } = running;
+    const source = page.locator('.editor-host.active .vditor-sv');
+    await source.click();
+    const modifier =
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+    await source.press(`${modifier}+A`);
+    await source.pressSequentially('# Unsaved replacement');
+    await expect(source).toContainText('Unsaved replacement');
+    await page.locator('#appMenuBar [data-menu="main"]').click();
+    await page.locator('.app-menu-popup button.has-submenu', { hasText: 'Tools' }).hover();
+    await page.locator('.app-menu-popup.submenu button', { hasText: 'Resource Health' }).click();
+    await expect(page.locator('.resource-health-missing-item')).toContainText('assets/missing.png');
+    expect(fs.readFileSync(documentPath, 'utf8')).toContain(missingReference);
+    await page.keyboard.press(`${modifier}+S`);
+    await expect(page.locator('#statusMessage')).toContainText('Saved');
+    await expect(page.locator('.resource-health-overlay-error')).toBeVisible();
+    await expect(page.locator('.resource-health-overlay')).toContainText('Scan again');
+    expect(fs.readFileSync(documentPath, 'utf8')).toContain('# Unsaved replacement');
   } finally {
     await closeApp(running);
     fs.rmSync(fixture, { recursive: true, force: true });

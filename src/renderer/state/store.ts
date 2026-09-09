@@ -1,0 +1,298 @@
+import type {
+  AppState,
+  DocumentTab,
+  DocumentState,
+  EditorRuntime,
+  ExternalConflict,
+  ExternalFileState,
+  RecoveryState,
+  AppSettings,
+} from './types.js';
+import type { SupportedLocale } from '../types/locales.js';
+
+export type Subscriber<T> = (state: T) => void;
+export type Unsubscribe = () => void;
+export type Selector<T, R> = (state: T) => R;
+
+function selectorSnapshot(value: unknown, depth = 3): unknown {
+  if (!value || typeof value !== 'object' || depth === 0) return value;
+  if (Array.isArray(value)) return value.map((entry) => selectorSnapshot(entry, depth - 1));
+  if (value instanceof Set) return [...value].map((entry) => selectorSnapshot(entry, depth - 1));
+  if (value instanceof Map)
+    return [...value.entries()].map(([key, entry]) => [
+      selectorSnapshot(key, depth - 1),
+      selectorSnapshot(entry, depth - 1),
+    ]);
+  if (Object.getPrototypeOf(value) !== Object.prototype) return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
+      key,
+      selectorSnapshot(entry, depth - 1),
+    ]),
+  );
+}
+
+function selectorValueChanged(previous: unknown, current: unknown): boolean {
+  if (Object.is(previous, current)) return false;
+  if (!previous || typeof previous !== 'object' || !current || typeof current !== 'object')
+    return true;
+  const previousSnapshot = previous as Record<string, unknown>;
+  const currentSnapshot = current as Record<string, unknown>;
+  const keys = Object.keys(previousSnapshot);
+  return (
+    keys.length !== Object.keys(currentSnapshot).length ||
+    keys.some((key) => selectorValueChanged(previousSnapshot[key], currentSnapshot[key]))
+  );
+}
+
+export class AppStore {
+  private _state: AppState;
+  private _subscribers = new Set<Subscriber<AppState>>();
+
+  constructor(initialState: Partial<AppState> = {}) {
+    this._state = {
+      documents: [],
+      activeDocumentId: null,
+      workspacePath: '',
+      settings: null,
+      defaultSettings: null,
+      locale: 'en_US',
+      toolbarPreview: null,
+      untitledCounters: { file: 0, directory: 0 },
+      workspaceRevision: 0,
+      toolbarWrapHeight: 0,
+      ...initialState,
+    };
+  }
+
+  getState(): AppState {
+    return this._state;
+  }
+
+  subscribe(subscriber: Subscriber<AppState>): Unsubscribe {
+    this._subscribers.add(subscriber);
+    return () => {
+      this._subscribers.delete(subscriber);
+    };
+  }
+
+  subscribeWithSelector<R>(
+    selector: Selector<AppState, R>,
+    subscriber: (value: R) => void,
+  ): Unsubscribe {
+    let previousSnapshot = selectorSnapshot(selector(this._state));
+    const unsubscribe = this.subscribe((state) => {
+      const newValue = selector(state);
+      if (selectorValueChanged(previousSnapshot, selectorSnapshot(newValue))) {
+        previousSnapshot = selectorSnapshot(newValue);
+        subscriber(newValue);
+      }
+    });
+    return unsubscribe;
+  }
+
+  private _notify(): void {
+    for (const subscriber of this._subscribers) {
+      subscriber(this._state);
+    }
+  }
+
+  private _updateState(updater: (state: AppState) => AppState): void {
+    this._state = updater(this._state);
+    this._notify();
+  }
+
+  // Document operations
+  addDocument(document: DocumentTab): void {
+    this._updateState((state) => ({
+      ...state,
+      documents: [...state.documents, document],
+    }));
+  }
+
+  removeDocument(id: string): void {
+    this._updateState((state) => ({
+      ...state,
+      documents: state.documents.filter((doc) => doc.id !== id),
+      activeDocumentId: state.activeDocumentId === id ? null : state.activeDocumentId,
+    }));
+  }
+
+  activateDocument(id: string): void {
+    this._updateState((state) => ({
+      ...state,
+      activeDocumentId: state.documents.some((doc) => doc.id === id) ? id : state.activeDocumentId,
+    }));
+  }
+
+  setActiveDocument(id: string | null): void {
+    this._updateState((state) => ({
+      ...state,
+      activeDocumentId: id !== null && state.documents.some((doc) => doc.id === id) ? id : null,
+    }));
+  }
+
+  moveDocument(id: string, beforeId: string, placeAfter: boolean): void {
+    this._updateState((state) => {
+      const from = state.documents.findIndex((document) => document.id === id);
+      const to = state.documents.findIndex((document) => document.id === beforeId);
+      if (from < 0 || to < 0 || from === to) return state;
+      const documents = [...state.documents];
+      const [moved] = documents.splice(from, 1);
+      const insertAt = placeAfter ? to + 1 : to;
+      documents.splice(insertAt > from ? insertAt - 1 : insertAt, 0, moved);
+      return { ...state, documents };
+    });
+  }
+
+  updateDocument(id: string, updates: Partial<DocumentState>): void {
+    this._updateState((state) => ({
+      ...state,
+      documents: state.documents.map((doc) => {
+        if (doc.id !== id) return doc;
+        // Controllers can retain a tab reference across awaited file operations.
+        // Preserve that identity while keeping all document mutations on this API.
+        Object.assign(doc, updates);
+        return doc;
+      }),
+    }));
+  }
+
+  updateDocumentRuntime(id: string, updates: Partial<EditorRuntime>): void {
+    this._updateState((state) => ({
+      ...state,
+      documents: state.documents.map((doc) =>
+        doc.id === id ? (Object.assign(doc.runtime, updates), doc) : doc,
+      ),
+    }));
+  }
+
+  getDocument(id: string): DocumentTab | undefined {
+    return this._state.documents.find((doc) => doc.id === id);
+  }
+
+  getActiveDocument(): DocumentTab | null {
+    if (!this._state.activeDocumentId) return null;
+    return this.getDocument(this._state.activeDocumentId) ?? null;
+  }
+
+  // Settings operations
+  updateSettings(settings: AppSettings): void {
+    this._updateState((state) => ({
+      ...state,
+      settings,
+    }));
+  }
+
+  updateDefaultSettings(settings: AppSettings): void {
+    this._updateState((state) => ({
+      ...state,
+      defaultSettings: settings,
+    }));
+  }
+
+  // Locale operations
+  updateLocale(locale: SupportedLocale): void {
+    this._updateState((state) => ({
+      ...state,
+      locale,
+    }));
+  }
+
+  // Workspace operations
+  updateWorkspacePath(path: string): void {
+    this._updateState((state) => ({
+      ...state,
+      workspacePath: path,
+      workspaceRevision: state.workspaceRevision + 1,
+    }));
+  }
+
+  incrementWorkspaceRevision(): void {
+    this._updateState((state) => ({
+      ...state,
+      workspaceRevision: state.workspaceRevision + 1,
+    }));
+  }
+
+  // Toolbar preview operations
+  setToolbarPreview(preview: DocumentTab | null): void {
+    this._updateState((state) => ({
+      ...state,
+      toolbarPreview: preview,
+    }));
+  }
+
+  // Untitled counter operations
+  incrementUntitledCounter(type: 'file' | 'directory'): number {
+    const current = this._state.untitledCounters[type];
+    this._updateState((state) => ({
+      ...state,
+      untitledCounters: {
+        ...state.untitledCounters,
+        [type]: current + 1,
+      },
+    }));
+    return current + 1;
+  }
+
+  getUntitledCounter(type: 'file' | 'directory'): number {
+    return this._state.untitledCounters[type];
+  }
+
+  // Toolbar wrap height operations
+  updateToolbarWrapHeight(height: number): void {
+    this._updateState((state) => ({
+      ...state,
+      toolbarWrapHeight: height,
+    }));
+  }
+
+  // External conflict operations
+  setExternalConflict(id: string, conflict: ExternalConflict | null): void {
+    this.updateDocument(id, { externalConflict: conflict });
+  }
+
+  setExternalFileState(id: string, fileState: ExternalFileState | null): void {
+    this.updateDocument(id, { externalFileState: fileState });
+  }
+
+  setExternalChangeIgnored(id: string, ignored: boolean): void {
+    this.updateDocument(id, { externalChangeIgnored: ignored });
+  }
+
+  // Recovery operations
+  setRecoveryState(id: string, recoveryState: RecoveryState | null): void {
+    this.updateDocument(id, {
+      recoveryState,
+      ...(recoveryState === null ? { recoverySnapshotId: null } : {}),
+    });
+  }
+
+  incrementRecoveryRevision(id: string): void {
+    const doc = this.getDocument(id);
+    if (doc) {
+      this.updateDocument(id, { recoveryRevision: doc.recoveryRevision + 1 });
+    }
+  }
+
+  // Content operations
+  updateContent(id: string, content: string): void {
+    const doc = this.getDocument(id);
+    if (doc) {
+      this.updateDocument(id, {
+        content,
+        modified: content !== doc.savedContent,
+        contentRevision: doc.contentRevision + 1,
+      });
+    }
+  }
+
+  markContentSaved(id: string, savedContent: string): void {
+    this.updateDocument(id, {
+      savedContent,
+      expectedSavedContent: savedContent,
+      modified: false,
+    });
+  }
+}
