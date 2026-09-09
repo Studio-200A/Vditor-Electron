@@ -53,6 +53,8 @@ This release is primarily an internal renderer-architecture upgrade. It preserve
 
 - **fix(find and replace):** Preserve allowed SVG images during native WYSIWYG replacements by restoring original image URLs while Vditor serializes the changed block.
 
+- **fix(find and replace):** Clear the active-match selection and highlight state immediately when the search query stops matching or is emptied, instead of leaving the previous query's stale highlights rendered.
+
 - **fix(document links):** Show a text cursor, rather than a navigation affordance, for blocked link schemes while preserving any author-supplied title.
 
 - **improve(tabs):** Use the themed application tooltip for document-tab paths, consistent with sidebar files.

@@ -119,8 +119,13 @@ export class FindController {
     const previousIndex = this.activeIndex;
     this.query = query;
     this.matches = runtime ? collectMatches(runtime.content, query) : [];
-    if (!this.matches.length) this.activeIndex = -1;
-    else if (preserveIndex && previousIndex >= 0)
+    if (!this.matches.length) {
+      this.activeIndex = -1;
+      // Drop the previous match state right away so a non-matching or emptied
+      // query does not keep stale selection/highlight ranges rendered while
+      // the reveal debounce is still pending.
+      this.adapter.clearFindHighlights();
+    } else if (preserveIndex && previousIndex >= 0)
       this.activeIndex = Math.min(previousIndex, this.matches.length - 1);
     else this.activeIndex = 0;
     this.renderCount();
@@ -179,7 +184,12 @@ export class FindController {
 
   private reveal(): void {
     const runtime = this.getActiveRuntime();
-    if (!runtime || this.activeIndex < 0 || !this.query) return;
+    // A query that no longer matches (or was emptied) must drop the previous
+    // active/highlight state instead of leaving stale ranges rendered.
+    if (!runtime || this.activeIndex < 0 || !this.query) {
+      this.adapter.clearFindHighlights();
+      return;
+    }
     this.adapter.revealTextMatch(runtime.host, runtime.mode, this.query, this.activeIndex);
   }
 

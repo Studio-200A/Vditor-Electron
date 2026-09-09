@@ -51,4 +51,64 @@ describe('FindController', () => {
     controller.dispose();
     expect(clearFindHighlights).toHaveBeenCalled();
   });
+
+  it('clears match state when the query stops matching or is emptied', () => {
+    const widget = document.createElement('section');
+    const input = document.createElement('input');
+    const replaceInput = document.createElement('input');
+    const replaceRow = document.createElement('div');
+    const toggleReplace = document.createElement('button');
+    const count = document.createElement('span');
+    widget.append(input, replaceInput);
+    document.body.append(widget);
+    const revealTextMatch = vi.fn();
+    const clearFindHighlights = vi.fn();
+    const controller = new FindController({
+      widget,
+      input,
+      replaceInput,
+      replaceRow,
+      toggleReplace,
+      count,
+      getActiveRuntime: () => ({
+        id: 'tab',
+        content: 'alpha beta alpha',
+        host: document.createElement('section'),
+        mode: 'ir',
+        focus: () => {},
+      }),
+      adapter: {
+        revealTextMatch,
+        selectTextMatch: () => true,
+        replaceTextMatch: () => true,
+        clearFindHighlights,
+      },
+      onSave: () => {},
+    });
+
+    controller.init();
+    controller.open();
+
+    input.value = 'alpha';
+    input.dispatchEvent(new Event('input'));
+    expect(count.textContent).toBe('1 / 2');
+
+    clearFindHighlights.mockClear();
+    input.value = 'alphaz';
+    input.dispatchEvent(new Event('input'));
+    expect(count.textContent).toBe('0 / 0');
+    expect(clearFindHighlights).toHaveBeenCalled();
+
+    input.value = 'beta';
+    input.dispatchEvent(new Event('input'));
+    expect(count.textContent).toBe('1 / 1');
+
+    clearFindHighlights.mockClear();
+    input.value = '';
+    input.dispatchEvent(new Event('input'));
+    expect(count.textContent).toBe('0 / 0');
+    expect(clearFindHighlights).toHaveBeenCalled();
+
+    controller.dispose();
+  });
 });
