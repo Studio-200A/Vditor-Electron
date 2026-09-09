@@ -27,6 +27,7 @@ Vditor Desktop 不修改 `node_modules/vditor` 的源码，但工具栏合并、
 - 初始化设置要求重建 Vditor 时，adapter 的 `createRebuildSnapshot()` 会临时克隆活动 host 的已渲染内容（同步全部后代 `scrollTop`/`scrollLeft`），直到新实例完成 toolbar/content 接管且滚动位置恢复稳定后才移除，避免空白闪烁与闪回开头。升级时须验证 snapshot 不包含重复 ID、不会接收交互、失败路径会释放，且 toolbar 与内容在重建期间无可见空白。
 - 重建移交 undo 历史依赖 Vditor 私有 undo 契约：`captureUndoHistory()` 在销毁旧实例前调用其私有 `vditor.undo.addToUndoStack()` 冲洗 `undoDelay` 防抖中尚未到期的输入历史，并只在 `resetIcon`/`undo`/`redo` 结构完整时返回该私有 owner；`scheduleUndoHistoryRestore()` 在新实例 `after` 后等待 `undoDelay + 25ms`（让 Vditor 先排队其初始 undo 基线）再替换 `vditor.undo` 并调用私有 `resetIcon()`。升级时须验证 constructor-only 设置重建后 Ctrl/Cmd+Z 与工具栏撤销仍能回退重建前的编辑、首次撤销不会只移除 Vditor 内部光标标记，且重建前 500ms 内的输入不丢失；若上游公开 undo 栈迁移 API，应替换该私有移交。
 - SVG 渲染开关变更时，adapter 的 `reloadImageSources()` 假定 Vditor 3.11.3 会把三种模式中的 Markdown 图片保留为 host 内的 `img[src]`。升级时须验证本地与 HTTP(S) SVG 在开关关闭时不显示、开启后无需重建编辑器即可显示，且既有 undo 与选区不受影响。
+- GitHub alert（`> [!NOTE]` 等五种）的展示 emoji/默认标题由 Vditor 3.11.3 底层 Lute 加入编辑器 DOM，并可能在 `getValue()` 序列化时写回 Markdown；这属于上游 round-trip 缺陷而非私有 DOM 访问，Desktop 在 `src/renderer/editor/github-alerts.ts` 用纯 Markdown 规范化（`restoreGitHubAlertHeaders()`，以编辑前正文为来源基线）还原源标题，不放进 `vditor-adapter.js`。升级时须复核五种 alert 的无标题、自定义标题、显式 emoji、三种编辑模式、初始加载/输入/保存路径；若上游为 alert DOM 提供“标题是否由源 Markdown 显式提供”的可逆信息，应优先移除该兼容层并改用上游公共语义。
 
 业务代码不得新增 Vditor 内部选择器；确有需要时，先加入适配层和契约测试。
 

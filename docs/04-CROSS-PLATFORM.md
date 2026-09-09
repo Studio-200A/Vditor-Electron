@@ -10,7 +10,7 @@
 
 当前的开发与验证平台是 Linux。跨平台工作计划在 0.2.5 渲染器重构之后、且 Windows/macOS 测试环境就绪后开始。在此之前，Linux 测试可以防止平台无关的回归，但不得被报告为 Windows 或 macOS 验证。
 
-正在进行的 0.2.5 渲染器审查的 Linux 全量套件证据保留在 [`docs/15-0.2.5-EXECUTION-TRACKER.md`](15-0.2.5-EXECUTION-TRACKER.md) 中。在一次资源敏感的 Electron E2E 结果之后进行的 Linux 重试，仍只是 Linux 证据，不能满足任何 Windows 或 macOS 行。
+正在进行的 0.2.5 渲染器审查的 Linux 全量套件证据保留在 [`docs/ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md`](ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md) 中。在一次资源敏感的 Electron E2E 结果之后进行的 Linux 重试，仍只是 Linux 证据，不能满足任何 Windows 或 macOS 行。
 
 ## 2. 产品与架构边界
 
@@ -96,7 +96,7 @@ Node 的 `path` 实现随宿主平台而异，且某些 `fs` 操作是明确平�
 - 最后一个窗口关闭后的 macOS Dock 激活，包括替换窗口中的全新未保存文档关闭确认
 - 文件系统特定的 Unicode 规范化和大小写冲突行为
 
-0.2.0 的批次和发布状态已归档在 [`docs/ARCHIVED/13-0.2.0-EXECUTION-TRACKER.md`](ARCHIVED/13-0.2.0-EXECUTION-TRACKER.md)；当前 0.2.5 的批次与发布状态见 [`docs/15-0.2.5-EXECUTION-TRACKER.md`](15-0.2.5-EXECUTION-TRACKER.md)。不要在这些跟踪器中重复详细的平台证据。
+0.2.0 的批次和发布状态已归档在 [`docs/ARCHIVED/13-0.2.0-EXECUTION-TRACKER.md`](ARCHIVED/13-0.2.0-EXECUTION-TRACKER.md)；当前 0.2.5 的批次与发布状态见 [`docs/ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md`](ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md)。不要在这些跟踪器中重复详细的平台证据。
 
 ## 6. 测试策略
 

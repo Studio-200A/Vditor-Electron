@@ -11,7 +11,7 @@
 - 本文档记录长期有效的行为契约、风险边界和关闭条件。
 - [`docs/ARCHIVED/13-0.2.0-EXECUTION-TRACKER.md`](ARCHIVED/13-0.2.0-EXECUTION-TRACKER.md) 记录 0.2.0 批次 7 的历史发现、实施过程和 Linux 验证证据。
 - [`docs/04-CROSS-PLATFORM.md`](04-CROSS-PLATFORM.md) 记录 Windows/macOS/Linux 的平台差异、实体机验证方法和证据；它不替代本文档的通用安全契约。
-- [`docs/14-0.2.5-RENDERER-REFACTOR-PLAN.md`](14-0.2.5-RENDERER-REFACTOR-PLAN.md) 记录重构时必须原样保留的契约和迁移要求。
+- [`docs/ARCHIVED/14-0.2.5-RENDERER-REFACTOR-PLAN.md`](ARCHIVED/14-0.2.5-RENDERER-REFACTOR-PLAN.md) 记录重构时必须原样保留的契约和迁移要求。
 
 后续只要修改保存、Save As、文件/目录重命名、恢复、外部冲突或 watcher，就必须同时检查本文档；若不变量、缓解措施或已知边界发生变化，应在同一变更中更新本文档。
 
@@ -107,7 +107,7 @@ rename(临时文件, 目标文件)
 - 候选只枚举当前文档图片目录的直接常规图片文件，不递归进入二级目录，二级目录内容不能成为回收站目标；
 - 不跟随符号链接；图片目录直接子项中发现符号链接即把扫描标记为不完整，该链接不进入候选列表，并禁止本次 revision 的回收站操作，页面提示用户将链接替换为原始图片后重新扫描。
 
-这些措施缩小了可攻击面和误跟随链接的风险，但属于产品边界而非目录句柄级原子文件操作；在引入跨平台原生组件（Linux `openat2` 的 beneath/no-symlink 解析、macOS `openat`/`renameat` 与原生废纸篓、Windows reparse-point 安全 handle 与 `IFileOperation`）之前，本窗口保持开放。相关设计和处理办法见 [`docs/18-0.2.5-RESOURCE-HEALTH.md` §6.3.1](18-0.2.5-RESOURCE-HEALTH.md#631-符号链接与二级目录)。
+这些措施缩小了可攻击面和误跟随链接的风险，但属于产品边界而非目录句柄级原子文件操作；在引入跨平台原生组件（Linux `openat2` 的 beneath/no-symlink 解析、macOS `openat`/`renameat` 与原生废纸篓、Windows reparse-point 安全 handle 与 `IFileOperation`）之前，本窗口保持开放。相关设计和处理办法见 [`docs/ARCHIVED/18-0.2.5-RESOURCE-HEALTH.md` §6.3.1](ARCHIVED/18-0.2.5-RESOURCE-HEALTH.md#631-符号链接与二级目录)。
 
 ## 8. 维护入口与验证
 
@@ -126,6 +126,6 @@ rename(临时文件, 目标文件)
 
 截至 2026-08-27，用户在 Linux 手动运行的 `npm run check:all` 已通过；该次运行的精确结果记录在 [`docs/ARCHIVED/13-0.2.0-EXECUTION-TRACKER.md` 的批次 7](ARCHIVED/13-0.2.0-EXECUTION-TRACKER.md#批次-7阶段-b-独立复核)。该证据证明当前本地回归闭环，不关闭第 7 节的已有目标 TOCTOU 边界，也不替代 [`docs/04-CROSS-PLATFORM.md` §9](04-CROSS-PLATFORM.md#9-020-批次-7-推迟的平台验证) 的 Windows/macOS 实机证据。
 
-0.2.5 批次 7 对 renderer 文档边界的修复和本地全量验证状态记录在 [`docs/15-0.2.5-EXECUTION-TRACKER.md`](15-0.2.5-EXECUTION-TRACKER.md#批次-7阶段独立复核批次-1-6)。该记录不会改变本文件的 TOCTOU 或跨平台限制。
+0.2.5 批次 7 对 renderer 文档边界的修复和本地全量验证状态记录在 [`docs/ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md`](ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md#批次-7阶段独立复核批次-1-6)。该记录不会改变本文件的 TOCTOU 或跨平台限制。
 
 版本 tracker 可以关闭一个批次的本地 TODO，但不得删除本文档的长期边界；若未来验证证明边界仍存在，只更新证据和状态，不用历史版本的“已完成”替代当前安全结论。

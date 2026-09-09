@@ -338,7 +338,7 @@ Vditor `3.11.3` 的 WYSIWYG/IR 将表格本身作为横向滚动容器（`displa
 
 ## 背景
 
-`app.js` 从最初的 5000+ 行（0.2.0 基线统计为 5414 行，见 `docs/16-0.2.5-BASELINE-BEHAVIOR.md`）逐步迁移为 `app-composition.js`；批次 10 收口（2026-09-09）时为 3235 行，含资源健康接线与重建 undo 恢复回调。这两个行数是冻结的历史快照，只用于说明迁移幅度，不随后续代码演进更新。迁移过程中，领域逻辑被持续提取为独立的 Controller 类，通过 `PURE` 命名空间注入，composition 层只保留实例化、依赖注入和跨域协调。原 `src/renderer/app.js` 已在批次 9 删除，不得恢复。
+`app.js` 从最初的 5000+ 行（0.2.0 基线统计为 5414 行，见 `docs/ARCHIVED/16-0.2.5-BASELINE-BEHAVIOR.md`）逐步迁移为 `app-composition.js`；批次 10 收口（2026-09-09）时为 3235 行，含资源健康接线与重建 undo 恢复回调。这两个行数是冻结的历史快照，只用于说明迁移幅度，不随后续代码演进更新。迁移过程中，领域逻辑被持续提取为独立的 Controller 类，通过 `PURE` 命名空间注入，composition 层只保留实例化、依赖注入和跨域协调。原 `src/renderer/app.js` 已在批次 9 删除，不得恢复。
 
 ## 已提取的 Controller 清单
 
