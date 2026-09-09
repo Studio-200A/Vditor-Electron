@@ -42,6 +42,8 @@ adapter 负责：
 4. `revealTextMatch()` 用当前 Range 滚动到匹配项，但不修改浏览器原生 Selection。
 5. `selectTextMatch()` 仅在关闭搜索浮层时将当前 Range 设为 Vditor Selection。
 
+0.2.5 批次 11 修复：查询变为无匹配或清空时，`FindController` 立即调用 `clearFindHighlights()` 清除 active 选中与全部高亮，不等待 120ms reveal 防抖；否则会残留上一查询的高亮。
+
 样式使用：
 
 - `::highlight(vditor-desktop-find)`：当前编辑模式中可映射的全部可见文本匹配。

@@ -20,15 +20,15 @@
 | `16-0.2.5-BASELINE-BEHAVIOR.md`         | 0.2.5 批次 0 冻结的 0.2.0 行为基线清单、安全状态转换表与迁移域链路图。                        |
 | `17-0.2.5-TOOLBAR-UX-ADJUSTMENT.md`     | 0.2.5 重构任务完成后，需要在0.2.5版本内实现的一项工具栏视觉与交互调整。                       |
 | `18-0.2.5-RESOURCE-HEALTH.md`           | 0.2.5 资源健康专项：检查已保存 Markdown 文档与其本地图片资源（未引用/缺失）关系的设计与实现。 |
-| `19-0.3.0-VDITOR-4.0-MIGRATION-PLAN.md` | 0.2.6 将 Vditor 3.11.3 升级至 4.0.0 的架构迁移计划。                                          |
-| `20-0.3.0-EXECUTION-TRACKER.md`         | 0.2.6 Vditor 4.0 升级的批次、验证证据和风险账本。                                             |
+| `19-0.3.0-VDITOR-4.0-MIGRATION-PLAN.md` | 0.3.0 将 Vditor 3.11.3 升级至 4.0.0 的架构迁移计划。                                          |
+| `20-0.3.0-EXECUTION-TRACKER.md`         | 0.3.0 Vditor 4.0 升级的批次、验证证据和风险账本。                                             |
 | `HANDOFF-DOCS/`                         | 不同版本开发过程中，跨对话、跨coding agent、跨LLM的批次交接文档留底。                         |
 | `ARCHIVED`                              | 已经完成的往期开发文档留档。                                                                  |
 
 ## 近期主要版本计划
 
 1. `0.2.0`：优先完成编辑器基础可靠性、文件冲突处理、安全边界和发布验证；开发已完成并发布 `v0.2.0`，执行记录见 `ARCHIVED/13-0.2.0-EXECUTION-TRACKER.md`；暂不推进浮动工具栏方案。
-2. `0.2.5`：在 0.2.0 行为稳定并具备测试基线后，渐进式拆分渲染层架构；批次 0–10 已完成（批次 10 收口文档同步、CI quality gate、性能与包体对比、Linux 候选包与实机冒烟，提交 `5f34490`），剩余批次 11（最终独立审查）未开始，见 `15-0.2.5-EXECUTION-TRACKER.md`。工具栏视觉与交互调整（`17-0.2.5-TOOLBAR-UX-ADJUSTMENT.md`）与资源健康专项（`18-0.2.5-RESOURCE-HEALTH.md`，含两轮各 5 次独立审计）均已实现。
+2. `0.2.5`：在 0.2.0 行为稳定并具备测试基线后，渐进式拆分渲染层架构；批次 0–11 全部完成（批次 11 最终独立审查、三个阻塞项修复与最终人工验收已收口），见 `15-0.2.5-EXECUTION-TRACKER.md`。工具栏视觉与交互调整（`17-0.2.5-TOOLBAR-UX-ADJUSTMENT.md`）与资源健康专项（`18-0.2.5-RESOURCE-HEALTH.md`，含两轮各 5 次独立审计）均已实现。
 3. `0.3.0`：只升级 Vditor 至 `4.0.0`。由于 SV 从 contenteditable 重构为 textarea，必须先完成产品决策和 3.11.3 行为基线，再实施迁移，见 `19-0.3.0-VDITOR-4.0-MIGRATION-PLAN.md` 与 `20-0.3.0-EXECUTION-TRACKER.md`。
 4. 后续版本：根据实际需求从 `08-WISHLIST.md` 选择功能，并单独建立对应版本计划。
 

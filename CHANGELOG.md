@@ -10,7 +10,7 @@ This release is primarily an internal renderer-architecture upgrade. It preserve
    - **Description:** Added **Tools → Resource Health** for saved documents in the active workspace.
    - **Functionality:** Maps the focused document's image references, lists unreferenced and missing images for management, and checks every accessible Markdown/HTML document in the workspace before image resources are moved to the system trash.
    - **Safety:** Only direct image-directory files become cleanup candidates; nested directories are not scanned and symbolic links make the scan incomplete, disable moving to Trash, and prompt the user to replace the link with the original image. Moving to Trash always re-validates each selected candidate first.
-- **feat(custom caret)**: Underline, Bar and Block style custom caret.
+- **feat(custom caret)**: Underline, Bar, Block, and Native caret style options.
 
 ### Improvements
 
@@ -55,6 +55,7 @@ This release is primarily an internal renderer-architecture upgrade. It preserve
 
 #### Documents, Saving, and Recovery
 
+- **fix(save dialog):** Preserve the Save As default path so the dialog opens at the current file's location instead of a duplicated workspace prefix; only a bare file name joins onto the workspace directory, and untitled documents prefill a `.md` name under the workspace.
 - **fix(document binding):** When an opened document's parent directory is renamed outside the application, reconcile its canonical path, watcher, and local-resource roots before the next save; the save writes to the renamed path without recreating the old directory.
 - **fix(save as):** Saving an unavailable document to its original path now uses the existing explicit recreate confirmation instead of silently rejecting the operation.
 - **fix(file recovery):** Confirming recreation after a previously deleted file has reappeared now uses the watcher-provided disk snapshot as its safe write baseline. The confirmed local content replaces that version; a further external change is still rejected rather than silently overwritten.

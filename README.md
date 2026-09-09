@@ -51,6 +51,7 @@ Vditor Desktop takes the writing experience of [Vditor](https://github.com/Vanes
 
 ## Editing modes
 
+
 | Mode                  | Best for                                                                                |
 | --------------------- | --------------------------------------------------------------------------------------- |
 | **WYSIWYG**           | Writing and formatting while seeing the final document appearance.                      |
@@ -59,7 +60,7 @@ Vditor Desktop takes the writing experience of [Vditor](https://github.com/Vanes
 
 Switch modes from the unified toolbar or **View → Editing Mode**. Split Preview includes source line numbers, configurable tab spacing, optional whitespace markers, a resizable divider, and an auto-hiding preview scrollbar.
 
-## A workspace that <u>stays out of the way</u>
+## A workspace that stays out of the way
 
 Most days you're not managing an editor — you're just writing. Vditor Desktop tries to keep the surrounding tools quiet until you actually reach for them.
 
@@ -74,7 +75,7 @@ Most days you're not managing an editor — you're just writing. Vditor Desktop 
 
 Directory renames/deletes and workspace-level resource limits remain planned work; keep backups of important documents.
 
-## <u>Protecting</u> You and Your Content, Thoughtfully
+## Protecting You and Your Content, Thoughtfully
 
 Vditor Desktop treats your writing as something to protect, not something to overwrite. Behind the simple Markdown workflow are several safeguards designed to keep an unexpected exit, a second editor, or a changing file system from silently taking your work away:
 
@@ -116,6 +117,7 @@ Built-in application themes:
 
 ## Everyday shortcuts
 
+
 | Action                                | Shortcut               |
 | ------------------------------------- | ---------------------- |
 | New file                              | `Ctrl/Cmd + N`         |
@@ -134,6 +136,7 @@ Built-in application themes:
 ## Configuration and data
 
 Application configuration and Chromium user data are kept separate:
+
 
 | Platform | Configuration                                                                             | Chromium data                                                                    | Recovery data                                                                    |
 | -------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
@@ -219,6 +222,7 @@ Vditor Desktop is made possible by the following open-source projects. Their aut
 
 <details>
 <summary>Runtime and direct dependencies</summary>
+
 
 | Project                                                        | Role                               | License                 |
 | -------------------------------------------------------------- | ---------------------------------- | ----------------------- |

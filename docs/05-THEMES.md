@@ -17,7 +17,7 @@ Vditor Desktop 的主题系统分为应用壳层主题和 Vditor 内容主题两
 
 Vditor 原生工具栏中的代码预览主题设置控制 WYSIWYG、IR 和 SV 预览区代码块的高亮风格。应用主题不重复定义这部分颜色，从而尊重 Vditor 的上游能力和升级边界。
 
-Monokai Pro Dark 和 Monokai Pro Light 是历史实现中的例外：应用 CSS 额外提供了少量内容可读性修正和 H1–H6 标题色，以保持既有视觉特征；代码块高亮仍由 Vditor code theme 控制。Claude 主题不复制这组内容层覆盖。
+Monokai Pro Dark 和 Monokai Pro Light 是历史实现中的例外：应用 CSS 额外提供了少量内容可读性修正和 H1–H6 标题色，以保持既有视觉特征；代码块高亮仍由 Vditor code theme 控制。Claude 主题不复制 Monokai 专属的 H1–H6 标题色覆盖；但 Ant Design 与 WeChat 内容主题是按浅色文档设计，应用在深色壳层（`dark`、`claude-dark`、`monokai-pro-dark` 三者并列）下会将其显式浅色文字/表格/标题重映射为壳层深色语义变量，Claude Dark 自 0.2.5 批次 11 起参与该通用可读性重映射。
 
 ## 2. 当前实现分层
 
