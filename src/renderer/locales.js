@@ -302,12 +302,15 @@
         'Unsaved changes in the current editor are not included in this scan. Documents outside this workspace may still reference these images.',
       'resourceHealth.unavailable':
         'Resource health only checks documents inside the current workspace.',
+      'resourceHealth.workspace-symbolic-link':
+        'For safety, Resource Health cannot be used when the workspace root is a symbolic link.',
       'resourceHealth.scanFailed':
         'Resource health could not complete this scan. Check the workspace files and try again.',
       'resourceHealth.stale': 'The resource-health result has expired. Scan again.',
       'resourceHealth.workspaceHint':
         'Switch to the document workspace, then reopen this document to inspect its resources.',
-      'resourceHealth.openWorkspace': 'Switch workspace…',
+      'resourceHealth.workspaceSymbolicLinkHint':
+        'Open the symbolic link target directory as the workspace, then try again.',
       'resourceHealth.rescan': 'Scan again',
       'resourceHealth.moveToTrash': 'Move selected to Trash',
       'resourceHealth.selectCandidate': 'Select an image to inspect it.',
@@ -315,8 +318,8 @@
       'resourceHealth.selectionSummary': '{count} selected · {size}',
       'resourceHealth.trashResult': '{trashed} of {count} selected images moved to Trash.',
       'resourceHealth.reveal': 'Show in folder',
-      'resourceHealth.summary':
-        '{title}: {count} unreferenced images; {missing} missing references.',
+      'resourceHealth.summaryCounts':
+        ': {count} unreferenced images; {missing} missing references.',
       'resourceHealth.scanMetadata':
         'Saved snapshot: {documentPath} in {workspace}, saved {savedAt}. Image directory: {imageDirectory}. Scanned {scanned} Markdown/HTML files. Unsaved editor changes and references outside this workspace are not included.',
       'resourceHealth.incomplete':
@@ -675,10 +678,13 @@
       'resourceHealth.unsavedNotice':
         '当前编辑器中的未保存改动不参与扫描。工作区外的文档仍可能引用这些图片。',
       'resourceHealth.unavailable': '资源健康仅检查当前工作区内的文档。',
+      'resourceHealth.workspace-symbolic-link':
+        '出于安全考虑，不支持在工作区根目录为符号链接的情况下使用资源健康。',
       'resourceHealth.scanFailed': '资源健康未能完成本次扫描。请检查工作区文件后重试。',
       'resourceHealth.stale': '资源健康结果已过期，请重新扫描。',
       'resourceHealth.workspaceHint': '请切换至文档所在工作区后重新打开文档查看资源情况。',
-      'resourceHealth.openWorkspace': '切换工作区…',
+      'resourceHealth.workspaceSymbolicLinkHint':
+        '请改为打开该符号链接的目标目录作为工作区后重试。',
       'resourceHealth.rescan': '重新扫描',
       'resourceHealth.moveToTrash': '移至系统回收站',
       'resourceHealth.selectCandidate': '选择图片以查看详情。',
@@ -686,7 +692,7 @@
       'resourceHealth.selectionSummary': '已选择 {count} 项 · {size}',
       'resourceHealth.trashResult': '已将选中的 {count} 项中的 {trashed} 项移至系统回收站。',
       'resourceHealth.reveal': '在文件管理器中显示',
-      'resourceHealth.summary': '{title}：{count} 个未引用图片，{missing} 个缺失引用。',
+      'resourceHealth.summaryCounts': '：{count} 个未引用图片，{missing} 个缺失引用。',
       'resourceHealth.scanMetadata':
         '已保存快照：{workspace} 中的 {documentPath}，保存时间 {savedAt}。图片目录：{imageDirectory}。已扫描 {scanned} 个 Markdown/HTML 文件；未保存编辑和工作区外引用不参与扫描。',
       'resourceHealth.incomplete':
@@ -1040,10 +1046,13 @@
       'resourceHealth.unsavedNotice':
         '目前編輯器中的未儲存變更不參與掃描。工作區外的文件仍可能引用這些圖片。',
       'resourceHealth.unavailable': '資源健康僅檢查目前工作區內的文件。',
+      'resourceHealth.workspace-symbolic-link':
+        '基於安全考量，不支援在工作區根目錄為符號連結的情況下使用資源健康。',
       'resourceHealth.scanFailed': '資源健康未能完成本次掃描。請檢查工作區檔案後重試。',
       'resourceHealth.stale': '資源健康結果已過期，請重新掃描。',
       'resourceHealth.workspaceHint': '請切換至文件所在工作區後重新開啟文件查看資源情況。',
-      'resourceHealth.openWorkspace': '切換工作區…',
+      'resourceHealth.workspaceSymbolicLinkHint':
+        '請改為開啟該符號連結的目標目錄作為工作區後重試。',
       'resourceHealth.rescan': '重新掃描',
       'resourceHealth.moveToTrash': '移至系統回收筒',
       'resourceHealth.selectCandidate': '選擇圖片以查看詳細資訊。',
@@ -1051,7 +1060,7 @@
       'resourceHealth.selectionSummary': '已選擇 {count} 項 · {size}',
       'resourceHealth.trashResult': '已將選取的 {count} 項中的 {trashed} 項移至系統回收筒。',
       'resourceHealth.reveal': '在檔案管理員中顯示',
-      'resourceHealth.summary': '{title}：{count} 個未引用圖片，{missing} 個缺失引用。',
+      'resourceHealth.summaryCounts': '：{count} 個未引用圖片，{missing} 個缺失引用。',
       'resourceHealth.scanMetadata':
         '已儲存快照：{workspace} 中的 {documentPath}，儲存時間 {savedAt}。圖片目錄：{imageDirectory}。已掃描 {scanned} 個 Markdown/HTML 檔案；未儲存編輯和工作區外引用不參與掃描。',
       'resourceHealth.incomplete':

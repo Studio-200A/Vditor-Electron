@@ -71,6 +71,12 @@ export interface ResourceHealthScanSummary {
   readonly limitations: ResourceHealthLimitations;
 }
 
+export interface ResourceHealthScanUnavailable {
+  readonly unavailableReason: 'workspace-symbolic-link';
+}
+
+export type ResourceHealthScanResult = ResourceHealthScanSummary | ResourceHealthScanUnavailable;
+
 export type ResourceHealthActionCode =
   | 'trashed'
   | 'revalidated-as-referenced'
@@ -382,7 +388,10 @@ export class ResourceHealthService {
     }
   }
 
-  async scan(input: ResourceHealthScanInput): Promise<ResourceHealthScanSummary> {
+  async scan(input: ResourceHealthScanInput): Promise<ResourceHealthScanResult> {
+    if (await this.isRequestedWorkspaceSymbolicLink(input.workspacePath)) {
+      return { unavailableReason: 'workspace-symbolic-link' };
+    }
     const scanEpoch = ++this.scanEpoch;
     const normalizedInput = await this.normalizeInput(input);
     const startedAt = Date.now();
@@ -623,7 +632,7 @@ export class ResourceHealthService {
     if (!stored.summary.limitations.complete)
       return uniqueCandidateIds.map((id) => ({ id, code: 'scan-incomplete' }));
     const refreshed = await this.scan(stored.input);
-    if (!refreshed.limitations.complete)
+    if ('unavailableReason' in refreshed || !refreshed.limitations.complete)
       return uniqueCandidateIds.map((id) => ({ id, code: 'scan-incomplete' }));
     return Promise.all(
       uniqueCandidateIds.map(async (id) => {
@@ -679,6 +688,10 @@ export class ResourceHealthService {
     if (!isWithin(workspacePath, documentPath))
       throw new Error('Document must belong to workspace');
     return { workspacePath, documentPath };
+  }
+
+  private async isRequestedWorkspaceSymbolicLink(workspacePath: string): Promise<boolean> {
+    return (await fs.lstat(path.resolve(workspacePath))).isSymbolicLink();
   }
 
   /** Reject a configured image directory that would traverse a symlink outside its scan scope. */

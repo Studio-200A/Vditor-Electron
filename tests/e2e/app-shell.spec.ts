@@ -386,6 +386,36 @@ test('keeps the empty editor surface filled while the sidebar closes', async () 
   }
 });
 
+test('keeps the exposed editor strip on the empty-state surface in Claude Dark', async () => {
+  const running = await launchApp({
+    theme: 'claude-dark',
+    darkTheme: 'claude-dark',
+    sidebarVisible: true,
+  });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    await expect(page.locator('.editor-host.active')).toBeVisible();
+
+    await page.locator('#toggleSidebar').click();
+    await expect(page.locator('#app')).toHaveClass(/sidebar-transitioning/);
+    await page.waitForTimeout(50);
+    expect(
+      await page.evaluate(() => {
+        const main = document.querySelector('.main-area');
+        const editorArea = document.querySelector('.editor-area');
+        return (
+          main &&
+          editorArea &&
+          getComputedStyle(main).backgroundColor === getComputedStyle(editorArea).backgroundColor
+        );
+      }),
+    ).toBe(true);
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('reorders tabs by dragging within the unified workbench bar', async () => {
   const running = await launchApp();
   try {

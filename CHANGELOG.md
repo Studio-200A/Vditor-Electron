@@ -16,6 +16,7 @@
 - **feat(custom caret)**: Underline, Bar and Block style custom caret.
 - **fix(toolbar/sidebar cohesion):** Files and Outline now belong to the sidebar. With the editor toolbar visible they form the sidebar-aligned top navigation beside it; when the toolbar is hidden they become the first sidebar-content navigation row, with no leftover toolbar slot. The selected view remains stable across layout changes.
 - **fix(titlebar/sidebar transition):** Titlebar file actions and window controls remain fixed and operable while the sidebar transitions. The titlebar shadow appears only when the editor toolbar is hidden; on sidebar close the Vditor toolbar immediately fills the released area, while the sidebar navigation remains painted with the moving sidebar.
+- **fix(sidebar transition surface):** The strip exposed beside an open editor during the sidebar slide now uses the same surface as the empty editor area across themes, preventing Claude Dark from revealing the application-background color.
 - **fix(sidebar sizing):** The sidebar's rendered and draggable maximum is now two thirds of the current application width, while persisted values remain safely validated and are clamped to the live window.
 
 ### Renderer Architecture
@@ -133,6 +134,7 @@
 
 ### Bug Fixes
 
+- **fix(confirm dialogs):** Long document and file names embedded in confirmation messages now truncate with an ellipsis when space is constrained, preserving the surrounding prompt and keeping the complete name available on hover.
 - **fix(document binding):** When an opened document's parent directory is renamed outside the application, reconcile its canonical path, watcher, and local-resource roots before the next save; the save writes to the renamed path without recreating the old directory.
 - **fix(save as):** Saving an unavailable document to its original path now uses the existing explicit recreate confirmation instead of silently rejecting the operation.
 - **fix(editor layout):** Delay paragraph-width application until range selection is committed, avoiding repeated long-document layout work while the slider is dragged.

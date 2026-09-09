@@ -727,9 +727,10 @@ button.primary.danger {
   display: flex;
   flex-direction: column;
 }
-#app.sidebar-transitioning .main-area:has(#noTabs:not(.hidden)) {
-  /* The empty editor is translated while its flex width is held stable.
-     Match the exposed main-area strip until the final width is applied. */
+#app.sidebar-transitioning .main-area {
+  /* The editor is translated while its flex width is held stable. Match the
+     exposed main-area strip to the editor area's empty-state surface until
+     the final width is applied. */
   background: var(--sidebar-surface);
 }
 .tabbar {
@@ -2003,6 +2004,8 @@ html[data-scrollbar-mode='hidden'] .editor-host .vditor-reset table::-webkit-scr
 .resource-health-body {
   min-height: 0;
   flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
   overflow: auto;
   padding: 18px;
 }
@@ -2193,10 +2196,22 @@ html[data-scrollbar-mode='hidden'] .editor-host .vditor-reset table::-webkit-scr
   margin: 0;
 }
 .resource-health-summary-title {
+  display: flex;
+  min-width: 0;
   margin: 0;
   font-size: 21px;
   font-weight: 650;
   line-height: 1.35;
+  white-space: nowrap;
+}
+.resource-health-summary-document-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.resource-health-summary-counts {
+  flex: 0 0 auto;
 }
 .resource-health-candidate {
   display: flex;
@@ -2245,10 +2260,12 @@ html[data-scrollbar-mode='hidden'] .editor-host .vditor-reset table::-webkit-scr
 .resource-health-results {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(340px, 0.7fr);
-  align-items: start;
+  min-height: 0;
+  flex: 1 1 auto;
   gap: 18px;
 }
 .resource-health-candidates {
+  min-height: 0;
   min-width: 0;
 }
 .resource-health-candidates[hidden],
@@ -2262,7 +2279,9 @@ html[data-scrollbar-mode='hidden'] .editor-host .vditor-reset table::-webkit-scr
 .resource-health-candidate-detail {
   position: sticky;
   top: 0;
-  min-height: 360px;
+  height: 100%;
+  min-height: 180px;
+  box-sizing: border-box;
   display: grid;
   place-items: center;
   align-content: center;
@@ -2792,6 +2811,14 @@ body.confirm-card-dragging {
   margin: 3px 0 7px;
   font-size: 14px;
   font-weight: 600;
+}
+.confirm-message-file-name {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  vertical-align: bottom;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 #confirmDetail {
   margin: 0;

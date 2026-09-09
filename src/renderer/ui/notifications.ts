@@ -15,6 +15,8 @@ export interface ConfirmDialogCheckbox {
 export interface ConfirmDialogOptions {
   title?: string;
   message?: string;
+  /** A filename embedded in `message` that should remain readable without widening the dialog. */
+  messageFileName?: string;
   detail?: string;
   actions?: DialogAction[];
   draggable?: boolean;
@@ -114,7 +116,7 @@ export class NotificationsController {
   async showConfirmDialog(options: ConfirmDialogOptions): Promise<string> {
     if (this._confirmResolver) this.closeConfirmDialog('cancel');
 
-    const { title, message, detail, draggable = false, checkbox } = options;
+    const { title, message, messageFileName, detail, draggable = false, checkbox } = options;
     const actions = options.actions ?? [
       { id: 'cancel', label: this._t('dialog.cancel') },
       { id: 'confirm', label: this._t('dialog.continue'), primary: true },
@@ -133,7 +135,7 @@ export class NotificationsController {
     }
 
     titleEl.textContent = title || this._t('dialog.confirmTitle');
-    messageEl.textContent = message || '';
+    this._renderConfirmMessage(messageEl, message || '', messageFileName);
     detailEl.textContent = detail ?? '';
     extraEl.replaceChildren();
     this._confirmCheckbox = null;
@@ -201,10 +203,11 @@ export class NotificationsController {
     return result === 'confirm';
   }
 
-  async showUnsavedDialog(message: string, detail = ''): Promise<string> {
+  async showUnsavedDialog(message: string, detail = '', messageFileName?: string): Promise<string> {
     return this.showConfirmDialog({
       title: this._t('dialog.unsavedTitle'),
       message,
+      messageFileName,
       detail,
       draggable: true,
       actions: [
@@ -228,6 +231,34 @@ export class NotificationsController {
 
   private _t(key: string, params?: Record<string, string | number>): string {
     return this._translate(this._locales, this._locale, key, params);
+  }
+
+  private _renderConfirmMessage(
+    messageEl: HTMLElement,
+    message: string,
+    messageFileName?: string,
+  ): void {
+    if (!messageFileName) {
+      messageEl.textContent = message;
+      return;
+    }
+
+    const fileNameIndex = message.indexOf(messageFileName);
+    if (fileNameIndex === -1) {
+      messageEl.textContent = message;
+      return;
+    }
+
+    const fileNameEnd = fileNameIndex + messageFileName.length;
+    const fileNameEl = document.createElement('span');
+    fileNameEl.className = 'confirm-message-file-name';
+    fileNameEl.textContent = messageFileName;
+    fileNameEl.title = messageFileName;
+    messageEl.replaceChildren(
+      document.createTextNode(message.slice(0, fileNameIndex)),
+      fileNameEl,
+      document.createTextNode(message.slice(fileNameEnd)),
+    );
   }
 
   private _setupConfirmDialogDrag(): () => void {

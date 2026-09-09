@@ -182,6 +182,34 @@ describe('NotificationsController', () => {
       expect(modal?.classList.contains('hidden')).toBe(true);
     });
 
+    it('marks an embedded filename for single-line ellipsis without changing the message text', async () => {
+      const fileName = 'a-very-long-document-name.md';
+      const promise = controller.showConfirmDialog({
+        message: `Close “${fileName}” without saving?`,
+        messageFileName: fileName,
+      });
+
+      const message = document.getElementById('confirmMessage');
+      const fileNameEl = message?.querySelector<HTMLElement>('.confirm-message-file-name');
+      expect(message?.textContent).toBe(`Close “${fileName}” without saving?`);
+      expect(fileNameEl?.textContent).toBe(fileName);
+      expect(fileNameEl?.title).toBe(fileName);
+
+      controller.closeConfirmDialog('cancel');
+      await promise;
+    });
+
+    it('keeps an unmatched filename as plain message text', async () => {
+      const promise = controller.showConfirmDialog({
+        message: 'Close this document?',
+        messageFileName: 'missing.md',
+      });
+      expect(document.querySelector('.confirm-message-file-name')).toBeNull();
+
+      controller.closeConfirmDialog('cancel');
+      await promise;
+    });
+
     it('reports a checked optional acknowledgement only for the confirmed action', async () => {
       const onAction = vi.fn();
       const promise = controller.showConfirmDialog({

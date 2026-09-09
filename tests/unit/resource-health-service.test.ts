@@ -511,6 +511,33 @@ describe('resource health service', () => {
   });
 
   it.runIf(process.platform !== 'win32')(
+    'keeps the menu eligible but does not scan through a symbolic-link workspace root',
+    async () => {
+      const root = workspace();
+      write(root, 'notes/current.md', '# Current');
+      const linkedWorkspace = `${root}-link`;
+      fs.symlinkSync(root, linkedWorkspace, 'dir');
+      temporaryRoots.push(linkedWorkspace);
+      const service = new ResourceHealthService();
+
+      await expect(
+        service.isEligible({
+          documentPath: path.join(linkedWorkspace, 'notes/current.md'),
+          workspacePath: linkedWorkspace,
+        }),
+      ).resolves.toBe(true);
+      await expect(
+        service.scan({
+          documentPath: path.join(linkedWorkspace, 'notes/current.md'),
+          workspacePath: linkedWorkspace,
+          pasteImagesDir: './assets',
+          allowSvgImages: false,
+        }),
+      ).resolves.toEqual({ unavailableReason: 'workspace-symbolic-link' });
+    },
+  );
+
+  it.runIf(process.platform !== 'win32')(
     'rejects an image directory that traverses a symbolic link',
     async () => {
       const root = workspace();

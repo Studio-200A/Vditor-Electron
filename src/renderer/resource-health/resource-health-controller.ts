@@ -74,6 +74,8 @@ export class ResourceHealthController {
   private readonly actions: HTMLElement;
   private readonly summary: HTMLElement;
   private readonly summaryTitle: HTMLElement;
+  private readonly summaryDocumentTitle: HTMLElement;
+  private readonly summaryCounts: HTMLElement;
   private readonly scanStatus: HTMLElement;
   private readonly scanStatusIcon: HTMLElement;
   private readonly scanStatusText: HTMLElement;
@@ -135,6 +137,9 @@ export class ResourceHealthController {
     this.body = element(document, 'div', 'resource-health-body');
     this.summary = element(document, 'div', 'resource-health-summary');
     this.summaryTitle = element(document, 'h3', 'resource-health-summary-title');
+    this.summaryDocumentTitle = element(document, 'span', 'resource-health-summary-document-title');
+    this.summaryCounts = element(document, 'span', 'resource-health-summary-counts');
+    this.summaryTitle.append(this.summaryDocumentTitle, this.summaryCounts);
     this.summary.append(this.summaryTitle);
     this.scanStatus = element(document, 'section', 'resource-health-scan-status');
     this.scanStatus.setAttribute('aria-live', 'polite');
@@ -258,16 +263,11 @@ export class ResourceHealthController {
     this.closeOverlayButton.type = 'button';
     this.closeOverlayButton.textContent = options.translate('resourceHealth.close');
     this.closeOverlayButton.addEventListener('click', () => this.close());
-    const openWorkspace = element(document, 'button', 'resource-health-open-workspace hidden');
-    openWorkspace.type = 'button';
-    openWorkspace.textContent = options.translate('resourceHealth.openWorkspace');
-    openWorkspace.addEventListener('click', () => options.openWorkspace());
     this.overlay.append(
       this.warningIcon,
       this.overlayText,
       this.overlayDescription,
       this.closeOverlayButton,
-      openWorkspace,
     );
     for (const direction of ['n', 'e', 's', 'w', 'ne', 'se', 'sw', 'nw']) {
       const resizeHandle = element(document, 'div', 'resource-health-resize-handle');
@@ -559,16 +559,16 @@ export class ResourceHealthController {
     this.overlay.classList.remove('hidden', 'resource-health-overlay-error');
     this.warningIcon.classList.add('hidden');
     this.overlayDescription.classList.add('hidden');
-    this.overlay
-      .querySelector<HTMLButtonElement>('.resource-health-open-workspace')
-      ?.classList.add('hidden');
     this.overlayText.textContent = this.options.translate('resourceHealth.scanning');
     this.renderScanStatus('resourceHealth.scanStatus.scanning');
     this.modal.setAttribute('aria-busy', 'true');
     this.renderActions();
     this.showTab('candidates');
     try {
-      const summary = await this.options.appAPI.scanResourceHealth(active.filePath, workspacePath);
+      const scanResult = await this.options.appAPI.scanResourceHealth(
+        active.filePath,
+        workspacePath,
+      );
       if (generation !== this.scanGeneration) return;
       const currentActive = this.options.getActiveDocument();
       if (
@@ -578,6 +578,11 @@ export class ResourceHealthController {
         this.renderUnavailable('resourceHealth.stale');
         return;
       }
+      if ('unavailableReason' in scanResult) {
+        this.renderUnavailable(`resourceHealth.${scanResult.unavailableReason}`);
+        return;
+      }
+      const summary = scanResult;
       this.current = summary;
       this.overlay.classList.add('hidden');
       this.modal.removeAttribute('aria-busy');
@@ -608,16 +613,22 @@ export class ResourceHealthController {
         ? 'resourceHealth.scanStatus.stale'
         : 'resourceHealth.scanStatus.failed',
     );
-    const shouldOfferWorkspace = key === 'resourceHealth.unavailable';
+    const shouldOfferWorkspace =
+      key === 'resourceHealth.unavailable' || key === 'resourceHealth.workspace-symbolic-link';
     this.overlayDescription.textContent = shouldOfferWorkspace
-      ? this.options.translate('resourceHealth.workspaceHint')
+      ? this.options.translate(
+          key === 'resourceHealth.workspace-symbolic-link'
+            ? 'resourceHealth.workspaceSymbolicLinkHint'
+            : 'resourceHealth.workspaceHint',
+        )
       : '';
     this.overlayDescription.classList.toggle('hidden', !shouldOfferWorkspace);
-    this.overlay
-      .querySelector<HTMLButtonElement>('.resource-health-open-workspace')
-      ?.classList.toggle('hidden', !shouldOfferWorkspace);
     this.summaryTitle.textContent = shouldOfferWorkspace
-      ? this.options.translate('resourceHealth.workspaceHint')
+      ? this.options.translate(
+          key === 'resourceHealth.workspace-symbolic-link'
+            ? 'resourceHealth.workspaceSymbolicLinkHint'
+            : 'resourceHealth.workspaceHint',
+        )
       : this.options.translate(key);
     this.summary.replaceChildren(this.summaryTitle);
     this.limitations.classList.add('hidden');
@@ -673,11 +684,13 @@ export class ResourceHealthController {
     this.missingTab.textContent = this.options.translate('resourceHealth.missing', {
       count: summary.missingReferences.length,
     });
-    this.summaryTitle.textContent = this.options.translate('resourceHealth.summary', {
-      title,
+    this.summaryDocumentTitle.textContent = title;
+    this.summaryDocumentTitle.title = title;
+    this.summaryCounts.textContent = this.options.translate('resourceHealth.summaryCounts', {
       count: summary.candidates.length,
       missing: summary.missingReferences.length,
     });
+    this.summaryTitle.replaceChildren(this.summaryDocumentTitle, this.summaryCounts);
     this.summary.replaceChildren(this.summaryTitle);
     this.workspaceName.textContent = summary.workspaceName;
     this.workspaceIndicator.classList.toggle('hidden', !summary.workspaceName);

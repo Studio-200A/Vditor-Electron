@@ -162,6 +162,15 @@ describe('ResourceHealthController', () => {
     expect(document.querySelector('.resource-health-scan-metadata')?.textContent).toContain(
       'note.md',
     );
+    expect(document.querySelector('.resource-health-summary-document-title')?.textContent).toBe(
+      'note.md',
+    );
+    expect(
+      document.querySelector('.resource-health-summary-document-title')?.getAttribute('title'),
+    ).toBe('note.md');
+    expect(document.querySelector('.resource-health-summary-counts')?.textContent).toContain(
+      'resourceHealth.summaryCounts',
+    );
     expect(document.querySelector('.resource-health-scan-status-text')?.textContent).toContain(
       'resourceHealth.scanStatus.complete',
     );
@@ -263,6 +272,43 @@ describe('ResourceHealthController', () => {
         .querySelector('.resource-health-modal:last-child')
         ?.classList.contains('modal-closing'),
     ).toBe(true);
+    controller.dispose();
+  });
+
+  it('shows a dedicated unavailable overlay for a symbolic-link workspace root', async () => {
+    const scanResourceHealth = vi
+      .fn()
+      .mockResolvedValue({ unavailableReason: 'workspace-symbolic-link' });
+    const controller = new ResourceHealthController({
+      document,
+      appAPI: {
+        scanResourceHealth,
+        revealResourceHealthCandidate: vi.fn(),
+        previewResourceHealthCandidate: vi.fn(),
+        writeClipboard: vi.fn(),
+        trashResourceHealthCandidates: vi.fn(),
+      },
+      getActiveDocument: () => ({ filePath: '/workspace-link/note.md', title: 'note.md' }),
+      getWorkspacePath: () => '/workspace-link',
+      getActiveEditor: () => null,
+      removeImageReference: vi.fn(),
+      confirmRemoveReference: vi.fn().mockResolvedValue(true),
+      translate,
+      openWorkspace: vi.fn(),
+      confirmMoveToTrash: vi.fn().mockResolvedValue(true),
+    });
+
+    controller.open();
+    await vi.waitFor(() => expect(scanResourceHealth).toHaveBeenCalledOnce());
+    expect(document.querySelector('.resource-health-overlay-error')).not.toBeNull();
+    expect(document.querySelector('.resource-health-overlay-text')?.textContent).toBe(
+      'resourceHealth.workspace-symbolic-link:',
+    );
+    expect(document.querySelector('.resource-health-overlay-description')?.textContent).toBe(
+      'resourceHealth.workspaceSymbolicLinkHint:',
+    );
+    expect(document.querySelector('.resource-health-open-workspace')).toBeNull();
+    expect(document.querySelector<HTMLElement>('.resource-health-body')?.inert).toBe(true);
     controller.dispose();
   });
 

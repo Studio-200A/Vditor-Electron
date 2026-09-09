@@ -334,12 +334,14 @@
     detectLineEnding,
     confirm: async (kind, tab, path) => {
       const recreate = kind === 'recreate';
+      const confirmFileName = recreate ? fileName(path) : tab.title;
       return (
         (await showConfirmDialog({
           title: t(recreate ? 'external.recreateTitle' : 'external.overwriteTitle'),
           message: t(recreate ? 'external.recreateMessage' : 'external.overwriteMessage', {
-            name: recreate ? fileName(path) : tab.title,
+            name: confirmFileName,
           }),
+          messageFileName: confirmFileName,
           detail: t(recreate ? 'external.recreateDetail' : 'external.overwriteDetail'),
           actions: [
             { id: 'cancel', label: t('dialog.cancel') },
@@ -663,7 +665,11 @@
     fileName,
     openPath: (filePath) => openPath(filePath),
     confirmDelete: (entry) =>
-      confirmDialog({ message: t('workspace.delete', { name: entry.name }), draggable: true }),
+      confirmDialog({
+        message: t('workspace.delete', { name: entry.name }),
+        messageFileName: entry.name,
+        draggable: true,
+      }),
     getPathState: () => ({
       recentFiles: state.settings.recentFiles,
       workspaceTreeStates: state.settings.workspaceTreeStates,
@@ -1106,8 +1112,8 @@
     return notifications.confirmDialog(options);
   }
 
-  function showUnsavedDialog(message, detail = '') {
-    return notifications.showUnsavedDialog(message, detail);
+  function showUnsavedDialog(message, detail = '', messageFileName) {
+    return notifications.showUnsavedDialog(message, detail, messageFileName);
   }
 
   function applyLocale(locale) {
@@ -1955,6 +1961,7 @@
       const action = await showConfirmDialog({
         title: t('external.closeTitle'),
         message: t('external.closeMessage', { name: tab.title }),
+        messageFileName: tab.title,
         detail: t('external.closeDetail'),
         actions: [
           { id: 'cancel', label: t('dialog.cancel') },
@@ -1967,6 +1974,7 @@
       const action = await showUnsavedDialog(
         t('confirm.closeDirty', { title: tab.title }),
         t('confirm.closeDirtyDetail'),
+        tab.title,
       );
       return action !== 'cancel' && (action !== 'save' || (await saveTab(tab)));
     }
@@ -2261,6 +2269,7 @@
     const action = await showConfirmDialog({
       title: t('external.closeTitle'),
       message: t('external.closeMessage', { name: tab.title }),
+      messageFileName: tab.title,
       detail: t('external.closeDetail'),
       actions: [
         { id: 'cancel', label: t('dialog.cancel') },

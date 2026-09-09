@@ -65,6 +65,10 @@ export interface ResourceHealthScanSummary {
   };
 }
 
+export interface ResourceHealthScanUnavailable {
+  unavailableReason: 'workspace-symbolic-link';
+}
+
 export interface ResourceHealthActionResult {
   id: string;
   code: ResourceHealthActionCode;
@@ -150,7 +154,7 @@ export interface AppAPI {
   scanResourceHealth(
     documentPath: string,
     workspacePath: string,
-  ): Promise<ResourceHealthScanSummary>;
+  ): Promise<ResourceHealthScanSummary | ResourceHealthScanUnavailable>;
   revealResourceHealthCandidate(revision: string, candidateId: string): Promise<void>;
   previewResourceHealthCandidate(revision: string, candidateId: string): Promise<string | null>;
   trashResourceHealthCandidates(
