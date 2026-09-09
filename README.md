@@ -33,7 +33,7 @@ Vditor Desktop takes the writing experience of [Vditor](https://github.com/Vanes
 - [Themes and languages](#themes-and-languages)
 - [Everyday shortcuts](#everyday-shortcuts)
 - [Configuration and data](#configuration-and-data)
-- [Install and run](#install-and-run)
+- [Build and test](#build-and-test)
 - [Open-source software](#open-source-software)
 - [Disclaimer](#disclaimer)
 - [License](#license)
@@ -213,8 +213,6 @@ npm run test:e2e
 ```
 
 The Vditor dependency is intentionally pinned to 3.11.3. Refer to [the Vditor upgrade notes](docs/07-VDITOR-UPGRADE.md).
-
-</details>
 
 ## Open-source software
 
