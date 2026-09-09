@@ -430,3 +430,40 @@ Vditor `3.11.3` 的 WYSIWYG/IR 将表格本身作为横向滚动容器（`displa
 - `updateActiveUI` + 状态栏更新函数 → 如果状态栏逻辑继续增长，可考虑提取为 `StatusBarController`
 
 这些微调只在相关函数增长到值得提取时再做，当前不主动推进。
+
+---
+
+# Vditor 3.11.3：IR 折叠标题 marker 的自绘光标异常
+
+## 记录版本：0.2.5 / 2026-09-09
+
+## 现象
+
+打开首行为 Markdown 标题的文档，在标题下方编辑内容后撤销，IR 模式的自绘 caret 有时显示在异常位置，且高度会接近标题整行而不是普通文本行高。关闭标签并重新打开后可以稳定复现。WYSIWYG 不受影响；它没有 IR 的折叠 Markdown marker DOM。
+
+将设置中的 `caretStyle` 切换为 `native` 后，Chromium 原生 caret 在同一撤销状态不绘制。这排除了 Desktop 的编辑器重建、保存状态、undo owner 交接或普通 Range 定位时序是根因的可能。
+
+## 根因
+
+Vditor 3.11.3 的 IR 标题在未展开时使用 `.vditor-ir__marker--heading` 表示 `# ` 语法。撤销恢复 selection 时，Vditor 可能将折叠 Range 放在该 marker 的文本 offset `0`，也可能放在该 marker 后的元素边界。
+
+这些位置不是普通正文插入点。Chromium 原生 caret 将它们视为不可绘制状态；自绘实现若直接消费 Range 几何，则会取得 marker 或标题块的矩形，并错误画出位置和高度异常的 caret。
+
+标题语法展开后，marker 是用户可编辑的正常输入表面，不能按“所有 Markdown 标签都隐藏”处理。
+
+## 最终修复
+
+`src/renderer/vditor-adapter.js` 的 `installCustomCaret()` 在计算 Range 矩形前识别仅限 IR 的 Vditor 私有结构：
+
+1. selection 位于未展开标题 marker 的文本内时，隐藏自绘 caret。
+2. selection 位于隐藏标题 marker 后的元素边界时，隐藏自绘 caret。
+3. 标题带有 `vditor-ir__node--expand` 时，marker 内 selection 继续走正常自绘路径。
+
+该策略对齐 Chromium 原生渲染，而不修改真实 selection、Vditor 内容、undo 历史或编辑器实例生命周期。
+
+## 回归约束
+
+- 私有 class/selection 判断只能保留在 `vditor-adapter.js`；Vditor 升级时审查 `.vditor-ir__marker--heading` 与 `vditor-ir__node--expand` 的结构和原生 caret 行为。
+- `tests/unit/vditor-adapter.test.ts` 覆盖 marker 内与 marker 后边界的隐藏行为，以及展开 marker 的正常绘制。
+- `tests/e2e/editor-modes.spec.ts` 覆盖首行标题、标题下方编辑、等待 Vditor undo history、撤销后恢复到折叠 marker selection 的真实 Electron 路径。
+- 不要恢复“测量标题正文首字”或基于保存状态、`modified`、快捷键接管来抑制 caret 的方案；它们不描述实际 DOM/selection 根因，并可能破坏正常编辑或 undo 行为。

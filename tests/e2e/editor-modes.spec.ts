@@ -203,6 +203,43 @@ test('uses Chromium native caret when selected in editor settings', async () => 
   }
 });
 
+test('hides the custom caret after undo restores a collapsed IR heading marker selection', async () => {
+  const running = await launchApp(
+    { editMode: 'ir', caretStyle: 'bar' },
+    { 'heading.md': '# Heading' },
+  );
+  try {
+    const { page } = running;
+    const modifier =
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+    const editor = page.locator('.editor-host.active .vditor-ir .vditor-reset');
+    await page.waitForTimeout(700);
+    const headingBox = await editor.locator('h1').boundingBox();
+    if (!headingBox) throw new Error('Expected heading bounds');
+    await page.mouse.click(headingBox.x + 20, headingBox.y + headingBox.height + 12);
+    await page.keyboard.type('x');
+    await page.waitForTimeout(800);
+    await page.keyboard.press(`${modifier}+z`);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const range = window.getSelection()?.getRangeAt(0);
+          return Boolean(
+            range &&
+            range.startContainer.parentElement?.matches('.vditor-ir__marker--heading') &&
+            !range.startContainer.parentElement.parentElement?.classList.contains(
+              'vditor-ir__node--expand',
+            ),
+          );
+        }),
+      )
+      .toBe(true);
+    await expect(page.locator('[data-vditor-desktop-caret="true"]')).toBeHidden();
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('switches among all three modes from the View > Editing Mode submenu', async () => {
   const running = await launchApp({ editMode: 'ir' });
   try {

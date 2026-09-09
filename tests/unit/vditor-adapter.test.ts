@@ -41,6 +41,26 @@ describe('Vditor DOM compatibility adapter', () => {
     return host;
   }
 
+  function createFrameQueue() {
+    const frames = new Map<number, FrameRequestCallback>();
+    let nextFrame = 0;
+    window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+      nextFrame += 1;
+      frames.set(nextFrame, callback);
+      return nextFrame;
+    }) as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = ((frame: number) => {
+      frames.delete(frame);
+    }) as typeof window.cancelAnimationFrame;
+    return () => {
+      while (frames.size) {
+        const queued = [...frames.values()];
+        frames.clear();
+        queued.forEach((callback) => callback(0));
+      }
+    };
+  }
+
   it('exports exactly the declared adapter facade', () => {
     expect(Object.keys(adapter).sort()).toEqual([...ADAPTER_PUBLIC_KEYS].sort());
   });
@@ -114,6 +134,93 @@ describe('Vditor DOM compatibility adapter', () => {
 
     expect(window.document.querySelector('[data-vditor-desktop-caret="true"]')).toBeNull();
     expect(host.dataset.vditorDesktopCustomCaret).toBeUndefined();
+  });
+
+  it('hides the custom caret at a restored IR heading marker boundary', () => {
+    const host = createHost();
+    window.document.body.append(host);
+    const editor = adapter
+      .editorParts(host)
+      .instantRendering.querySelector<HTMLElement>('.vditor-reset')!;
+    const heading = editor.querySelector('h1')!;
+    heading.firstElementChild!.classList.add('vditor-ir__marker--heading');
+    const viewport = { bottom: 400, height: 400, left: 0, right: 600, top: 0, width: 600 };
+    Object.defineProperty(window.document, 'hasFocus', { configurable: true, value: () => true });
+    Object.defineProperty(host, 'getBoundingClientRect', { value: () => viewport });
+    Object.defineProperty(editor, 'getBoundingClientRect', { value: () => viewport });
+    editor.setAttribute('tabindex', '0');
+    editor.focus();
+    const range = window.document.createRange();
+    range.setStart(heading, 1);
+    range.collapse(true);
+    Object.defineProperty(range, 'getClientRects', {
+      value: () => [{ bottom: 50, height: 20, left: 20, right: 22, top: 30, width: 2 }],
+    });
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    const runFrames = createFrameQueue();
+
+    const cleanup = adapter.installCustomCaret(
+      host,
+      () => 'ir',
+      () => 'bar',
+    );
+    host.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+
+    runFrames();
+    expect(
+      window.document.querySelector<HTMLElement>('[data-vditor-desktop-caret="true"]')?.style
+        .display,
+    ).toBe('none');
+
+    cleanup();
+  });
+
+  it('hides the custom caret inside a collapsed IR heading marker', () => {
+    const host = createHost();
+    window.document.body.append(host);
+    const editor = adapter
+      .editorParts(host)
+      .instantRendering.querySelector<HTMLElement>('.vditor-reset')!;
+    const marker = editor.querySelector<HTMLElement>('h1 [data-type="heading-marker"]')!;
+    marker.classList.add('vditor-ir__marker--heading');
+    const viewport = { bottom: 400, height: 400, left: 0, right: 600, top: 0, width: 600 };
+    Object.defineProperty(window.document, 'hasFocus', { configurable: true, value: () => true });
+    Object.defineProperty(host, 'getBoundingClientRect', { value: () => viewport });
+    Object.defineProperty(editor, 'getBoundingClientRect', { value: () => viewport });
+    editor.setAttribute('tabindex', '0');
+    editor.focus();
+    const range = window.document.createRange();
+    range.setStart(marker.firstChild!, 0);
+    range.collapse(true);
+    Object.defineProperty(range, 'getClientRects', {
+      value: () => [{ bottom: 50, height: 36, left: 20, right: 22, top: 14, width: 2 }],
+    });
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    const runFrames = createFrameQueue();
+
+    const cleanup = adapter.installCustomCaret(
+      host,
+      () => 'ir',
+      () => 'bar',
+    );
+    host.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+
+    runFrames();
+    expect(
+      window.document.querySelector<HTMLElement>('[data-vditor-desktop-caret="true"]')?.style
+        .display,
+    ).toBe('none');
+
+    marker.parentElement!.classList.add('vditor-ir__node--expand');
+    window.document.dispatchEvent(new window.Event('selectionchange'));
+    runFrames();
+    expect(
+      window.document.querySelector<HTMLElement>('[data-vditor-desktop-caret="true"]')?.style
+        .display,
+    ).toBe('block');
+    cleanup();
   });
 
   it('cancels a pending caret move and redraws from current viewport geometry on scroll', () => {

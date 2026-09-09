@@ -642,6 +642,23 @@
       void caret.offsetWidth;
       caret.classList.add('is-blinking');
     };
+    const isHiddenIrHeadingMarkerSelection = (range, mode, editor) => {
+      if (mode !== 'ir') return false;
+      const marker = elementForNode(range.startContainer)?.closest('.vditor-ir__marker--heading');
+      if (marker && editor.contains(marker)) {
+        const heading = marker.closest('h1, h2, h3, h4, h5, h6');
+        // Vditor 3.11.3 restores collapsed headings into their marker text. Chromium
+        // leaves its native caret unpainted until the heading syntax is expanded.
+        return !heading?.classList.contains('vditor-ir__node--expand');
+      }
+      if (range.startContainer.nodeType !== Node.ELEMENT_NODE) return false;
+      const previousNode = range.startContainer.childNodes[range.startOffset - 1];
+      // Vditor 3.11.3 also restores selection after a hidden heading marker.
+      return (
+        previousNode?.nodeType === Node.ELEMENT_NODE &&
+        previousNode.classList.contains('vditor-ir__marker--heading')
+      );
+    };
     const caretRect = (range, editor) => {
       const lineHeightFor = (target) => {
         const style = getComputedStyle(target);
@@ -782,6 +799,10 @@
         !range.collapsed ||
         (isWindowFocused && !host.matches(':focus-within'))
       ) {
+        hide();
+        return;
+      }
+      if (isHiddenIrHeadingMarkerSelection(range, mode, editor)) {
         hide();
         return;
       }

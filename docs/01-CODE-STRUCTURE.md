@@ -1,8 +1,8 @@
 # Vditor-Electron Code Structure World Map
 
 - **最后同步：** 2026-09-09
-- **基于的工作区：** `dev-0.2.5` 当前工作区实现（批次 0–10 已完成，批次 11 最终独立审查未开始）
-- **基于的提交：** `5f34490`（本文档描述该提交的代码状态；后续同步时更新此锚点，不维护递增的文档版本号）
+- **基于的工作区：** `dev-0.2.5` 当前工作区实现（含 `b2efca1` 的原生光标选项与未提交的 IR 自绘光标修复）
+- **基于的提交：** `b2efca1`（本文档描述该提交及上述当前工作区的代码状态；后续同步时更新此锚点，不维护递增的文档版本号）
 - **对应 package.json 版本号：** 0.2.5
 
 ---
@@ -714,7 +714,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `createRebuildSnapshot(host)`         | `host`                        | `() => void`                                                       | 克隆活动 host 的已渲染内容为不可交互、`aria-hidden`、去重复 ID 的视觉快照（同步全部后代 `scrollTop`/`scrollLeft`），供初始化设置重建期间的视觉占位；返回 disposer |
 | `captureUndoHistory(instance)`        | `instance`                    | `history \| null`                                                  | 重建销毁前经 Vditor 私有 `undo.addToUndoStack()` 冲洗防抖中尚未到期的输入历史，返回可移交的私有 undo owner；结构不完整时返回 `null` |
 | `scheduleUndoHistoryRestore(instance, history, onRestored)` | `instance, history, callback` | `() => void`                                 | 在新实例 `after` 后等待 `undoDelay` 初始基线完成，再把捕获的 undo owner 交还 Vditor 并刷新 undo/redo 图标；返回取消 timer 的 disposer |
-| `installCustomCaret(host, getMode, getStyle)` | `host, getMode, getStyle` | `() => void`                                             | 安装三种编辑模式的自绘光标代理：读取折叠 Selection/Range 几何、滚动同步、闪烁、视口裁剪与 sidebar 拖动隐藏；返回 disposer |
+| `installCustomCaret(host, getMode, getStyle)` | `host, getMode, getStyle` | `() => void`                                             | 安装 IR/WYSIWYG/SV 的 underline/bar/block 自绘光标代理：读取折叠 Selection/Range 几何、滚动同步、闪烁、视口裁剪与 sidebar 拖动隐藏；IR 中 Vditor 3.11.3 恢复到未展开标题 marker 文本或其后边界时与 Chromium 原生行为一致地不绘制；返回 disposer |
 | `setEditorBottomSpacer(host, height)` | `host, pixels`                | `boolean`                                                          | 为 SV、IR、WYSIWYG 与 preview 写入 Vditor 私有 `--editor-bottom`，形成动态尾部留白                                   |
 | `scrollContainers(host)`              | `host`                        | `Element[]`                                                        | 获取所有可滚动容器节点（用于自动隐藏滚动条）                                                                           |
 | `innerScroller(node)`                 | `node`                        | `Element \| null`                                                  | 获取节点最近的 `.vditor-reset` 内层滚动容器                                                                            |
@@ -1177,6 +1177,7 @@ function rememberRecent(filePath) {
 ##### Editor 面板
 
 - `editMode`（默认模式：`wysiwyg` / `ir` / `sv`；仅用于后续新建或打开的标签，已打开标签保持自身模式）
+- `caretStyle`（光标样式：`native` 使用 Chromium 原生 caret；`underline` / `bar` / `block` 安装 adapter 自绘光标代理，保存后实时切换且不重建 Vditor）
 - `tabInsertSpaces`（Tab 插入空格，checkbox）
 - `tabSize`（空格数：2 / 4 / 6 / 8）
 - `showWhitespace`（SV 模式以点显示空格，checkbox）
