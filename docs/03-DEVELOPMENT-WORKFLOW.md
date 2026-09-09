@@ -28,6 +28,8 @@
 
 从发布分支（如 `dev-<version>`）向 `main` 创建 pull request。评审 diff 并确认所需检查通过。使用项目选定的 GitHub 合并策略合并 pull request。
 
+所需检查由 `.github/workflows/quality.yml` 提供：在向 `main` 的 push 与 pull request 上执行 `npm ci`、`format:check`、`check:project`、`lint`、`build:renderer`、main/renderer typecheck、`check:vditor` 与单元测试。该 workflow 是 0.2.5 批次 10 建立的 CI gate，只做质量验证，不发布、不签名，也不打包 Windows/macOS；Electron E2E 与发布打包仍在本地执行。
+
 发布提交是 `main` 上产生的提交：
 
 - 使用合并提交（merge commit）时，是合并提交本身；

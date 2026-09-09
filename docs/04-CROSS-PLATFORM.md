@@ -96,7 +96,7 @@ Node 的 `path` 实现随宿主平台而异，且某些 `fs` 操作是明确平�
 - 最后一个窗口关闭后的 macOS Dock 激活，包括替换窗口中的全新未保存文档关闭确认
 - 文件系统特定的 Unicode 规范化和大小写冲突行为
 
-当前批次和发布状态仍在 [`docs/13-0.2.0-EXECUTION-TRACKER.md`](13-0.2.0-EXECUTION-TRACKER.md) 中。不要在那里重复详细的平台证据。
+0.2.0 的批次和发布状态已归档在 [`docs/ARCHIVED/13-0.2.0-EXECUTION-TRACKER.md`](ARCHIVED/13-0.2.0-EXECUTION-TRACKER.md)；当前 0.2.5 的批次与发布状态见 [`docs/15-0.2.5-EXECUTION-TRACKER.md`](15-0.2.5-EXECUTION-TRACKER.md)。不要在这些跟踪器中重复详细的平台证据。
 
 ## 6. 测试策略
 
@@ -158,7 +158,7 @@ Node 的 `path` 实现随宿主平台而异，且某些 `fs` 操作是明确平�
 
 ### 9.1 所有权和开始条件
 
-批次 7 在 [`docs/13-0.2.0-EXECUTION-TRACKER.md`](13-0.2.0-EXECUTION-TRACKER.md) 中保留平台中立正确性修复的所有权：保存/恢复状态闭合、规范文件身份契约、目录重命名事务收敛及其 Linux 回归覆盖。该本地范围截至 2026-08-27 已完成。本节仅拥有当前 Linux 开发环境无法产出的原生平台证据；尚无 Windows/macOS 行被关闭。
+批次 7 在 [`docs/ARCHIVED/13-0.2.0-EXECUTION-TRACKER.md`](ARCHIVED/13-0.2.0-EXECUTION-TRACKER.md) 中保留平台中立正确性修复的所有权：保存/恢复状态闭合、规范文件身份契约、目录重命名事务收敛及其 Linux 回归覆盖。该本地范围截至 2026-08-27 已完成。本节仅拥有当前 Linux 开发环境无法产出的原生平台证据；尚无 Windows/macOS 行被关闭。
 
 相关的长期不变量和确切的剩余 TOCTOU 限制定义在 [`docs/06-FILE-SAFETY.md` §7](06-FILE-SAFETY.md#7-已知原子性边界已有目标的-toctou) 中。此处的平台结果更新该契约的证据；它不会用版本特定的复选框取代契约。
 

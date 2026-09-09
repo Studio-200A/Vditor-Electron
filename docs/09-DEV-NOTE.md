@@ -22,13 +22,13 @@
 - 不支持正则、全词或大小写敏感选项。
 - 打开浮层前若编辑器选区没有换行，会预填为搜索词。
 
-核心逻辑在 `src/renderer/app.js`：
+核心逻辑在 `src/renderer/editor/find-controller.ts`（0.2.5 起；0.1.3 实现时位于已删除的 `src/renderer/app.js`）：
 
-- `collectFindMatches(content, query)` 计算 Markdown offset 匹配。
-- `refreshFind()` 管理匹配集合、当前索引和计数。
-- `moveFindMatch(direction)` 处理循环导航。
-- `openFind()` / `closeFind()` 管理浮层、选区和焦点。
-- `replaceFindMatch()` / `replaceAllFindMatches()` 基于 Markdown 字符串生成新内容。
+- `collectMatches(content, query)` 计算 Markdown offset 匹配（模块级纯函数）。
+- `FindController.refresh()` 管理匹配集合、当前索引和计数。
+- `FindController.move(direction)` 处理循环导航。
+- `FindController.open()` / `close()` 管理浮层、选区和焦点。
+- `FindController.replaceOne()` / `replaceAll()` 经 adapter `replaceTextMatch()` 完成替换。
 
 ## Vditor 高亮与定位
 
@@ -64,16 +64,14 @@ adapter 负责：
 
 ## 替换与保存
 
-替换不直接改写 Vditor DOM：
+0.2.5 起，替换不再以整篇 `setValue()` 回写全文，而是走 Vditor 原生编辑路径：
 
-1. 根据当前 Markdown match `{ start, end }` 创建完整 `nextContent`。
-2. 调用 `setValue(nextContent)` 更新 Vditor。
-3. 调用 `onEditorInput(tab, nextContent)` 更新 modified、标签、状态栏、大纲和自动保存状态。
-4. 用 `nextContent` 立即重算匹配，不从 Vditor 同步回读。
+1. `replaceOne()` / `replaceAll()` 调用 adapter 的 `replaceTextMatch(host, mode, query, occurrence, replacement)`，在当前可编辑表面选中对应匹配 Range，并经 Vditor 自身的 input/undo 路径完成替换；选区、undo 历史和模式状态全部保留。
+2. `replaceAll()` 从最后一个匹配向前逐个替换，避免前面的匹配位置因文本长度变化失效。
+3. 替换触发 Vditor `input` 回调，modified、标签、状态栏、大纲和自动保存状态经既有编辑器输入链路（`EditorController` → 文档域）更新；匹配集合在替换后的下一帧（`setTimeout 0`）以更新后的 `tab.content` 重算，不从 Vditor 同步回读。
+4. 带 SVG 策略缓存 URL 的图片由 adapter 在 WYSIWYG 原生替换期间临时恢复原始 URL，避免 Vditor 序列化时丢失允许的 SVG（见 `docs/07-VDITOR-UPGRADE.md`）。
 
-`replaceAllFindMatches()` 从后向前替换，避免前面的 offset 因字符串长度变化失效。
-
-Vditor 的 `setValue()` 异步重渲染，`getValue()` 可能暂时返回旧 DOM 内容。`applyFindContent()` 设置 `tab.pendingEditorContent`，保存时以已更新的 `tab.content` 为准；只有后续真实用户 `onEditorInput()` 收到不同内容时才清除该标记。
+0.1.3 实现曾使用 `nextContent` + `setValue()` + `tab.pendingEditorContent` 标记的全文回写方案，该方案与上述标记已随批次 5 迁移删除；不得恢复，否则会绕过 Vditor 的 selection/undo/mode 边界。
 
 ## UI 与资源
 
@@ -87,7 +85,8 @@ Vditor 的 `setValue()` 异步重渲染，`getValue()` 可能暂时返回旧 DOM
 ## 测试入口
 
 - `tests/unit/vditor-adapter.test.ts`：Range match、仅高亮/滚动与 Selection 行为。
-- `tests/unit/renderer-shell.test.ts`：浮层、菜单、SVG 资源、快捷键、locale 和 adapter 契约。
+- `tests/unit/renderer/find-controller.test.ts`：widget 键盘导航所有权与 dispose 时清除高亮/监听（0.2.5 起）；替换与导航的完整用户路径由下述 E2E 覆盖。
+- `tests/unit/renderer-shell.test.ts`：浮层 DOM 存在与本地化占位等静态契约；菜单、SVG 资源和快捷键行为契约已迁移到对应 controller 单测与 E2E。
 - `tests/e2e/editor-modes.spec.ts` 的 `finds, navigates, and replaces text in the active document`：逐字符输入、焦点、计数、Custom Highlight、Enter 导航、关闭后 Selection、单项/全部替换、搜索框内保存到磁盘。
 
 本轮验证：
@@ -113,7 +112,7 @@ Vditor 的 `setValue()` 异步重渲染，`getValue()` 可能暂时返回旧 DOM
 
 ## 当前状态
 
-核心工作区 UI 已在 0.1.3 实现并通过自动化回归。文件保存原子化、工作区外 watcher、删除/目录移动恢复和跨重启冲突恢复不属于本轮已交付范围，见 `docs/12-0.2.0-DEVELOPMENT-PLAN.md`。
+核心工作区 UI 已在 0.1.3 实现并通过自动化回归。文件保存原子化、工作区外 watcher、删除/目录移动恢复和跨重启冲突恢复不属于本轮已交付范围，见 `docs/ARCHIVED/12-0.2.0-DEVELOPMENT-PLAN.md`。
 
 ## 顶部结构
 
@@ -189,7 +188,7 @@ Vditor 的 `keydown` 会先在编辑器 host 内运行。document 级应用监�
 
 - 结构：`src/renderer/index.html`
 - 布局、应用主题、收放动画、拖拽视觉状态：`src/renderer/styles/app.css`
-- 侧边栏联动、标签排序、菜单和快捷键：`src/renderer/app.js`
+- 侧边栏联动、标签排序、菜单和快捷键：0.2.5 起分别由 `ui/sidebar-layout-controller.ts`、`documents/tab-controller.ts`、`ui/menu-controller.ts` 与 `app/app-controller.ts` 承担（原 `src/renderer/app.js` 已删除）
 - macOS 原生菜单：`src/main/menu.ts`
 - 文案：`src/renderer/locales.js`
 - 回归：`tests/unit/renderer-shell.test.ts`、`tests/e2e/*.spec.ts`
@@ -224,7 +223,7 @@ Desktop 侧栏已作为唯一的大纲入口，原生 Vditor 大纲面板关闭�
 
 ## 注意事项与验证
 
-- 所有 Vditor 私有 toolbar 查询、`closest()` 和 data attribute 标记必须留在 `src/renderer/vditor-adapter.js`；`app.js` 只调用语义化 adapter API。
+- 所有 Vditor 私有 toolbar 查询、`closest()` 和 data attribute 标记必须留在 `src/renderer/vditor-adapter.js`；组合层与各 controller 只调用语义化 adapter API（0.2.5 起原 `app.js` 已删除）。
 - 这是 Vditor 3.11.3 的私有契约。升级 Vditor 时，须检查 `setEditMode()` 对 `outline`、`outdent`、`indent` 的显示和 disabled 行为，并同步更新 `docs/07-VDITOR-UPGRADE.md`。
 - 回归覆盖：adapter 单测验证标记；Electron E2E 验证从 WYSIWYG 与 IR 切入 SV 时两个列表按钮只保留 Vditor 同步 show/hide 的两次 style 更新、不会再出现延迟补偿更新，且最终仍可见；另保留 SV 列表缩进/反缩进功能测试。
 - 大纲对齐 Vditor 原生功能时，当前编辑区的直接 H1–H6 DOM 才是准则。Electron 验证显示 IR 对 Setext 和围栏内 ATX 样式文本的即时结果不等同于完整 Markdown 语义；因此不要把“原生等价”写成“完整 Markdown 标题解析”。若需跨模式一致的 Setext/围栏语义，应单独决策并实现独立 Markdown 解析与目标定位，不能隐式改变原生对齐范围。
@@ -306,7 +305,7 @@ Vditor `3.11.3` 的 WYSIWYG/IR 将表格本身作为横向滚动容器（`displa
 
 ## 维护约束
 
-- 任何表格 DOM 查询、selection/Ranges 和重建兼容逻辑只能保留在 adapter；`app.js` 只负责安装并在 tab 关闭时调用 disposer。
+- 任何表格 DOM 查询、selection/Ranges 和重建兼容逻辑只能保留在 adapter；0.2.5 起由 `EditorController` 负责安装并在 tab 关闭或重建时调用 disposer。
 - 不得以 `getValue()` / `setValue()` 回写全文修复滚动，否则会损害 selection、undo 和 mode 状态。
 - 不得把短单元格首次粘贴超宽的“不跟随”单独修成另一套规则，除非产品另行决定偏离上游行为。
 - Vditor 升级时按照 `docs/07-VDITOR-UPGRADE.md` 验证此私有契约；若上游已保留表格横向位置或提供公共 API，应删除本补偿。
@@ -337,7 +336,7 @@ Vditor `3.11.3` 的 WYSIWYG/IR 将表格本身作为横向滚动容器（`displa
 
 ## 背景
 
-`app.js` 从最初的 5000+ 行逐步迁移为当前的 `app-composition.js`（约 3050 行）。迁移过程中，领域逻辑被持续提取为独立的 Controller 类，通过 `PURE` 命名空间注入，composition 层只保留实例化、依赖注入和跨域协调。
+`app.js` 从最初的 5000+ 行（0.2.0 基线统计为 5414 行，见 `docs/16-0.2.5-BASELINE-BEHAVIOR.md`）逐步迁移为 `app-composition.js`；批次 10 收口（2026-09-09）时为 3235 行，含资源健康接线与重建 undo 恢复回调。这两个行数是冻结的历史快照，只用于说明迁移幅度，不随后续代码演进更新。迁移过程中，领域逻辑被持续提取为独立的 Controller 类，通过 `PURE` 命名空间注入，composition 层只保留实例化、依赖注入和跨域协调。原 `src/renderer/app.js` 已在批次 9 删除，不得恢复。
 
 ## 已提取的 Controller 清单
 
@@ -378,20 +377,21 @@ Vditor `3.11.3` 的 WYSIWYG/IR 将表格本身作为横向滚动容器（`displa
 | 恢复与会话 | `SessionRestoreController` | 会话 DTO 持久化与启动恢复 |
 | 本地化 | `LocalizationController` | locale 切换与 DOM 更新 |
 | 导出 | `ExportController` / `ExportHtmlBuilder` | HTML/PDF 导出 |
+| 资源健康 | `ResourceHealthController` | 资源健康页面：扫描请求/取消、候选与缺失引用选择、预览、覆盖层与结果过期生命周期 |
 | Shell | `AppController` (TS) | 启动顺序与窗口命令路由 |
 | Shell | `ApplicationShellController` (TS) | shell 级 DOM 资源生命周期 |
 
 ## composition 层剩余内容的构成
 
-`app-composition.js` 当前 ~3050 行中：
+`app-composition.js` 的剩余内容分为以下四类（构成描述以 2026-09-07 记录为准，不维护实时行数与行号区间）：
 
-1. **Controller 实例化与依赖注入**（约 L114–935，~820 行）：创建 controller 实例并通过回调注入跨域依赖。这是 composition 层的本职工作，不属于膨胀。
+1. **Controller 实例化与依赖注入**：创建 controller 实例并通过回调注入跨域依赖，是文件中占比最大的部分。这是 composition 层的本职工作，不属于膨胀。
 
-2. **委托函数**（约 60+ 个，各 1–3 行）：如 `ensureEditor`、`rebuildEditor`、`syncToolbarAvailability`、`persistSession`、`queueSettingsSave` 等，直接转发给已提取的 controller。它们提供稳定的内部 API，简化跨函数调用。
+2. **委托函数**（数量较多，各 1–3 行）：如 `ensureEditor`、`rebuildEditor`、`syncToolbarAvailability`、`persistSession`、`queueSettingsSave` 等，直接转发给已提取的 controller。它们提供稳定的内部 API，简化跨函数调用。
 
-3. **跨域协调函数**（约 500–800 行）：需要连接多个 controller 的胶水逻辑，如 `editorOptions`（~77 行，连接 EditorController、ImageRuntimeController、SplitViewController、ToolbarController 等）、`setupApplicationShellResources`（~270 行，注册 shell 级 DOM 事件和 Observer）、`beforeAppShortcut`（~45 行，Escape/F11 焦点分发）、`updateActiveUI`（~48 行，同步状态栏、横幅、树选择等）。
+3. **跨域协调函数**：需要连接多个 controller 的胶水逻辑，如 `editorOptions`（连接 EditorController、ImageRuntimeController、SplitViewController、ToolbarController 等）、`setupApplicationShellResources`（注册 shell 级 DOM 事件和 Observer）、`beforeAppShortcut`（Escape/F11 焦点分发）、`updateActiveUI`（同步状态栏、横幅、树选择等）。
 
-4. **未提取的局部 UI 辅助**（约 200–300 行）：如 `applyPresentationSettings`、context menu 构建、`handleMenu` 等。
+4. **未提取的局部 UI 辅助**：如 `applyPresentationSettings`、context menu 构建、`handleMenu` 等。
 
 ## 边界判断原则
 
@@ -420,7 +420,7 @@ Vditor `3.11.3` 的 WYSIWYG/IR 将表格本身作为横向滚动容器（`displa
 1. 剩余函数中，绝大多数是委托层或跨域协调层，提取它们不减少系统复杂度，只增加依赖跳转。
 2. IIFE 闭包通过 `state`/`store` 共享状态是当前的架构契约。强行提取需要重新设计状态传递，引入的隐性耦合风险大于行数收益。
 3. `editorOptions`、`setupApplicationShellResources`、`beforeAppShortcut` 等函数的职责就是连接多个 controller，把它们提取出去只是把协调逻辑从 composition 移到另一个文件，没有消除协调本身。
-4. 从 5000+ 行到 3159 行的迁移中，所有拥有领域状态、资源生命周期和可独立测试行为的模块均已提取。剩余内容是 composition 层的合理骨架。
+4. 从 0.2.0 基线的 5414 行到批次 10 收口时约 3200 行的迁移中，所有拥有领域状态、资源生命周期和可独立测试行为的模块均已提取。剩余内容是 composition 层的合理骨架。
 
 ## 后续微调空间
 
