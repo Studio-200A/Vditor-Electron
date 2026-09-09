@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.6 - TBA
+
+### Project Maintenance
+
+- **fix(dependencies):** Upgrade Vitest and its mocker package to 4.1.11, and override the `electron-builder` transitive `js-yaml` dependency to 4.3.2, resolving the related Dependabot security alerts.
+
+
 ## 0.2.5 - Modularized Refactor
 
 This release is primarily an internal renderer-architecture upgrade. It preserves the existing local Markdown editing experience and file-safety contracts. User-visible features, improvements, and fixes are documented first; the internal refactoring, test, and maintenance records follow.
