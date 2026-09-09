@@ -1822,6 +1822,7 @@ html[data-scrollbar-mode='hidden'] .editor-host .vditor-reset table::-webkit-scr
   color: var(--text);
   font-size: 12px;
   line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 .status-icon {
   width: 21px;

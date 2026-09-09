@@ -442,6 +442,11 @@ test('shows only the workspace name and refresh action in the explorer header', 
     await topFile.locator('.tree-name').hover();
     await expect(running.page.locator('#appTooltip')).toBeVisible();
     await expect(running.page.locator('#appTooltip')).toHaveText(longFileName);
+    expect(
+      await running.page
+        .locator('#appTooltip')
+        .evaluate((node) => node.scrollWidth <= node.clientWidth),
+    ).toBe(true);
     await expect(topFile.locator('.tree-name')).toHaveText(longFileName);
     await expect(topFile.locator('.tree-name')).toHaveCSS('text-overflow', 'ellipsis');
     await expect(topFile.locator('.tree-name')).toHaveCSS('white-space', 'nowrap');
