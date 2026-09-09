@@ -507,6 +507,21 @@ describe('Vditor DOM compatibility adapter', () => {
     ]);
   });
 
+  it('clears toolbar hover tooltips without changing other toolbar nodes', () => {
+    const toolbar = adapter.editorParts(createHost()).toolbar;
+    const hoverTooltip = toolbar.querySelector<HTMLElement>('button[data-type="code-theme"]')!;
+    const unaffectedButton = toolbar.querySelector<HTMLElement>(
+      'button[data-type="content-theme"]',
+    )!;
+    hoverTooltip.classList.add('vditor-tooltipped--hover');
+    unaffectedButton.classList.add('app-submenu-open');
+
+    adapter.clearToolbarHoverTooltips(toolbar);
+
+    expect(hoverTooltip.classList.contains('vditor-tooltipped--hover')).toBe(false);
+    expect(unaffectedButton.classList.contains('app-submenu-open')).toBe(true);
+  });
+
   it('maps Vditor mode shortcuts using its platform modifier contract', () => {
     const shortcut = (code: string, modifiers: KeyboardEventInit = {}) =>
       new window.KeyboardEvent('keydown', { code, altKey: true, ctrlKey: true, ...modifiers });

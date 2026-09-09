@@ -1673,9 +1673,7 @@
     }
     const themeMenu = type === 'code-theme' || type === 'content-theme';
     if (themeMenu && button === trigger) {
-      VDITOR.hoverTooltips($('#vditorToolbarMount')).forEach((node) =>
-        node.classList.remove('vditor-tooltipped--hover'),
-      );
+      VDITOR.clearToolbarHoverTooltips($('#vditorToolbarMount'));
       trigger.classList.add('app-submenu-open');
       setTimeout(() => {
         const panel = VDITOR.toolbarHint(item);

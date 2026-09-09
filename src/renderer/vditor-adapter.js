@@ -170,6 +170,10 @@
     return Array.from(root.querySelectorAll(selectors.hoverTooltip));
   }
 
+  function clearToolbarHoverTooltips(root = document) {
+    hoverTooltips(root).forEach((tooltip) => tooltip.classList.remove('vditor-tooltipped--hover'));
+  }
+
   function openSubmenus(root = document) {
     return Array.from(root.querySelectorAll(selectors.openSubmenu));
   }
@@ -2074,6 +2078,7 @@
     editModeShortcut,
     toolbarHints,
     hoverTooltips,
+    clearToolbarHoverTooltips,
     openSubmenus,
     codeThemeButtons,
     classifyCodeThemeButtons,

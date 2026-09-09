@@ -10,6 +10,7 @@ Vditor Desktop 不修改 `node_modules/vditor` 的源码，但工具栏合并、
 - Vditor 外观覆盖仍集中在 `src/renderer/styles/app.css` 的 Vditor integration 区段，它是升级时的第二检查面。
 - `tests/unit/vditor-adapter.test.ts` 验证适配层自身，并将运行时冻结对象的全部导出键与类型 manifest（`src/renderer/types/adapter-contract.ts` 的 `ADAPTER_PUBLIC_KEYS`）精确比对；导出成员数量以该 manifest 为唯一事实来源，文档不维护计数。
 - Electron E2E 中的 `Vditor DOM integration contract` 验证真实 Vditor 构建产物。
+- code/content theme toolbar menu 的 hover tooltip 仅可通过 adapter 的 `clearToolbarHoverTooltips()` 清理；升级 Vditor 时须验证选择主题后 tooltip 正常收起。
 - Vditor 3.11.3 的模式切换仍会操作内部 `outline` 工具项；adapter 保留该项作为不可见占位，并通过应用专用 data attribute 和 CSS `display: none !important` 隐藏入口。升级时须验证三种模式切换正常，且原生 outline 控制不出现。
 - 同一私有切换路径会在 SV 中隐藏并禁用 `outdent` / `indent`；adapter 为它们设置应用专用稳定占位标记，CSS 保持按钮可见且应用捕获层处理 source-selection 缩进。升级时须确认 WYSIWYG/IR → SV 没有延迟二次工具栏重排，且 SV 缩进与反缩进仍可用。
 - Desktop 大纲通过 adapter 复刻 Vditor `Outline.render()` 的 content-element 选择：preview 可见时读取其 `.vditor-reset`，否则读取当前模式编辑区，再枚举直接 H1–H6。升级时须验证三种模式的 snapshot、SV 双侧目标映射与原生顺序一致。

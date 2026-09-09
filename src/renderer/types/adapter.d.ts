@@ -124,6 +124,7 @@ export interface VditorDesktopAdapter {
   editModeShortcut(event: KeyboardEvent | null | undefined): AdapterEditMode | null;
   toolbarHints(root?: Document | HTMLElement): HTMLElement[];
   hoverTooltips(root?: Document | HTMLElement): HTMLElement[];
+  clearToolbarHoverTooltips(root?: Document | HTMLElement): void;
   openSubmenus(root?: Document | HTMLElement): HTMLElement[];
   codeThemeButtons(toolbar: HTMLElement | null | undefined): HTMLButtonElement[];
   classifyCodeThemeButtons(toolbar: HTMLElement | null | undefined): CodeThemeButton[];

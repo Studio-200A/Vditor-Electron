@@ -16,6 +16,7 @@ export const ADAPTER_PUBLIC_KEYS = [
   'editModeShortcut',
   'toolbarHints',
   'hoverTooltips',
+  'clearToolbarHoverTooltips',
   'openSubmenus',
   'codeThemeButtons',
   'classifyCodeThemeButtons',
@@ -99,6 +100,7 @@ export function verifyAdapterCallContract(adapter: VditorDesktopAdapter, host: H
   adapter.editModeShortcut(new KeyboardEvent('keydown'));
   adapter.toolbarHints(document);
   adapter.hoverTooltips(host);
+  adapter.clearToolbarHoverTooltips(host);
   adapter.openSubmenus(host);
   adapter.codeThemeButtons(toolbar);
   adapter.classifyCodeThemeButtons(toolbar);
