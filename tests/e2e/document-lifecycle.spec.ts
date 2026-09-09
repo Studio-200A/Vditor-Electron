@@ -1056,6 +1056,117 @@ test('refuses Save As when the chosen destination is already open in another tab
   }
 });
 
+test('opens the Save As dialog at the current file path from the main menu and shortcut', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-save-as-default-'));
+  const filePath = path.join(workspace, 'current.md');
+  fs.writeFileSync(filePath, '# Current content');
+  const running = await launchApp({
+    editMode: 'sv',
+    restoreTabs: true,
+    restoreWorkspace: true,
+    session: { workspacePath: workspace, activeFilePath: filePath, openFiles: [filePath] },
+  });
+  try {
+    const { app, page } = running;
+    await expect(page.locator('#statusPath')).toHaveText(filePath);
+    await app.evaluate(({ dialog }) => {
+      const calls: { defaultPath?: string }[] = [];
+      dialog.showSaveDialog = async (_window, options) => {
+        calls.push({ defaultPath: options.defaultPath });
+        (
+          globalThis as typeof globalThis & { __vditorSaveDialogCalls?: unknown[] }
+        ).__vditorSaveDialogCalls = calls;
+        return { canceled: true, filePath: '' };
+      };
+    });
+    const saveDialogCallCount = () =>
+      app.evaluate(
+        () =>
+          (globalThis as typeof globalThis & { __vditorSaveDialogCalls?: unknown[] })
+            .__vditorSaveDialogCalls?.length ?? 0,
+      );
+
+    await page.locator('#appMenuBar [data-menu="main"]').click();
+    await page
+      .locator('.app-menu-popup button')
+      .filter({ hasText: /^Save As/ })
+      .click();
+    await expect.poll(saveDialogCallCount).toBe(1);
+
+    const modifier =
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+    await page.keyboard.press(`${modifier}+Shift+S`);
+    await expect.poll(saveDialogCallCount).toBe(2);
+
+    const calls = await app.evaluate(
+      () =>
+        (globalThis as typeof globalThis & { __vditorSaveDialogCalls?: { defaultPath?: string }[] })
+          .__vditorSaveDialogCalls,
+    );
+    // Both entry points must default the dialog to the current file's original absolute path,
+    // never the nested `<workspace>/<absolute-path>` produced by joining the workspace twice.
+    expect(calls).toEqual([{ defaultPath: filePath }, { defaultPath: filePath }]);
+    for (const call of calls ?? []) {
+      expect(call.defaultPath).not.toContain(path.join(workspace, workspace));
+    }
+  } finally {
+    await closeApp(running);
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test('prefills the Save As dialog for an untitled document under the workspace', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-save-as-untitled-'));
+  const filePath = path.join(workspace, 'current.md');
+  fs.writeFileSync(filePath, '# Current content');
+  const running = await launchApp({
+    editMode: 'sv',
+    restoreTabs: true,
+    restoreWorkspace: true,
+    session: { workspacePath: workspace, activeFilePath: filePath, openFiles: [filePath] },
+  });
+  try {
+    const { app, page } = running;
+    await page.locator('#addTab').click();
+    await page.waitForSelector('.editor-host.active .vditor-content');
+    await app.evaluate(({ dialog }) => {
+      const calls: { defaultPath?: string }[] = [];
+      dialog.showSaveDialog = async (_window, options) => {
+        calls.push({ defaultPath: options.defaultPath });
+        (
+          globalThis as typeof globalThis & { __vditorSaveDialogCalls?: unknown[] }
+        ).__vditorSaveDialogCalls = calls;
+        return { canceled: true, filePath: '' };
+      };
+    });
+    const modifier =
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+    await page.keyboard.press(`${modifier}+Shift+S`);
+    await expect
+      .poll(() =>
+        app.evaluate(
+          () =>
+            (globalThis as typeof globalThis & { __vditorSaveDialogCalls?: unknown[] })
+              .__vditorSaveDialogCalls?.length ?? 0,
+        ),
+      )
+      .toBe(1);
+    const calls = await app.evaluate(
+      () =>
+        (globalThis as typeof globalThis & { __vditorSaveDialogCalls?: { defaultPath?: string }[] })
+          .__vditorSaveDialogCalls,
+    );
+    const defaultPath = calls?.[0]?.defaultPath ?? '';
+    // An untitled document must prefill a Markdown name under the workspace, never the
+    // filesystem root or a location outside the workspace.
+    expect(path.dirname(defaultPath)).toBe(workspace);
+    expect(defaultPath.endsWith('.md')).toBe(true);
+  } finally {
+    await closeApp(running);
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
 test('rebinds local image resources to the Save As destination and revokes the old root', async () => {
   const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'vditor-save-as-resource-'));
   const workspace = path.join(fixture, 'workspace');

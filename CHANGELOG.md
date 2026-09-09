@@ -18,6 +18,14 @@ This release is primarily an internal renderer-architecture upgrade. It preserve
 
 ### Bug Fixes
 
+#### Vditor Adapter
+
+- **fix(adapter):** encapsulate toolbar tooltip cleanup
+
+#### Themes
+
+- **fix(ant design):** fixed an issue where ant design displays incorrect text color and table bg color in claude dark theme.
+
 #### Workbench, Sidebar, and Dialogs
 
 - **fix(app menu):** Align the custom Windows/Linux app-menu popup with the lower edge of the window titlebar.
@@ -43,6 +51,7 @@ This release is primarily an internal renderer-architecture upgrade. It preserve
 - **fix(find and replace):** Preserve allowed SVG images during native WYSIWYG replacements by restoring original image URLs while Vditor serializes the changed block.
 - **fix(find and replace):** Clear the active-match selection and highlight state immediately when the search query stops matching or is emptied, instead of leaving the previous query's stale highlights rendered.
 - **fix(document links):** Show a text cursor, rather than a navigation affordance, for blocked link schemes while preserving any author-supplied title.
+- **fix(editor):** ignore stale split view callbacks
 
 #### Documents, Saving, and Recovery
 

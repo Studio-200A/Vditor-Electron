@@ -41,6 +41,7 @@ import {
 } from './ipc-validation';
 import { classifyNavigation } from './navigation-policy';
 import { resolveRelativeMarkdownLink } from './resolve-markdown-link';
+import { resolveSaveDialogDefaultPath } from './save-dialog-path';
 import { FileManagerService } from './services/file-manager';
 import { FileWatchService } from './services/file-watch-service';
 import { RecoveryStore } from './services/recovery-store';
@@ -463,9 +464,7 @@ function registerIpcHandlers(): void {
     const defaultDirectory = parseOptionalAbsolutePath(args[1]);
     return chooseSavePath(
       tr('Save Markdown File', '保存 Markdown 文件', '儲存 Markdown 檔案'),
-      defaultDirectory
-        ? path.join(defaultDirectory, defaultPath || 'untitled.md')
-        : defaultPath || 'untitled.md',
+      resolveSaveDialogDefaultPath(defaultPath, defaultDirectory),
       [
         { name: 'Markdown', extensions: ['md', 'markdown'] },
         { name: 'All Files', extensions: ['*'] },
