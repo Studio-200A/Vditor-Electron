@@ -1730,6 +1730,74 @@ test('keeps a dynamic half-height bottom spacer in every editor mode', async () 
   }
 });
 
+test('explains that the outline is unavailable in source-only Split View', async () => {
+  const running = await launchApp(
+    { editMode: 'sv', previewMode: 'editor', sidebarVisible: true },
+    { 'source-only-outline.md': '# Heading\n\nBody' },
+  );
+  try {
+    const { page } = running;
+    await expect(page.locator('.editor-host.active .vditor-sv')).toBeVisible();
+    await expect(page.locator('.editor-host.active .vditor-preview')).toBeHidden();
+    await page.locator('.sidebar-tabs [data-view="outline"]').click();
+    await expect(page.locator('#outlineTree > .empty')).toHaveText(
+      'Outline is unavailable in source-only Split View. Open the preview or switch to WYSIWYG or Instant Rendering mode to view it.',
+    );
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('preserves source-only and preview-only Split View layouts when a setting rebuilds the editor', async () => {
+  const running = await launchApp(
+    { editMode: 'sv', previewMode: 'both', sidebarVisible: true },
+    { 'rebuild-split-layout.md': '# Heading\n\nBody' },
+  );
+  try {
+    const { page } = running;
+    const source = page.locator('.editor-host.active .vditor-sv');
+    const preview = page.locator('.editor-host.active .vditor-preview');
+    const toolbar = page.locator('#vditorToolbarMount');
+    const saveLocale = async (locale: 'en_US' | 'zh_Hans') => {
+      await page
+        .locator('.editor-host.active .vditor-content')
+        .evaluate((node) => node.setAttribute('data-test-rebuilt-runtime', 'true'));
+      await page.locator('#statusSettings').click();
+      await page.locator('.settings-nav [data-panel="appearance"]').click();
+      await page.locator('[name="locale"]').selectOption(locale);
+      await page.locator('#saveSettings').click();
+      await expect(
+        page.locator('.editor-host.active .vditor-content[data-test-rebuilt-runtime="true"]'),
+      ).toHaveCount(0);
+      await expect(page.locator('.editor-host.active')).toHaveAttribute(
+        'data-editor-ready',
+        'true',
+      );
+    };
+
+    await expect(source).toBeVisible();
+    await expect(preview).toBeVisible();
+    await toolbar.locator('button[data-type="both"]').click();
+    await expect(source).toBeVisible();
+    await expect(preview).toBeHidden();
+    await saveLocale('zh_Hans');
+    await expect(source).toBeVisible();
+    await expect(preview).toBeHidden();
+
+    await toolbar.locator('button[data-type="both"]').click();
+    await expect(source).toBeVisible();
+    await expect(preview).toBeVisible();
+    await toolbar.locator('button[data-type="preview"]').click();
+    await expect(source).toBeHidden();
+    await expect(preview).toBeVisible();
+    await saveLocale('en_US');
+    await expect(source).toBeHidden();
+    await expect(preview).toBeVisible();
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('hides Vditor native outline controls while keeping the Desktop outline available', async () => {
   const running = await launchApp({
     editMode: 'ir',

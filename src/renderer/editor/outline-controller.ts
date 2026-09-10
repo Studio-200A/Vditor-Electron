@@ -14,10 +14,17 @@ export interface OutlineControllerOptions<TTab extends OutlineTab> {
   readonly view: HTMLElement;
   readonly tree: HTMLElement;
   readonly getActiveTab: () => TTab | null;
+  /** Identifies an active document whose current editor surface cannot provide an outline. */
+  readonly isUnavailable?: (tab: TTab) => boolean;
   readonly getSnapshot: (tab: TTab) => OutlineHeading[];
   readonly scrollToHeading: (tab: TTab, index: number) => void;
   readonly translate: (
-    key: 'sidebar.noDocument' | 'sidebar.noHeadings' | 'outline.expand' | 'outline.collapse',
+    key:
+      | 'sidebar.noDocument'
+      | 'sidebar.noHeadings'
+      | 'sidebar.outlineUnavailableInSourceOnly'
+      | 'outline.expand'
+      | 'outline.collapse',
   ) => string;
 }
 
@@ -31,6 +38,7 @@ export class OutlineController<TTab extends OutlineTab> {
   private readonly view: HTMLElement;
   private readonly tree: HTMLElement;
   private readonly getActiveTab: () => TTab | null;
+  private readonly isUnavailable: (tab: TTab) => boolean;
   private readonly getSnapshot: (tab: TTab) => OutlineHeading[];
   private readonly scrollToHeading: (tab: TTab, index: number) => void;
   private readonly translate: OutlineControllerOptions<TTab>['translate'];
@@ -40,6 +48,7 @@ export class OutlineController<TTab extends OutlineTab> {
     this.view = options.view;
     this.tree = options.tree;
     this.getActiveTab = options.getActiveTab;
+    this.isUnavailable = options.isUnavailable ?? (() => false);
     this.getSnapshot = options.getSnapshot;
     this.scrollToHeading = options.scrollToHeading;
     this.translate = options.translate;
@@ -66,6 +75,10 @@ export class OutlineController<TTab extends OutlineTab> {
     this.tree.replaceChildren();
     if (!tab) {
       this.tree.append(this.emptyState(this.translate('sidebar.noDocument')));
+      return;
+    }
+    if (this.isUnavailable(tab)) {
+      this.tree.append(this.emptyState(this.translate('sidebar.outlineUnavailableInSourceOnly')));
       return;
     }
     const headings = this.getSnapshot(tab);

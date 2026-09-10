@@ -7,6 +7,7 @@ export const ADAPTER_PUBLIC_KEYS = [
   'createRebuildSnapshot',
   'ensureSplitResizer',
   'splitViewVisibility',
+  'restorePreviewOnly',
   'toolbarContext',
   'toolbarButton',
   'hideNativeOutlineControl',
@@ -91,6 +92,7 @@ export function verifyAdapterCallContract(adapter: VditorDesktopAdapter, host: H
   adapter.mountedToolbar(host);
   adapter.createRebuildSnapshot(host);
   adapter.splitViewVisibility(host, 'sv');
+  adapter.restorePreviewOnly(host);
   adapter.toolbarContext(host);
   adapter.toolbarButton(toolbar, 'edit-mode');
   adapter.hideNativeOutlineControl(toolbar);

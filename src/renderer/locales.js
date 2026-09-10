@@ -17,6 +17,8 @@
       'sidebar.noWorkspace': 'No workspace opened',
       'sidebar.documentOutline': 'Document Outline',
       'sidebar.noHeadings': 'No headings',
+      'sidebar.outlineUnavailableInSourceOnly':
+        'Outline is unavailable in source-only Split View. Open the preview or switch to WYSIWYG or Instant Rendering mode to view it.',
       'sidebar.noDocument': 'Open a document first',
       'empty.noTabs': 'No opened tabs',
       'empty.newFile': 'New File',
@@ -406,6 +408,8 @@
       'sidebar.noWorkspace': '未打开工作区',
       'sidebar.documentOutline': '文档大纲',
       'sidebar.noHeadings': '文档无标题',
+      'sidebar.outlineUnavailableInSourceOnly':
+        '当前为 SV 仅源码视图。打开预览，或切换至所见即所得/即时渲染模式以查看文档大纲。',
       'sidebar.noDocument': '请先打开文档',
       'empty.noTabs': '没有打开的标签页',
       'empty.newFile': '新建文件',
@@ -775,6 +779,8 @@
       'sidebar.noWorkspace': '未開啟工作區',
       'sidebar.documentOutline': '文件大綱',
       'sidebar.noHeadings': '文件無標題',
+      'sidebar.outlineUnavailableInSourceOnly':
+        '目前為 SV 僅原始碼檢視。開啟預覽，或切換至所見即所得/即時渲染模式以檢視文件大綱。',
       'sidebar.noDocument': '請先開啟文件',
       'empty.noTabs': '沒有開啟的標籤頁',
       'empty.newFile': '新增檔案',

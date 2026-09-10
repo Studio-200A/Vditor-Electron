@@ -549,6 +549,17 @@ describe('Vditor DOM compatibility adapter', () => {
     expect(item?.dataset.vditorDesktopHiddenOutline).toBe('true');
   });
 
+  it('restores the Vditor-native preview-only transition through its toolbar action', () => {
+    const host = createHost();
+    const preview = adapter.toolbarButton(adapter.editorParts(host).toolbar, 'preview')!;
+    const onPreview = vi.fn();
+    preview.addEventListener('click', onPreview);
+
+    expect(adapter.restorePreviewOnly(host)).toBe(true);
+    expect(onPreview).toHaveBeenCalledOnce();
+    expect(adapter.restorePreviewOnly(null)).toBe(false);
+  });
+
   it('keeps Desktop split-view list actions in a stable toolbar slot', () => {
     const toolbar = adapter.editorParts(createHost()).toolbar;
 

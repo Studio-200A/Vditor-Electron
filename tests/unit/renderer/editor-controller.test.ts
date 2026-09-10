@@ -36,6 +36,8 @@ describe('EditorController', () => {
   let scheduleUndoHistoryRestore: ReturnType<typeof vi.fn>;
   let createRebuildSnapshot: ReturnType<typeof vi.fn>;
   let scrollContainers: ReturnType<typeof vi.fn>;
+  let splitViewVisibility: ReturnType<typeof vi.fn>;
+  let restorePreviewOnly: ReturnType<typeof vi.fn>;
   let installScrollEnhancement: ReturnType<typeof vi.fn>;
   let updateDocument: ReturnType<typeof vi.fn>;
   let controller: EditorController<TestTab>;
@@ -56,6 +58,8 @@ describe('EditorController', () => {
     scheduleUndoHistoryRestore = vi.fn(() => vi.fn());
     createRebuildSnapshot = vi.fn(() => vi.fn());
     scrollContainers = vi.fn(() => []);
+    splitViewVisibility = vi.fn(() => null);
+    restorePreviewOnly = vi.fn(() => true);
     installScrollEnhancement = vi.fn(() => null);
     updateDocument = vi.fn((target: TestTab, updates: Partial<TestTab>) =>
       Object.assign(target, updates),
@@ -97,6 +101,8 @@ describe('EditorController', () => {
     controller = new EditorController({
       adapter: {
         editorScrollContainer: () => null,
+        splitViewVisibility,
+        restorePreviewOnly,
         createRebuildSnapshot,
         setBottomSpacer,
         observeOutlineChanges,
@@ -136,6 +142,50 @@ describe('EditorController', () => {
 
     expect(readRuntimeContent).toHaveBeenCalledWith(tab);
     expect(tab.content).toBe('latest runtime content');
+  });
+
+  it('preserves source-only and preview-only Split View layouts through a rebuild', () => {
+    currentMode = 'sv';
+    tab.mode = 'sv';
+    splitViewVisibility.mockReturnValue({ sourceVisible: true, previewVisible: false });
+    const createOptions = vi.fn(() => ({}));
+    controller = new EditorController({
+      adapter: {
+        editorScrollContainer: () => null,
+        splitViewVisibility,
+        restorePreviewOnly,
+        createRebuildSnapshot,
+        setBottomSpacer,
+        observeOutlineChanges,
+        preserveTableScrollDuringInput,
+        installCustomCaret,
+        captureUndoHistory,
+        scheduleUndoHistoryRestore,
+        scrollContainers,
+        installScrollEnhancement,
+      },
+      createOptions,
+      getActiveDocumentId: () => 'one',
+      onAvailabilityChanged: () => {},
+      onBeforeDestroy: () => {},
+      onCreationFailure: () => {},
+      onModeChanged: () => {},
+      readContent: () => editorContent,
+      readRuntimeContent,
+      updateDocument,
+    });
+    controller.ensure(tab);
+    controller.rebuild(tab);
+
+    expect(createOptions).toHaveBeenLastCalledWith(tab, expect.any(Number), 'editor');
+    expect(controller.restoreRebuildSplitViewLayout(tab)).toBe(true);
+    expect(restorePreviewOnly).not.toHaveBeenCalled();
+
+    splitViewVisibility.mockReturnValue({ sourceVisible: false, previewVisible: true });
+    controller.rebuild(tab);
+
+    expect(controller.restoreRebuildSplitViewLayout(tab)).toBe(true);
+    expect(restorePreviewOnly).toHaveBeenCalledWith(tab.host);
   });
 
   it('keeps captured undo history through a replacement runtime until the adapter restores it', () => {

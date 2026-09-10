@@ -1151,6 +1151,7 @@ function rememberRecent(filePath) {
 
 - **职责：** 以 Vditor 原生语义收集当前可见编辑/预览内容的直接标题，构建可折叠层次树，点击跳转并平滑滚动到对应位置
 - **实现：** `OutlineController` 拥有大纲 DOM、折叠状态渲染与 300ms 防抖 `schedule()` 刷新；`app/app-composition.js` 的 `renderOutline()` 委托其 `render()`，并注入 adapter `outlineSnapshot()` 的 snapshot 与 `scrollToOutlineHeading()` 滚动回调。`scrollToOutlineHeading()` 使用同一 snapshot 对应的标题节点和实际滚动容器，SV 两侧标题数量一致时同步滚动源码与预览。
+- **SV pane 布局：** Vditor 3.11.3 原生大纲只能从当前可见的渲染编辑面或 preview HTML 收集直接标题；SV 源码 DOM 不是渲染标题结构。因此当 SV 源码可见而 preview 隐藏时，组合层通过 adapter 的 pane 可见性语义通知 `OutlineController` 显示本地化的不可用说明，不将该状态误报为“文档无标题”，也不缓存隐藏 preview 或重建其他编辑模式。编辑器重建交易也会用同一语义捕获双栏、仅源码或仅预览状态；仅源码经新实例的 `preview.mode: 'editor'` 初始化，只有仅预览通过 Vditor 自身 Preview toolbar action 恢复，避免将 tab 内布局写成全局设置。
 
 #### 状态栏（`app/app-composition.js`，`index.html:217-266`）
 

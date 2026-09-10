@@ -7,6 +7,8 @@ export interface EditorScrollPosition {
   readonly progress: number;
 }
 
+type SplitViewLayout = 'both' | 'source-only' | 'preview-only';
+
 export interface EditorRuntimeTab {
   readonly id: string;
   readonly host: HTMLElement;
@@ -32,6 +34,11 @@ type EditorDocumentUpdates = Pick<
 export interface EditorControllerOptions<TTab extends EditorRuntimeTab> {
   readonly adapter: {
     editorScrollContainer(host: HTMLElement, mode: EditMode): HTMLElement | null;
+    splitViewVisibility(
+      host: HTMLElement,
+      mode: EditMode,
+    ): { sourceVisible: boolean; previewVisible: boolean } | null;
+    restorePreviewOnly(host: HTMLElement): boolean;
     createRebuildSnapshot(host: HTMLElement): () => void;
     setBottomSpacer(host: HTMLElement, height: number): void;
     observeOutlineChanges(host: HTMLElement, callback: () => void): { disconnect(): void };
@@ -53,6 +60,7 @@ export interface EditorControllerOptions<TTab extends EditorRuntimeTab> {
   readonly createOptions: (
     tab: TTab,
     generation: number,
+    previewModeOverride?: 'editor',
   ) => ConstructorParameters<typeof Vditor>[1];
   readonly getActiveDocumentId: () => string | null;
   readonly onAvailabilityChanged: (tab: TTab) => void;
@@ -101,6 +109,7 @@ export class EditorController<TTab extends EditorRuntimeTab> {
   private readonly tableCompositionScrollCleanups = new Map<TTab, () => void>();
   private readonly customCaretCleanups = new Map<TTab, () => void>();
   private readonly rebuildUndoHistories = new Map<TTab, unknown>();
+  private readonly rebuildSplitViewLayouts = new Map<TTab, SplitViewLayout>();
   private readonly rebuildUndoRestoreCleanups = new Map<TTab, () => void>();
   private readonly rebuildSnapshotCleanups = new Map<TTab, () => void>();
   private readonly scrollEnhancementCleanups = new Map<TTab, Array<() => void>>();
@@ -130,10 +139,14 @@ export class EditorController<TTab extends EditorRuntimeTab> {
     const generation = (tab.editorRuntimeGeneration ?? 0) + 1;
     tab.editorRuntimeGeneration = generation;
     try {
-      tab.vditor = new Vditor(tab.host, this.createOptions(tab, generation));
+      tab.vditor = new Vditor(
+        tab.host,
+        this.createOptions(tab, generation, this.rebuildPreviewMode(tab)),
+      );
       return true;
     } catch (error) {
       tab.vditor = null;
+      this.rebuildSplitViewLayouts.delete(tab);
       this.onCreationFailure(tab, error);
       return false;
     }
@@ -457,6 +470,7 @@ export class EditorController<TTab extends EditorRuntimeTab> {
     if (tab.vditor && !this.rebuildUndoHistories.has(tab))
       this.rebuildUndoHistories.set(tab, this.adapter.captureUndoHistory(tab.vditor));
     if (tab.vditor) this.updateDocument(tab, { content: this.readRuntimeContent(tab) });
+    this.captureRebuildSplitViewLayout(tab, mode ?? tab.mode);
     this.releaseRebuildSnapshot(tab);
     if (tab.host.classList.contains('active'))
       this.rebuildSnapshotCleanups.set(tab, this.adapter.createRebuildSnapshot(tab.host));
@@ -472,6 +486,15 @@ export class EditorController<TTab extends EditorRuntimeTab> {
       return new Error('The editor could not be initialized after the document changed.');
     }
     return rebuildError;
+  }
+
+  /** Applies the sole Vditor-native transition needed after a preview-only SV rebuild. */
+  restoreRebuildSplitViewLayout(tab: TTab): boolean {
+    const layout = this.rebuildSplitViewLayouts.get(tab);
+    this.rebuildSplitViewLayouts.delete(tab);
+    if (!layout) return false;
+    if (layout === 'preview-only') this.adapter.restorePreviewOnly(tab.host);
+    return true;
   }
 
   restoreRebuildUndoHistory(tab: TTab): void {
@@ -530,9 +553,26 @@ export class EditorController<TTab extends EditorRuntimeTab> {
     }
     tab.vditor = null;
     if (disposeTabResources) this.rebuildUndoHistories.delete(tab);
+    if (disposeTabResources) this.rebuildSplitViewLayouts.delete(tab);
     tab.toolbar = null;
     tab.ready = false;
     return destroyError;
+  }
+
+  private captureRebuildSplitViewLayout(tab: TTab, nextMode: EditMode): void {
+    this.rebuildSplitViewLayouts.delete(tab);
+    const currentMode = tab.vditor?.getCurrentMode() ?? tab.mode;
+    if (currentMode !== 'sv' || nextMode !== 'sv') return;
+    const visibility = this.adapter.splitViewVisibility(tab.host, currentMode);
+    if (!visibility) return;
+    if (visibility.sourceVisible && visibility.previewVisible)
+      this.rebuildSplitViewLayouts.set(tab, 'both');
+    else if (visibility.sourceVisible) this.rebuildSplitViewLayouts.set(tab, 'source-only');
+    else if (visibility.previewVisible) this.rebuildSplitViewLayouts.set(tab, 'preview-only');
+  }
+
+  private rebuildPreviewMode(tab: TTab): 'editor' | undefined {
+    return this.rebuildSplitViewLayouts.get(tab) === 'source-only' ? 'editor' : undefined;
   }
 
   private cancelModeTransition(tab: TTab): void {

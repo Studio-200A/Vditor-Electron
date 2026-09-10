@@ -98,6 +98,16 @@
     };
   }
 
+  function restorePreviewOnly(host) {
+    const preview = toolbarButton(editorParts(host).toolbar, 'preview');
+    if (!preview) return false;
+    // Vditor 3.11.3 has no public preview-only setter. Its own Preview toolbar
+    // action is the supported transition that hides SV source without changing
+    // the configured source/both layout for when the user exits preview.
+    preview.click();
+    return true;
+  }
+
   function toolbarContext(target) {
     const button = target?.closest?.('button') || null;
     const item = button?.closest(selectors.toolbarItem) || null;
@@ -2069,6 +2079,7 @@
     createRebuildSnapshot,
     ensureSplitResizer,
     splitViewVisibility,
+    restorePreviewOnly,
     toolbarContext,
     toolbarButton,
     hideNativeOutlineControl,

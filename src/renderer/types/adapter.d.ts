@@ -115,6 +115,7 @@ export interface VditorDesktopAdapter {
     host: HTMLElement | null | undefined,
     mode: AdapterEditMode,
   ): { readonly sourceVisible: boolean; readonly previewVisible: boolean } | null;
+  restorePreviewOnly(host: HTMLElement | null | undefined): boolean;
   toolbarContext(target: EventTarget | null | undefined): ToolbarContext;
   toolbarButton(toolbar: HTMLElement | null | undefined, type: string): HTMLButtonElement | null;
   hideNativeOutlineControl(toolbar: HTMLElement | null | undefined): boolean;

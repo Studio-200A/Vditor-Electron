@@ -399,6 +399,8 @@
   const editorController = new PURE.EditorController({
     adapter: {
       editorScrollContainer: (host, mode) => VDITOR.editorScrollContainer(host, mode),
+      splitViewVisibility: (host, mode) => VDITOR.splitViewVisibility(host, mode),
+      restorePreviewOnly: (host) => VDITOR.restorePreviewOnly(host),
       createRebuildSnapshot: (host) => VDITOR.createRebuildSnapshot(host),
       setBottomSpacer: (host, height) => VDITOR.setEditorBottomSpacer(host, height),
       observeOutlineChanges: (host, callback) => VDITOR.observeOutlineChanges(host, callback),
@@ -412,7 +414,8 @@
       scrollContainers: (host) => VDITOR.scrollContainers(host),
       installScrollEnhancement: setupAutoHideScrollbar,
     },
-    createOptions: (tab, generation) => editorOptions(tab, generation),
+    createOptions: (tab, generation, previewModeOverride) =>
+      editorOptions(tab, generation, previewModeOverride),
     getActiveDocumentId: () => state.activeId,
     onAvailabilityChanged: (tab) => {
       if (tab.id === state.activeId || tab.toolbarPreview) syncToolbarAvailability();
@@ -537,6 +540,10 @@
     view: $('#outlineView'),
     tree: $('#outlineTree'),
     getActiveTab: () => activeTab(),
+    isUnavailable: (tab) => {
+      const visibility = VDITOR.splitViewVisibility(tab.host, tab.mode);
+      return Boolean(visibility?.sourceVisible && !visibility.previewVisible);
+    },
     getSnapshot: (tab) => VDITOR.outlineSnapshot(tab.host, tab.mode),
     scrollToHeading: (tab, index) => scrollToOutlineHeading(tab, index),
     translate: (key) => t(key),
@@ -1483,6 +1490,7 @@
         tab.vditor.setPreviewMode(state.settings.previewMode);
       if (changedSettings.includes('caretStyle')) syncCaretStyle(tab);
     });
+    if (changedSettings.includes('previewMode')) renderOutline();
   }
 
   function syncCaretStyle(tab) {
@@ -1573,13 +1581,13 @@
     return () => tabBar.removeEventListener('wheel', onWheel);
   }
 
-  function editorOptions(tab, runtimeGeneration) {
+  function editorOptions(tab, runtimeGeneration, previewModeOverride) {
     const s = state.settings;
     const wasModified = tab.modified;
     // Resolve Markdown-relative resources before Vditor inserts their DOM nodes.
     // Doing this in the adapter observer is too late to prevent an initial app:// request.
     return PURE.createEditorOptions(tab, {
-      settings: s,
+      settings: previewModeOverride ? { ...s, previewMode: previewModeOverride } : s,
       locale: state.locale,
       appTheme: document.documentElement.dataset.theme || s.theme,
       defaultToolbar: DEFAULT_TOOLBAR,
@@ -1620,6 +1628,7 @@
             onClick: (event) => handleVditorToolbarClick(tab, event),
             onMouseDown: (event) => preserveSplitToolbarSelection(tab, event),
           });
+          const restoredSplitViewLayout = editorController.restoreRebuildSplitViewLayout(tab);
           // Vditor initialization may finish after the user changes the application theme.
           // Read the current theme here so the late callback cannot restore stale menu filters.
           const currentAppTheme = document.documentElement.dataset.theme || state.settings.theme;
@@ -1641,6 +1650,7 @@
           ensureSplitResizer(tab);
           setupSplitEditorEnhancements(tab);
           scheduleSplitLineNumbers(tab);
+          if (restoredSplitViewLayout) renderOutline();
           editorController.scheduleFocus(tab);
           restoreEditorScroll(tab, () => editorController.releaseRebuildSnapshot(tab));
           requestAnimationFrame(() => scrollToPendingAnchor(tab));

@@ -2,6 +2,11 @@
 
 ## 0.2.6 - TBA
 
+### Bug Fixes
+
+- **fix(outline):** In source-only Split View, the Outline sidebar now explains that rendered preview, WYSIWYG, or Instant Rendering mode is required instead of incorrectly reporting that the document has no headings.
+- **fix(split view):** Preserve each SV tab's source-only, preview-only, or two-pane layout when an initialization-only setting rebuilds its editor.
+
 ### Project Maintenance
 
 - **fix(dependencies):** Upgrade Vitest and its mocker package to 4.1.11, and override the `electron-builder` transitive `js-yaml` dependency to 4.3.2, resolving the related Dependabot security alerts.
