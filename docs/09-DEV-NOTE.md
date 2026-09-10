@@ -1,6 +1,12 @@
-# 功能实现：搜索与替换功能
+# 开发笔记
 
-## 实现版本：0.1.3
+本文记录已确认的实现边界、上游兼容结论与架构决策，不充当待办清单或实时测试台账。阅读时按主题进入对应一级分类；每条记录的版本、验证范围与升级复核要求保留在其自身小节。
+
+## 应用功能与工作台
+
+### 搜索与替换
+
+#### 实现版本：0.1.3
 
 搜索与替换已实现，用于多个 agent 和对话之间同步实现边界，不是待开发 issue。
 
@@ -11,7 +17,7 @@
 - 替换行默认折叠，支持单项替换和全部替换。
 - `Ctrl/Cmd + S` 在搜索或替换输入框聚焦时仍保存当前文档。
 
-## 搜索语义
+#### 搜索语义
 
 搜索和替换的真相来源是活动标签的 `tab.content` Markdown 字符串，不是整个 renderer DOM，也不调用浏览器原生页面搜索。
 
@@ -30,7 +36,7 @@
 - `FindController.open()` / `close()` 管理浮层、选区和焦点。
 - `FindController.replaceOne()` / `replaceAll()` 经 adapter `replaceTextMatch()` 完成替换。
 
-## Vditor 高亮与定位
+#### Vditor 高亮与定位
 
 Vditor 3.11.3 没有公开的 find/search API 或按 Markdown offset 设置选区的 API。搜索功能所需的 Vditor DOM 访问必须在 `src/renderer/vditor-adapter.js` 中完成。
 
@@ -53,7 +59,7 @@ adapter 负责：
 
 注意：匹配计数和替换以 Markdown 为准，富文本模式的可见文本可能不含 Markdown 标记、链接地址等内容，因此可见高亮数量不保证与 Markdown 计数完全相同。SV 对普通文本定位最可靠；IR/WYSIWYG 的可见定位是 adapter 的受控兼容行为。
 
-## 键盘与焦点边界
+#### 键盘与焦点边界
 
 搜索输入与 Vditor 的异步渲染/键盘处理存在竞争，以下规则不可删除：
 
@@ -64,7 +70,7 @@ adapter 负责：
 - 该隔离层显式处理 Enter、Escape、F3/Shift+F3 和 Ctrl/Cmd+S；普通字符不调用 `preventDefault()`，应由浏览器插入输入框。
 - 搜索浮层打开时不应让编辑器 `input` 回调自动重算 search session，否则会覆盖导航索引。
 
-## 替换与保存
+#### 替换与保存
 
 0.2.5 起，替换不再以整篇 `setValue()` 回写全文，而是走 Vditor 原生编辑路径：
 
@@ -75,7 +81,7 @@ adapter 负责：
 
 0.1.3 实现曾使用 `nextContent` + `setValue()` + `tab.pendingEditorContent` 标记的全文回写方案，该方案与上述标记已随批次 5 迁移删除；不得恢复，否则会绕过 Vditor 的 selection/undo/mode 边界。
 
-## UI 与资源
+#### UI 与资源
 
 - 浮层结构：`src/renderer/index.html` 的 `#findWidget`。
 - 样式：`src/renderer/styles/app.css` 的 `.find-widget` 和 `::highlight` 区段。
@@ -84,7 +90,7 @@ adapter 负责：
    - `src/renderer/assets/symbolic/replace.svg`
    - `src/renderer/assets/symbolic/replace-all.svg`
 
-## 测试入口
+#### 测试入口
 
 - `tests/unit/vditor-adapter.test.ts`：Range match、仅高亮/滚动与 Selection 行为。
 - `tests/unit/renderer/find-controller.test.ts`：widget 键盘导航所有权与 dispose 时清除高亮/监听（0.2.5 起）；替换与导航的完整用户路径由下述 E2E 覆盖。
@@ -100,7 +106,7 @@ adapter 负责：
 - Vitest 单元测试通过。
 - Electron E2E 通过。
 
-## 后续约束
+#### 后续约束
 
 - 不直接包装、注入或改写 Vditor contenteditable DOM 来实现高亮。
 - 后续加入大小写、全词或正则选项时，先扩展纯字符串匹配和测试；正则必须拒绝非法或可空匹配。
@@ -108,15 +114,15 @@ adapter 负责：
 
 ---
 
-# 功能实现：工作区 UI 改版
+### 工作区 UI 改版
 
-## 实现版本：0.1.3
+#### 实现版本：0.1.3
 
-## 当前状态
+#### 当前状态
 
 核心工作区 UI 已在 0.1.3 实现并通过自动化回归。文件保存原子化、工作区外 watcher、删除/目录移动恢复和跨重启冲突恢复不属于本轮已交付范围，见 `docs/ARCHIVED/12-0.2.0-DEVELOPMENT-PLAN.md`。
 
-## 顶部结构
+#### 顶部结构
 
 新版界面将原本独立的窗口标题栏、文件操作栏和标签栏收束为统一顶部工作区栏：
 
@@ -132,7 +138,7 @@ Status bar
 - `header.titlebar` 保留为第二行，只包含 Files/Outline 视图切换与 `#vditorToolbarMount`。
 - Vditor 固定工具栏可通过现有 `toolbarVisible` 隐藏；隐藏后编辑区直接向上扩展。
 
-## 侧边栏与标签
+#### 侧边栏与标签
 
 - `sidebarVisible` 是侧边栏、顶部文件操作组和第二行 Files/Outline 切换组的单一状态来源。
 - 侧栏使用 transform overlay 而不是宽度动画：显示时 sidebar 覆盖仍为全宽的 Vditor 并在结束后才回归 flex；收起时保留原 flex 占位直到滑出结束，随后才释放编辑区宽度。这避免长文档在动画每帧重排；收起途中左侧的短暂空白是该顺序的预期视觉取舍。
@@ -146,16 +152,16 @@ Status bar
 - 文件树支持工作区内自动编号新建、内联重命名、回收站删除和从空白区右键菜单打开工作区；文件与文件夹分别维护 `Untitled x` 序号，文件序号会避开当前目录和已打开标签中的同名 Markdown 项。文件名与大纲标题同样使用浏览器原生末尾省略，完整文本保留在 DOM 和 `data-tooltip`，不做 canvas 测宽或中间截断。
 - 工作区 watcher 对干净标签自动重载，对有本地修改的标签显示持久冲突横幅并暂停自动保存；当前机制不是完整的文件一致性或恢复系统。
 
-## 菜单与平台
+#### 菜单与平台
 
 - renderer 自绘顶部菜单收束为一个 Vditor Desktop 下拉菜单，按文件、编辑模式、设置和退出分组。
 - macOS 原生菜单删除 Edit、Theme、Help，保留 File、View 及原生 `F11` fullscreen。
 - 搜索/替换仅通过 `Ctrl/Cmd + F` 触达。
 - 顶部交互元素都使用 `-webkit-app-region: no-drag`；窗口栏保留空白拖拽区域。macOS 继续为原生 traffic lights 预留左侧安全区。
 
-## 快捷键归属与冲突边界
+#### 快捷键归属与冲突边界
 
-### 应用快捷键
+##### 应用快捷键
 
 `Cmd` 表示 macOS，`Ctrl` 表示 Linux/Windows。`globalShortcut` 未使用；除 `F12` 外，应用命令在 renderer `keydown` 中处理。native menu 仅在 macOS 注册相同的 File/View accelerator。
 
@@ -173,7 +179,7 @@ Status bar
 | Chrome DevTools            | `F12`                                            | main `before-input-event` 始终拦截；仅 `devToolsEnabled` 为真时切换           |
 | UI / 编辑区 / 预览区缩放   | 无                                               | 只能从设置页调整；不得重新加入 Electron `zoomIn`、`zoomOut`、`resetZoom` role |
 
-### Vditor 3.11.3 默认快捷键
+##### Vditor 3.11.3 默认快捷键
 
 | 类别       | 快捷键                                                                   | 动作                                                            |
 | ---------- | ------------------------------------------------------------------------ | --------------------------------------------------------------- |
@@ -186,7 +192,7 @@ Status bar
 
 Vditor 的 `keydown` 会先在编辑器 host 内运行。document 级应用监听必须先检查 `event.defaultPrevented`；这保证将来新增的 Vditor 编辑器快捷键不会继续触发同键的应用命令。`Escape` 与 `F3` 的应用优先级只在可见弹层或查找框内生效，属于有意的局部焦点行为，不是编辑器冲突。
 
-## 实现模块
+#### 实现模块
 
 - 结构：`src/renderer/index.html`
 - 布局、应用主题、收放动画、拖拽视觉状态：`src/renderer/styles/app.css`
@@ -197,17 +203,19 @@ Vditor 的 `keydown` 会先在编辑器 host 内运行。document 级应用监�
 
 ---
 
-# Vditor 3.11.3：模式切换与工具栏内部耦合
+## Vditor 编辑器兼容性：模式、交互与表格
 
-## 记录版本：0.1.5
+### 模式切换与工具栏内部耦合
 
-## 现象
+#### 记录版本：0.1.5
+
+#### 现象
 
 Desktop 侧栏已作为唯一的大纲入口，原生 Vditor 大纲面板关闭且入口隐藏。实现过程中确认：Vditor 3.11.3 的 `setEditMode()` 仍会直接读取并显示/隐藏 `outline` 工具项，即使 `outline.enable` 为 `false`。
 
 另一个关联现象发生在从 WYSIWYG 或 IR 切入 SV：Vditor 会隐藏 `outdent`、`indent`，并为它们加上 disabled class；但 Desktop 在 SV 中自行基于 source selection 实现列表缩进。若在模式切换后再异步恢复这两个按钮，会造成工具栏内容在一个切换中发生两次布局更新，表现为轻微的内容闪烁。
 
-## 失败尝试与原因
+#### 失败尝试与原因
 
 1. 从 Vditor toolbar 配置中直接移除 `outline`。
 
@@ -217,13 +225,13 @@ Desktop 侧栏已作为唯一的大纲入口，原生 Vditor 大纲面板关闭�
 
     - 失败原因：Vditor 已在同步切换中把按钮隐藏，50ms 后应用再次改变 display，形成“先隐藏、再插回”的两阶段工具栏重排。功能可用，但 WYSIWYG/IR → SV 可见闪烁；快捷键切换也不应依赖鼠标点击后的补偿路径。
 
-## 正确处理方法
+#### 正确处理方法
 
 - 保留 `outline` 作为运行时内部 toolbar 项，`outline.enable: false` 禁用原生面板；由 `vditor-adapter.js` 为该私有项添加应用 data attribute，再用应用 CSS 的 `display: none !important` 隐藏入口。
 - adapter 在初始化时为 `outdent` / `indent` 添加稳定占位 data attribute。应用 CSS 在 SV 中持续覆盖 Vditor 的隐藏和禁用外观；实际命令仍由 renderer capture 阶段的 source-selection 逻辑处理。
 - 删除模式切换后的延迟 display 改写。应用仍可在延迟回调更新自身模式状态、行号和滚动位置，但不得再二次改变这两个工具栏项的布局。
 
-## 注意事项与验证
+#### 注意事项与验证
 
 - 所有 Vditor 私有 toolbar 查询、`closest()` 和 data attribute 标记必须留在 `src/renderer/vditor-adapter.js`；组合层与各 controller 只调用语义化 adapter API（0.2.5 起原 `app.js` 已删除）。
 - 这是 Vditor 3.11.3 的私有契约。升级 Vditor 时，须检查 `setEditMode()` 对 `outline`、`outdent`、`indent` 的显示和 disabled 行为，并同步更新 `docs/07-VDITOR-UPGRADE.md`。
@@ -232,7 +240,7 @@ Desktop 侧栏已作为唯一的大纲入口，原生 Vditor 大纲面板关闭�
 - 原生对齐实现只保留一份 snapshot：preview 可见时取 preview，否则取当前模式编辑区。不要再把原生 DOM 标题、Markdown fallback 和另一套目标数组按下标拼接；集合不一致时行号、折叠 key 和跳转目标都会错位。Outline 视图隐藏期间无需调用 `getValue()` 或重建树，切换到该视图时再刷新即可。
 - SV preview 在模式切换后异步渲染，不能用固定延迟补偿。由 adapter 的可清理 MutationObserver 监听模式 style 与内容变化并触发防抖刷新；标签重建、关闭时必须 disconnect，避免旧 host 与回调泄漏。
 
-## 模式切换后的内容位置只能近似对应
+#### 模式切换后的内容位置只能近似对应
 
 Vditor 3.11.3 切换模式时先序列化当前 Markdown，再分别通过 `Md2VditorDOM`、`Md2VditorIRDOM` 或 `processSpinVditorSVDOM` 重建目标模式的私有 DOM。三种模式没有共享的版面节点，也没有公开的跨模式源码位置到滚动坐标映射 API。
 
@@ -240,7 +248,7 @@ Vditor 3.11.3 切换模式时先序列化当前 Markdown，再分别通过 `Md2V
 
 除非未来由 Vditor 提供稳定的源码位置映射能力，否则不要在 Desktop 层按私有 DOM 节点、HTML 文本或估算行高建立跨模式锚点。这会把上游模式差异变成更脆弱的应用层启发式，并在原始 HTML、表格、代码块和异步预览中产生新的偏差。升级 Vditor 时应重新检查模式转换 API；若上游新增稳定映射接口，再单独评估精确位置恢复。
 
-## SV 行号与文档末尾留白必须分层
+#### SV 行号与文档末尾留白必须分层
 
 GNOME Text Editor 的 `EditorSourceView` 通过 `gtk_text_view_set_bottom_margin()` 提供与可见区域高度相关的 overscroll，行号仍由 GtkSourceView gutter 按文本 buffer 的实际行渲染。留白属于视图滚动范围，不属于文档内容，也不会生成行号。
 
@@ -248,15 +256,15 @@ Desktop 的对应实现保持同一边界：Vditor 3.11.3 的 `--editor-bottom` 
 
 SV 的原始 HTML marker 可在一个元素内包含多行和嵌套的 `data-type="newline"`；实际文本行数可能高于 marker 数，不能在 marker 用尽后按固定行高猜算，否则行号会延伸进 overscroll。行号位置应取逻辑源码行所有 client rect 中视觉最上方的 rect，不能假定 `Range.getClientRects()` 的第一个结果一定是行首；长行折行时，该假定会把行号放到换行标记末端。滚动监听还须跟随 Vditor 替换后的当前 SV 节点，并在旧节点上清理。
 
-# Vditor undo 的连续编辑合并窗口
+### Undo、选区与编辑器右键菜单
 
-## 记录版本：0.1.5
+#### 记录版本：0.1.5
 
 Vditor 3.11.3 会以 `undoDelay`（Desktop 当前配置为 500ms）防抖写入 undo 栈。连续编辑若间隔不超过该窗口，会合并为同一个撤销步骤；例如先清空一个表格单元格、随即在表格外输入文字，单次 Ctrl/Cmd+Z 可能同时回退两项更改，并把光标恢复到该合并步骤保存的表格位置。
 
 这不是 Desktop 的表格选择修复额外写入 undo 项，也不是内容损坏：等待超过 500ms 后再进行下一次编辑，两个操作会形成独立历史项，内容撤销结果正常。Desktop 遵从 Vditor 的原生连续输入分组行为，不为表格删除单独强制提交 undo 边界。
 
-## 超过合并窗口后的光标恢复异常
+#### 超过合并窗口后的光标恢复异常
 
 即使每次编辑之间已等待超过 `undoDelay`，Vditor 3.11.3 的内容 undo 与光标恢复仍不是同一个可靠性等级。已人工确认的混合场景如下：
 
@@ -271,7 +279,7 @@ Vditor 3.11.3 会以 `undoDelay`（Desktop 当前配置为 500ms）防抖写入 
 
 该问题发生在没有 Desktop 表格整格选择接管的普通“输入后删除”路径，因此可确认是 Vditor 3.11.3 的上游光标恢复缺陷/限制，而非 Desktop 本轮修改造成。尚未对比更早 Vditor 版本或核对上游 issue 历史，不能把它表述为“版本回归”。Desktop 当前遵从 upstream：保证内容撤销正确，不在应用层用私有 DOM 猜测跨块光标位置。升级 Vditor 时应复核 `undoDelay`、`recordFirstPosition()`、`Undo.renderDiff()` 与跨块撤销后的光标恢复表现；若上游提供稳定选择位置 API，再单独评估修复。
 
-## 编辑区右键菜单的 Vditor 私有表格边界
+#### 编辑区右键菜单的 Vditor 私有表格边界
 
 Vditor 3.11.3 没有公开的编辑器右键菜单或表格行列 API。WYSIWYG 的浮动工具栏和 IR 的键盘分支最终都依赖同一组内部 table DOM 操作；Desktop 不能伪造快捷键，也不能把 Markdown 整体取出、修改后再 `setValue()`，否则会丢失当前选区和 undo 上下文。
 
@@ -283,15 +291,15 @@ Desktop 因此只在 adapter 中保存/恢复编辑 Range、识别真实 `td` / 
 
 ---
 
-# Vditor 3.11.3：长表格编辑横向滚动补偿
+### 长表格编辑横向滚动补偿
 
-## 问题与边界
+#### 问题与边界
 
 Vditor `3.11.3` 的 WYSIWYG/IR 将表格本身作为横向滚动容器（`display: block; overflow: auto`）。在多字符输入、IME 多字提交或原生粘贴中，Vditor 会重建当前表格或父级块；新表格节点没有旧节点的运行时 `scrollLeft`，因而回到最左侧。
 
 该行为在纯 Chromium 的固定 `3.11.3` 对照页中复现。保存的官方指南页也使用二进制一致的 `3.11.3` JS/CSS；其公开配置近似版仍复现。因此这不是 Electron 或 Rime 专有问题，Desktop 只补偿可观察的滚动状态，不接管 Vditor 的文本、选区、undo 或剪贴板语义。
 
-## Desktop 策略
+#### Desktop 策略
 
 `vditor-adapter.js` 的 `preserveTableScrollDuringInput(host, getMode)` 在 `paste`、`input`、`compositionstart` 捕获阶段保存当前选区所属表格的序号、`scrollLeft` 和最大横向范围。它以短生命周期 `MutationObserver` 等待 Vditor 重建，在事件完成后恢复同序号表格；250ms 后或 tab 关闭时清理 observer、timer 和 animation frame。
 
@@ -305,7 +313,7 @@ Vditor `3.11.3` 的 WYSIWYG/IR 将表格本身作为横向滚动容器（`displa
 | 超长单元格右侧多字符粘贴     | 回到左侧           | 跟随         | Desktop 补全 |
 | 超长单元格中间输入至光标越界 | 不跟随             | 最小距离右移 | Desktop 补全 |
 
-## 维护约束
+#### 维护约束
 
 - 任何表格 DOM 查询、selection/Ranges 和重建兼容逻辑只能保留在 adapter；0.2.5 起由 `EditorController` 负责安装并在 tab 关闭或重建时调用 disposer。
 - 不得以 `getValue()` / `setValue()` 回写全文修复滚动，否则会损害 selection、undo 和 mode 状态。
@@ -314,9 +322,9 @@ Vditor `3.11.3` 的 WYSIWYG/IR 将表格本身作为横向滚动容器（`displa
 
 ---
 
-# Vditor WYSIWYG 部分格式选区复制不保留语义
+### WYSIWYG 部分格式选区复制
 
-## 记录版本：0.2.5 / 2026-09-04
+#### 记录版本：0.2.5 / 2026-09-04
 
 在 Vditor 3.11.3 的 WYSIWYG 中，视觉上选中加粗文本 `abc`（其 DOM 位于`<strong>` 内）后，通过 Ctrl/Cmd+C 或 Desktop 编辑器右键菜单 Copy 复制，再粘贴，结果为普通文本 `abc`。IR 中若连同 `**` Markdown 标记一起选中，复制结果为`**abc**`，粘贴后会恢复加粗；这不是两个 Desktop 菜单路径的差异。
 
@@ -324,7 +332,7 @@ Vditor `3.11.3` 的 WYSIWYG/IR 将表格本身作为横向滚动容器（`displa
 
 本地 Vditor `v3.11.3` 标签与 Desktop 安装依赖的对应源码哈希一致。对比本地`v3.11.3..v4.0.0` 后，WYSIWYG/IR 的 copy handler 没有变化；4.0.0 不能修复此场景。
 
-## Desktop 决策
+#### Desktop 决策
 
 这是 Vditor 的上游限制/缺陷，不是 0.2.5 renderer 重构回归。Desktop 不在 adapter 或菜单层补写祖先标签、HTML 剪贴板格式或 Markdown 包装：跨嵌套格式、部分链接、列表和代码边界的正确序列化属于 Vditor 编辑引擎职责，应用层猜测 Range 祖先会偏离上游并增加selection/undo 风险。后续仅在 Vditor 上游提供修复或稳定公开 API 时重新评估。
 
@@ -332,15 +340,17 @@ Vditor `3.11.3` 的 WYSIWYG/IR 将表格本身作为横向滚动容器（`displa
 
 ---
 
-# 模块化重构边界
+## 渲染架构与模块边界
 
-## 记录版本：0.2.5 / 2026-09-10
+### 模块化重构边界
 
-## 背景
+#### 记录版本：0.2.5 / 2026-09-10
+
+#### 背景
 
 `app.js` 从最初的 5000+ 行（0.2.0 基线统计为 5414 行，见 `docs/ARCHIVED/16-0.2.5-BASELINE-BEHAVIOR.md`）逐步迁移为 `app-composition.js`；批次 10 收口（2026-09-09）时为 3235 行，含资源健康接线与重建 undo 恢复回调。这两个行数是冻结的历史快照，只用于说明迁移幅度，不随后续代码演进更新。迁移过程中，领域逻辑被持续提取为独立的 Controller 类，通过 `PURE` 命名空间注入，composition 层只保留实例化、依赖注入和跨域协调。原 `src/renderer/app.js` 已在批次 9 删除，不得恢复。
 
-## 已提取的 Controller 清单
+#### 已提取的 Controller 清单
 
 以下 Controller 已从 composition 层提取，各自拥有独立的领域状态、资源生命周期或测试覆盖：
 
@@ -383,7 +393,7 @@ Vditor `3.11.3` 的 WYSIWYG/IR 将表格本身作为横向滚动容器（`displa
 | Shell | `AppController` (TS) | 启动顺序与窗口命令路由 |
 | Shell | `ApplicationShellController` (TS) | shell 级 DOM 资源生命周期 |
 
-## composition 层剩余内容的构成
+#### composition 层剩余内容的构成
 
 `app-composition.js` 的剩余内容分为以下四类（构成描述以 2026-09-07 记录为准，不维护实时行数与行号区间）：
 
@@ -395,25 +405,25 @@ Vditor `3.11.3` 的 WYSIWYG/IR 将表格本身作为横向滚动容器（`displa
 
 4. **未提取的局部 UI 辅助**：如 `applyPresentationSettings`、context menu 构建、`handleMenu` 等。
 
-## 边界判断原则
+#### 边界判断原则
 
 以下原则用于判断一个函数是否应该从 composition 层提取为独立 Controller：
 
-### 应该提取的条件（满足至少一项）
+##### 应该提取的条件（满足至少一项）
 
 - 拥有独立的领域状态（不是 `state` 或 `store` 的投影）
 - 拥有运行时资源生命周期（Observer、Timer、Watcher、DOM 节点等需要 dispose）
 - 拥有安全边界或 IPC 边界（如文件写入、权限检查）
 - 行为可以独立测试，不依赖 composition 闭包中的多个 controller
 
-### 不应该提取的条件
+##### 不应该提取的条件
 
 - 仅是 1–3 行的委托函数，提取后只是换了位置
 - 需要连接 3 个以上 controller 的跨域协调（这是 composition 的本职工作）
 - 提取后需要重新设计状态传递方式（如将 IIFE 闭包共享的 `state`/`store` 改为参数注入）
 - 提取的主要动机是减少行数而非降低耦合
 
-## 当前边界结论
+#### 当前边界结论
 
 **composition 层的模块化拆分已到达合理边界，不应继续系统性拆分。**
 
@@ -424,7 +434,7 @@ Vditor `3.11.3` 的 WYSIWYG/IR 将表格本身作为横向滚动容器（`displa
 3. `editorOptions`、`setupApplicationShellResources`、`beforeAppShortcut` 等函数的职责就是连接多个 controller，把它们提取出去只是把协调逻辑从 composition 移到另一个文件，没有消除协调本身。
 4. 从 0.2.0 基线的 5414 行到批次 10 收口时约 3200 行的迁移中，所有拥有领域状态、资源生命周期和可独立测试行为的模块均已提取。剩余内容是 composition 层的合理骨架。
 
-## 后续微调空间
+#### 后续微调空间
 
 以下局部可在需要时按需提取，但不应作为系统性任务：
 
@@ -435,17 +445,19 @@ Vditor `3.11.3` 的 WYSIWYG/IR 将表格本身作为横向滚动容器（`displa
 
 ---
 
-# Vditor 3.11.3：IR 折叠标题 marker 的自绘光标异常
+## Vditor 编辑器兼容性：渲染与序列化
 
-## 记录版本：0.2.5 / 2026-09-09
+### IR 折叠标题 marker 的自绘光标异常
 
-## 现象
+#### 记录版本：0.2.5 / 2026-09-09
+
+#### 现象
 
 打开首行为 Markdown 标题的文档，在标题下方编辑内容后撤销，IR 模式的自绘 caret 有时显示在异常位置，且高度会接近标题整行而不是普通文本行高。关闭标签并重新打开后可以稳定复现。WYSIWYG 不受影响；它没有 IR 的折叠 Markdown marker DOM。
 
 将设置中的 `caretStyle` 切换为 `native` 后，Chromium 原生 caret 在同一撤销状态不绘制。这排除了 Desktop 的编辑器重建、保存状态、undo owner 交接或普通 Range 定位时序是根因的可能。
 
-## 根因
+#### 根因
 
 Vditor 3.11.3 的 IR 标题在未展开时使用 `.vditor-ir__marker--heading` 表示 `# ` 语法。撤销恢复 selection 时，Vditor 可能将折叠 Range 放在该 marker 的文本 offset `0`，也可能放在该 marker 后的元素边界。
 
@@ -453,7 +465,7 @@ Vditor 3.11.3 的 IR 标题在未展开时使用 `.vditor-ir__marker--heading` �
 
 标题语法展开后，marker 是用户可编辑的正常输入表面，不能按“所有 Markdown 标签都隐藏”处理。
 
-## 最终修复
+#### 最终修复
 
 `src/renderer/vditor-adapter.js` 的 `installCustomCaret()` 在计算 Range 矩形前识别仅限 IR 的 Vditor 私有结构：
 
@@ -463,18 +475,18 @@ Vditor 3.11.3 的 IR 标题在未展开时使用 `.vditor-ir__marker--heading` �
 
 该策略对齐 Chromium 原生渲染，而不修改真实 selection、Vditor 内容、undo 历史或编辑器实例生命周期。
 
-## 回归约束
+#### 回归约束
 
 - 私有 class/selection 判断只能保留在 `vditor-adapter.js`；Vditor 升级时审查 `.vditor-ir__marker--heading` 与 `vditor-ir__node--expand` 的结构和原生 caret 行为。
 - `tests/unit/vditor-adapter.test.ts` 覆盖 marker 内与 marker 后边界的隐藏行为，以及展开 marker 的正常绘制。
 - `tests/e2e/editor-modes.spec.ts` 覆盖首行标题、标题下方编辑、等待 Vditor undo history、撤销后恢复到折叠 marker selection 的真实 Electron 路径。
 - 不要恢复“测量标题正文首字”或基于保存状态、`modified`、快捷键接管来抑制 caret 的方案；它们不描述实际 DOM/selection 根因，并可能破坏正常编辑或 undo 行为。
 
-# GitHub Alerts 的上游展示文本回写
+### GitHub Alerts 的上游展示文本回写
 
-## 记录版本：0.2.5 / 2026-09-10
+#### 记录版本：0.2.5 / 2026-09-10
 
-## 现象
+#### 现象
 
 GitHub 风格的 warning block quote 使用以下语法：
 
@@ -487,7 +499,7 @@ Vditor 3.11.3 开启 `preview.markdown.callout` 后可以正常渲染这类 aler
 
 该写回不一定触发 `input`，因此文档可能没有 dirty 标记；用户打开后即使没有输入，后续保存也可能把展示性文本写进原始文件。该现象在 Vditor 作者部署的网页版同样存在，属于 Vditor/Lute 的上游 round-trip 缺陷，而非 Electron 文件写入层造成。
 
-## Desktop 兼容策略
+#### Desktop 兼容策略
 
 Desktop 保持 callout 渲染开启，不通过关闭 `callout` 来牺牲预览效果。`src/renderer/editor/github-alerts.ts` 的 `restoreGitHubAlertHeaders(markdown, previousMarkdown)` 使用编辑前的 Markdown 作为来源基线：
 
@@ -498,6 +510,6 @@ Desktop 保持 callout 渲染开启，不通过关闭 `callout` 来牺牲预览�
 
 该函数在初始化对账、`input`、`blur`、重建前读取和保存读取边界复用，确保展示文本不会进入 `tab.content`、recovery 或最终写盘。它是纯 Markdown 规范化，不访问 Vditor 私有 DOM，因此不应迁移到 `vditor-adapter.js`。
 
-## 已知边界与升级复核
+#### 已知边界与升级复核
 
 SV 模式另有 Vditor 自身的空引用行/文末换行格式化差异；那是独立的序列化格式问题，本节的兼容层不回滚该差异。Vditor/Lute 升级时需要重新核对五种 alert 的无标题、自定义标题、显式 emoji、三种编辑模式和保存路径；若上游为 alert DOM 增加“标题是否由源 Markdown 显式提供”的可逆信息，应优先移除 Desktop 兼容层并改用上游公共语义。
