@@ -9,6 +9,7 @@ playwright-report/
 .cache/
 .agents/
 .codex/
+.qoder/
 .tmp/
 tmp/
 .eslintcache

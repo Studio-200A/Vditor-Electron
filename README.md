@@ -58,7 +58,7 @@ Vditor Desktop takes the writing experience of [Vditor](https://github.com/Vanes
 | **Instant Rendering** | Keeping Markdown syntax near the cursor while the rest of the document renders cleanly. |
 | **Split Preview**     | Editing Markdown source on the left and reviewing the rendered document on the right.   |
 
-Switch modes from the unified toolbar or **View → Editing Mode**. Split Preview includes source line numbers, configurable tab spacing, optional whitespace markers, a resizable divider, and an auto-hiding preview scrollbar.
+Switch modes from the unified toolbar or **View → Editing Mode**. Split Preview includes source line numbers, configurable tab spacing, optional whitespace markers, a resizable divider, and an auto-hiding preview scrollbar. A **Caret style** setting under **Settings → Editor** offers Native, Underline, Bar, and Block options, covering both the system's native text cursor and the custom-drawn caret.
 
 ## A workspace that stays out of the way
 
@@ -66,7 +66,7 @@ Most days you're not managing an editor — you're just writing. Vditor Desktop 
 
 - Point it at a folder and it becomes your project: browse its Markdown files right in the explorer, no separate import step.
 - Navigate the way you would in any file manager — expand, collapse, filter by extension, rename, trash, or jump straight to the system file manager — all without leaving the editor.
-- Never lose your place in a long document: jump to any H1–H6 heading from a live outline, in any editing mode.
+- Never lose your place in a long document: jump to any H1–H6 heading from a live outline — in WYSIWYG, Instant Rendering, or Split View with its preview open.
 - Work on several documents at once, each with its own undo history and unsaved-changes indicator, and drag tabs into whatever order makes sense to you.
 - Need more screen for writing? Collapse the explorer and it steps aside — the shortcuts and menu still work exactly the same.
 - Save, Save As, export portable HTML or self-contained-image PDF files, and pick up your last session automatically the next time you open the app.

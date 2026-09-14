@@ -86,9 +86,7 @@ adapter 负责：
 - 浮层结构：`src/renderer/index.html` 的 `#findWidget`。
 - 样式：`src/renderer/styles/app.css` 的 `.find-widget` 和 `::highlight` 区段。
 - 本地化：`src/renderer/locales.js` 的 `find.*`、`menu.find`，包含 `en_US`、`zh_Hans`、`zh_Hant`。
-- 替换图标来自 VS Code 源码，已复制到：
-   - `src/renderer/assets/symbolic/replace.svg`
-   - `src/renderer/assets/symbolic/replace-all.svg`
+- 替换图标不保存在 `src/renderer/assets/`：`replace.svg` 与 `replace-all.svg` 来自 `lucide-static` 图标包，由 `scripts/copy-vditor-assets.js` 在构建时复制到 `dist/renderer/assets/symbolic/`；`app.css` 的 `.find-replace-icon` / `.find-replace-all-icon` 以相对路径 `../assets/symbolic/` 引用它们。
 
 #### 测试入口
 
@@ -155,7 +153,7 @@ Status bar
 #### 菜单与平台
 
 - renderer 自绘顶部菜单收束为一个 Vditor Desktop 下拉菜单，按文件、编辑模式、设置和退出分组。
-- macOS 原生菜单删除 Edit、Theme、Help，保留 File、View 及原生 `F11` fullscreen。
+- macOS 原生菜单删除 Edit、Theme、Help，保留 File、View、Tools（Resource Health）及原生 `F11` fullscreen。
 - 搜索/替换仅通过 `Ctrl/Cmd + F` 触达。
 - 顶部交互元素都使用 `-webkit-app-region: no-drag`；窗口栏保留空白拖拽区域。macOS 继续为原生 traffic lights 预留左侧安全区。
 
@@ -163,7 +161,7 @@ Status bar
 
 ##### 应用快捷键
 
-`Cmd` 表示 macOS，`Ctrl` 表示 Linux/Windows。`globalShortcut` 未使用；除 `F12` 外，应用命令在 renderer `keydown` 中处理。native menu 仅在 macOS 注册相同的 File/View accelerator。
+`Cmd` 表示 macOS，`Ctrl` 表示 Linux/Windows。`globalShortcut` 未使用；除 `F12` 外，应用命令在 renderer `keydown` 中处理。native menu 仅在 macOS 注册相同的 File/View accelerator（Tools > Resource Health 无 accelerator，只根据活动文档资格启用/禁用）。
 
 | 应用动作                   | 快捷键                                           | 约束                                                                          |
 | -------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------- |
@@ -237,7 +235,7 @@ Desktop 侧栏已作为唯一的大纲入口，原生 Vditor 大纲面板关闭�
 - 这是 Vditor 3.11.3 的私有契约。升级 Vditor 时，须检查 `setEditMode()` 对 `outline`、`outdent`、`indent` 的显示和 disabled 行为，并同步更新 `docs/07-VDITOR-UPGRADE.md`。
 - 回归覆盖：adapter 单测验证标记；Electron E2E 验证从 WYSIWYG 与 IR 切入 SV 时两个列表按钮只保留 Vditor 同步 show/hide 的两次 style 更新、不会再出现延迟补偿更新，且最终仍可见；另保留 SV 列表缩进/反缩进功能测试。
 - 大纲对齐 Vditor 原生功能时，当前编辑区的直接 H1–H6 DOM 才是准则。Electron 验证显示 IR 对 Setext 和围栏内 ATX 样式文本的即时结果不等同于完整 Markdown 语义；因此不要把“原生等价”写成“完整 Markdown 标题解析”。若需跨模式一致的 Setext/围栏语义，应单独决策并实现独立 Markdown 解析与目标定位，不能隐式改变原生对齐范围。
-- 原生对齐实现只保留一份 snapshot：preview 可见时取 preview，否则取当前模式编辑区。不要再把原生 DOM 标题、Markdown fallback 和另一套目标数组按下标拼接；集合不一致时行号、折叠 key 和跳转目标都会错位。Outline 视图隐藏期间无需调用 `getValue()` 或重建树，切换到该视图时再刷新即可。
+- 原生对齐实现只保留一份 snapshot：preview 可见时取 preview，否则取当前模式编辑区。不要再把原生 DOM 标题、Markdown fallback 和另一套目标数组按下标拼接；集合不一致时行号、折叠 key 和跳转目标都会错位。Outline 视图隐藏期间无需调用 `getValue()` 或重建树，切换到该视图时再刷新即可。0.2.6 起该规则前增加一道不可用判定：SV source-only（preview 隐藏）没有可提供标题的渲染表面，大纲不再对源码编辑区取 snapshot 并误报“无标题”，而由 composition 注入的 `isUnavailable` 回调（基于 adapter `splitViewVisibility` 判定源码栏可见且 preview 隐藏）显示 `sidebar.outlineUnavailableInSourceOnly` 空态，提示打开 preview 或切换到 WYSIWYG/IR；工具栏 preview 开关（`previewMode` 设置）变化时会重新渲染大纲。
 - SV preview 在模式切换后异步渲染，不能用固定延迟补偿。由 adapter 的可清理 MutationObserver 监听模式 style 与内容变化并触发防抖刷新；标签重建、关闭时必须 disconnect，避免旧 host 与回调泄漏。
 
 #### 模式切换后的内容位置只能近似对应
@@ -259,6 +257,16 @@ Vditor 3.11.3 原生只在 SV 源码栏滚动时同步 preview。它以源码栏
 Desktop 保留上游的单向交互：用户滚动 preview 时源码栏不回写；下一次滚动源码栏时，preview 才重新跟随。adapter 读取 Vditor 3.11.3 私有 source heading marker 与 preview `.vditor-reset` 的直接 H1–H6；仅在两侧标题数量相等时按顺序配对，将相邻标题间的滚动位置线性插值。每个标题的对齐里程碑设为各自 viewport 高度的 20%，而非顶部，避免标题刚出现就贴近上缘。文档顶部和底部遵从原生可滚动范围钳制；标题缺失、数量不等或 Vditor DOM 结构变化时，不猜测映射，回退并保留上游比例同步。
 
 私有选择器、标题几何和回退判断只能位于 `src/renderer/vditor-adapter.js`；`SplitViewController` 继续仅拥有 source scroll listener 的生命周期，composition 不保存同步状态。升级 Vditor 时须复核这两套标题集合、20% 对齐、复杂 HTML/表格文档、回退路径及 preview 独立阅读；对应要求同步记录在 `docs/07-VDITOR-UPGRADE.md`。
+
+#### 设置触发编辑器重建时保留 SV pane 布局
+
+##### 记录版本：0.2.6
+
+仅影响初始化参数的设置变化会按 tab 重建 Vditor 实例（`settings-controller.ts` 的 `shouldRebuildEditor` → `rebuildEditors()`）。0.2.6 之前，重建后的 SV 一律回到默认双栏形态，丢失用户经工具栏切出的 source-only 或 preview-only pane 状态。
+
+0.2.6 起，`EditorController` 在重建前经 adapter `splitViewVisibility` 捕获每个 SV tab 的当前布局（`both` / `source-only` / `preview-only`），记录在 `rebuildSplitViewLayouts`：source-only 通过 `createOptions` 的 `previewMode: 'editor'` override 在初始化时直接还原；preview-only 在初始化完成回调中调用 adapter `restorePreviewOnly`，触发 Vditor 自身的 Preview 工具栏动作还原——3.11.3 没有公开的 preview-only setter，该动作只隐藏 SV 源码栏，不改变用户退出 preview 后回到 source/双栏布局的配置；`both` 即重建后的默认形态，无需额外还原。布局还原后由 composition 重新渲染大纲，source-only tab 因此进入上述不可用空态。布局记录在 Vditor 创建失败和 tab 销毁时清理。
+
+私有可见性判定与 Preview 按钮点击只能位于 `vditor-adapter.js`；升级 Vditor 时须复核 `splitViewVisibility` 与 `restorePreviewOnly` 的行为。回归覆盖：`tests/unit/renderer/editor-controller.test.ts`（布局捕获、还原与清理）、`tests/unit/renderer/outline-controller.test.ts`（不可用空态）、`tests/unit/vditor-adapter.test.ts` 与 `tests/e2e/editor-modes.spec.ts`（真实重建设置场景）。
 
 #### SV 行号与文档末尾留白必须分层
 
@@ -369,8 +377,11 @@ Vditor `3.11.3` 的 WYSIWYG/IR 将表格本身作为横向滚动容器（`displa
 | 类别 | Controller | 职责 |
 | --- | --- | --- |
 | 文档与文件 | `DocumentController` | 文档绑定、打开、保存事务 |
+| 文档与文件 | `DocumentSaveController` | 按 document ID 与 canonical identity 的两级保存串行队列 |
+| 文档与文件 | `DocumentCloseController` | 关闭确认 → runtime 释放 → Store 删除的固定顺序与同文档并发请求合并 |
 | 文档与文件 | `DocumentWatchController` | 文件 watcher 生命周期 |
 | 文档与文件 | `DocumentTabWorkflowController` | 标签打开/关闭/切换流程 |
+| 文档与文件 | `ExternalChangeController` | watcher 正文的纯分类（无副作用） |
 | 文档与文件 | `ExternalFileChangeController` | 外部文件变更分类与响应 |
 | 文档与文件 | `DocumentSaveExternalWorkflowController` | 外部变更下的保存/重载/重建流程 |
 | 编辑器 | `EditorController` | Vditor 实例创建、重建、销毁、模式同步 |
@@ -388,6 +399,7 @@ Vditor `3.11.3` 的 WYSIWYG/IR 将表格本身作为横向滚动容器（`displa
 | 标签与 UI | `NotificationsController` | 消息提示、确认对话框 |
 | 标签与 UI | `AppTooltipController` | 应用 tooltip 浮层 |
 | 布局 | `SidebarLayoutController` | 侧边栏展开/收起动画与尺寸 |
+| 布局 | `SidebarViewController` | Files / Outline tablist 的委托点击、active class 与 `aria-selected` 同步 |
 | 布局 | `SettingsDialogLayoutController` | 设置对话框拖拽尺寸 |
 | 布局 | `WindowController` | 窗口控制按钮、全屏、最大化状态 |
 | 工作区 | `WorkspaceController` | 工作区设置、watcher、路径变更 |

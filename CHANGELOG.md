@@ -22,7 +22,7 @@ This release is primarily an internal renderer-architecture upgrade. It preserve
 - **feat(resource health):**
    - **Description:** Added **Tools → Resource Health** for saved documents in the active workspace.
    - **Functionality:** Maps the focused document's image references, lists unreferenced and missing images for management, and checks every accessible Markdown/HTML document in the workspace before image resources are moved to the system trash.
-   - **Safety:** Only direct image-directory files become cleanup candidates; nested directories are not scanned and symbolic links make the scan incomplete, disable moving to Trash, and prompt the user to replace the link with the original image. Moving to Trash always re-validates each selected candidate first.
+   - **Safety:** Only direct image-directory files become cleanup candidates; nested directories are not scanned and symbolic links make the scan incomplete, disable moving to Trash, and prompt the user to replace the link with the original image. When the workspace root itself is a symbolic link, Resource Health is unavailable for safety and warns the user to open the link target directory as the workspace instead. Moving to Trash always re-validates each selected candidate first.
 - **feat(custom caret)**: Underline, Bar, Block, and Native caret style options.
 
 ### Improvements
