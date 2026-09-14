@@ -123,7 +123,7 @@ Monokai Pro 主题额外定义了 `--monokai-code-bg`、`--monokai-input-bg` 和
 
 ### 5.1 Classic
 
-默认亮色壳层。sidebar 为白色、编辑区为浅灰色，accent 为 `#3578e5`，作为 `lightTheme` 的默认和保底值，通常搭配 Vditor 的浅色内容/代码主题。
+默认亮色壳层。sidebar 为浅灰 `#f0f1f3`、编辑区为白色 `#ffffff`，accent 为 `#3578e5`，作为 `lightTheme` 的默认和保底值，通常搭配 Vditor 的浅色内容/代码主题。
 
 ### 5.2 Dark
 
@@ -135,11 +135,11 @@ Monokai Pro 主题额外定义了 `--monokai-code-bg`、`--monokai-input-bg` 和
 
 ### 5.4 Claude Dark
 
-将 Claude Light 的暖色体系转换为低对比度深色壳层：应用背景为 `#141413`，sidebar 和编辑区均为 `#30302e`，次级面板为 `#262624`，hover 表面为 `#3d3d3a`，文字为 `#faf9f5`，弱化文字为 `#c2c0b6`。accent 和品牌强调色同样为 `#d97757`，分割线使用 `rgb(222 220 209 / 12%)`，主按钮使用白色文字。
+将 Claude Light 的暖色体系转换为低对比度深色壳层：应用背景为 `#141413`，sidebar 为 `#30302e`，编辑区与次级面板均为 `#262624`，hover 表面为 `#3d3d3a`，文字为 `#faf9f5`，弱化文字为 `#c2c0b6`。accent 和品牌强调色同样为 `#d97757`，分割线使用 `rgb(222 220 209 / 12%)`，主按钮使用白色文字。
 
 ### 5.5 Monokai Pro Dark
 
-既有深色主题。应用、sidebar 和编辑区基准表面为 `#2d2a2e`，accent 为 Monokai 黄色 `#ffd866`，并使用 Monokai 风格的输入背景、代码块背景、链接、引用和分割线颜色。应用 CSS 为 H1–H6 提供粉、黄、绿、青、紫、橙六级标题色；这些内容可读性覆盖是 Monokai 的历史特例，代码块高亮仍由 Vditor code theme 提供。
+既有深色主题。应用背景与 sidebar 基准表面为 `#2d2a2e`，编辑区为略深的 `#272428`，accent 为 Monokai 黄色 `#ffd866`，并使用 Monokai 风格的输入背景、代码块背景、链接、引用和分割线颜色。应用 CSS 为 H1–H6 提供粉、黄、绿、青、紫、橙六级标题色；这些内容可读性覆盖是 Monokai 的历史特例，代码块高亮仍由 Vditor code theme 提供。
 
 ### 5.6 Monokai Pro Light
 
@@ -157,7 +157,7 @@ Monokai Pro Dark 的同族浅色主题，调色取自官方 Monokai Pro Light VS
 
 当前测试覆盖配置字段、旧字段忽略、亮暗独立主题组、六张预览卡片、预览宽度、Claude surface/accent/按钮文字/hover/分割线、状态栏三态主题菜单、系统主题解析，以及编辑器在失焦、聚焦和 IR/WYSIWYG/SV 切换时的编辑区表面。
 
-截至 2026-08-27，用户手动运行的 Linux `npm run check:all` 已包含主题、状态栏菜单、工具栏边界和六套主题相关回归；Windows/macOS 的窗口系统主题和原生集成仍按 [`docs/04-CROSS-PLATFORM.md` §9](04-CROSS-PLATFORM.md#9-020-批次-7-推迟的平台验证) 单独验证。
+截至 2026-08-27，用户手动运行的 Linux `npm run check:all` 已包含主题、状态栏菜单、工具栏边界和六套主题相关回归；Windows/macOS 的窗口系统主题和原生集成仍按 [`docs/04-CROSS-PLATFORM.md` §9](04-CROSS-PLATFORM.md#9-020-批次-7-推迟的平台验证) 单独验证。其后 0.2.5 批次 11（2026-09-10）为 Claude Dark 参与 Ant Design/WeChat 内容主题深色可读性重映射再次调整了 `app.css` 并同步更新 app-shell E2E 断言；该改动已随 v0.2.5 发布，上述时间戳不涵盖这一轮变化。
 
 Vditor toolbar 的主题菜单继续由 adapter 管理，应用主题不会绕过 Vditor 的 code theme。涉及主题代码、renderer shell 或设置持久化的改动，应至少运行格式检查、相关单测、构建和相关 Electron E2E；合并前遵循项目要求运行 `npm run check:all`。
 

@@ -49,6 +49,18 @@ Only read multiple sections when the task crosses architectural boundaries, such
 
 **Keep it updated**: The last thing to do before a dev/main branch merge and a new release is to update `docs/01-CODE-STRUCTURE.md` if necessary. Remind the developer to do so before publishing a new release, so that everything is well tracked.
 
+## Issue and Technical Debt Tracking
+
+`docs/00-ISSUES.md` is the single home for every long-term technical debt item, architecture risk, accumulated to-do, improvement backlog entry, and settled constraint that must not regress, alongside the temporary issues of the version currently in development.
+
+- Read the relevant entries before planning work in a domain that already has a known open issue, such as file safety, Vditor private-DOM assumptions, the settings model, or an upcoming Vditor upgrade. Treat their findings and closing conditions as given; do not re-derive them or silently work around them.
+- Record a newly discovered debt item, risk, or to-do in `docs/00-ISSUES.md` within the same change. Do not park it in a code comment, `CHANGELOG.md`, the architecture map, or a conversation summary.
+- State the observable symptom, the owning files, why current platform or upstream capability cannot close it yet, and the concrete condition that would close it. An entry without a closing condition is a note, not a tracked issue.
+- Keep `docs/01-CODE-STRUCTURE.md` free of debt, risk, and improvement lists; it describes only the current code structure and points to `docs/00-ISSUES.md` for the rest.
+- Keep dated batch execution evidence, test totals, and manual-acceptance records in the version tracker under `docs/`, not in `docs/00-ISSUES.md`.
+- Close a temporary version issue by recording its resolution in English in the corresponding `CHANGELOG.md` version section. Close a long-term item only when its stated closing condition is met with evidence, such as focused tests or real-platform verification; rewording the entry is not a closure.
+- Do not delete long-term entries when a version ships. Update their status, evidence, and owning version instead, so the accumulated history stays traceable.
+
 ## Technical Standards
 
 ### Cross-platform behavior
@@ -94,7 +106,7 @@ Only read multiple sections when the task crosses architectural boundaries, such
 - Model finite cross-boundary states with string-literal unions or discriminated result types. Do not use free-form strings when the receiver must branch on a known set of values.
 - In TypeScript, use interfaces for object-shaped contracts and classes only when they own behavior or lifecycle. Prefer `unknown` at untrusted boundaries and narrow it at runtime; do not add `any`, type assertions, or lint suppressions merely to avoid defining a contract. Existing JavaScript and tests may use `any` only where their runtime boundary makes a precise type impractical.
 - Order imports in contiguous groups: Electron/external packages, Node built-ins, then relative project modules. Keep the ordering already established in a touched file unless the whole import block is being meaningfully changed. New Node built-in imports use the `node:` prefix.
-- Prefer named exports for reusable main-process services, types, and pure helpers. Keep renderer browser scripts in their existing IIFE/global attachment form unless an approved migration changes that boundary.
+- Prefer named exports for reusable main-process services, types, and pure helpers. Write new renderer modules as TypeScript with explicit imports, bundled by `scripts/build-renderer.js`; do not add new IIFE/global-attachment browser scripts. Keep the transitional globals (`window.__vditorDesktopPureFunctions`, `window.__vditorDesktopApplication`) and the remaining plain scripts (`app/app-composition.js`, `locales.js`, `vditor-adapter.js`) in their current form until the approved composition migration replaces them.
 - Keep a one-off operation local to its caller. Extract a small named helper when behavior is repeated, security-sensitive, independently testable, or owns cleanup. Do not use line-count limits as a splitting rule: a cohesive transaction with error handling and cleanup may remain one function.
 - Place state next to its owning domain and make transitions explicit. Do not use a persisted setting as incidental UI/session state, and do not serialize DOM nodes, Vditor instances, ranges, observers, timers, or cleanup callbacks.
 
@@ -107,8 +119,8 @@ Only read multiple sections when the task crosses architectural boundaries, such
 
 ### Renderer module placement
 
-- Put a new renderer module in the owning domain directory: `documents/` for document identity, save, watcher and recovery transitions; `editor/` for Vditor runtime and editor-owned UI lifecycle; `workspace/` for workspace and explorer behavior; `settings/` for preference/state persistence and settings UI; `ui/` for application-owned presentation; `export/` for export transactions; and `resource-health/` for the isolated resource-health workflow.
-- Keep cross-domain construction and narrow named orchestration in `app/app-composition.js`; do not create a catch-all renderer utility directory or return business state to the composition layer.
+- Put a new renderer module in the owning domain directory: `documents/` for document identity, save, watcher and recovery transitions; `editor/` for Vditor runtime and editor-owned UI lifecycle; `workspace/` for workspace and explorer behavior; `settings/` for preference/state persistence and settings UI; `ui/` for application-owned presentation; `export/` for export transactions; `resource-health/` for the isolated resource-health workflow; `core/` for shared controller, lifecycle, and DOM primitives; and `state/` for the AppStore, state types, and session snapshots.
+- Keep cross-domain construction and narrow named orchestration in `app/app-composition.js`, which the `main.ts` entry starts through the `AppController` (`app/app-controller.ts`) lifecycle sequencing; do not create a catch-all renderer utility directory or return business state to the composition layer.
 - Put renderer-wide runtime types and browser global declarations in `src/renderer/types/`, pure side-effect-free helpers in `src/renderer/utils/`, and serializable cross-process DTOs in `src/shared/contracts/`. A new Vditor private-DOM dependency belongs in `vditor-adapter.js` with its focused contract test.
 
 ### Comments and error handling
@@ -148,8 +160,10 @@ Only read multiple sections when the task crosses architectural boundaries, such
 Run, as applicable:
 
 - npm run format:check
+- npm run check:project
 - npm run lint
 - npm run typecheck
+- npm run typecheck:renderer
 - npm run check:vditor
 - npm test
 - npm run build
@@ -172,7 +186,7 @@ GUI/Electron E2E tests may require execution outside the normal sandbox. A launc
 - Keep generated `dist/`, `static/`, `release/`, coverage, Playwright reports, test results, and dependency directories out of Git.
 - Do not commit local configuration, Chromium profiles, screenshots created only for debugging, or downloaded build tools.
 - Update `README.md` and `README_CN.md` together when product-facing behavior, installation, or user-facing terminology changes.
-- Update `CHANGELOG.md` for user-visible behavior changes; keep development planning and issue tracking in `docs/`.
+- Update `CHANGELOG.md` for user-visible behavior changes; keep development planning in `docs/` and all issue, technical-debt, and to-do tracking in `docs/00-ISSUES.md`.
 
 ## Working Method
 

@@ -1,10 +1,10 @@
 # 渲染进程架构
 
-本文档描述了已实现的 0.2.5 版渲染进程。它是一份职责地图，不能替代文件安全契约或执行追踪器。
+本文档描述了当前已实现的渲染进程（0.2.5 架构收口，0.2.6 修复批次延续同一架构）。它是一份职责地图，不能替代文件安全契约或执行追踪器。
 
 ## 启动与依赖方向
 
-`index.html` 依次加载离线 Vditor、语言包数据、Vditor 适配器、纯函数包、`app/app-composition.js`，最后加载 esbuild 打包的 `main.js`。`main.ts` 校验这些窄化的全局对象并启动组装好的 `AppController`。`AppController` 拥有启动顺序、窗口级事件以及逆序关闭逻辑；组合层创建各个控制器，并且只注入每个域所需的 bridge 与回调。
+`index.html` 依次加载离线 Vditor、语言包数据、Vditor 适配器、纯函数包、`app/app-composition.js`，最后加载 esbuild 打包的 `main.js`。`main.ts` 校验 `Vditor`、`VditorDesktopAdapter`、`fileAPI`、`appAPI` 这四个窄化全局对象并启动组装好的 `AppController`；语言包与纯函数全局对象由 `app/app-composition.js` 在加载时解引用。`AppController` 拥有启动顺序、窗口级事件以及逆序关闭逻辑；组合层创建各个控制器，并且只注入每个域所需的 bridge 与回调。
 
 依赖从组合根向内指向领域控制器，再指向 `core/`、`utils/`、类型与 bridge 契约。控制器不导入组合层，渲染进程业务模块也不直接持有完整的 `window.appAPI` 或 `window.fileAPI` 对象。所有 Vditor 私有 DOM 访问只存在于 `vditor-adapter.js` 中。
 
@@ -24,9 +24,12 @@
 
 - `app/`：应用启动、外壳生命周期与依赖组合。
 - `documents/`：标签页呈现、文档生命周期、安全保存、关闭/外部变更工作流与会话快照。
-- `editor/`：Vditor 构建/运行时、工具栏、分屏视图、大纲、查找、图片与恢复运行时行为。
+- `editor/`：Vditor 构建/运行时与运行时协调（`editor-runtime-coordinator.ts`）、工具栏、分屏视图、大纲、查找、图片、GitHub Alerts 呈现（`github-alerts.ts`）、文档链接导航（`document-link-navigation-controller.ts`）与恢复运行时行为。
 - `workspace/`、`settings/`、`ui/`、`export/` 与 `resource-health/`：各自的产品领域。
+- `state/`：`AppStore`、带版本的会话/恢复快照与应用状态类型。
 - `core/` 与 `utils/`：生命周期原语与纯函数辅助；`types/` 与 `src/shared/contracts/`：带类型的浏览器与可序列化边界。
+- `styles/` 与 `assets/`：应用 CSS、主题样式表与图标、通知等静态资源。
+- 根级 `locales.js` 与 `pure-functions.ts`：分别为三语言 UI 文案全局对象与纯函数包（esbuild 第二入口）的源码，由 `index.html` 在 `app/app-composition.js` 之前加载。
 
 ## 生命周期规则
 
