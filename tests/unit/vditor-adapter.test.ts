@@ -109,6 +109,68 @@ describe('Vditor DOM compatibility adapter', () => {
     expect(adapter.setEditorBottomSpacer(host, Number.NaN)).toBe(false);
   });
 
+  it('aligns the SV preview to source headings instead of total pane height', () => {
+    const host = createHost();
+    const { preview, source } = adapter.editorParts(host);
+    source.innerHTML = [
+      '<span data-type="heading-marker">#</span>',
+      '<span data-type="heading-marker">##</span>',
+    ].join('');
+    const previewContent = preview.querySelector<HTMLElement>('.vditor-reset')!;
+    previewContent.innerHTML = '<h1>First</h1><h2>Second</h2>';
+    preview.style.display = 'block';
+    Object.defineProperties(source, {
+      scrollHeight: { value: 1000 },
+      clientHeight: { value: 200 },
+    });
+    Object.defineProperties(preview, {
+      scrollHeight: { value: 2200 },
+      clientHeight: { value: 200 },
+    });
+    source.scrollTop = 250;
+    Object.defineProperty(source, 'getBoundingClientRect', { value: () => ({ top: 10 }) });
+    Object.defineProperty(preview, 'getBoundingClientRect', { value: () => ({ top: 20 }) });
+    const [firstSourceHeading, secondSourceHeading] = source.querySelectorAll<HTMLElement>(
+      '[data-type="heading-marker"]',
+    );
+    Object.defineProperty(firstSourceHeading, 'getBoundingClientRect', {
+      value: () => ({ top: -40 }),
+    });
+    Object.defineProperty(secondSourceHeading, 'getBoundingClientRect', {
+      value: () => ({ top: 360 }),
+    });
+    const [firstPreviewHeading, secondPreviewHeading] =
+      previewContent.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6');
+    Object.defineProperty(firstPreviewHeading, 'getBoundingClientRect', {
+      value: () => ({ top: 620 }),
+    });
+    Object.defineProperty(secondPreviewHeading, 'getBoundingClientRect', {
+      value: () => ({ top: 1620 }),
+    });
+
+    expect(adapter.syncSplitScroll(host)).toBe(true);
+    // Headings align at 20% of each 200px viewport: source 250 lies 90/400 of the way
+    // from its first heading milestone (160) to its second (560).
+    expect(preview.scrollTop).toBe(785);
+  });
+
+  it('leaves Vditor native scrolling in place when SV headings cannot be paired', () => {
+    const host = createHost();
+    const { preview, source } = adapter.editorParts(host);
+    source.innerHTML = '<span data-type="heading-marker">#</span>';
+    preview.querySelector<HTMLElement>('.vditor-reset')!.innerHTML = '<h1>One</h1><h2>Two</h2>';
+    preview.style.display = 'block';
+    Object.defineProperties(source, {
+      scrollHeight: { value: 1000 },
+      clientHeight: { value: 200 },
+    });
+    source.scrollTop = 300;
+    preview.scrollTop = 444;
+
+    expect(adapter.syncSplitScroll(host)).toBe(true);
+    expect(preview.scrollTop).toBe(444);
+  });
+
   it('owns a custom-caret proxy and removes it with its listeners', () => {
     const host = createHost();
     window.document.body.append(host);

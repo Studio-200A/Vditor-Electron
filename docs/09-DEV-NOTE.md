@@ -248,6 +248,18 @@ Vditor 3.11.3 切换模式时先序列化当前 Markdown，再分别通过 `Md2V
 
 除非未来由 Vditor 提供稳定的源码位置映射能力，否则不要在 Desktop 层按私有 DOM 节点、HTML 文本或估算行高建立跨模式锚点。这会把上游模式差异变成更脆弱的应用层启发式，并在原始 HTML、表格、代码块和异步预览中产生新的偏差。升级 Vditor 时应重新检查模式转换 API；若上游新增稳定映射接口，再单独评估精确位置恢复。
 
+#### SV 模式双列同步滚动
+
+##### 记录版本：0.2.6
+
+Vditor 3.11.3 原生只在 SV 源码栏滚动时同步 preview。它以源码栏的 `scrollTop`、可视高度与总可滚动高度计算预览栏的比例位置；滚动接近中后段时会以底边作补偿。该机制不建立 Markdown 源码位置与渲染节点之间的语义映射。
+
+比例同步在普通短文档中足够平滑，但源码与预览的块高度并不相同。原始 HTML、表格、图片、长代码块或复杂 Markdown 会使某一段在预览中显著变高或变低；因此在 `README.md` 等文档中，两个面板虽然处于相近总体进度，标题和正在阅读的章节仍会明显错位。
+
+Desktop 保留上游的单向交互：用户滚动 preview 时源码栏不回写；下一次滚动源码栏时，preview 才重新跟随。adapter 读取 Vditor 3.11.3 私有 source heading marker 与 preview `.vditor-reset` 的直接 H1–H6；仅在两侧标题数量相等时按顺序配对，将相邻标题间的滚动位置线性插值。每个标题的对齐里程碑设为各自 viewport 高度的 20%，而非顶部，避免标题刚出现就贴近上缘。文档顶部和底部遵从原生可滚动范围钳制；标题缺失、数量不等或 Vditor DOM 结构变化时，不猜测映射，回退并保留上游比例同步。
+
+私有选择器、标题几何和回退判断只能位于 `src/renderer/vditor-adapter.js`；`SplitViewController` 继续仅拥有 source scroll listener 的生命周期，composition 不保存同步状态。升级 Vditor 时须复核这两套标题集合、20% 对齐、复杂 HTML/表格文档、回退路径及 preview 独立阅读；对应要求同步记录在 `docs/07-VDITOR-UPGRADE.md`。
+
 #### SV 行号与文档末尾留白必须分层
 
 GNOME Text Editor 的 `EditorSourceView` 通过 `gtk_text_view_set_bottom_margin()` 提供与可见区域高度相关的 overscroll，行号仍由 GtkSourceView gutter 按文本 buffer 的实际行渲染。留白属于视图滚动范围，不属于文档内容，也不会生成行号。

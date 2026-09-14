@@ -24,6 +24,7 @@ export const ADAPTER_PUBLIC_KEYS = [
   'sourceNewlines',
   'sourceLineRanges',
   'renderSplitDecorations',
+  'syncSplitScroll',
   'syncSplitDecorationScroll',
   'captureSplitIndentSelection',
   'applySplitListIndent',
@@ -109,6 +110,7 @@ export function verifyAdapterCallContract(adapter: VditorDesktopAdapter, host: H
   adapter.sourceNewlines(parts.source);
   adapter.sourceLineRanges(parts.source);
   adapter.renderSplitDecorations(host, 'sv', true, 4);
+  adapter.syncSplitScroll(host);
   adapter.syncSplitDecorationScroll(host);
   adapter.applySplitListIndent(host, 'indent', selection);
   adapter.installSplitAutoIndent(host, () => true);

@@ -33,6 +33,7 @@
     tocTarget: '.vditor-toc [data-target-id]',
   });
   const documentLinkPresentation = new WeakMap();
+  const splitHeadingAlignmentRatio = 0.2;
 
   function editorParts(host) {
     return {
@@ -395,6 +396,70 @@
       whitespaceCanvas.style.transform = `translateY(${renderedScrollTop - source.scrollTop}px)`;
     }
     return true;
+  }
+
+  function scrollTopForElement(scroller, element) {
+    const scrollerTop = scroller.getBoundingClientRect().top;
+    return element.getBoundingClientRect().top - scrollerTop + scroller.scrollTop;
+  }
+
+  function clampScrollTop(value, maxScrollTop) {
+    return Math.min(maxScrollTop, Math.max(0, value));
+  }
+
+  function syncSplitPreviewScroll(host) {
+    const { preview, source } = editorParts(host);
+    if (!source || !preview || preview.style.display !== 'block') return false;
+    const sourceMaxScrollTop = Math.max(0, source.scrollHeight - source.clientHeight);
+    const previewMaxScrollTop = Math.max(0, preview.scrollHeight - preview.clientHeight);
+    if (sourceMaxScrollTop <= 0) return false;
+
+    // Vditor 3.11.3 exposes source heading markers and rendered preview headings, but its
+    // native SV listener maps the two panes by total height. Pairing only equal collections
+    // lets Desktop keep headings aligned without guessing when Vditor's private DOM differs.
+    const sourceHeadings = Array.from(source.querySelectorAll(selectors.sourceHeading));
+    const previewHeadings = directOutlineHeadings(preview.querySelector(selectors.reset)).map(
+      ({ element }) => element,
+    );
+    if (!sourceHeadings.length || sourceHeadings.length !== previewHeadings.length) return false;
+
+    const anchors = [{ sourceTop: 0, previewTop: 0 }];
+    sourceHeadings.forEach((sourceHeading, index) => {
+      const sourceTop = clampScrollTop(
+        scrollTopForElement(source, sourceHeading) -
+          source.clientHeight * splitHeadingAlignmentRatio,
+        sourceMaxScrollTop,
+      );
+      if (sourceTop <= anchors.at(-1).sourceTop) return;
+      anchors.push({
+        sourceTop,
+        previewTop: clampScrollTop(
+          scrollTopForElement(preview, previewHeadings[index]) -
+            preview.clientHeight * splitHeadingAlignmentRatio,
+          previewMaxScrollTop,
+        ),
+      });
+    });
+    if (anchors.at(-1).sourceTop < sourceMaxScrollTop)
+      anchors.push({ sourceTop: sourceMaxScrollTop, previewTop: previewMaxScrollTop });
+
+    const sourceTop = clampScrollTop(source.scrollTop, sourceMaxScrollTop);
+    const endIndex = anchors.findIndex((anchor) => anchor.sourceTop > sourceTop);
+    const end = endIndex === -1 ? anchors.at(-1) : anchors[endIndex];
+    const start = endIndex <= 0 ? anchors[0] : anchors[endIndex - 1];
+    const span = end.sourceTop - start.sourceTop;
+    const progress = span > 0 ? (sourceTop - start.sourceTop) / span : 0;
+    const previewTop = clampScrollTop(
+      start.previewTop + (end.previewTop - start.previewTop) * progress,
+      previewMaxScrollTop,
+    );
+    if (Math.abs(preview.scrollTop - previewTop) > 1) preview.scrollTop = previewTop;
+    return true;
+  }
+
+  function syncSplitScroll(host) {
+    syncSplitPreviewScroll(host);
+    return syncSplitDecorationScroll(host);
   }
 
   function captureSplitIndentSelection(host) {
@@ -2096,6 +2161,7 @@
     sourceNewlines,
     sourceLineRanges,
     renderSplitDecorations,
+    syncSplitScroll,
     syncSplitDecorationScroll,
     captureSplitIndentSelection,
     applySplitListIndent,

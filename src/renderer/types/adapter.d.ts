@@ -137,6 +137,7 @@ export interface VditorDesktopAdapter {
     showWhitespace: boolean,
     tabSize: number,
   ): boolean;
+  syncSplitScroll(host: HTMLElement | null | undefined): boolean;
   syncSplitDecorationScroll(host: HTMLElement | null | undefined): boolean;
   captureSplitIndentSelection(host: HTMLElement | null | undefined): Range | null;
   applySplitListIndent(

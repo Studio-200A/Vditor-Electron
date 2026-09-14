@@ -759,7 +759,7 @@
     canScheduleLineNumbers: (tab, generation) =>
       tab.ready && (generation === undefined || tab.editorRuntimeGeneration === generation),
     shouldDeferLineNumberResize: () => $('#app').classList.contains('sidebar-transitioning'),
-    syncScroll: (tab) => VDITOR.syncSplitDecorationScroll(tab.host),
+    syncScroll: (tab) => VDITOR.syncSplitScroll(tab.host),
     installScrollEnhancement: (tab) => setupAutoHideScrollbar(VDITOR.editorParts(tab.host).source),
     installAutoIndent: (tab) =>
       VDITOR.installSplitAutoIndent(tab.host, () => state.settings.autoIndent),

@@ -342,6 +342,91 @@ test('synchronizes status and preserves document position for Vditor mode shortc
   }
 });
 
+test('follows SV source headings in the preview without moving source for preview reading', async () => {
+  const section = (title: string) =>
+    [
+      `## ${title}`,
+      '',
+      '<table><thead><tr><th>Column</th><th>Value</th></tr></thead><tbody>',
+      ...Array.from(
+        { length: 24 },
+        (_, index) => `<tr><td>${index + 1}</td><td>rendered table content</td></tr>`,
+      ),
+      '</tbody></table>',
+      '',
+      ...Array.from({ length: 18 }, () => 'Source text below the rendered HTML block.'),
+    ].join('\n');
+  const running = await launchApp(
+    { editMode: 'sv' },
+    {
+      'split-heading-sync.md': [
+        '# Start',
+        section('Target'),
+        section('After target'),
+        section('End'),
+      ].join('\n\n'),
+    },
+  );
+  try {
+    const { page } = running;
+    const source = page.locator('.editor-host.active .vditor-sv');
+    const preview = page.locator('.editor-host.active .vditor-preview');
+    await expect(source).toBeVisible();
+    await expect(preview).toBeVisible();
+    await expect(source.locator('[data-type="heading-marker"]')).toHaveCount(4);
+    await expect(preview.locator('h2')).toHaveCount(3);
+
+    await source.evaluate((node) => {
+      const headings = node.querySelectorAll<HTMLElement>('[data-type="heading-marker"]');
+      const target = headings[2];
+      if (!target) throw new Error('Missing source target heading');
+      node.scrollTop +=
+        target.getBoundingClientRect().top -
+        node.getBoundingClientRect().top -
+        node.clientHeight * 0.2;
+      node.dispatchEvent(new Event('scroll'));
+    });
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const source = document.querySelector('.editor-host.active .vditor-sv');
+          const sourceTarget = source?.querySelectorAll('[data-type="heading-marker"]')[2];
+          const preview = document.querySelector('.editor-host.active .vditor-preview');
+          const target = preview?.querySelectorAll('h2')[1];
+          if (
+            !(source instanceof HTMLElement) ||
+            !(sourceTarget instanceof HTMLElement) ||
+            !(preview instanceof HTMLElement) ||
+            !(target instanceof HTMLElement)
+          )
+            return Infinity;
+          return Math.max(
+            Math.abs(
+              sourceTarget.getBoundingClientRect().top -
+                source.getBoundingClientRect().top -
+                source.clientHeight * 0.2,
+            ),
+            Math.abs(
+              target.getBoundingClientRect().top -
+                preview.getBoundingClientRect().top -
+                preview.clientHeight * 0.2,
+            ),
+          );
+        }),
+      )
+      .toBeLessThan(12);
+
+    const sourceScrollTop = await source.evaluate((node) => node.scrollTop);
+    await preview.evaluate((node) => {
+      node.scrollTop = Math.max(0, node.scrollHeight - node.clientHeight) * 0.7;
+      node.dispatchEvent(new Event('scroll'));
+    });
+    await expect.poll(() => source.evaluate((node) => node.scrollTop)).toBe(sourceScrollTop);
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('preserves the Vditor instance when switching modes with Vditor shortcuts', async () => {
   const running = await launchApp(
     { editMode: 'wysiwyg' },
