@@ -634,6 +634,9 @@ describe('renderer shell', () => {
     expect(document.querySelector('.about-panel .about-logo')?.getAttribute('src')).toBe(
       'app://app/assets/app-icon/vditor-desktop.svg',
     );
+    expect(document.querySelector('.about-panel .about-logo')?.getAttribute('draggable')).toBe(
+      'false',
+    );
     expect(document.querySelector('.about-panel #resetSettings')).not.toBeNull();
     expect(document.querySelector<HTMLInputElement>('[name="devToolsEnabled"]')?.type).toBe(
       'checkbox',

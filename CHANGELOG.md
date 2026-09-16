@@ -9,6 +9,7 @@
 
 ### Bug Fixes
 
+- **fix(about):** Prevent the About logo from being dragged out as `app://` text while preserving its click-based Easter egg.
 - **fix(outline):** In source-only Split View, the Outline sidebar now explains that rendered preview, WYSIWYG, or Instant Rendering mode is required instead of incorrectly reporting that the document has no headings.
 - **fix(split view):** Preserve each SV tab's source-only, preview-only, or two-pane layout when an initialization-only setting rebuilds its editor.
 - **fix(split view):** Improve SV source-to-preview scrolling for complex Markdown: matching source and rendered headings now align at roughly 20% of each pane, while preview reading remains independent and unmatched heading structures safely retain Vditor's native proportional fallback.
