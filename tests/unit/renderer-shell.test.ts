@@ -475,6 +475,9 @@ describe('renderer shell', () => {
     expect(document.querySelector('[name="darkTheme"][value="nord-dark"]')).not.toBeNull();
     expect(document.querySelector('.theme-picker-light')).not.toBeNull();
     expect(document.querySelector('.theme-picker-dark')).not.toBeNull();
+    expect(css).toMatch(
+      /\.theme-picker\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/s,
+    );
     expect(document.querySelectorAll('.theme-preview svg')).toHaveLength(7);
     expect(document.querySelector('[name="systemTheme"]')).toBeNull();
     expect(document.querySelector('.settings-right-edge')).not.toBeNull();

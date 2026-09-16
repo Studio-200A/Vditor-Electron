@@ -5,6 +5,7 @@
 ### New Features
 
 - **feat(theme):** Add Nord Dark as a selectable application theme. Its shell colors map to the official Nord palette, while content and code themes continue to use the existing independent theme controls.
+- **feat(theme):** Show up to four theme preview cards per row in Settings, so the dark-theme choices remain balanced as the list grows.
 
 ### Bug Fixes
 
