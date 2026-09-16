@@ -629,7 +629,7 @@ const state = {
 | 销毁标签 | `closeTab(id)`             | 调用 `tab.vditor.destroy()` 并移除 host 节点              |
 | 设置变更 | `saveSettings()`           | 展示设置和默认编辑模式热应用；只有影响初始化契约的设置才重建相关编辑器，重建时保留每个标签自身的模式 |
 
-无文档标签时，`createToolbarPreview()` 创建一个不参与标签和文件状态的 Vditor 实例，仅将其 toolbar 挂载到共享 mount；该预览使用设置中的默认编辑模式。打开文档或设置变更时销毁并重建预览。预览 toolbar 调用 Vditor disabled 接口并由应用 CSS 灰化，不能交互；`View > Layout > Show Toolbar` 仍可控制其显隐。
+无文档标签时，`createToolbarPreview()` 创建一个不参与标签和文件状态的 Vditor 实例，仅将其 toolbar 挂载到共享 mount；该预览使用设置中的默认编辑模式。打开文档或设置变更时销毁并重建预览。预览 toolbar 调用 Vditor disabled 接口并由应用 CSS 灰化，不能交互；布局菜单中的 `Show Toolbar` 仍可控制其显隐。
 
 ### 7.3 工具栏定制
 
@@ -1853,7 +1853,7 @@ flowchart TB
 | `tests/unit/persistent-state-store.test.ts` | `src/main/services/persistent-state-store.ts` | 旧 TOML 状态仅迁移一次且保持 config.toml 偏好化、损坏/未知 schema 安全默认值不阻塞启动、串行原子更新、清空状态时保留用户偏好 |
 | `tests/unit/resource-health-service.test.ts` | `src/main/services/resource-health-service.ts` | Markdown/HTML 本地引用提取（数字实体、未支持命名实体保守阻断、引号属性中的 `>`、代码围栏遮蔽、远程/`data:`/工作区外排除）、候选仅枚举图片目录直接常规文件、直接符号链接阻断与二级目录排除、工作区根为符号链接时返回 `workspace-symbolic-link` 不可用、`pasteImagesDir` 路径段符号链接拒绝、隐藏用户文档保护与 VCS/缓存目录排除、scan epoch/revision 生命周期、回收站前复核、读取/数量/目录项/时长上限只读结果 |
 | `tests/unit/vditor-adapter.test.ts` | `src/renderer/vditor-adapter.js` 与 adapter 类型 manifest | 运行时全部导出键与声明 manifest（`ADAPTER_PUBLIC_KEYS`）的精确一致性、`validateHost` 成功（toolbar 通过 `mountedToolbar` 参数提供）、代码主题亮/暗分界点（`ant-design` 前为 dark 组）、DOM 漂移检测（缺少 source 节点时 `valid: false`）、SV divider 创建与 pane 语义可见性、列表 `marker`/`padding` 解析、动态尾部留白写入全部 Vditor 表面、SVG 开关热更新的图片原始来源与缓存隔离、WYSIWYG 替换期间恢复原始 SVG URL、hash anchor 到标题索引（IR 内部链接 + 元素 id + slug）、原生大纲 snapshot、标题间普通块时的准确目标节点及 SV preview 外层滚动容器、SV source → preview 标题锚点滚动同步（等量配对插值、20% viewport 对齐、集合不等时保留原生比例同步）、`restorePreviewOnly` 经 Preview toolbar action 恢复 preview-only、跨多 span 文本节点的匹配与选区、自绘光标代理的滚动同步/越界隐藏/闪烁重启与快照滚动偏移复制 |
-| `tests/unit/renderer-shell.test.ts` | 渲染器壳（HTML/CSS/JS/preload）静态结构 | 标题栏 / 菜单 / 窗口控件 DOM；en/zh_Hans/zh_Hant 键完整性对等；Linux 发布脚本；自动隐藏滚动条样式；第二实例文件转发；确认对话框（未保存变更可拖动、无调整尺寸手柄）；设置对话框 8 方向调整手柄；空标签恢复；查找替换控件带 SVG；文件树无 draggable；折叠/展开/中间省略；链接目录斜体下划线与 SVG 资产；设置面板分类；关于面板；UI/编辑器/预览缩放；状态栏三态主题控件与无旧 checkbox；CSP img-src/connect-src；大纲无标题态；Monokai Pro Light / Dark 主题；亮/暗代码主题分离；字体子分组；工作区头部；编辑文本宽度范围；无过时占位符/工具栏设置项；适配器脚本加载顺序；设置路径页脚/重置当前页 |
+| `tests/unit/renderer-shell.test.ts` | 渲染器壳（HTML/CSS/JS/preload）静态结构 | 标题栏 / 菜单 / 窗口控件 DOM；en/zh_Hans/zh_Hant 键完整性对等；Linux 发布脚本；自动隐藏滚动条样式；第二实例文件转发；确认对话框（未保存变更可拖动、无调整尺寸手柄）；设置对话框 8 方向调整手柄；空标签恢复；查找替换控件带 SVG；文件树无 draggable；折叠/展开/中间省略；链接目录斜体下划线与 SVG 资产；设置面板分类；关于面板；UI/编辑器/预览缩放；状态栏三态主题控件与无旧 checkbox；CSP img-src/connect-src；大纲无标题态；Monokai Pro Light / Dark / Nord Dark 主题；亮/暗代码主题分离；字体子分组；工作区头部；编辑文本宽度范围；无过时占位符/工具栏设置项；适配器脚本加载顺序；设置路径页脚/重置当前页 |
 | `tests/unit/renderer/editor-controller.test.ts`、`editor-options.test.ts`、`editor-runtime-coordinator.test.ts` | 编辑器实例、构造选项与 tab 激活协调 | generation、幂等 destroy、rebuild 正文/滚动恢复、rebuild 时按 tab 捕获并恢复 SV pane 布局（source-only 经 `preview.mode: 'editor'`、preview-only 经 `restorePreviewOnly()`）、auto-save cleanup、pending content、constructor-only 设置、快速切换的 stale rAF 拒绝与 toolbar hand-off |
 | `tests/unit/renderer/github-alerts.test.ts` | `src/renderer/editor/github-alerts.ts` | 五种 GitHub alert 的默认 emoji/标题还原、自定义标题的展示 emoji 还原、源文件显式 emoji 保留及无关文本不变 |
 | `tests/unit/renderer/split-view-controller.test.ts`、`toolbar-controller.test.ts`、`outline-controller.test.ts`、`find-controller.test.ts` | Split View、共享工具栏、大纲与查找 UI | divider/行号/缩进、observer/listener/timer cleanup、toolbar owner 交接、outline stale refresh 与 SV source-only 不可用空态（`isUnavailable` 优先于“文档无标题”）、find reveal 与窗口快捷键 |
@@ -1988,7 +1988,7 @@ flowchart TB
 
 - 统一 workbench 栏（标题栏 + 标签栏一体，无主区域独立标签栏）
 - 应用菜单仅在主标题栏出现，无 `File` / `View` 顶级菜单项
-- `View > Layout > Show Toolbar` 隐藏 `#vditorToolbarMount`，编辑器区域上移
+- 布局菜单中的 `Show Toolbar` 隐藏 `#vditorToolbarMount`，编辑器区域上移
 - F11 全屏 + Alt 临时显示菜单 + 再按 Alt / Escape 隐藏
 - 分割编辑器 / 大纲 / 文件树滚动条自动隐藏（边缘 14px + 滚动事件 + 1s 超时）
 - 三档 `scrollbarMode`（always/auto/hidden）持久化并反映在 `html[data-scrollbar-mode]` + 计算滚动条宽度
