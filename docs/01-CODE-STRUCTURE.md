@@ -16,7 +16,7 @@
 
 **核心功能：** 多标签页 Markdown 编辑、三种编辑模式（IR/SV/WYSIWYG）、分栏预览、文件树侧栏、文档大纲、查找替换、图片插入与压缩、资源健康检查（未引用/缺失图片引用）、HTML/PDF 导出、TOML 偏好与版本化 JSON 状态持久化、三语国际化（英/简/繁）。
 
-**开发阶段：** 0.2.5 渲染层架构重构全部完成（批次 0–11 收口，0.2.5 开发收口）。批次 8 完成工作区、设置、菜单、窗口和导出域迁移；批次 8.1 校正 Vditor adapter 的完整类型 facade 与防漂移证据并完成复审；批次 9 已删除 legacy `app.js` 入口、收口组合层职责和行为测试，用户全量测试与手测通过；批次 10 完成文档同步、`.github/workflows/quality.yml` CI gate、性能与包体对比、Linux 候选包（portable/AppImage）与实机冒烟，并修复候选手测暴露的自绘光标与“设置触发编辑器重建后撤销失效”问题（提交 `5f34490`）；批次 11 最终独立审查收口三个阻塞项修复与最终人工验收。`AppController` 负责启动顺序、窗口级命令、拖放和 IPC 订阅；`app/app-composition.js` 是迁移后的组合层，仅承担保存交易、标签命令、设置/session 组合和部分全局事件的协调，各领域 runtime、自动保存 timer、recovery、共享 toolbar、Split View、outline、find、图片 runtime、文档链接、激活协调、应用 shell 资源和主题协调均已有明确 controller；DocumentController 与组合层仍保留文件 identity、保存交易、外部变化和 recovery 安全动作的语义所有权。0.2.0 的文件安全、恢复、watcher、冲突与跨平台边界继续作为不可改变的行为基线。精确的批次状态、手测、首轮失败及重跑证据只记录在 [`docs/ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md`](ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md)，本地图不维护实时测试总数。主题架构和六套内置主题见 [`docs/05-THEMES.md`](05-THEMES.md)，renderer 的模块边界见 [`docs/02-RENDERER-ARCHITECTURE.md`](02-RENDERER-ARCHITECTURE.md)。GitHub alert 序列化还原兼容层（`editor/github-alerts.ts`，提交 `0ded7ed`）在 0.2.5 收口阶段交付，已随 v0.2.5 发布。0.2.6 修复批次（进行中）在上述架构内交付：source-only SV 的大纲不可用空态、编辑器重建时按 tab 保留 SV pane 布局（`EditorController.rebuildSplitViewLayouts`）、基于标题锚点配对的 SV source → preview 滚动同步（adapter `syncSplitScroll()`），以及 Vitest 4.1.11 升级与 `js-yaml` 4.3.2 override。
+**开发阶段：** 0.2.5 渲染层架构重构全部完成（批次 0–11 收口，0.2.5 开发收口）。批次 8 完成工作区、设置、菜单、窗口和导出域迁移；批次 8.1 校正 Vditor adapter 的完整类型 facade 与防漂移证据并完成复审；批次 9 已删除 legacy `app.js` 入口、收口组合层职责和行为测试，用户全量测试与手测通过；批次 10 完成文档同步、`.github/workflows/quality.yml` CI gate、性能与包体对比、Linux 候选包（portable/AppImage）与实机冒烟，并修复候选手测暴露的自绘光标与“设置触发编辑器重建后撤销失效”问题（提交 `5f34490`）；批次 11 最终独立审查收口三个阻塞项修复与最终人工验收。`AppController` 负责启动顺序、窗口级命令、拖放和 IPC 订阅；`app/app-composition.js` 是迁移后的组合层，仅承担保存交易、标签命令、设置/session 组合和部分全局事件的协调，各领域 runtime、自动保存 timer、recovery、共享 toolbar、Split View、outline、find、图片 runtime、文档链接、激活协调、应用 shell 资源和主题协调均已有明确 controller；DocumentController 与组合层仍保留文件 identity、保存交易、外部变化和 recovery 安全动作的语义所有权。0.2.0 的文件安全、恢复、watcher、冲突与跨平台边界继续作为不可改变的行为基线。精确的批次状态、手测、首轮失败及重跑证据只记录在 [`docs/ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md`](ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md)，本地图不维护实时测试总数。主题架构和内置主题见 [`docs/05-THEMES.md`](05-THEMES.md)，renderer 的模块边界见 [`docs/02-RENDERER-ARCHITECTURE.md`](02-RENDERER-ARCHITECTURE.md)。GitHub alert 序列化还原兼容层（`editor/github-alerts.ts`，提交 `0ded7ed`）在 0.2.5 收口阶段交付，已随 v0.2.5 发布。0.2.6 修复批次（进行中）在上述架构内交付：source-only SV 的大纲不可用空态、编辑器重建时按 tab 保留 SV pane 布局（`EditorController.rebuildSplitViewLayouts`）、基于标题锚点配对的 SV source → preview 滚动同步（adapter `syncSplitScroll()`），以及 Vitest 4.1.11 升级与 `js-yaml` 4.3.2 override。
 
 ---
 
@@ -194,7 +194,8 @@ Vditor-Electron/
 │   │       ├── claude-light.css   # Claude Light 主题变量与专属覆盖
 │   │       ├── claude-dark.css    # Claude Dark 主题变量与专属覆盖
 │   │       ├── monokai-pro-light.css # Monokai Pro Light 主题变量与历史专属覆盖
-│   │       └── monokai-pro-dark.css  # Monokai Pro Dark 主题变量与历史专属覆盖
+│   │       ├── monokai-pro-dark.css  # Monokai Pro Dark 主题变量与历史专属覆盖
+│   │       └── nord-dark.css         # Nord Dark palette 壳层变量、禁用状态与标题色覆盖
 │   └── assets/                    # 项目自有静态资源
 │       ├── app-icon/              # 应用标识
 │       └── notification/          # 持久告警与短暂通知图标
@@ -699,7 +700,7 @@ Vditor 3.11.3 内置的 Lute 会将 GitHub alert 的展示 emoji 和默认标题
 
 ### 7.6 主题适配
 
-六套壳层主题（`app.css`）：
+内置壳层主题（`app.css`）：
 
 - `classic`（浅色）
 - `dark`（深色）
@@ -707,6 +708,7 @@ Vditor 3.11.3 内置的 Lute 会将 GitHub alert 的展示 emoji 和默认标题
 - `claude-dark`（深色 Anthropic 配色）
 - `monokai-pro-light`（浅色调 + Monokai 配色方案）
 - `monokai-pro-dark`（深色调 + Monokai 配色方案）
+- `nord-dark`（深色 Nord 官方 palette 配色）
 
 主题切换时：
 
@@ -1204,7 +1206,7 @@ function rememberRecent(filePath) {
 - `locale`（语言：`system` / `en_US` / `zh_Hans` / `zh_Hant`）
 - `systemTheme`（状态栏选择显示器模式时持久化为 `true`；不作为设置页控件展示）
 - `lightTheme`（浅色壳层主题：`classic` / `claude-light` / `monokai-pro-light`，带预览图的独立 radio 组）
-- `darkTheme`（深色壳层主题：`dark` / `claude-dark` / `monokai-pro-dark`，带预览图的独立 radio 组）
+- `darkTheme`（深色壳层主题：`dark` / `claude-dark` / `monokai-pro-dark` / `nord-dark`，带预览图的独立 radio 组）
 - `contentTheme`（内容主题：`light` / `ant-design` / `wechat` / `dark`）
 - `codeTheme`（代码主题：亮/暗色调分别过滤，根据当前壳层主题仅显示对应色调的选项）
 - `scrollbarMode`（滚动条可见性：`always` / `auto` / `hidden`）
@@ -1320,7 +1322,7 @@ function rememberRecent(filePath) {
 
 ### 11.1 CSS 预处理器
 
-**无预处理器，使用纯 CSS。** 样式分为两层：`src/renderer/styles/app.css` 承载布局、通用组件、共享语义变量与 `:root` 默认（classic）主题变量；`src/renderer/styles/themes/*.css`（`dark`、`claude-light`、`claude-dark`、`monokai-pro-light`、`monokai-pro-dark`）各自承载一套主题变量与主题专属覆盖，由 `index.html` 的 `<link … disabled>` 标签控制启用。跨主题的共享覆盖（例如深色壳层下的 Ant Design / WeChat 内容主题可读性重映射）保留在 `app.css` 末尾。主题分层详见 [`docs/05-THEMES.md`](05-THEMES.md)。
+**无预处理器，使用纯 CSS。** 样式分为两层：`src/renderer/styles/app.css` 承载布局、通用组件、共享语义变量与 `:root` 默认（classic）主题变量；`src/renderer/styles/themes/*.css`（`dark`、`claude-light`、`claude-dark`、`monokai-pro-light`、`monokai-pro-dark`、`nord-dark`）各自承载一套主题变量与主题专属覆盖，由 `index.html` 的 `<link … disabled>` 标签控制启用。跨主题的共享覆盖（例如深色壳层下的 Ant Design / WeChat 内容主题可读性重映射）保留在 `app.css` 末尾。主题分层详见 [`docs/05-THEMES.md`](05-THEMES.md)。
 
 ### 11.2 CSS 变量体系（设计 Token）
 
@@ -1380,10 +1382,11 @@ function rememberRecent(filePath) {
 :root[data-theme='claude-light'] { --sidebar-surface: #f5f4ed; --editor-surface: #faf9f5; --accent: #d97757; ... }
 :root[data-theme='claude-dark'] { --sidebar-surface: #30302e; --editor-surface: #262624; --accent: #d97757; ... color-scheme: dark; }
 :root[data-theme='monokai-pro-dark'] { --bg: #2d2a2e; --sidebar-surface: #2d2a2e; --editor-surface: #272428; ... color-scheme: dark; }
+:root[data-theme='nord-dark'] { --bg: #2e3440; --sidebar-surface: #3b4252; --editor-surface: #2e3440; --accent: #88c0d0; ... color-scheme: dark; }
 :root[data-theme='monokai-pro-light'] { --bg: #faf4f2; --sidebar-surface: #ede7e5; --editor-surface: #faf4f2; ... color-scheme: light; }
 ```
 
-应用自有可交互控件的 `:focus-visible` 统一使用 `--accent` 的 2px outline；因此 Light、Dark 与 Monokai Pro Dark 均保持键盘焦点可见且与当前主题一致。主题切换靠 `index.html` 中对应 `<link id="theme-…">` 的 `disabled` 属性，而不是重写 `app.css`；classic 没有单独的主题文件，其变量就是 `app.css` 的 `:root` 默认值。
+应用自有可交互控件的 `:focus-visible` 统一使用 `--accent` 的 2px outline；因此 Light、Dark、Monokai Pro Dark 与 Nord Dark 均保持键盘焦点可见且与当前主题一致。主题切换靠 `index.html` 中对应 `<link id="theme-…">` 的 `disabled` 属性，而不是重写 `app.css`；classic 没有单独的主题文件，其变量就是 `app.css` 的 `:root` 默认值。
 
 `--sidebar-surface` 是导航壳层：sidebar、Windows/Linux 自定义主菜单、titlebar、共享 Vditor toolbar、Files/Outline tabs、无标签的 `.editor-area` 及其新建/打开操作，以及设置页的 titlebar、导航、footer 和右侧边缘共享它。`--panel-2` 仍服务状态栏等其他次级表面。`--editor-surface` 用于已打开文档的 Vditor host 及其 SV 行号栏，也用于设置页具体内容区域；行号栏仅由右侧边框与源编辑区分隔。浅色主题的文档画布较导航壳层明亮，深色主题则较暗。`.document-tab:hover` 始终使用当前主题的 `--hover`，不使用跨主题的固定浅色。
 
@@ -1404,7 +1407,7 @@ function rememberRecent(filePath) {
 - `systemTheme: true` 时跟随系统主题（`nativeTheme.on('updated')`），状态栏常驻图标保持显示器图标
 - `systemTheme: false` 时，状态栏太阳模式使用 `lightTheme`，月亮模式使用 `darkTheme`
 - 亮色与深色偏好分别存储在 `settings.lightTheme` 和 `settings.darkTheme`；设置页只编辑这两项偏好，系统匹配模式只从状态栏菜单选择
-- 亮色组为 `classic` / `claude-light` / `monokai-pro-light`，深色组为 `dark` / `claude-dark` / `monokai-pro-dark`；未发布配置迁移不兼容 `lastLightTheme` / `lastDarkTheme`
+- 亮色组为 `classic` / `claude-light` / `monokai-pro-light`，深色组为 `dark` / `claude-dark` / `monokai-pro-dark` / `nord-dark`；未发布配置迁移不兼容 `lastLightTheme` / `lastDarkTheme`
 - 内容主题与壳层主题联动：当 `contentTheme` 为 `light/dark` 时，随壳层深浅自动切换
 - 代码主题独立管理：`lightCodeTheme` / `darkCodeTheme`，工具栏下拉过滤当前色调
 - `--sidebar-surface` 与 `--editor-surface` 分别表达侧栏和编辑区表面；Dark 主题两者 RGB 各通道相差 8，其他主题按视觉层级独立定义
@@ -1991,7 +1994,7 @@ flowchart TB
 - 三档 `scrollbarMode`（always/auto/hidden）持久化并反映在 `html[data-scrollbar-mode]` + 计算滚动条宽度
 - 亮/暗内容主题与壳层主题联动（`contentTheme: 'light'` → 深色壳层自动切换为 `'dark'`）
 - 深色壳层 + `ant-design` / `wechat` 内容主题下内联代码 / 表格 / 标题颜色可读
-- Monokai Pro Dark H1–H6 调色板（粉/黄/绿/青/紫/橙）与 Monokai Pro Light H1–H6 调色板（红/橙/绿/蓝/紫/黑）在三模式下均正确
+- Monokai Pro Dark H1–H6 调色板（粉/黄/绿/青/紫/橙）、Monokai Pro Light H1–H6 调色板（红/橙/绿/蓝/紫/黑）与 Nord Dark H1–H6 调色板（Frost/Aurora 映射）在三模式下均正确；Nord 的禁用控件与弱化文字颜色契约正确
 - `lightTheme` / `darkTheme` 偏好持久化，状态栏三态菜单使用用户分别选择的亮色与深色主题
 - 空标签 toolbar skeleton 与 Vditor toolbar mount 一起交接；窗口启动和编辑器重建时不显示脱离位置的空 toolbar，窄窗口换行/隐藏状态下 Files/Outline 边界稳定
 - 编辑 / 焦点 / 失焦状态下背景颜色稳定

@@ -14,9 +14,15 @@ export interface AppSettings {
   devToolsEnabled: boolean;
   systemTheme: boolean;
   theme:
-    'classic' | 'dark' | 'claude-light' | 'claude-dark' | 'monokai-pro-dark' | 'monokai-pro-light';
+    | 'classic'
+    | 'dark'
+    | 'claude-light'
+    | 'claude-dark'
+    | 'monokai-pro-dark'
+    | 'monokai-pro-light'
+    | 'nord-dark';
   lightTheme: 'classic' | 'claude-light' | 'monokai-pro-light';
-  darkTheme: 'dark' | 'claude-dark' | 'monokai-pro-dark';
+  darkTheme: 'dark' | 'claude-dark' | 'monokai-pro-dark' | 'nord-dark';
   contentTheme: string;
   codeTheme: string;
   lightCodeTheme: string;

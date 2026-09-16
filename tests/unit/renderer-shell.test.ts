@@ -11,6 +11,7 @@ describe('renderer shell', () => {
   let claudeDarkCss: string;
   let monokaiDarkCss: string;
   let monokaiLightCss: string;
+  let nordDarkCss: string;
   let mainScript: string;
   let preloadScript: string;
   let vditorAdapterScript: string;
@@ -38,6 +39,7 @@ describe('renderer shell', () => {
       path.resolve('src/renderer/styles/themes/monokai-pro-light.css'),
       'utf8',
     );
+    nordDarkCss = fs.readFileSync(path.resolve('src/renderer/styles/themes/nord-dark.css'), 'utf8');
     mainScript = fs.readFileSync(path.resolve('src/main/index.ts'), 'utf8');
     preloadScript = fs.readFileSync(path.resolve('src/main/preload.ts'), 'utf8');
     vditorAdapterScript = fs.readFileSync(path.resolve('src/renderer/vditor-adapter.js'), 'utf8');
@@ -465,14 +467,15 @@ describe('renderer shell', () => {
     ).toHaveLength(3);
     expect(
       document.querySelectorAll('.theme-picker input[type="radio"][name="darkTheme"]'),
-    ).toHaveLength(3);
+    ).toHaveLength(4);
     expect(document.querySelector('[name="lightTheme"][value="claude-light"]')).not.toBeNull();
     expect(document.querySelector('[name="lightTheme"][value="monokai-pro-light"]')).not.toBeNull();
     expect(document.querySelector('[name="darkTheme"][value="claude-dark"]')).not.toBeNull();
     expect(document.querySelector('[name="darkTheme"][value="monokai-pro-dark"]')).not.toBeNull();
+    expect(document.querySelector('[name="darkTheme"][value="nord-dark"]')).not.toBeNull();
     expect(document.querySelector('.theme-picker-light')).not.toBeNull();
     expect(document.querySelector('.theme-picker-dark')).not.toBeNull();
-    expect(document.querySelectorAll('.theme-preview svg')).toHaveLength(6);
+    expect(document.querySelectorAll('.theme-preview svg')).toHaveLength(7);
     expect(document.querySelector('[name="systemTheme"]')).toBeNull();
     expect(document.querySelector('.settings-right-edge')).not.toBeNull();
     expect(css).toContain("mask-image: url('../assets/symbolic/light-symbolic.svg')");
@@ -541,6 +544,27 @@ describe('renderer shell', () => {
     );
     expect(monokaiLightCss).toMatch(
       /:root\[data-theme='monokai-pro-light'\]\s*\{[^}]*--bg:\s*#faf4f2[^}]*--settings-control-surface:\s*#fefaf9[^}]*--border:\s*#d8d3d1[^}]*--accent:\s*#e14775/s,
+    );
+    expect(nordDarkCss).toMatch(
+      /:root\[data-theme='nord-dark'\]\s*\{[^}]*--bg:\s*#2e3440[^}]*--sidebar-surface:\s*#3b4252[^}]*--editor-surface:\s*#2e3440[^}]*--text:\s*#eceff4[^}]*--muted:\s*#d8dee9[^}]*--disabled-control-color:\s*#4c566a[^}]*--border:\s*#4c566a[^}]*--accent:\s*#88c0d0[^}]*--danger:\s*#bf616a/s,
+    );
+    expect(nordDarkCss).toMatch(
+      /:root\[data-theme='nord-dark'\] \.vditor-toolbar-mount\s*\{[^}]*--second-color:\s*#4c566a[^}]*--toolbar-icon-color:\s*#d8dee9/s,
+    );
+    expect(nordDarkCss).toMatch(
+      /:root\[data-theme='nord-dark'\] \.app-menu-popup button:disabled,[\s\S]*?color:\s*#4c566a/s,
+    );
+    expect(nordDarkCss).toMatch(
+      /:root\[data-theme='nord-dark'\] \.settings-subheading,[\s\S]*?\.muted,[\s\S]*?color:\s*color-mix\(in srgb, #d8dee9 72%, #2e3440\)/s,
+    );
+    expect(nordDarkCss).toContain('--nord-h1: #88c0d0');
+    expect(nordDarkCss).toContain('--nord-h2: #81a1c1');
+    expect(nordDarkCss).toContain('--nord-h3: #5e81ac');
+    expect(nordDarkCss).toContain('--nord-h4: #b48ead');
+    expect(nordDarkCss).toContain('--nord-h5: #a3be8c');
+    expect(nordDarkCss).toContain('--nord-h6: #ebcb8b');
+    expect(nordDarkCss).toMatch(
+      /data-theme='nord-dark'\] \.editor-host[\s\S]*?var\(--nord-h1\)[\s\S]*?var\(--nord-h6\)/,
     );
     expect(monokaiDarkCss).toContain('--monokai-h1: #ff6188');
     expect(monokaiDarkCss).toContain('--monokai-h6: #fc9867');

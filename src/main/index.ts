@@ -276,6 +276,7 @@ function initialWindowBackground(settings: AppSettings): string {
       : settings.lightTheme
     : settings.theme;
   if (theme === 'monokai-pro-dark') return '#2d2a2e';
+  if (theme === 'nord-dark') return '#2e3440';
   if (theme === 'monokai-pro-light') return '#faf4f2';
   if (theme === 'claude-dark') return '#141413';
   if (theme === 'claude-light') return '#faf9f5';

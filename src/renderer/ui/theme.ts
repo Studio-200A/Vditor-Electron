@@ -1,4 +1,4 @@
-export const DARK_THEMES = ['dark', 'claude-dark', 'monokai-pro-dark'] as const;
+export const DARK_THEMES = ['dark', 'claude-dark', 'monokai-pro-dark', 'nord-dark'] as const;
 export const LIGHT_THEMES = ['classic', 'claude-light', 'monokai-pro-light'] as const;
 export const ALL_THEMES = [...DARK_THEMES, ...LIGHT_THEMES] as const;
 export const THEME_MODES = ['light', 'dark', 'system'] as const;

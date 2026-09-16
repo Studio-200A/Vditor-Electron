@@ -23,9 +23,10 @@ const APP_THEMES = [
   'claude-dark',
   'monokai-pro-dark',
   'monokai-pro-light',
+  'nord-dark',
 ] as const;
 const LIGHT_THEMES = ['classic', 'claude-light', 'monokai-pro-light'] as const;
-const DARK_THEMES = ['dark', 'claude-dark', 'monokai-pro-dark'] as const;
+const DARK_THEMES = ['dark', 'claude-dark', 'monokai-pro-dark', 'nord-dark'] as const;
 const LOCALES = ['system', 'en_US', 'zh_Hans', 'zh_Hant'] as const;
 const CONTENT_THEMES = ['light', 'dark', 'ant-design', 'wechat'] as const;
 const THEME_NAME_PATTERN = /^[a-z0-9][a-z0-9/_-]{0,127}$/i;

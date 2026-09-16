@@ -9,7 +9,7 @@
 | `02-RENDERER-ARCHITECTURE.md`           | 渲染进程架构：启动与依赖方向、状态所有权、领域布局和生命周期规则。         |
 | `03-DEVELOPMENT-WORKFLOW.md`            | 开发分支、Pull Request、版本标记、构建和 GitHub Release 的标准流程。       |
 | `04-CROSS-PLATFORM.md`                  | Windows、macOS、Linux 的实现边界、验证矩阵和跨平台测试证据。               |
-| `05-THEMES.md`                          | 应用主题架构、颜色变量、Vditor 边界和当前六套内置主题实现。                |
+| `05-THEMES.md`                          | 应用主题架构、颜色变量、Vditor 边界和内置主题实现。                        |
 | `06-FILE-SAFETY.md`                     | 文件身份、保存、外部冲突、恢复、watcher 以及长期原子性边界的安全契约。     |
 | `07-VDITOR-UPGRADE.md`                  | Vditor 版本升级的兼容边界、检查步骤和验收要求。                            |
 | `08-WISHLIST.md`                        | 尚未排入版本计划的长期想法，不作为当前版本的承诺。                         |

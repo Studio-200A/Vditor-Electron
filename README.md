@@ -108,6 +108,7 @@ Built-in application themes:
 - **Claude Dark**
 - **Monokai Pro Light**, including a dedicated H1–H6 heading palette
 - **Monokai Pro Dark**, including a dedicated H1–H6 heading palette
+- **Nord Dark**, mapped to the [official Nord color palette](https://github.com/nordtheme/nord/blob/develop/src/nord.css)
 
 > [!NOTE]
 >

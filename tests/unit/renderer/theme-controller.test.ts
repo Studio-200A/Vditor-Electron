@@ -59,6 +59,7 @@ describe('resolveThemeMode', () => {
     expect(resolveThemeMode(settings)).toBe('dark');
     expect(resolveThemeMode({ ...settings, theme: 'claude-dark' })).toBe('dark');
     expect(resolveThemeMode({ ...settings, theme: 'monokai-pro-dark' })).toBe('dark');
+    expect(resolveThemeMode({ ...settings, theme: 'nord-dark' })).toBe('dark');
   });
 
   it('returns light for light themes', () => {
@@ -74,6 +75,7 @@ describe('validateDarkTheme', () => {
     expect(validateDarkTheme('dark')).toBe('dark');
     expect(validateDarkTheme('claude-dark')).toBe('claude-dark');
     expect(validateDarkTheme('monokai-pro-dark')).toBe('monokai-pro-dark');
+    expect(validateDarkTheme('nord-dark')).toBe('nord-dark');
   });
 
   it('returns dark as fallback for invalid themes', () => {

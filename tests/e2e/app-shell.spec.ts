@@ -1097,6 +1097,7 @@ test('uses consistent navigation and document surfaces across all application th
     { theme: 'dark', sidebar: 'rgb(32, 33, 36)', editor: 'rgb(24, 25, 28)' },
     { theme: 'claude-light', sidebar: 'rgb(245, 244, 237)', editor: 'rgb(250, 249, 245)' },
     { theme: 'claude-dark', sidebar: 'rgb(48, 48, 46)', editor: 'rgb(38, 38, 36)' },
+    { theme: 'nord-dark', sidebar: 'rgb(59, 66, 82)', editor: 'rgb(46, 52, 64)' },
     { theme: 'monokai-pro-light', sidebar: 'rgb(237, 231, 229)', editor: 'rgb(250, 244, 242)' },
     { theme: 'monokai-pro-dark', sidebar: 'rgb(45, 42, 46)', editor: 'rgb(39, 36, 40)' },
   ] as const;
@@ -1191,7 +1192,7 @@ test('saves settings live and keeps the enlarged settings dialog draggable', asy
     const { page } = running;
     await page.locator('#statusSettings').click();
     const card = page.locator('.settings-card');
-    await expect(page.locator('.theme-preview')).toHaveCount(6);
+    await expect(page.locator('.theme-preview')).toHaveCount(7);
     await expect(page.locator('[name="lightTheme"][value="classic"]')).toBeChecked();
     await expect(page.locator('[name="darkTheme"][value="dark"]')).toBeChecked();
     const themePreviewWidths = await page

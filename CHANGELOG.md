@@ -2,6 +2,10 @@
 
 ## 0.2.6 - TBA
 
+### New Features
+
+- **feat(theme):** Add Nord Dark as a selectable application theme. Its shell colors map to the official Nord palette, while content and code themes continue to use the existing independent theme controls.
+
 ### Bug Fixes
 
 - **fix(outline):** In source-only Split View, the Outline sidebar now explains that rendered preview, WYSIWYG, or Instant Rendering mode is required instead of incorrectly reporting that the document has no headings.
