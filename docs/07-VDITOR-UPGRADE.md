@@ -12,6 +12,7 @@ Vditor Desktop 不修改 `node_modules/vditor` 的源码，但工具栏合并、
 - Electron E2E 中的 `Vditor DOM integration contract` 验证真实 Vditor 构建产物。
 - code/content theme toolbar menu 的 hover tooltip 仅可通过 adapter 的 `clearToolbarHoverTooltips()` 清理；升级 Vditor 时须验证选择主题后 tooltip 正常收起。
 - Vditor 3.11.3 的模式切换仍会操作内部 `outline` 工具项；adapter 保留该项作为不可见占位，并通过应用专用 data attribute 和 CSS `display: none !important` 隐藏入口。升级时须验证三种模式切换正常，且原生 outline 控制不出现。
+- Vditor 3.11.3 的 `setTheme()` 不会重绘已经 `data-processed="true"` 的 Mermaid SVG。adapter 的 `refreshMermaidTheme()` 只读取已渲染 Mermaid 节点，并仅在它们与当前 Markdown 的 Mermaid 围栏可一一匹配时，暂时隔离单个节点后调用 Vditor 本地 Mermaid renderer；不得重建编辑器或经 `getValue()`/`setValue()` 回写全文。升级时须验证 Dark → Elegant（及反向）后已有 Mermaid 只生成一个 SVG、采用新色调，围栏与渲染节点数量不匹配时图表保持不变。
 - 同一私有切换路径会在 SV 中隐藏并禁用 `outdent` / `indent`；adapter 为它们设置应用专用稳定占位标记，CSS 保持按钮可见且应用捕获层处理 source-selection 缩进。升级时须确认 WYSIWYG/IR → SV 没有延迟二次工具栏重排，且 SV 缩进与反缩进仍可用。
 - Desktop 大纲通过 adapter 复刻 Vditor `Outline.render()` 的 content-element 选择：preview 可见时读取其 `.vditor-reset`，否则读取当前模式编辑区，再枚举直接 H1–H6。升级时须验证三种模式的 snapshot、SV 双侧目标映射与原生顺序一致。
 - Desktop 编辑区底部留白通过 adapter 向 SV、IR、WYSIWYG 与 preview 写入私有 CSS 变量 `--editor-bottom`；Vditor 3.11.3 的 SV/IR/WYSIWYG 使用尾部 `::after` 消费该变量，Desktop 为 preview 提供同等尾部元素。升级时须验证三种编辑模式、SV preview 及窗口缩放后的留白高度均约为编辑器实际高度的一半，且用户的 typewriterMode 设置语义不变。

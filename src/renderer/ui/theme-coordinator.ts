@@ -10,6 +10,7 @@ import {
 
 interface ThemeVditor {
   setTheme(theme: string, contentTheme: string, codeTheme: string, baseUrl: string): void;
+  getValue(): string;
 }
 
 export interface ThemeCoordinatorTab {
@@ -34,6 +35,11 @@ export interface ThemeCoordinatorOptions<
   readonly classifyCodeThemeButtons: (
     toolbar: HTMLElement | null,
   ) => readonly { readonly button: HTMLElement; readonly tone: 'dark' | 'light' }[];
+  readonly refreshMermaidTheme: (
+    host: HTMLElement | null,
+    markdown: string,
+    theme: 'classic' | 'dark',
+  ) => number;
 }
 
 /** Coordinates applied theme state across browser chrome, settings controls, and Vditor tabs. */
@@ -119,6 +125,13 @@ export class ThemeCoordinator<TSettings extends ThemeSettings, TTab extends Them
           codeTheme,
           'app://app/vditor/dist/css/content-theme',
         );
+        if (tab.host) {
+          this.options.refreshMermaidTheme(
+            tab.host,
+            tab.vditor.getValue(),
+            dark ? 'dark' : 'classic',
+          );
+        }
       } catch {
         // A tab can be disposed while Vditor is applying the shared presentation theme.
       }

@@ -8,6 +8,7 @@ export const ADAPTER_PUBLIC_KEYS = [
   'ensureSplitResizer',
   'splitViewVisibility',
   'restorePreviewOnly',
+  'refreshMermaidTheme',
   'toolbarContext',
   'toolbarButton',
   'hideNativeOutlineControl',
@@ -94,6 +95,7 @@ export function verifyAdapterCallContract(adapter: VditorDesktopAdapter, host: H
   adapter.createRebuildSnapshot(host);
   adapter.splitViewVisibility(host, 'sv');
   adapter.restorePreviewOnly(host);
+  adapter.refreshMermaidTheme(host, '```mermaid\ngraph TD\n```', 'classic');
   adapter.toolbarContext(host);
   adapter.toolbarButton(toolbar, 'edit-mode');
   adapter.hideNativeOutlineControl(toolbar);

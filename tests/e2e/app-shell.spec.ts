@@ -797,6 +797,53 @@ test('links Light and Dark content themes to the application theme', async () =>
   }
 });
 
+test('re-renders existing Mermaid diagrams when switching from Dark to Elegant', async () => {
+  const running = await launchApp(
+    {
+      theme: 'dark',
+      darkTheme: 'dark',
+      lightTheme: 'elegant',
+      contentTheme: 'dark',
+      codeTheme: 'github-dark',
+      darkCodeTheme: 'github-dark',
+      lightCodeTheme: 'github',
+      editMode: 'ir',
+    },
+    { 'diagram.md': '```mermaid\ngraph TD\n  A --> B\n```' },
+  );
+  try {
+    const { page } = running;
+    const mermaid = page.locator('.editor-host.active .language-mermaid');
+    await expect(mermaid.locator('svg')).toBeVisible();
+    await page.evaluate(() => {
+      const vditor = (window as unknown as { Vditor?: Record<string, unknown> }).Vditor;
+      if (!vditor || typeof vditor.mermaidRender !== 'function') {
+        throw new Error('Vditor Mermaid renderer is unavailable.');
+      }
+      const original = vditor.mermaidRender as (...args: unknown[]) => unknown;
+      let calls = 0;
+      vditor.mermaidRender = (...args: unknown[]) => {
+        calls += 1;
+        return original(...args);
+      };
+      (
+        window as unknown as { __mermaidThemeRefreshCalls?: () => number }
+      ).__mermaidThemeRefreshCalls = () => calls;
+    });
+
+    await selectThemeMode(page, 'light');
+
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'elegant');
+    await expect(page.locator('#vditorContentTheme')).toHaveAttribute('href', /light\.css$/);
+    await expect(mermaid.locator('svg')).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => window.__mermaidThemeRefreshCalls?.() ?? 0))
+      .toBe(1);
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('offers three theme modes from the status bar and removes the settings checkbox', async () => {
   const running = await launchApp({
     theme: 'claude-light',

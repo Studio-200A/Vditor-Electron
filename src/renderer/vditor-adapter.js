@@ -31,6 +31,7 @@
     instantLinkText: '.vditor-ir__link',
     instantLinkDestination: '.vditor-ir__marker--link',
     tocTarget: '.vditor-toc [data-target-id]',
+    mermaid: '.language-mermaid',
   });
   const documentLinkPresentation = new WeakMap();
   const splitHeadingAlignmentRatio = 0.2;
@@ -107,6 +108,57 @@
     // the configured source/both layout for when the user exits preview.
     preview.click();
     return true;
+  }
+
+  function mermaidSources(markdown) {
+    const lines = markdown.split(/\r?\n/);
+    const sources = [];
+    let fence = null;
+    let source = [];
+    for (const line of lines) {
+      if (!fence) {
+        const opening = line.match(/^ {0,3}(`{3,}|~{3,})[ \t]*mermaid(?:[ \t].*)?$/i);
+        if (!opening) continue;
+        fence = opening[1];
+        source = [];
+        continue;
+      }
+      const closing = new RegExp(`^ {0,3}${fence[0]}{${fence.length},}[ \\t]*$`);
+      if (closing.test(line)) {
+        sources.push(source.join('\n'));
+        fence = null;
+        continue;
+      }
+      source.push(line);
+    }
+    return sources;
+  }
+
+  function refreshMermaidTheme(host, markdown, theme) {
+    if (!host || typeof markdown !== 'string' || !['classic', 'dark'].includes(theme)) return 0;
+    const render = window.Vditor?.mermaidRender;
+    if (typeof render !== 'function') return 0;
+    const sources = mermaidSources(markdown);
+    const elements = Array.from(host.querySelectorAll(selectors.mermaid)).filter(
+      (element) => element.getAttribute('data-processed') === 'true',
+    );
+    // Vditor 3.11.3 replaces Mermaid source with an SVG and does not re-render it from setTheme().
+    // Only restore source when every rendered node has a corresponding Markdown fence; a mismatch
+    // leaves the editor untouched rather than risking a diagram being paired with another block.
+    if (!sources.length || sources.length !== elements.length) return 0;
+    elements.forEach((element, index) => {
+      element.textContent = sources[index];
+      element.removeAttribute('data-processed');
+      const parent = element.parentNode;
+      if (!parent) return;
+      const placeholder = document.createComment('vditor-mermaid-theme-refresh');
+      parent.replaceChild(placeholder, element);
+      const staging = document.createDocumentFragment();
+      staging.append(element);
+      render(staging, 'app://app/vditor', theme);
+      placeholder.replaceWith(element);
+    });
+    return elements.length;
   }
 
   function toolbarContext(target) {
@@ -2145,6 +2197,7 @@
     ensureSplitResizer,
     splitViewVisibility,
     restorePreviewOnly,
+    refreshMermaidTheme,
     toolbarContext,
     toolbarButton,
     hideNativeOutlineControl,

@@ -6,12 +6,15 @@ describe('ThemeCoordinator', () => {
   let dom: JSDOM;
 
   beforeEach(() => {
-    dom = new JSDOM(`<!doctype html><html><head>
+    dom = new JSDOM(
+      `<!doctype html><html><head>
       <link id="theme-classic"><link id="theme-dark">
     </head><body><form id="settingsForm">
       <select name="contentTheme"><option value="light">Light</option><option value="dark">Dark</option></select>
       <select name="codeTheme"><option value="github" data-theme-tone="light">GitHub</option><option value="github-dark" data-theme-tone="dark">GitHub Dark</option></select>
-    </form></body></html>`);
+    </form></body></html>`,
+      { url: 'https://example.test' },
+    );
     vi.stubGlobal('HTMLSelectElement', dom.window.HTMLSelectElement);
     vi.stubGlobal('Option', dom.window.Option);
   });
@@ -30,6 +33,8 @@ describe('ThemeCoordinator', () => {
       lightCodeTheme: 'github',
     };
     const setTheme = vi.fn();
+    const getValue = vi.fn(() => '');
+    const refreshMermaidTheme = vi.fn();
     const persist = vi.fn(async (patch) => Object.assign(settings, patch));
     const syncStatusTheme = vi.fn();
     const coordinator = new ThemeCoordinator({
@@ -38,13 +43,18 @@ describe('ThemeCoordinator', () => {
       getSettings: () => settings,
       replaceSettings: (next) => Object.assign(settings, next),
       getTabs: () => [
-        { host: dom.window.document.createElement('section'), toolbar: null, vditor: { setTheme } },
+        {
+          host: dom.window.document.createElement('section'),
+          toolbar: null,
+          vditor: { setTheme, getValue },
+        },
       ],
       getSystemTheme: async () => 'dark',
       isDarkTheme: (theme) => theme === 'dark',
       persist,
       syncStatusTheme,
       classifyCodeThemeButtons: () => [],
+      refreshMermaidTheme,
     });
 
     await coordinator.applyTheme('dark');
@@ -60,5 +70,47 @@ describe('ThemeCoordinator', () => {
       'app://app/vditor/dist/css/content-theme',
     );
     expect(syncStatusTheme).toHaveBeenCalledWith('dark');
+    expect(refreshMermaidTheme).toHaveBeenCalledWith(expect.anything(), '', 'dark');
+  });
+
+  it('refreshes Mermaid diagrams with the current application tone', async () => {
+    dom.window.document.documentElement.dataset.theme = 'dark';
+    const settings = {
+      theme: 'dark',
+      systemTheme: false,
+      darkTheme: 'dark',
+      lightTheme: 'elegant',
+      contentTheme: 'dark',
+      codeTheme: 'github-dark',
+      darkCodeTheme: 'github-dark',
+      lightCodeTheme: 'github',
+    };
+    const host = dom.window.document.createElement('section');
+    const setTheme = vi.fn();
+    const getValue = vi.fn(() => '```mermaid\ngraph TD\n```');
+    const refreshMermaidTheme = vi.fn();
+    const coordinator = new ThemeCoordinator({
+      document: dom.window.document,
+      settingsForm: dom.window.document.querySelector('form') as HTMLFormElement,
+      getSettings: () => settings,
+      replaceSettings: (next) => Object.assign(settings, next),
+      getTabs: () => [{ host, toolbar: null, vditor: { setTheme, getValue } }],
+      getSystemTheme: async () => 'light',
+      isDarkTheme: (theme) => theme === 'dark',
+      persist: async (patch) => Object.assign(settings, patch),
+      syncStatusTheme: vi.fn(),
+      classifyCodeThemeButtons: () => [],
+      refreshMermaidTheme,
+    });
+
+    await coordinator.applyTheme('elegant');
+
+    expect(setTheme).toHaveBeenCalledWith(
+      'classic',
+      'light',
+      'github',
+      'app://app/vditor/dist/css/content-theme',
+    );
+    expect(refreshMermaidTheme).toHaveBeenCalledWith(host, '```mermaid\ngraph TD\n```', 'classic');
   });
 });

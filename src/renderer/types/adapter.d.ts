@@ -116,6 +116,11 @@ export interface VditorDesktopAdapter {
     mode: AdapterEditMode,
   ): { readonly sourceVisible: boolean; readonly previewVisible: boolean } | null;
   restorePreviewOnly(host: HTMLElement | null | undefined): boolean;
+  refreshMermaidTheme(
+    host: HTMLElement | null | undefined,
+    markdown: string,
+    theme: 'classic' | 'dark',
+  ): number;
   toolbarContext(target: EventTarget | null | undefined): ToolbarContext;
   toolbarButton(toolbar: HTMLElement | null | undefined, type: string): HTMLButtonElement | null;
   hideNativeOutlineControl(toolbar: HTMLElement | null | undefined): boolean;

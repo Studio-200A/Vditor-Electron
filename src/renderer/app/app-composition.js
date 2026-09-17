@@ -1049,6 +1049,8 @@
       statusMenuController.syncTheme({ mode, labelKey, label: t(labelKey) });
     },
     classifyCodeThemeButtons: (toolbar) => VDITOR.classifyCodeThemeButtons(toolbar),
+    refreshMermaidTheme: (host, markdown, theme) =>
+      VDITOR.refreshMermaidTheme(host, markdown, theme),
   });
   const sidebarLayoutController = new PURE.SidebarLayoutController({
     app: $('#app'),

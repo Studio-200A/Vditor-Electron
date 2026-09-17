@@ -9,7 +9,7 @@ describe('Vditor DOM compatibility adapter', () => {
   let adapter: any;
 
   beforeEach(() => {
-    const dom = new JSDOM('', { runScripts: 'outside-only' });
+    const dom = new JSDOM('', { runScripts: 'outside-only', url: 'https://example.test' });
     window = dom.window;
     window.requestAnimationFrame = (callback) => window.setTimeout(callback, 0);
     window.cancelAnimationFrame = (frame) => window.clearTimeout(frame);
@@ -72,6 +72,33 @@ describe('Vditor DOM compatibility adapter', () => {
     expect(adapter.sourceNewlines(adapter.editorParts(host).source)).toHaveLength(1);
     expect(adapter.headingTargets(host, 0).every(({ heading }: any) => heading)).toBe(true);
     expect(adapter.scrollContainers(host).length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('re-renders Mermaid from matching Markdown fences when the Vditor tone changes', () => {
+    const host = window.document.createElement('section');
+    host.innerHTML = '<code class="language-mermaid" data-processed="true"><svg></svg></code>';
+    const mermaidRender = vi.fn();
+    (window as any).Vditor = { mermaidRender };
+
+    expect(
+      adapter.refreshMermaidTheme(host, '```mermaid\ngraph TD\n  A --> B\n```', 'classic'),
+    ).toBe(1);
+    const mermaid = host.querySelector('.language-mermaid');
+    expect(mermaid?.textContent).toBe('graph TD\n  A --> B');
+    expect(mermaid?.hasAttribute('data-processed')).toBe(false);
+    expect(mermaidRender).toHaveBeenCalledTimes(1);
+    expect(mermaidRender.mock.calls[0]?.slice(1)).toEqual(['app://app/vditor', 'classic']);
+  });
+
+  it('leaves Mermaid output intact when rendered nodes cannot be paired with source fences', () => {
+    const host = window.document.createElement('section');
+    host.innerHTML = '<code class="language-mermaid" data-processed="true"><svg></svg></code>';
+    const mermaidRender = vi.fn();
+    (window as any).Vditor = { mermaidRender };
+
+    expect(adapter.refreshMermaidTheme(host, 'No Mermaid fence', 'dark')).toBe(0);
+    expect(host.querySelector('.language-mermaid')?.innerHTML).toBe('<svg></svg>');
+    expect(mermaidRender).not.toHaveBeenCalled();
   });
 
   it('keeps an inert visual snapshot over an active host until the rebuilt editor is ready', () => {
