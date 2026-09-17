@@ -66,6 +66,7 @@ describe('resolveThemeMode', () => {
     const settings = createSettings({ systemTheme: false, theme: 'classic' });
     expect(resolveThemeMode(settings)).toBe('light');
     expect(resolveThemeMode({ ...settings, theme: 'claude-light' })).toBe('light');
+    expect(resolveThemeMode({ ...settings, theme: 'elegant' })).toBe('light');
     expect(resolveThemeMode({ ...settings, theme: 'monokai-pro-light' })).toBe('light');
   });
 });
@@ -89,6 +90,7 @@ describe('validateLightTheme', () => {
   it('returns the theme if it is a valid light theme', () => {
     expect(validateLightTheme('classic')).toBe('classic');
     expect(validateLightTheme('claude-light')).toBe('claude-light');
+    expect(validateLightTheme('elegant')).toBe('elegant');
     expect(validateLightTheme('monokai-pro-light')).toBe('monokai-pro-light');
   });
 

@@ -44,6 +44,7 @@ Monokai Pro Dark 和 Monokai Pro Light 是历史实现中的内容覆盖例外�
 | ---- | ------ | -------- | -------- |
 | 亮色 | `classic` | Light | `lightTheme` 默认值 |
 | 亮色 | `claude-light` | Claude Light | 可选 |
+| 亮色 | `elegant` | Elegant | 可选 |
 | 亮色 | `monokai-pro-light` | Monokai Pro Light | 可选 |
 | 暗色 | `dark` | Dark | `darkTheme` 默认值 |
 | 暗色 | `claude-dark` | Claude Dark | 可选 |
@@ -54,7 +55,7 @@ Monokai Pro Dark 和 Monokai Pro Light 是历史实现中的内容覆盖例外�
 
 设置页分别保存：
 
-- `lightTheme`：`classic`、`claude-light` 或 `monokai-pro-light`；
+- `lightTheme`：`classic`、`claude-light`、`elegant` 或 `monokai-pro-light`；
 - `darkTheme`：`dark`、`claude-dark`、`monokai-pro-dark` 或 `nord-dark`。
 
 `theme` 表示固定亮/暗模式下的当前应用主题，`systemTheme` 表示状态栏主题模式是否选择系统自动匹配。TOML 文件使用 `[appearance]` 段落承载这些字段，但 `AppSettings` 中它们是顶层字段。设置页只编辑 `lightTheme` 与 `darkTheme`，三态模式从状态栏主题菜单选择。解析关系为：
@@ -114,6 +115,7 @@ Monokai Pro 主题额外定义了 `--monokai-code-bg`、`--monokai-input-bg` 和
 | Classic | `#f7f7f8` | `#f0f1f3` | `#ffffff` | 导航壳层略灰，文档画布为白色 |
 | Dark | `#17181a` | `#202124` | `#18191c` | 编辑区相对 sidebar 各 RGB 通道差 8 |
 | Claude Light | `#faf9f5` | `#f5f4ed` | `#faf9f5` | 暖灰 sidebar，纸张感编辑区 |
+| Elegant | `#f0edea` | `#eae6e1` | `#f0edea` | ColaMD 雅致主题的暖灰纸张壳层 |
 | Claude Dark | `#141413` | `#30302e` | `#262624` | 暖暗导航壳层略亮，文档画布略深 |
 | Monokai Pro Dark | `#2d2a2e` | `#2d2a2e` | `#272428` | 保留 Monokai 色调，文档画布略深 |
 | Nord Dark | `#2e3440` | `#3b4252` | `#2e3440` | Nord Polar Night 壳层，导航使用较亮一阶表面 |
@@ -139,15 +141,19 @@ Monokai Pro 主题额外定义了 `--monokai-code-bg`、`--monokai-input-bg` 和
 
 将 Claude Light 的暖色体系转换为低对比度深色壳层：应用背景为 `#141413`，sidebar 为 `#30302e`，编辑区与次级面板均为 `#262624`，hover 表面为 `#3d3d3a`，文字为 `#faf9f5`，弱化文字为 `#c2c0b6`。accent 和品牌强调色同样为 `#d97757`，分割线使用 `rgb(222 220 209 / 12%)`，主按钮使用白色文字。
 
-### 5.5 Nord Dark
+### 5.5 Elegant
+
+Elegant 采用 [ColaMD elegant.css](https://github.com/marswaveai/ColaMD/blob/main/themes/elegant.css) 的暖灰纸张调色：应用和编辑区为 `#f0edea`，sidebar 和面板为 `#eae6e1`，正文为 `#2c2c2c`，弱化文字为 `#6c6c6c`，边框为 `#d8d3ce`。交互强调色为 `#bc4424`，危险操作使用陶土色 `#c44b2b`。它只定义应用壳层变量，不覆盖 Vditor 的引用、表格、代码块或 Mermaid 配色；这些内容由关联的 Vditor 浅色内容与代码主题负责。
+
+### 5.6 Nord Dark
 
 Nord Dark 使用 [Nord 官方 palette](https://github.com/nordtheme/nord/blob/develop/src/nord.css) 的 Polar Night、Snow Storm、Frost 和 Aurora 色组，不引入 palette 外颜色。`nord0` `#2e3440` 作为应用与编辑器表面，`nord1` `#3b4252` 作为导航和控件表面，`nord3` `#4c566a` 用于禁用控件与分割线，`nord4` `#d8dee9` 为常规文字，`nord8` `#88c0d0` 为交互强调色，`nord11` `#bf616a` 为危险操作色。设置 H4、`.muted` 与 `.version-info` 使用 `nord4` 与 `nord0` 的混合色，保持弱化层级而不成为强调色。其 H1–H6 内容覆盖是受限例外：依次使用 `nord8`、`nord9`、`nord10`、`nord15`、`nord14`、`nord13`，仅作用于 Vditor 的 IR、WYSIWYG 与预览标题。Vditor 内容和代码主题仍通过既有 `setTheme()` 链路独立管理。
 
-### 5.6 Monokai Pro Dark
+### 5.7 Monokai Pro Dark
 
 既有深色主题。应用背景与 sidebar 基准表面为 `#2d2a2e`，编辑区为略深的 `#272428`，accent 为 Monokai 黄色 `#ffd866`，并使用 Monokai 风格的输入背景、代码块背景、链接、引用和分割线颜色。应用 CSS 为 H1–H6 提供粉、黄、绿、青、紫、橙六级标题色；这些内容可读性覆盖是 Monokai 的历史特例，代码块高亮仍由 Vditor code theme 提供。
 
-### 5.7 Monokai Pro Light
+### 5.8 Monokai Pro Light
 
 Monokai Pro Dark 的同族浅色主题，调色取自官方 Monokai Pro Light VS Code 主题（非 Filter Sun）。应用和编辑区基准表面为暖白 `#faf4f2`，sidebar 为略深的 `#ede7e5`，次级面板为 `#e0dad9`，文字为 `#29242a`，弱化文字为 `#706b6e`，低强调暖灰边框为 `#d8d3d1`，accent 和品牌强调色为 Monokai 红 `#e14775`。与 Monokai Pro Dark 一样，应用 CSS 复用输入背景、代码块背景、链接、引用和分割线的内容可读性覆盖，并为 H1–H6 提供红、橙、绿、蓝、紫、黑六级标题色；代码块高亮仍由 Vditor code theme 提供。
 
@@ -161,7 +167,7 @@ Monokai Pro Dark 的同族浅色主题，调色取自官方 Monokai Pro Light VS
 
 ## 7. 测试契约
 
-当前测试覆盖配置字段、旧字段忽略、亮暗独立主题组、主题预览卡片与预览宽度、Claude surface/accent/按钮文字/hover/分割线、Nord palette 语义变量与 H1–H6 标题色、状态栏三态主题菜单、系统主题解析，以及编辑器在失焦、聚焦和 IR/WYSIWYG/SV 切换时的编辑区表面。
+当前测试覆盖配置字段、旧字段忽略、亮暗独立主题组、主题预览卡片与预览宽度、Claude surface/accent/按钮文字/hover/分割线、Elegant 壳层调色、Nord palette 语义变量与 H1–H6 标题色、状态栏三态主题菜单、系统主题解析，以及编辑器在失焦、聚焦和 IR/WYSIWYG/SV 切换时的编辑区表面。
 
 截至 2026-08-27，用户手动运行的 Linux `npm run check:all` 已包含主题、状态栏菜单、工具栏边界和当时内置主题相关回归；Windows/macOS 的窗口系统主题和原生集成仍按 [`docs/04-CROSS-PLATFORM.md` §9](04-CROSS-PLATFORM.md#9-020-批次-7-推迟的平台验证) 单独验证。其后 0.2.5 批次 11（2026-09-10）为 Claude Dark 参与 Ant Design/WeChat 内容主题深色可读性重映射再次调整了 `app.css` 并同步更新 app-shell E2E 断言；该改动已随 v0.2.5 发布，上述时间戳不涵盖这一轮变化。
 

@@ -106,6 +106,7 @@ Vditor Desktop 把你的写作当作需要保护的内容，而不是可以随�
 - **深色**
 - **Claude Light**
 - **Claude Dark**
+- **雅致**，适配自 [ColaMD 的 elegant 主题](https://github.com/marswaveai/ColaMD/blob/main/themes/elegant.css)
 - **Monokai Pro Light**，包含独立的 H1–H6 标题配色
 - **Monokai Pro Dark**，包含独立的 H1–H6 标题配色
 - **Nord 深色**，映射自 [Nord 官方 color palette](https://github.com/nordtheme/nord/blob/develop/src/nord.css)

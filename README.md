@@ -106,6 +106,7 @@ Built-in application themes:
 - **Dark**
 - **Claude Light**
 - **Claude Dark**
+- **Elegant**, adapted from [ColaMD's elegant theme](https://github.com/marswaveai/ColaMD/blob/main/themes/elegant.css)
 - **Monokai Pro Light**, including a dedicated H1–H6 heading palette
 - **Monokai Pro Dark**, including a dedicated H1–H6 heading palette
 - **Nord Dark**, mapped to the [official Nord color palette](https://github.com/nordtheme/nord/blob/develop/src/nord.css)

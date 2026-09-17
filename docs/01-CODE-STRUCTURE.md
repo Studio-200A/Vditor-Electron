@@ -193,6 +193,7 @@ Vditor-Electron/
 │   │       ├── dark.css           # Dark 主题变量与专属覆盖
 │   │       ├── claude-light.css   # Claude Light 主题变量与专属覆盖
 │   │       ├── claude-dark.css    # Claude Dark 主题变量与专属覆盖
+│   │       ├── elegant.css        # Elegant 暖灰纸张壳层变量
 │   │       ├── monokai-pro-light.css # Monokai Pro Light 主题变量与历史专属覆盖
 │   │       ├── monokai-pro-dark.css  # Monokai Pro Dark 主题变量与历史专属覆盖
 │   │       └── nord-dark.css         # Nord Dark palette 壳层变量、禁用状态与标题色覆盖
@@ -706,6 +707,7 @@ Vditor 3.11.3 内置的 Lute 会将 GitHub alert 的展示 emoji 和默认标题
 - `dark`（深色）
 - `claude-light`（浅色 Anthropic 配色）
 - `claude-dark`（深色 Anthropic 配色）
+- `elegant`（浅色 ColaMD 雅致配色）
 - `monokai-pro-light`（浅色调 + Monokai 配色方案）
 - `monokai-pro-dark`（深色调 + Monokai 配色方案）
 - `nord-dark`（深色 Nord 官方 palette 配色）
@@ -1205,7 +1207,7 @@ function rememberRecent(filePath) {
 
 - `locale`（语言：`system` / `en_US` / `zh_Hans` / `zh_Hant`）
 - `systemTheme`（状态栏选择显示器模式时持久化为 `true`；不作为设置页控件展示）
-- `lightTheme`（浅色壳层主题：`classic` / `claude-light` / `monokai-pro-light`，带预览图的独立 radio 组）
+- `lightTheme`（浅色壳层主题：`classic` / `claude-light` / `elegant` / `monokai-pro-light`，带预览图的独立 radio 组）
 - `darkTheme`（深色壳层主题：`dark` / `claude-dark` / `monokai-pro-dark` / `nord-dark`，带预览图的独立 radio 组）
 - `contentTheme`（内容主题：`light` / `ant-design` / `wechat` / `dark`）
 - `codeTheme`（代码主题：亮/暗色调分别过滤，根据当前壳层主题仅显示对应色调的选项）
@@ -1322,7 +1324,7 @@ function rememberRecent(filePath) {
 
 ### 11.1 CSS 预处理器
 
-**无预处理器，使用纯 CSS。** 样式分为两层：`src/renderer/styles/app.css` 承载布局、通用组件、共享语义变量与 `:root` 默认（classic）主题变量；`src/renderer/styles/themes/*.css`（`dark`、`claude-light`、`claude-dark`、`monokai-pro-light`、`monokai-pro-dark`、`nord-dark`）各自承载一套主题变量与主题专属覆盖，由 `index.html` 的 `<link … disabled>` 标签控制启用。跨主题的共享覆盖（例如深色壳层下的 Ant Design / WeChat 内容主题可读性重映射）保留在 `app.css` 末尾。主题分层详见 [`docs/05-THEMES.md`](05-THEMES.md)。
+**无预处理器，使用纯 CSS。** 样式分为两层：`src/renderer/styles/app.css` 承载布局、通用组件、共享语义变量与 `:root` 默认（classic）主题变量；`src/renderer/styles/themes/*.css`（`dark`、`claude-light`、`claude-dark`、`elegant`、`monokai-pro-light`、`monokai-pro-dark`、`nord-dark`）各自承载一套主题变量与主题专属覆盖，由 `index.html` 的 `<link … disabled>` 标签控制启用。跨主题的共享覆盖（例如深色壳层下的 Ant Design / WeChat 内容主题可读性重映射）保留在 `app.css` 末尾。主题分层详见 [`docs/05-THEMES.md`](05-THEMES.md)。
 
 ### 11.2 CSS 变量体系（设计 Token）
 
@@ -1381,6 +1383,7 @@ function rememberRecent(filePath) {
 :root[data-theme='dark']       { --bg: #17181a; --sidebar-surface: #202124; --editor-surface: #18191c; ... color-scheme: dark; }
 :root[data-theme='claude-light'] { --sidebar-surface: #f5f4ed; --editor-surface: #faf9f5; --accent: #d97757; ... }
 :root[data-theme='claude-dark'] { --sidebar-surface: #30302e; --editor-surface: #262624; --accent: #d97757; ... color-scheme: dark; }
+:root[data-theme='elegant'] { --bg: #f0edea; --sidebar-surface: #eae6e1; --editor-surface: #f0edea; --accent: #bc4424; ... color-scheme: light; }
 :root[data-theme='monokai-pro-dark'] { --bg: #2d2a2e; --sidebar-surface: #2d2a2e; --editor-surface: #272428; ... color-scheme: dark; }
 :root[data-theme='nord-dark'] { --bg: #2e3440; --sidebar-surface: #3b4252; --editor-surface: #2e3440; --accent: #88c0d0; ... color-scheme: dark; }
 :root[data-theme='monokai-pro-light'] { --bg: #faf4f2; --sidebar-surface: #ede7e5; --editor-surface: #faf4f2; ... color-scheme: light; }

@@ -18,6 +18,7 @@ describe('isDarkTheme', () => {
   it('returns false for light themes', () => {
     expect(isDarkTheme('classic')).toBe(false);
     expect(isDarkTheme('claude-light')).toBe(false);
+    expect(isDarkTheme('elegant')).toBe(false);
     expect(isDarkTheme('monokai-pro-light')).toBe(false);
   });
 
@@ -36,15 +37,16 @@ describe('theme constants', () => {
     expect(DARK_THEMES).toContain('nord-dark');
   });
 
-  it('LIGHT_THEMES contains exactly three light themes', () => {
-    expect(LIGHT_THEMES).toHaveLength(3);
+  it('LIGHT_THEMES contains exactly four light themes', () => {
+    expect(LIGHT_THEMES).toHaveLength(4);
     expect(LIGHT_THEMES).toContain('classic');
     expect(LIGHT_THEMES).toContain('claude-light');
+    expect(LIGHT_THEMES).toContain('elegant');
     expect(LIGHT_THEMES).toContain('monokai-pro-light');
   });
 
   it('ALL_THEMES combines dark and light themes', () => {
-    expect(ALL_THEMES).toHaveLength(7);
+    expect(ALL_THEMES).toHaveLength(8);
     for (const theme of [...DARK_THEMES, ...LIGHT_THEMES]) {
       expect(ALL_THEMES).toContain(theme);
     }

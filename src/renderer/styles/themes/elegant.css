@@ -1,0 +1,20 @@
+/* Elegant palette source: https://github.com/marswaveai/ColaMD/blob/main/themes/elegant.css.
+   This shell theme deliberately leaves Vditor content and code themes to Vditor. */
+:root[data-theme='elegant'] {
+  --bg: #f0edea;
+  --panel: #eae6e1;
+  --sidebar-surface: #eae6e1;
+  --editor-surface: #f0edea;
+  --settings-control-surface: #f0edea;
+  --panel-2: #e8e4df;
+  --hover: #e8e4df;
+  --text: #2c2c2c;
+  --muted: #6c6c6c;
+  --border: #d8d3ce;
+  --accent: #bc4424;
+  --on-accent: #fff;
+  --brand-accent: #bc4424;
+  --danger: #c44b2b;
+  --top-surface-shadow: 0 5px 12px -8px rgb(44 44 44 / 0.28), 0 2px 5px -4px rgb(44 44 44 / 0.14);
+  color-scheme: light;
+}

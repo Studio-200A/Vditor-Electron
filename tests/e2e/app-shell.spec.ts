@@ -576,6 +576,7 @@ test('keeps the sidebar tab boundary stable while toggling a wrapped toolbar acr
     const themes = [
       'classic',
       'dark',
+      'elegant',
       'monokai-pro-light',
       'monokai-pro-dark',
       'claude-light',
@@ -1096,6 +1097,7 @@ test('uses consistent navigation and document surfaces across all application th
     { theme: 'classic', sidebar: 'rgb(240, 241, 243)', editor: 'rgb(255, 255, 255)' },
     { theme: 'dark', sidebar: 'rgb(32, 33, 36)', editor: 'rgb(24, 25, 28)' },
     { theme: 'claude-light', sidebar: 'rgb(245, 244, 237)', editor: 'rgb(250, 249, 245)' },
+    { theme: 'elegant', sidebar: 'rgb(234, 230, 225)', editor: 'rgb(240, 237, 234)' },
     { theme: 'claude-dark', sidebar: 'rgb(48, 48, 46)', editor: 'rgb(38, 38, 36)' },
     { theme: 'nord-dark', sidebar: 'rgb(59, 66, 82)', editor: 'rgb(46, 52, 64)' },
     { theme: 'monokai-pro-light', sidebar: 'rgb(237, 231, 229)', editor: 'rgb(250, 244, 242)' },
@@ -1192,7 +1194,7 @@ test('saves settings live and keeps the enlarged settings dialog draggable', asy
     const { page } = running;
     await page.locator('#statusSettings').click();
     const card = page.locator('.settings-card');
-    await expect(page.locator('.theme-preview')).toHaveCount(7);
+    await expect(page.locator('.theme-preview')).toHaveCount(8);
     await expect(page.locator('[name="lightTheme"][value="classic"]')).toBeChecked();
     await expect(page.locator('[name="darkTheme"][value="dark"]')).toBeChecked();
     const themePreviewWidths = await page

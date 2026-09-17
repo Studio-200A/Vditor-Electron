@@ -9,6 +9,7 @@ describe('renderer shell', () => {
   let darkThemeCss: string;
   let claudeLightCss: string;
   let claudeDarkCss: string;
+  let elegantCss: string;
   let monokaiDarkCss: string;
   let monokaiLightCss: string;
   let nordDarkCss: string;
@@ -31,6 +32,7 @@ describe('renderer shell', () => {
       path.resolve('src/renderer/styles/themes/claude-dark.css'),
       'utf8',
     );
+    elegantCss = fs.readFileSync(path.resolve('src/renderer/styles/themes/elegant.css'), 'utf8');
     monokaiDarkCss = fs.readFileSync(
       path.resolve('src/renderer/styles/themes/monokai-pro-dark.css'),
       'utf8',
@@ -464,11 +466,12 @@ describe('renderer shell', () => {
   it('offers separately selectable light and dark application theme preferences', () => {
     expect(
       document.querySelectorAll('.theme-picker input[type="radio"][name="lightTheme"]'),
-    ).toHaveLength(3);
+    ).toHaveLength(4);
     expect(
       document.querySelectorAll('.theme-picker input[type="radio"][name="darkTheme"]'),
     ).toHaveLength(4);
     expect(document.querySelector('[name="lightTheme"][value="claude-light"]')).not.toBeNull();
+    expect(document.querySelector('[name="lightTheme"][value="elegant"]')).not.toBeNull();
     expect(document.querySelector('[name="lightTheme"][value="monokai-pro-light"]')).not.toBeNull();
     expect(document.querySelector('[name="darkTheme"][value="claude-dark"]')).not.toBeNull();
     expect(document.querySelector('[name="darkTheme"][value="monokai-pro-dark"]')).not.toBeNull();
@@ -478,7 +481,12 @@ describe('renderer shell', () => {
     expect(css).toMatch(
       /\.theme-picker\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/s,
     );
-    expect(document.querySelectorAll('.theme-preview svg')).toHaveLength(7);
+    expect(document.querySelectorAll('.theme-preview svg')).toHaveLength(8);
+    expect(
+      Array.from(document.querySelectorAll<HTMLInputElement>('[name="lightTheme"]')).map(
+        (input) => input.value,
+      ),
+    ).toEqual(['classic', 'elegant', 'claude-light', 'monokai-pro-light']);
     expect(document.querySelector('[name="systemTheme"]')).toBeNull();
     expect(document.querySelector('.settings-right-edge')).not.toBeNull();
     expect(css).toContain("mask-image: url('../assets/symbolic/light-symbolic.svg')");
@@ -512,6 +520,13 @@ describe('renderer shell', () => {
     expect(claudeLightCss).toMatch(
       /:root\[data-theme='claude-light'\] \.modal-close:hover\s*\{[^}]*background:\s*#e8e6dc[^}]*color:\s*var\(--text\)/s,
     );
+    expect(elegantCss).toMatch(
+      /:root\[data-theme='elegant'\]\s*\{[^}]*--bg:\s*#f0edea[^}]*--sidebar-surface:\s*#eae6e1[^}]*--editor-surface:\s*#f0edea[^}]*--text:\s*#2c2c2c[^}]*--muted:\s*#6c6c6c[^}]*--border:\s*#d8d3ce[^}]*--accent:\s*#bc4424[^}]*--danger:\s*#c44b2b/s,
+    );
+    expect(elegantCss).toContain(
+      'https://github.com/marswaveai/ColaMD/blob/main/themes/elegant.css',
+    );
+    expect(elegantCss).not.toMatch(/data-theme='elegant'\] \.editor-host/);
     expect(claudeDarkCss).toMatch(
       /:root\[data-theme='claude-dark'\]\s*\{[^}]*--bg:\s*#141413[^}]*--sidebar-surface:\s*#30302e[^}]*--editor-surface:\s*#262624[^}]*--accent:\s*#d97757[^}]*--brand-accent:\s*#d97757/s,
     );

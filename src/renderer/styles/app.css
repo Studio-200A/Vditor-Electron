@@ -3286,6 +3286,24 @@ body.confirm-card-dragging {
 .theme-option-claude-dark .theme-preview-text {
   stroke: #faf9f5;
 }
+.theme-option-elegant .theme-preview-window {
+  fill: #f0edea;
+  stroke: #d8d3ce;
+}
+.theme-option-elegant .theme-preview-chrome,
+.theme-option-elegant .theme-preview-sidebar {
+  fill: #eae6e1;
+  stroke: #d8d3ce;
+}
+.theme-option-elegant .theme-preview-muted {
+  stroke: #6c6c6c;
+}
+.theme-option-elegant .theme-preview-heading {
+  stroke: #bc4424;
+}
+.theme-option-elegant .theme-preview-text {
+  stroke: #2c2c2c;
+}
 .theme-option-nord-dark .theme-preview-window {
   fill: #2e3440;
   stroke: #434c5e;
