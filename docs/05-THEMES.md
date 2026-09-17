@@ -143,7 +143,7 @@ Monokai Pro 主题额外定义了 `--monokai-code-bg`、`--monokai-input-bg` 和
 
 ### 5.5 Elegant
 
-Elegant 采用 [ColaMD elegant.css](https://github.com/marswaveai/ColaMD/blob/main/themes/elegant.css) 的暖灰纸张调色：应用和编辑区为 `#f0edea`，sidebar 和面板为 `#eae6e1`，正文为 `#2c2c2c`，弱化文字为 `#6c6c6c`，边框为 `#d8d3ce`。交互强调色为 `#bc4424`，危险操作使用陶土色 `#c44b2b`。它只定义应用壳层变量，不覆盖 Vditor 的引用、表格、代码块或 Mermaid 配色；这些内容由关联的 Vditor 浅色内容与代码主题负责。Vditor 3.11.3 不会在 `setTheme()` 后重绘已有 Mermaid SVG，因此亮暗色调切换时，主题协调器会通过适配器仅在当前 Markdown 围栏与已渲染图表一一匹配时重新调用 Vditor 的本地 Mermaid 渲染器；不匹配时保持原图表不变。
+Elegant 采用 [ColaMD elegant.css](https://github.com/marswaveai/ColaMD/blob/main/themes/elegant.css) 的暖灰纸张调色：应用和编辑区为 `#f0edea`，sidebar 和面板为 `#eae6e1`，设置表单控件为更亮的 `#faf8f5`，正文为 `#2c2c2c`，弱化文字为 `#6c6c6c`，边框为 `#d8d3ce`。交互强调色为 `#bc4424`，危险操作使用陶土色 `#c44b2b`。它只定义应用壳层变量，不覆盖 Vditor 的引用、表格、代码块或 Mermaid 配色；这些内容由关联的 Vditor 浅色内容与代码主题负责。Vditor 3.11.3 不会在 `setTheme()` 后重绘已有 Mermaid SVG，因此亮暗色调切换时，主题协调器会通过适配器仅在当前 Markdown 围栏与已渲染图表一一匹配时重新调用 Vditor 的本地 Mermaid 渲染器；不匹配时保持原图表不变。
 
 ### 5.6 Nord Dark
 

@@ -523,6 +523,9 @@ describe('renderer shell', () => {
     expect(elegantCss).toMatch(
       /:root\[data-theme='elegant'\]\s*\{[^}]*--bg:\s*#f0edea[^}]*--sidebar-surface:\s*#eae6e1[^}]*--editor-surface:\s*#f0edea[^}]*--text:\s*#2c2c2c[^}]*--muted:\s*#6c6c6c[^}]*--border:\s*#d8d3ce[^}]*--accent:\s*#bc4424[^}]*--danger:\s*#c44b2b/s,
     );
+    expect(elegantCss).toMatch(
+      /:root\[data-theme='elegant'\]\s*\{[^}]*--editor-surface:\s*#f0edea[^}]*--settings-control-surface:\s*#faf8f5/s,
+    );
     expect(elegantCss).toContain(
       'https://github.com/marswaveai/ColaMD/blob/main/themes/elegant.css',
     );

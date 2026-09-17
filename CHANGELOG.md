@@ -10,6 +10,7 @@
 
 ### Bug Fixes
 
+- **fix(theme):** Give Elegant settings inputs and selects a lighter control surface, distinct from the settings background.
 - **fix(theme):** Keep Elegant's Vditor quote blocks, code blocks, tables, and Mermaid diagrams aligned with the active light content and code themes after a theme-mode switch.
 - **fix(about):** Prevent the About logo from being dragged out as `app://` text while preserving its click-based Easter egg.
 - **fix(outline):** In source-only Split View, the Outline sidebar now explains that rendered preview, WYSIWYG, or Instant Rendering mode is required instead of incorrectly reporting that the document has no headings.
