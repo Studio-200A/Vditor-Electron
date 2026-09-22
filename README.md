@@ -109,7 +109,7 @@ Built-in application themes:
 - **Elegant**, adapted from [ColaMD's elegant theme](https://github.com/marswaveai/ColaMD/blob/main/themes/elegant.css)
 - **Monokai Pro Light**, including a dedicated H1–H6 heading palette
 - **Monokai Pro Dark**, including a dedicated H1–H6 heading palette
-- **Nord Dark**, mapped to the [official Nord color palette](https://github.com/nordtheme/nord/blob/develop/src/nord.css)
+- **Nord Dark**, mapped to the [official Nord color palette](https://github.com/nordtheme/nord/blob/develop/src/nord.css) and including a dedicated H1–H6 heading palette
 
 > [!NOTE]
 >

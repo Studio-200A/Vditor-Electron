@@ -537,3 +537,24 @@ Desktop 保持 callout 渲染开启，不通过关闭 `callout` 来牺牲预览�
 #### 已知边界与升级复核
 
 SV 模式另有 Vditor 自身的空引用行/文末换行格式化差异；那是独立的序列化格式问题，本节的兼容层不回滚该差异。Vditor/Lute 升级时需要重新核对五种 alert 的无标题、自定义标题、显式 emoji、三种编辑模式和保存路径；若上游为 alert DOM 增加“标题是否由源 Markdown 显式提供”的可逆信息，应优先移除 Desktop 兼容层并改用上游公共语义。
+
+### setTheme() 不重绘已渲染的 Mermaid 图表
+
+#### 记录版本：0.2.6 / 2026-09-17
+
+#### 现象
+
+Vditor 3.11.3 把 ` ```mermaid ` 围栏渲染为 `.language-mermaid[data-processed="true"]` 节点，并用内联 SVG 替换其原始文本；图表配色由渲染当时传入的 Mermaid `theme`（`classic` / `dark`）写入 SVG。`setTheme(theme, contentTheme, codeTheme, path)` 只切换内容主题与代码主题样式表，不会重新渲染已标记 `data-processed` 的图表。因此在已打开含 Mermaid 的文档后切换亮/暗壳层主题（例如 Dark → Elegant），引用块、表格和代码块随内容主题变化，而图表仍停留在旧色调。重建编辑器可以解决，但会丢失选区、undo 与滚动状态，不是可接受的手段。
+
+#### Desktop 策略
+
+`ThemeCoordinator.applyTheme()` 在对每个 tab 调用 `setTheme()` 后，经注入的 `refreshMermaidTheme(host, markdown, tone)` 回调重绘图表；tone 取壳层明暗（`dark` / `classic`），markdown 取该 tab 的 `vditor.getValue()`，仅作为围栏来源读取，不回写文档。
+
+adapter 的 `refreshMermaidTheme()`（`src/renderer/vditor-adapter.js`）先解析 Markdown 中的 Mermaid 围栏（` ``` ` 或 `~~~`，最多 3 个前导空格，info string 为 `mermaid`），再收集 host 内 `data-processed="true"` 的 `.language-mermaid` 节点：
+
+- 两侧数量相等且非空时，按顺序一一配对，逐个把围栏源码写回节点 `textContent`、移除 `data-processed`，原位置临时以注释占位，在离屏 `DocumentFragment` 中调用 `window.Vditor.mermaidRender(fragment, 'app://app/vditor', tone)`，渲染后把节点放回原位；返回重绘数量。
+- 围栏缺失、数量不等、参数非法或 `Vditor.mermaidRender` 不是函数时返回 `0` 且不改动编辑器：宁可保留旧色调图表，也不冒险把某个图表与另一段围栏配对。
+
+#### 已知边界与升级复核
+
+`Vditor.mermaidRender` 是上游静态入口而非稳定公开契约，`.language-mermaid` 与 `data-processed` 也是私有 DOM 约定；两者与围栏解析、占位替换逻辑只能位于 `vditor-adapter.js`，业务层只经 `ThemeCoordinator` 的注入回调使用。不得改为重建编辑器或经 `getValue()`/`setValue()` 回写全文。回归覆盖：`tests/unit/vditor-adapter.test.ts`（配对重绘与不配对时保持原图表）、`tests/unit/renderer/theme-coordinator.test.ts`（按当前色调注入回调）、`tests/e2e/app-shell.spec.ts`（真实 Electron 中 Dark → Elegant 切换后图表重绘且只有一个 SVG）。升级 Vditor 时的复核项记录在 [`docs/07-VDITOR-UPGRADE.md`](07-VDITOR-UPGRADE.md)，主题层说明见 [`docs/05-THEMES.md`](05-THEMES.md)。

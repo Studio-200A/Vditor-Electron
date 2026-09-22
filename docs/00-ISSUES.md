@@ -22,6 +22,14 @@
 
 Vditor 4.0 的 SV 是 `<textarea>`，源码面不再提供可读取的 heading marker DOM，该私有依赖在升级后必然失效。风险不是崩溃而是能力丢失：回退路径会让 SV 退回上游按总高度的比例滚动，复杂 Markdown（原始 HTML、表格、图片、长代码块）中源码与预览的章节将重新错位。0.3.0 阶段 3 必须给出明确结论——按 textarea/preview 映射重建标题锚点同步，或显式降级回比例同步并记录为用户可见行为变化；两者都不得保留依赖 3.11.3 marker 的隐藏失效路径，也不得以 DOM shim 在 textarea 上模拟 marker 结构。
 
+## Mermaid 色调重绘依赖 Vditor 3.11.3 私有渲染入口
+
+**状态：** 未决的 4.0 升级风险；复核结论由 0.3.0 跟踪（[`docs/20-0.3.0-EXECUTION-TRACKER.md`](20-0.3.0-EXECUTION-TRACKER.md) 批次 4 的非 SV adapter 审查）。
+
+0.2.6 的 `30de87d` 修复了壳层亮暗切换后已渲染 Mermaid 图表仍保留旧色调的问题：Vditor 3.11.3 的 `setTheme()` 不会重绘 `data-processed="true"` 的图表，Desktop 因此在 `ThemeCoordinator.applyTheme()` 中经 adapter `refreshMermaidTheme()`（`src/renderer/vditor-adapter.js`）重新调用 `window.Vditor.mermaidRender`，并依赖私有的 `.language-mermaid` 节点、`data-processed` 标记与该静态渲染入口。当前只能按“Markdown 围栏与已渲染节点数量相等时一一配对，否则不改动编辑器”收敛风险，无法消除对私有入口的依赖：3.11.3 没有公开的图表重渲染或主题刷新 API，而重建编辑器会丢失选区、undo 与滚动状态。
+
+风险不是崩溃而是静默降级：若 4.0 改变节点结构、标记或渲染入口，图表将在主题切换后保留旧色调且 adapter 返回 `0`，除主题相关回归外无明显报错。关闭条件：在 4.0 上复核这三个私有契约并给出保留/重写/移除结论——若上游 `setTheme()` 自行重绘图表或提供公开重渲染入口，则删除 adapter 路径及其测试；否则迁移到新入口并保留“不配对即不改动”语义。证据为 `tests/unit/vditor-adapter.test.ts`、`tests/unit/renderer/theme-coordinator.test.ts` 与 `tests/e2e/app-shell.spec.ts` 的对应断言在 4.0 上仍然通过或按结论替换。升级验证项已记在 [`docs/07-VDITOR-UPGRADE.md`](07-VDITOR-UPGRADE.md)，根因与实现细节见 [`docs/09-DEV-NOTE.md`](09-DEV-NOTE.md#settheme-不重绘已渲染的-mermaid-图表)。
+
 ## 设置项 `wordWrap`（自动换行）是可见但不生效的死开关
 
 **状态：** 未决；需要产品决策（实现 / 移除 / 继续挂账）。
@@ -94,6 +102,7 @@ Vditor 4.0 的 SV 是 `<textarea>`，源码面不再提供可读取的 heading m
 4. 实现近期文件列表 UI。
 5. 为 `app:openExternal` 补充 URL 长度上限校验。格式校验已由 `src/main/validated-url.ts` 实现（拒绝非字符串、首尾空白、原始控制字符和非法百分号编码），本条只剩长度边界未定。
 6. 补充缺失的 Windows/macOS 发布配置。
+7. 主题切换时避免为没有 Mermaid 的文档读取全文：`ThemeCoordinator.applyTheme()` 目前对每个已初始化 tab 无条件调用 `vditor.getValue()` 再交给 adapter 解析围栏，而 adapter 在无围栏时直接返回 `0`；大文档或多标签时这是一次无收益的全文序列化。关闭条件：经 adapter 语义接口（例如 `hasRenderedMermaid(host)`）先判定再读取正文，或缓存围栏来源，并补充大文档/多标签的耗时证据与对应单测；不得为此把私有 selector 上提到业务层。
 
 ### 已收口结论与不得回退的约束
 

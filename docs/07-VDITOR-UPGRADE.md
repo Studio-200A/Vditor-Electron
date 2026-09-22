@@ -39,7 +39,7 @@ Vditor Desktop 不修改 `node_modules/vditor` 的源码，但工具栏合并、
 3. 同步 `src/main/index.ts` 中关于页版本号。
 4. 检查目标包 `dist/index.css`、工具栏、SV、IR、WYSIWYG 和 preview DOM 变化。
 5. 先运行 `npm run check:vditor` 和 `npm run typecheck:renderer`，再运行 `npm run check:all`。
-6. 手工验证三种编辑模式、统一工具栏和状态栏模式菜单、主题菜单、列表缩进、工具栏与 `Ctrl/Cmd+Alt+7/8/9` 模式切换后的文档位置（SV 以源码区为准）及状态栏同步、SV 行号/灰点/滚动、查找匹配定位、原生 outline 入口持续隐藏、Desktop 大纲跳转，以及 WYSIWYG/IR 长表格的横向滚动保留和光标可见性。
+6. 手工验证三种编辑模式、统一工具栏和状态栏模式菜单、主题菜单与壳层亮暗切换后已渲染 Mermaid 图表的色调重绘、列表缩进、工具栏与 `Ctrl/Cmd+Alt+7/8/9` 模式切换后的文档位置（SV 以源码区为准）及状态栏同步、SV 行号/灰点/滚动、查找匹配定位、原生 outline 入口持续隐藏、Desktop 大纲跳转，以及 WYSIWYG/IR 长表格的横向滚动保留和光标可见性。
 7. 仅在所有契约测试和人工检查通过后合并升级。
 
 若契约测试失败，优先只修改 `vditor-adapter.js`；除非 Vditor 公共 API 已改变，否则不要把版本判断散布到业务代码中。

@@ -10,7 +10,7 @@
 
 - **时机**：一个批次结束、即将切换 Session 或 coding agent 时，为下一个 Session 写一份。
 - **读者**：下一个 Session 的 agent，**只在启动批次时阅读一次**，之后不再回头读。
-- **定位**：只写「接班 agent 启动本批次所需的最小上下文」。它不是长期记录——施工进度、问题、测试证据和状态变更必须只写入 Tracker（`docs/<版本>-EXECUTION-TRACKER.md`），**不要在本文件追加过程记录**。
+- **定位**：只写「接班 agent 启动本批次所需的最小上下文」。它不是长期记录——施工进度、问题、测试证据和状态变更必须只写入 Tracker（`docs/<编号>-<版本>-EXECUTION-TRACKER.md`），**不要在本文件追加过程记录**。
 - **生命周期**：批次结束、内容过期后即删除本文件，只保留 Tracker；本模板永久保留。
 
 ## 二、编写前必须先采集信息
@@ -29,7 +29,7 @@ git tag -l                       # 版本基线 tag
 然后按顺序读：
 
 1. `AGENTS.md` —— 项目边界与通用约束（交接文档里只引用、不整段复制）。
-2. `docs/<版本>-EXECUTION-TRACKER.md` —— 第 5 节（总体路线状态表）、第 6 节（本批次施工卡）、第 10 节（前置批次执行记录）。
+2. `docs/<编号>-<版本>-EXECUTION-TRACKER.md`（当前为 `docs/20-0.3.0-EXECUTION-TRACKER.md`）—— 总体路线状态表、本批次施工卡与执行记录（该文件当前分别为第 5、6、7 节；章节号以其实际标题为准）。
 3. `package.json` —— 当前版本号。
 4. 当前源码（尤其组合层入口 `src/renderer/app/app-composition.js`）—— 核对「哪些职责还在这、哪些已迁出」。
 5. 相关测试文件与 Tracker 中最近一次全量验证结果。
@@ -53,7 +53,7 @@ git tag -l                       # 版本基线 tag
 
 # 批次 {{N}} 交接文档
 
-> 写给新 Session 的 Agent，启动 {{版本}} 批次 {{N}}（{{批次主题}}）。本文件只在 Session 开始时阅读一次；施工进度、问题、测试证据和状态变更只写入 `docs/{{版本}}-EXECUTION-TRACKER.md`，不要在本文件追加过程记录。
+> 写给新 Session 的 Agent，启动 {{版本}} 批次 {{N}}（{{批次主题}}）。本文件只在 Session 开始时阅读一次；施工进度、问题、测试证据和状态变更只写入 `docs/{{编号}}-{{版本}}-EXECUTION-TRACKER.md`，不要在本文件追加过程记录。
 
 ## 1. 项目概况
 
@@ -120,8 +120,8 @@ git tag -l                       # 版本基线 tag
 
 1. `AGENTS.md`。
 2. 本文件，然后不再重复读取。
-3. `docs/{{版本}}-EXECUTION-TRACKER.md`：{{相关章节 + 本批次施工卡 + 前置批次最终记录}}。
-4. `docs/{{版本}}-{{PLAN}}.md`：{{相关章节}}。
+3. `docs/{{编号}}-{{版本}}-EXECUTION-TRACKER.md`：{{相关章节 + 本批次施工卡 + 前置批次最终记录}}。
+4. `docs/{{编号}}-{{版本}}-{{PLAN}}.md`：{{相关章节}}。
 5. `docs/01-CODE-STRUCTURE.md`：只读取 {{相关域}} 章节。
 6. `docs/06-FILE-SAFETY.md`、`docs/04-CROSS-PLATFORM.md`，涉及 Vditor 时读 `docs/07-VDITOR-UPGRADE.md`。
 7. 实际源码、现有测试和 `{{基线}}` reference worktree；文档不是源码真相。
@@ -140,7 +140,7 @@ git tag -l                       # 版本基线 tag
 
 1. **专项测试按需运行**：可运行需沙箱外权限的专项测试（单测、单条 E2E、build）。命令：`npm run build`、`npm test`、`npm run check:vditor`、`npm run format:check`、`npm run lint`、`npm run typecheck`、`npm run typecheck:renderer`、`node scripts/run-electron-e2e.js tests/e2e/<file>.spec.ts -g "<name>"`。
 2. **全量测试留给用户手动**：不要运行 `npm run check` 或 `npm run check:all`，除非用户明确改变该约定。
-3. **代码修改后同步文档**：`CHANGELOG.md`（用户可见变化）、`docs/{{版本}}-EXECUTION-TRACKER.md`（§10 执行记录）、`docs/01-CODE-STRUCTURE.md`（新增文件/模块/职责边界）、`docs/07-VDITOR-UPGRADE.md`（Vditor 私有 DOM 假设变化），以及受影响的 `06-FILE-SAFETY.md` / `04-CROSS-PLATFORM.md` / `05-THEMES.md`。
+3. **代码修改后同步文档**：`CHANGELOG.md`（用户可见变化）、`docs/{{编号}}-{{版本}}-EXECUTION-TRACKER.md`（执行记录章节，当前 tracker 为 §7）、`docs/01-CODE-STRUCTURE.md`（新增文件/模块/职责边界）、`docs/07-VDITOR-UPGRADE.md`（Vditor 私有 DOM 假设变化），以及受影响的 `06-FILE-SAFETY.md` / `04-CROSS-PLATFORM.md` / `05-THEMES.md`。
 4. **不做 git commit**：不要执行 `git add` / `git commit`；改动留在工作区，由用户全量测试通过后提交。
 5. **开始前核对**：重新检查 `git status`、当前 HEAD 和 Tracker；若工作树含用户修改，保留并协作，不回退。
 

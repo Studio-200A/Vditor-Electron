@@ -22,7 +22,7 @@
 
 ## 近期主要版本计划
 
-1. `0.2.6`（进行中）：修复批次，开发分支 `dev-0.2.6`，对应 `CHANGELOG.md` 的「0.2.6 - TBA」章节；包含 SV 标题锚点滚动同步、source-only 大纲空态提示、编辑器重建后保留 SV 布局，以及 Vitest 与 `js-yaml` 依赖安全升级等。
+1. `0.2.6`（进行中）：修复批次，开发分支 `dev-0.2.6`，对应 `CHANGELOG.md` 的「0.2.6 - TBA」章节；包含 SV 标题锚点滚动同步、source-only 大纲空态提示、编辑器重建后保留 SV 布局、Nord Dark 与 Elegant 两套内置壳层主题、每行最多四张主题预览卡片、亮暗切换后重绘已渲染 Mermaid、About logo 不可拖出，以及 Vitest 与 `js-yaml` 依赖安全升级等。
 2. `0.3.0`：只升级 Vditor 至 `4.0.0`。由于 SV 从 contenteditable 重构为 textarea，必须先完成产品决策和 3.11.3 行为基线，再实施迁移，见 `19-0.3.0-VDITOR-4.0-MIGRATION-PLAN.md` 与 `20-0.3.0-EXECUTION-TRACKER.md`。
 3. 后续版本：根据实际需求从 `08-WISHLIST.md` 选择功能，并单独建立对应版本计划。
 

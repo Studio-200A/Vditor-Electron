@@ -30,7 +30,7 @@ Monokai Pro Dark 和 Monokai Pro Light 是历史实现中的内容覆盖例外�
 | 主题控制器纯函数 | `src/renderer/ui/theme-controller.ts` | 主题解析与校验：`resolveEffectiveTheme`、`resolveThemeMode`、`validateDarkTheme`、`validateLightTheme`、`getPreferredCodeTheme`、`resolveContentTheme` |
 | 主题 DOM 操作 | `src/renderer/ui/theme-coordinator.ts` | 应用 `data-theme`、切换 Vditor 内容/代码主题、同步状态栏三态主题菜单和设置控件（依赖注入的 `theme-controller.ts` 纯函数与 `vditor-adapter.js` 语义回调） |
 | 应用视觉变量 | `src/renderer/styles/app.css` | 布局、通用组件、共享语义变量；`:root` 默认主题变量（classic） |
-| 主题样式文件 | `src/renderer/styles/themes/*.css` | 各主题独立 CSS 文件（dark、claude-light、claude-dark、monokai-pro-light、monokai-pro-dark、nord-dark） |
+| 主题样式文件 | `src/renderer/styles/themes/*.css` | 各主题独立 CSS 文件（dark、claude-light、claude-dark、elegant、monokai-pro-light、monokai-pro-dark、nord-dark） |
 | Vditor 边界 | `src/renderer/vditor-adapter.js` | 集中处理 Vditor toolbar、主题菜单和私有 DOM 结构访问 |
 | 行为测试 | `tests/unit/*`、`tests/e2e/*.spec.ts` | 覆盖配置、主题控件、颜色契约、主题切换和真实 Electron 行为 |
 
@@ -50,6 +50,8 @@ Monokai Pro Dark 和 Monokai Pro Light 是历史实现中的内容覆盖例外�
 | 暗色 | `claude-dark` | Claude Dark | 可选 |
 | 暗色 | `monokai-pro-dark` | Monokai Pro Dark | 可选 |
 | 暗色 | `nord-dark` | Nord Dark | 可选 |
+
+设置页 radio 组的实际顺序为亮色 `classic` → `elegant` → `claude-light` → `monokai-pro-light`，暗色 `dark` → `nord-dark` → `claude-dark` → `monokai-pro-dark`（`tests/unit/renderer-shell.test.ts` 固定亮色组顺序）。显示名称来自 `src/renderer/locales.js` 的 `theme.*` 键：`zh_Hans` / `zh_Hant` 只本地化 `theme.light`（浅色/淺色）、`theme.dark`（深色）与 `theme.elegant`（雅致），其余主题保留英文名称。
 
 ### 3.2 亮暗主题独立选择
 
@@ -93,12 +95,15 @@ Vditor 内容和代码主题仍各自保存亮暗偏好：`lightCodeTheme` / `da
 - `--panel` / `--panel-2`：卡片、输入控件和次级面板；
 - `--settings-control-surface`：设置页文本、数字和下拉控件的可编辑表面；
 - `--hover`：通用 hover 表面；
+- `--tree-active`：文件树活动项的 accent 混合选中表面（默认由 `--accent` 派生）；
 - `--text` / `--muted`：正文和弱化文字；
+- `--disabled-control-color`：禁用控件与不可用菜单项的前景色（默认由 `--muted` 混合派生，Nord Dark 直接映射 `nord3`）；
 - `--border`：边框和分割线；
 - `--accent`：当前主题交互强调色和键盘焦点环；
 - `--on-accent`：accent 背景上的默认前景色；
 - `--brand-accent`：品牌或主题强调场景使用的 accent；
-- `--danger`：危险操作颜色。
+- `--danger`：危险操作颜色；
+- `--top-surface-shadow`：顶部 chrome（工具栏或标题栏）向下的分隔投影，由各主题按自身表面色重写。
 
 Monokai Pro 主题额外定义了 `--monokai-code-bg`、`--monokai-input-bg` 和 `--monokai-h1` 至 `--monokai-h6` 等变量，用于编辑器内容可读性修正和标题色。Nord Dark 定义 `--nord-h1` 至 `--nord-h6`，仅覆盖 Vditor IR、WYSIWYG 与预览标题颜色。
 
@@ -161,15 +166,15 @@ Monokai Pro Dark 的同族浅色主题，调色取自官方 Monokai Pro Light VS
 
 设置页使用两个 fieldset：亮色应用主题和暗色应用主题。每个选项包含 radio input、主题预览 SVG 和本地化名称。
 
-预览卡片使用统一最大宽度和统一网格约束。亮色和暗色选项数量不同不改变单卡片宽度；可用空间不足时整体缩小。预览只表现应用壳层的结构和颜色，不模拟 Vditor 的代码高亮主题。
+预览卡片使用统一最大宽度和统一网格约束：`.theme-picker` 为 `grid-template-columns: repeat(4, minmax(0, 1fr))`，即每行最多四张卡片，亮色和暗色两组共用该规则。亮色和暗色选项数量不同不改变单卡片宽度；可用空间不足时整体缩小。预览只表现应用壳层的结构和颜色，不模拟 Vditor 的代码高亮主题。
 
 新增主题时应加入对应色调的 radio 组、SVG 预览类、CSS 变量和测试，不应为单个主题组增加独立布局规则。
 
 ## 7. 测试契约
 
-当前测试覆盖配置字段、旧字段忽略、亮暗独立主题组、主题预览卡片与预览宽度、Claude surface/accent/按钮文字/hover/分割线、Elegant 壳层调色与 Mermaid 色调重绘、Nord palette 语义变量与 H1–H6 标题色、状态栏三态主题菜单、系统主题解析，以及编辑器在失焦、聚焦和 IR/WYSIWYG/SV 切换时的编辑区表面。
+当前测试覆盖配置字段、旧字段忽略、亮暗独立主题组及其 radio 顺序、主题预览卡片、每行最多四张卡片的网格约束与预览宽度、Claude surface/accent/按钮文字/hover/分割线、Elegant 壳层调色与 Mermaid 色调重绘、Nord palette 语义变量与 H1–H6 标题色、状态栏三态主题菜单、系统主题解析，以及编辑器在失焦、聚焦和 IR/WYSIWYG/SV 切换时的编辑区表面。
 
-截至 2026-08-27，用户手动运行的 Linux `npm run check:all` 已包含主题、状态栏菜单、工具栏边界和当时内置主题相关回归；Windows/macOS 的窗口系统主题和原生集成仍按 [`docs/04-CROSS-PLATFORM.md` §9](04-CROSS-PLATFORM.md#9-020-批次-7-推迟的平台验证) 单独验证。其后 0.2.5 批次 11（2026-09-10）为 Claude Dark 参与 Ant Design/WeChat 内容主题深色可读性重映射再次调整了 `app.css` 并同步更新 app-shell E2E 断言；该改动已随 v0.2.5 发布，上述时间戳不涵盖这一轮变化。
+截至 2026-08-27，用户手动运行的 Linux `npm run check:all` 已包含主题、状态栏菜单、工具栏边界和当时内置主题相关回归；Windows/macOS 的窗口系统主题和原生集成仍按 [`docs/04-CROSS-PLATFORM.md` §9](04-CROSS-PLATFORM.md#9-020-批次-7-推迟的平台验证) 单独验证。其后 0.2.5 批次 11（2026-09-10）为 Claude Dark 参与 Ant Design/WeChat 内容主题深色可读性重映射再次调整了 `app.css` 并同步更新 app-shell E2E 断言；该改动已随 v0.2.5 发布，上述时间戳不涵盖这一轮变化。0.2.6 新增的 Nord Dark、Elegant、四张预览卡片网格与 Mermaid 色调重绘由 `tests/unit/renderer/theme*.test.ts`、`tests/unit/vditor-adapter.test.ts`、`tests/unit/renderer-shell.test.ts` 与 `tests/e2e/app-shell.spec.ts` 的自动断言覆盖；用户已于 2026-09-17（Elegant 主题与其设置控件表面修复提交当日）在 Linux 手动运行 `npm run check:all` 并通过，该次运行是 0.2.6 主题批次（Nord Dark、Elegant、预览卡片网格与 Mermaid 色调重绘）的全量验收证据。精确测试总数与重跑细节属于版本执行记录，本文只保留日期、平台与范围；Windows/macOS 的窗口系统主题和原生集成仍按上述 §9 单独验证。
 
 Vditor toolbar 的主题菜单继续由 adapter 管理，应用主题不会绕过 Vditor 的 code theme。涉及主题代码、renderer shell 或设置持久化的改动，应至少运行格式检查、相关单测、构建和相关 Electron E2E；合并前遵循项目要求运行 `npm run check:all`。
 
@@ -183,3 +188,4 @@ Vditor toolbar 的主题菜单继续由 adapter 管理，应用主题不会绕�
 4. 不在主题中定义字体、Vditor 内容主题或代码块高亮。
 5. 只在确有上游不足时增加应用层内容覆盖，并记录原因。
 6. 更新设置预览、本地化、单测、E2E、README、CHANGELOG 和本文件；若使用外部 palette，记录其官方来源与语义颜色映射。
+7. 若主题行为依赖 Vditor 非公开渲染入口（例如 Mermaid 重绘依赖 `Vditor.mermaidRender` 与 `data-processed` 标记），私有访问只能位于 `vditor-adapter.js`，并同步补充 focused adapter 测试、本文件的主题说明与 [`docs/07-VDITOR-UPGRADE.md`](07-VDITOR-UPGRADE.md) 的升级验证项。

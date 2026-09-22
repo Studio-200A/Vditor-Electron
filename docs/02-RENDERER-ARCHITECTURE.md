@@ -4,7 +4,7 @@
 
 ## 启动与依赖方向
 
-`index.html` 依次加载离线 Vditor、语言包数据、Vditor 适配器、纯函数包、`app/app-composition.js`，最后加载 esbuild 打包的 `main.js`。`main.ts` 校验 `Vditor`、`VditorDesktopAdapter`、`fileAPI`、`appAPI` 这四个窄化全局对象并启动组装好的 `AppController`；语言包与纯函数全局对象由 `app/app-composition.js` 在加载时解引用。`AppController` 拥有启动顺序、窗口级事件以及逆序关闭逻辑；组合层创建各个控制器，并且只注入每个域所需的 bridge 与回调。
+`index.html` 依次加载离线 Vditor、语言包数据、Vditor 适配器、纯函数包、`app/app-composition.js`，最后加载 esbuild 打包的 `main.js`。`main.ts` 校验 `Vditor`、`VditorDesktopAdapter`、`fileAPI`、`appAPI` 这四个窄化全局对象，并启动组合层发布在 `window.__vditorDesktopApplication` 上的 `AppController` 实例；语言包与共享模块包全局对象由 `app/app-composition.js` 在加载时解引用。`AppController` 拥有启动顺序、窗口级事件以及逆序关闭逻辑；组合层创建各个控制器，并且只注入每个域所需的 bridge 与回调。
 
 依赖从组合根向内指向领域控制器，再指向 `core/`、`utils/`、类型与 bridge 契约。控制器不导入组合层，渲染进程业务模块也不直接持有完整的 `window.appAPI` 或 `window.fileAPI` 对象。所有 Vditor 私有 DOM 访问只存在于 `vditor-adapter.js` 中。
 
@@ -18,7 +18,7 @@
 | 会话与恢复投影 | 文档快照模块以及 `RecoveryRuntimeController` | 只有带版本的、可序列化的 DTO 才能跨越持久化/IPC 边界。 |
 | 工作区根修订与资源管理器 DOM 状态 | `workspace/WorkspaceController` 与 `ExplorerController` | 资源管理器通过文档边界提交文档绑定意图。 |
 | 设置对话框生命周期与偏好持久化 | `settings/` 控制器 | 展示型设置使用公开的 Vditor setter；仅构造期设置会请求定向重建。 |
-| 应用自有的菜单、窗口装饰、语言与主题呈现 | `ui/` 控制器 | 它们不查询 Vditor 私有 DOM。 |
+| 应用自有的菜单、窗口装饰、语言与主题呈现 | `ui/` 控制器；主题应用由 `ui/theme-coordinator.ts` 协调（当前注册 8 个应用主题） | 它们不查询 Vditor 私有 DOM；对 Vditor 的作用只经公开的 `setTheme()` 与注入的 adapter 语义回调（代码主题按钮分类、Mermaid 色调重绘）。 |
 
 ## 领域布局
 
@@ -29,7 +29,7 @@
 - `state/`：`AppStore`、带版本的会话/恢复快照与应用状态类型。
 - `core/` 与 `utils/`：生命周期原语与纯函数辅助；`types/` 与 `src/shared/contracts/`：带类型的浏览器与可序列化边界。
 - `styles/` 与 `assets/`：应用 CSS、主题样式表与图标、通知等静态资源。
-- 根级 `locales.js` 与 `pure-functions.ts`：分别为三语言 UI 文案全局对象与纯函数包（esbuild 第二入口）的源码，由 `index.html` 在 `app/app-composition.js` 之前加载。
+- 根级 `locales.js` 与 `pure-functions.ts`：分别为三语言 UI 文案全局对象与共享模块包（esbuild 第二入口）的源码，由 `index.html` 在 `app/app-composition.js` 之前加载。`pure-functions.ts` 不只导出纯函数：它是组合层以 `PURE.*` 消费的统一模块入口，同时再导出全部控制器类与其选项类型，因此名字仅反映历史起点，不表示内容边界。
 
 ## 生命周期规则
 

@@ -69,7 +69,7 @@ pull request 合并之后：
 4. 填写发布标题，并将 `CHANGELOG.md` 中对应的版本章节复制到 release notes 中。
 5. 将 release 保存为草稿。
 
-标签必须在构建发布包之前创建。这使构建元数据生成器能够将标签解析为该发布所代表的精确提交。
+标签必须在构建发布包之前创建，使产物与 `main` 上该发布对应的精确提交一致。构建脚本本身不解析 git 标签：`scripts/release-linux.js` 只从 `package.json` 读取 `version` 并用于产物文件名，`scripts/check-project-metadata.js` 校验 `package.json`、lock 文件、README 徽章与 `index.html` 回退版本的一致性，关于页版本来自主进程的 `app.getVersion()`。因此“包版本与发布标签一致”必须由发布前的版本 bump 保证，而不是由构建步骤推导。
 
 ## 构建发布产物
 
@@ -81,7 +81,9 @@ git switch --detach v<version>
 npm run release:linux
 ```
 
-将 `v<version>` 替换为实际标签名。该命令生成配置好的 Linux 发布产物：未打包的应用目录（始终生成的中间产物）、便携归档和 AppImage。仅便携归档和 AppImage 有专属的 `release:linux:portable` 与 `release:linux:appimage` 脚本。
+将 `v<version>` 替换为实际标签名。`release:linux` 只能在 Linux x86_64 主机上运行，先执行 `scripts/check-project-metadata.js`，再用 `electron-builder --linux dir --x64` 生成未打包的应用目录 `release/linux-unpacked`（始终生成的中间产物），随后产出便携归档 `vditor-desktop-x86_64-<version>-portable.tar.gz` 与 `vditor-desktop-x86_64-<version>-portable.AppImage`。AppImage 使用缓存到 `.cache/appimage-tools` 的 `appimagetool 1.9.1` 与经 SHA-256 校验的 type2 runtime，并以 `--no-appstream` 跳过会拒绝含连字符的稳定反向域应用 ID 的 AppStream 建议校验（ID 本身由 `check:project` 校验）。仅便携归档和 AppImage 有专属的 `release:linux:portable` 与 `release:linux:appimage` 脚本。
+
+`package.json` 的 `build.linux.target` 还声明了 `deb` 与 `rpm`，但当前发布流程不使用它们：只有直接运行 `npm run dist`（`electron-builder` 默认目标）才会生成 deb/rpm，`npm run pack` 则只生成未打包目录供本地冒烟。
 
 在上传之前，请确认：
 

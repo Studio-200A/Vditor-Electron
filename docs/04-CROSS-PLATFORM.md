@@ -80,6 +80,7 @@ Node 的 `path` 实现随宿主平台而异，且某些 `fs` 操作是明确平�
 - 工作区监视不跟随符号链接，并使用选定的 7–12 层目录深度。
 - `.lnk` 和 Finder 别名有意作为普通文件处理。支持它们需要单独的产品和安全决策。
 - 安全的文档写入使用同目录临时文件和替换流程；失败路径保留原文件。
+- 受控本地资源与主窗口 HTTP(S) 图片共用的 SVG 渲染开关（`allowSvgImages`，默认关闭）已在 Linux 通过单元测试与 Electron E2E：关闭时本地 `.svg` 与远程 SVG URL/MIME 均被拒绝，开启后本地 SVG 以 `image/svg+xml` 响应且无需重建编辑器；Windows/macOS 的原生加载行为仍未验证。
 - 0.2.0 文件状态流程覆盖外部修改、删除、重现和不可读/权限状态。
 - 目录重命名、目录删除、Save As 监视器重新绑定、后代路径更新、无效工作区根重置，以及外部重命名的父目录绑定调和均已实现并经过 Linux 测试；Windows/macOS 文件系统语义仍未验证。
 - 在 Fedora Workstation 上，自定义标题栏的 Restore 按钮在最大化后可能间歇性漏掉点击，而拖动标题栏仍能还原窗口。相同的观察在其他 Linux Electron 应用中也能复现；Vditor-Electron 的 `unmaximize()` 命令和自动化状态转换都通过，因此这仍是 Linux Electron/窗口管理器兼容性观察，而非应用回归。
@@ -197,7 +198,7 @@ Node 的 `path` 实现随宿主平台而异，且某些 `fs` 操作是明确平�
 
 批次 10 于 2026-08-31 在 Linux `dev-0.2.0` 检出上实现。该实现使用 `local-file://root/<encoded-path>` 并采用固定 authority。POSIX 绝对路径在 pathname 中保留前导斜杠，Windows 盘符和 UNC 转换通过 `path.win32` 演练，旧的畸形 `local-file://rootC%3A...` 形状在任何文件系统访问之前被拒绝。
 
-渲染器通过窄化的 `file:setResourceRoots` bridge 同步当前工作区和每个打开文档的父目录。打开、关闭、Save As、目录重命名、恢复还原和工作区变更都会刷新根集合。主进程拒绝畸形 URL 路径，应用词法和规范路径边界，阻止已配置的 config/Chromium/recovery 根，拒绝符号链接/junction 等价的规范逃逸，并对缺失、未授权、不支持的和 SVG 资源返回相同的 404/纯文本/`nosniff`/`no-store` 响应。只有当前使用的光栅图片类型会收到允许列表中的 MIME 响应。内部诊断只保留拒绝类别。
+渲染器通过窄化的 `file:setResourceRoots` bridge 同步当前工作区和每个打开文档的父目录。打开、关闭、Save As、目录重命名、恢复还原和工作区变更都会刷新根集合。主进程拒绝畸形 URL 路径，应用词法和规范路径边界，阻止已配置的 config/Chromium/recovery 根，拒绝符号链接/junction 等价的规范逃逸，并对缺失、未授权、不支持的和 SVG 资源返回相同的 404/纯文本/`nosniff`/`no-store` 响应。只有当前使用的光栅图片类型会收到允许列表中的 MIME 响应。内部诊断只保留拒绝类别。（以上为本检查点 2026-08-31 当时的行为；0.2.0 后续的 P14（2026-09-01）起本地 SVG 改由 `allowSvgImages` 设置控制，开启后以 `image/svg+xml` 响应，当前契约见第 5 节与 [`docs/01-CODE-STRUCTURE.md` §12.7](01-CODE-STRUCTURE.md#127-app-协议资源解析)。）
 
 本检查点的聚焦 Linux 证据：
 

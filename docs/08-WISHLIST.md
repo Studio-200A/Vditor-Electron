@@ -4,7 +4,7 @@
 
 ## 跨平台进入条件
 
-当前至 0.2.5 的开发与实机验证以 Linux 为准。涉及文件系统、窗口集成、系统快捷键或发行打包的愿望条目，统一遵循 [`docs/04-CROSS-PLATFORM.md`](04-CROSS-PLATFORM.md) 的边界和验证要求。
+当前至 0.2.6 的开发与实机验证以 Linux 为准。涉及文件系统、窗口集成、系统快捷键或发行打包的愿望条目，统一遵循 [`docs/04-CROSS-PLATFORM.md`](04-CROSS-PLATFORM.md) 的边界和验证要求。
 
 ## GitHub Actions 云端构建与交付
 

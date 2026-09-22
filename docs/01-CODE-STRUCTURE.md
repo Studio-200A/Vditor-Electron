@@ -1,8 +1,8 @@
 # Vditor-Electron Code Structure World Map
 
-- **最后同步：** 2026-09-15
+- **最后同步：** 2026-09-22
 - **基于的工作区：** `dev-0.2.6` 当前工作区实现（0.2.5 已收口发布；0.2.6 修复批次进行中）
-- **基于的提交：** `fe363d9`（最后一个代码提交；本文档描述该提交的代码状态，后续同步时更新此锚点，不维护递增的文档版本号）
+- **基于的提交：** `be8ef87`（最后一个代码提交；本文档描述该提交的代码状态，后续同步时更新此锚点，不维护递增的文档版本号）
 - **对应 package.json 版本号：** 0.2.5（0.2.6 尚未 bump）
 - **技术债与改进建议：** 已迁至 [`docs/00-ISSUES.md`](00-ISSUES.md)，本地图不再维护
 
@@ -16,7 +16,7 @@
 
 **核心功能：** 多标签页 Markdown 编辑、三种编辑模式（IR/SV/WYSIWYG）、分栏预览、文件树侧栏、文档大纲、查找替换、图片插入与压缩、资源健康检查（未引用/缺失图片引用）、HTML/PDF 导出、TOML 偏好与版本化 JSON 状态持久化、三语国际化（英/简/繁）。
 
-**开发阶段：** 0.2.5 渲染层架构重构全部完成（批次 0–11 收口，0.2.5 开发收口）。批次 8 完成工作区、设置、菜单、窗口和导出域迁移；批次 8.1 校正 Vditor adapter 的完整类型 facade 与防漂移证据并完成复审；批次 9 已删除 legacy `app.js` 入口、收口组合层职责和行为测试，用户全量测试与手测通过；批次 10 完成文档同步、`.github/workflows/quality.yml` CI gate、性能与包体对比、Linux 候选包（portable/AppImage）与实机冒烟，并修复候选手测暴露的自绘光标与“设置触发编辑器重建后撤销失效”问题（提交 `5f34490`）；批次 11 最终独立审查收口三个阻塞项修复与最终人工验收。`AppController` 负责启动顺序、窗口级命令、拖放和 IPC 订阅；`app/app-composition.js` 是迁移后的组合层，仅承担保存交易、标签命令、设置/session 组合和部分全局事件的协调，各领域 runtime、自动保存 timer、recovery、共享 toolbar、Split View、outline、find、图片 runtime、文档链接、激活协调、应用 shell 资源和主题协调均已有明确 controller；DocumentController 与组合层仍保留文件 identity、保存交易、外部变化和 recovery 安全动作的语义所有权。0.2.0 的文件安全、恢复、watcher、冲突与跨平台边界继续作为不可改变的行为基线。精确的批次状态、手测、首轮失败及重跑证据只记录在 [`docs/ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md`](ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md)，本地图不维护实时测试总数。主题架构和内置主题见 [`docs/05-THEMES.md`](05-THEMES.md)，renderer 的模块边界见 [`docs/02-RENDERER-ARCHITECTURE.md`](02-RENDERER-ARCHITECTURE.md)。GitHub alert 序列化还原兼容层（`editor/github-alerts.ts`，提交 `0ded7ed`）在 0.2.5 收口阶段交付，已随 v0.2.5 发布。0.2.6 修复批次（进行中）在上述架构内交付：source-only SV 的大纲不可用空态、编辑器重建时按 tab 保留 SV pane 布局（`EditorController.rebuildSplitViewLayouts`）、基于标题锚点配对的 SV source → preview 滚动同步（adapter `syncSplitScroll()`），以及 Vitest 4.1.11 升级与 `js-yaml` 4.3.2 override。
+**开发阶段：** 0.2.5 渲染层架构重构全部完成（批次 0–11 收口，0.2.5 开发收口）。批次 8 完成工作区、设置、菜单、窗口和导出域迁移；批次 8.1 校正 Vditor adapter 的完整类型 facade 与防漂移证据并完成复审；批次 9 已删除 legacy `app.js` 入口、收口组合层职责和行为测试，用户全量测试与手测通过；批次 10 完成文档同步、`.github/workflows/quality.yml` CI gate、性能与包体对比、Linux 候选包（portable/AppImage）与实机冒烟，并修复候选手测暴露的自绘光标与“设置触发编辑器重建后撤销失效”问题（提交 `5f34490`）；批次 11 最终独立审查收口三个阻塞项修复与最终人工验收。`AppController` 负责启动顺序、窗口级命令、拖放和 IPC 订阅；`app/app-composition.js` 是迁移后的组合层，仅承担保存交易、标签命令、设置/session 组合和部分全局事件的协调，各领域 runtime、自动保存 timer、recovery、共享 toolbar、Split View、outline、find、图片 runtime、文档链接、激活协调、应用 shell 资源和主题协调均已有明确 controller；DocumentController 与组合层仍保留文件 identity、保存交易、外部变化和 recovery 安全动作的语义所有权。0.2.0 的文件安全、恢复、watcher、冲突与跨平台边界继续作为不可改变的行为基线。精确的批次状态、手测、首轮失败及重跑证据只记录在 [`docs/ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md`](ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md)，本地图不维护实时测试总数。主题架构和内置主题见 [`docs/05-THEMES.md`](05-THEMES.md)，renderer 的模块边界见 [`docs/02-RENDERER-ARCHITECTURE.md`](02-RENDERER-ARCHITECTURE.md)。GitHub alert 序列化还原兼容层（`editor/github-alerts.ts`，提交 `0ded7ed`）在 0.2.5 收口阶段交付，已随 v0.2.5 发布。0.2.6 修复批次（进行中）在上述架构内交付：source-only SV 的大纲不可用空态、编辑器重建时按 tab 保留 SV pane 布局（`EditorController.rebuildSplitViewLayouts`）、基于标题锚点配对的 SV source → preview 滚动同步（adapter `syncSplitScroll()`）、Nord Dark 与 Elegant 两套内置壳层主题、设置页每行最多四张主题预览卡片、About logo 不可拖出（`draggable="false"`，保留点击彩蛋）、亮暗色调切换后经 adapter `refreshMermaidTheme()` 重绘已渲染的 Mermaid 图表，以及 Vitest 4.1.11 升级与 `js-yaml` 4.3.2 override。
 
 ---
 
@@ -717,8 +717,9 @@ Vditor 3.11.3 内置的 Lute 会将 GitHub alert 的展示 emoji 和默认标题
 1. 设置 `document.documentElement.dataset.theme`
 2. 调用 `tab.vditor.setTheme(editorTheme, contentTheme, codeTheme, cssPath)` 更新 Vditor 实例
 3. 内容主题联动：若 `contentTheme` 为 `light/dark` 则根据壳层主题自动切换
+4. 经 adapter `refreshMermaidTheme(host, markdown, editorTheme)` 重绘该 tab 已渲染的 Mermaid 图表（Vditor 3.11.3 的 `setTheme()` 不重绘 `data-processed="true"` 的 Mermaid SVG）
 
-主题应用流程由 `ui/theme-coordinator.ts` 的 `ThemeCoordinator` 协调：解析固定/跟随系统主题、映射系统主题偏好、联动 content/code theme、同步设置控件与状态栏、持久化联动补丁，并把 `setTheme` 应用到每个已初始化 tab。`app/app-composition.js` 只注入 store、bridge、DOM、状态栏同步与 adapter 的代码主题按钮分类，不保留主题实现细节。
+主题应用流程由 `ui/theme-coordinator.ts` 的 `ThemeCoordinator` 协调：解析固定/跟随系统主题、映射系统主题偏好、联动 content/code theme、同步设置控件与状态栏、持久化联动补丁，并把 `setTheme` 应用到每个已初始化 tab，随后经注入的 `refreshMermaidTheme(host, markdown, editorTheme)` 回调重绘 Mermaid：adapter 只在当前 Markdown 的 Mermaid 围栏与已渲染节点一一匹配时，逐个隔离节点并调用 Vditor 本地 Mermaid renderer，不重建编辑器也不经 `getValue()`/`setValue()` 回写全文；数量不匹配时保持原图表不变。`app/app-composition.js` 只注入 store、bridge、DOM、状态栏同步与 adapter 的代码主题按钮分类和 Mermaid 重绘回调，不保留主题实现细节。
 
 应用主题只负责应用壳层颜色。字体设置、Vditor 内容主题和 Vditor 原生代码主题保持独立；SV 源码区的编辑表现不由应用主题重新实现。
 
@@ -799,6 +800,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `outlineScrollContainer(host, mode)` | `host, mode` | `Element \| null` | 返回大纲 canonical 内容的实际滚动容器：可见 preview 为外层 preview，IR/WYSIWYG 为 reset，SV 为源码区 |
 | `outlineHeadingTargets(host, mode, index)` | `host, mode, index` | `{ scroller, heading }[]` | 直接返回 snapshot 对应标题 DOM 节点及其滚动容器；SV 两侧集合数量一致时同步源码与 preview，否则只返回原生 canonical 目标 |
 | `observeOutlineChanges(host, callback)` | `host, callback` | `MutationObserver \| null` | 监听模式可见性与异步 preview 标题渲染，驱动活动 Outline 视图的防抖刷新；重建和关闭标签时断开 |
+| `refreshMermaidTheme(host, markdown, theme)` | `host, markdown, 'classic'\|'dark'` | `number`（重绘的图表数） | 主题色调切换后重绘已渲染 Mermaid：解析 Markdown 的 Mermaid 围栏，与 `data-processed="true"` 的 `.language-mermaid` 节点按顺序一一配对后逐个隔离并调用 `Vditor.mermaidRender`；围栏缺失、数量不等或 renderer 不可用时返回 `0` 且不改动编辑器 |
 
 #### 编辑器选择与右键菜单
 
@@ -1207,8 +1209,9 @@ function rememberRecent(filePath) {
 
 - `locale`（语言：`system` / `en_US` / `zh_Hans` / `zh_Hant`）
 - `systemTheme`（状态栏选择显示器模式时持久化为 `true`；不作为设置页控件展示）
-- `lightTheme`（浅色壳层主题：`classic` / `claude-light` / `elegant` / `monokai-pro-light`，带预览图的独立 radio 组）
+- `lightTheme`（浅色壳层主题：`classic` / `elegant` / `claude-light` / `monokai-pro-light`，带预览图的独立 radio 组）
 - `darkTheme`（深色壳层主题：`dark` / `claude-dark` / `monokai-pro-dark` / `nord-dark`，带预览图的独立 radio 组）
+- 两组预览卡片共用 `.theme-picker` 的 `repeat(4, minmax(0, 1fr))` 网格：每行最多四张卡片，两组数量不同不改变单卡片宽度，空间不足时整体缩小
 - `contentTheme`（内容主题：`light` / `ant-design` / `wechat` / `dark`）
 - `codeTheme`（代码主题：亮/暗色调分别过滤，根据当前壳层主题仅显示对应色调的选项）
 - `scrollbarMode`（滚动条可见性：`always` / `auto` / `hidden`）
@@ -1260,7 +1263,7 @@ function rememberRecent(filePath) {
 
 ##### About 面板
 
-- 应用 logo + `Vditor Desktop` 标题 + 版本号（`Version x.x.x · Electron xx.x`）
+- 应用 logo（`draggable="false"`，避免被拖出为 `app://` 文本；2s 内累计点击 10 次触发打开 Vditor 作者主页的彩蛋，timer 经 shell resources 登记清理）+ `Vditor Desktop` 标题 + 版本号（`Version x.x.x · Electron xx.x`）
 - 项目来源链接（Vditor 仓库 / Studio 200A）
 - 开源项目致谢（Electron / Vditor / Playwright / Vitest）
 - "查看源码" 按钮（GitHub 链接）
@@ -1389,7 +1392,7 @@ function rememberRecent(filePath) {
 :root[data-theme='monokai-pro-light'] { --bg: #faf4f2; --sidebar-surface: #ede7e5; --editor-surface: #faf4f2; ... color-scheme: light; }
 ```
 
-应用自有可交互控件的 `:focus-visible` 统一使用 `--accent` 的 2px outline；因此 Light、Dark、Monokai Pro Dark 与 Nord Dark 均保持键盘焦点可见且与当前主题一致。主题切换靠 `index.html` 中对应 `<link id="theme-…">` 的 `disabled` 属性，而不是重写 `app.css`；classic 没有单独的主题文件，其变量就是 `app.css` 的 `:root` 默认值。
+应用自有可交互控件的 `:focus-visible` 统一使用 `--accent` 的 2px outline；因此 Light、Dark、Elegant、Monokai Pro Dark 与 Nord Dark 均保持键盘焦点可见且与当前主题一致。主题切换靠 `index.html` 中对应 `<link id="theme-…">` 的 `disabled` 属性，而不是重写 `app.css`；classic 没有单独的主题文件，其变量就是 `app.css` 的 `:root` 默认值。
 
 `--sidebar-surface` 是导航壳层：sidebar、Windows/Linux 自定义主菜单、titlebar、共享 Vditor toolbar、Files/Outline tabs、无标签的 `.editor-area` 及其新建/打开操作，以及设置页的 titlebar、导航、footer 和右侧边缘共享它。`--panel-2` 仍服务状态栏等其他次级表面。`--editor-surface` 用于已打开文档的 Vditor host 及其 SV 行号栏，也用于设置页具体内容区域；行号栏仅由右侧边框与源编辑区分隔。浅色主题的文档画布较导航壳层明亮，深色主题则较暗。`.document-tab:hover` 始终使用当前主题的 `--hover`，不使用跨主题的固定浅色。
 
@@ -1402,6 +1405,7 @@ function rememberRecent(filePath) {
   → themeCoordinator.applyTheme(theme)
     → document.documentElement.dataset.theme = theme
     → tab.vditor.setTheme(editorTheme, contentTheme, codeTheme, cssPath)
+    → adapter.refreshMermaidTheme(host, markdown, editorTheme)  // 重绘已渲染 Mermaid
     → syncCodeThemeControls(dark, codeTheme)  // 过滤代码主题下拉选项
 ```
 
@@ -1410,7 +1414,7 @@ function rememberRecent(filePath) {
 - `systemTheme: true` 时跟随系统主题（`nativeTheme.on('updated')`），状态栏常驻图标保持显示器图标
 - `systemTheme: false` 时，状态栏太阳模式使用 `lightTheme`，月亮模式使用 `darkTheme`
 - 亮色与深色偏好分别存储在 `settings.lightTheme` 和 `settings.darkTheme`；设置页只编辑这两项偏好，系统匹配模式只从状态栏菜单选择
-- 亮色组为 `classic` / `claude-light` / `monokai-pro-light`，深色组为 `dark` / `claude-dark` / `monokai-pro-dark` / `nord-dark`；未发布配置迁移不兼容 `lastLightTheme` / `lastDarkTheme`
+- 亮色组为 `classic` / `claude-light` / `elegant` / `monokai-pro-light`，深色组为 `dark` / `claude-dark` / `monokai-pro-dark` / `nord-dark`；未发布配置迁移不兼容 `lastLightTheme` / `lastDarkTheme`
 - 内容主题与壳层主题联动：当 `contentTheme` 为 `light/dark` 时，随壳层深浅自动切换
 - 代码主题独立管理：`lightCodeTheme` / `darkCodeTheme`，工具栏下拉过滤当前色调
 - `--sidebar-surface` 与 `--editor-surface` 分别表达侧栏和编辑区表面；Dark 主题两者 RGB 各通道相差 8，其他主题按视觉层级独立定义
@@ -1855,8 +1859,8 @@ flowchart TB
 | `tests/unit/recovery-store.test.ts` | `src/main/services/recovery-store.ts` | 私有目录/文件权限、候选元数据不含正文、原子写入与显式清理、损坏/未知 schema/超限快照移除，以及 `unchanged` / `changed` / `unavailable` 三种磁盘状态 |
 | `tests/unit/persistent-state-store.test.ts` | `src/main/services/persistent-state-store.ts` | 旧 TOML 状态仅迁移一次且保持 config.toml 偏好化、损坏/未知 schema 安全默认值不阻塞启动、串行原子更新、清空状态时保留用户偏好 |
 | `tests/unit/resource-health-service.test.ts` | `src/main/services/resource-health-service.ts` | Markdown/HTML 本地引用提取（数字实体、未支持命名实体保守阻断、引号属性中的 `>`、代码围栏遮蔽、远程/`data:`/工作区外排除）、候选仅枚举图片目录直接常规文件、直接符号链接阻断与二级目录排除、工作区根为符号链接时返回 `workspace-symbolic-link` 不可用、`pasteImagesDir` 路径段符号链接拒绝、隐藏用户文档保护与 VCS/缓存目录排除、scan epoch/revision 生命周期、回收站前复核、读取/数量/目录项/时长上限只读结果 |
-| `tests/unit/vditor-adapter.test.ts` | `src/renderer/vditor-adapter.js` 与 adapter 类型 manifest | 运行时全部导出键与声明 manifest（`ADAPTER_PUBLIC_KEYS`）的精确一致性、`validateHost` 成功（toolbar 通过 `mountedToolbar` 参数提供）、代码主题亮/暗分界点（`ant-design` 前为 dark 组）、DOM 漂移检测（缺少 source 节点时 `valid: false`）、SV divider 创建与 pane 语义可见性、列表 `marker`/`padding` 解析、动态尾部留白写入全部 Vditor 表面、SVG 开关热更新的图片原始来源与缓存隔离、WYSIWYG 替换期间恢复原始 SVG URL、hash anchor 到标题索引（IR 内部链接 + 元素 id + slug）、原生大纲 snapshot、标题间普通块时的准确目标节点及 SV preview 外层滚动容器、SV source → preview 标题锚点滚动同步（等量配对插值、20% viewport 对齐、集合不等时保留原生比例同步）、`restorePreviewOnly` 经 Preview toolbar action 恢复 preview-only、跨多 span 文本节点的匹配与选区、自绘光标代理的滚动同步/越界隐藏/闪烁重启与快照滚动偏移复制 |
-| `tests/unit/renderer-shell.test.ts` | 渲染器壳（HTML/CSS/JS/preload）静态结构 | 标题栏 / 菜单 / 窗口控件 DOM；en/zh_Hans/zh_Hant 键完整性对等；Linux 发布脚本；自动隐藏滚动条样式；第二实例文件转发；确认对话框（未保存变更可拖动、无调整尺寸手柄）；设置对话框 8 方向调整手柄；空标签恢复；查找替换控件带 SVG；文件树无 draggable；折叠/展开/中间省略；链接目录斜体下划线与 SVG 资产；设置面板分类；关于面板；UI/编辑器/预览缩放；状态栏三态主题控件与无旧 checkbox；CSP img-src/connect-src；大纲无标题态；Monokai Pro Light / Dark / Nord Dark 主题；亮/暗代码主题分离；字体子分组；工作区头部；编辑文本宽度范围；无过时占位符/工具栏设置项；适配器脚本加载顺序；设置路径页脚/重置当前页 |
+| `tests/unit/vditor-adapter.test.ts` | `src/renderer/vditor-adapter.js` 与 adapter 类型 manifest | 运行时全部导出键与声明 manifest（`ADAPTER_PUBLIC_KEYS`）的精确一致性、`validateHost` 成功（toolbar 通过 `mountedToolbar` 参数提供）、代码主题亮/暗分界点（`ant-design` 前为 dark 组）、DOM 漂移检测（缺少 source 节点时 `valid: false`）、SV divider 创建与 pane 语义可见性、列表 `marker`/`padding` 解析、动态尾部留白写入全部 Vditor 表面、SVG 开关热更新的图片原始来源与缓存隔离、WYSIWYG 替换期间恢复原始 SVG URL、hash anchor 到标题索引（IR 内部链接 + 元素 id + slug）、原生大纲 snapshot、标题间普通块时的准确目标节点及 SV preview 外层滚动容器、SV source → preview 标题锚点滚动同步（等量配对插值、20% viewport 对齐、集合不等时保留原生比例同步）、`restorePreviewOnly` 经 Preview toolbar action 恢复 preview-only、`refreshMermaidTheme` 在围栏与渲染节点配对时重绘 Mermaid 并在不配对时保持原图表、跨多 span 文本节点的匹配与选区、自绘光标代理的滚动同步/越界隐藏/闪烁重启与快照滚动偏移复制 |
+| `tests/unit/renderer-shell.test.ts` | 渲染器壳（HTML/CSS/JS/preload）静态结构 | 标题栏 / 菜单 / 窗口控件 DOM；en/zh_Hans/zh_Hant 键完整性对等；Linux 发布脚本；自动隐藏滚动条样式；第二实例文件转发；确认对话框（未保存变更可拖动、无调整尺寸手柄）；设置对话框 8 方向调整手柄；空标签恢复；查找替换控件带 SVG；文件树无 draggable；折叠/展开/中间省略；链接目录斜体下划线与 SVG 资产；设置面板分类；关于面板；UI/编辑器/预览缩放；状态栏三态主题控件与无旧 checkbox；CSP img-src/connect-src；大纲无标题态；Monokai Pro Light / Dark、Nord Dark 与 Elegant 主题；主题预览卡片每行最多四张的网格约束；About logo `draggable="false"`；亮/暗代码主题分离；字体子分组；工作区头部；编辑文本宽度范围；无过时占位符/工具栏设置项；适配器脚本加载顺序；设置路径页脚/重置当前页 |
 | `tests/unit/renderer/editor-controller.test.ts`、`editor-options.test.ts`、`editor-runtime-coordinator.test.ts` | 编辑器实例、构造选项与 tab 激活协调 | generation、幂等 destroy、rebuild 正文/滚动恢复、rebuild 时按 tab 捕获并恢复 SV pane 布局（source-only 经 `preview.mode: 'editor'`、preview-only 经 `restorePreviewOnly()`）、auto-save cleanup、pending content、constructor-only 设置、快速切换的 stale rAF 拒绝与 toolbar hand-off |
 | `tests/unit/renderer/github-alerts.test.ts` | `src/renderer/editor/github-alerts.ts` | 五种 GitHub alert 的默认 emoji/标题还原、自定义标题的展示 emoji 还原、源文件显式 emoji 保留及无关文本不变 |
 | `tests/unit/renderer/split-view-controller.test.ts`、`toolbar-controller.test.ts`、`outline-controller.test.ts`、`find-controller.test.ts` | Split View、共享工具栏、大纲与查找 UI | divider/行号/缩进、observer/listener/timer cleanup、toolbar owner 交接、outline stale refresh 与 SV source-only 不可用空态（`isUnavailable` 优先于“文档无标题”）、find reveal 与窗口快捷键 |
@@ -1866,7 +1870,7 @@ flowchart TB
 | `tests/unit/renderer/state/store.test.ts`、`state/snapshots.test.ts`、`session-snapshot.test.ts`、`recovery-snapshot.test.ts` | AppStore 与版本化快照 DTO | 文档/活动标签受控状态、session/recovery 白名单投影、恢复输入验证和运行时句柄隔离 |
 | `tests/unit/renderer/disposables.test.ts`、`dom.test.ts`、`lifecycle.test.ts` | renderer core 基础设施 | DisposableBag 逆序/幂等清理、清理失败容忍及 listener/timer/observer 封装；requiredElement/optionalElement；LifecycleManager 注册顺序 init、逆序 dispose、init 失败回收已初始化控制器 |
 | `tests/unit/renderer/strings.test.ts`、`line-ending.test.ts` | renderer 纯函数工具 | escapeHTML / fileName / stripExtension；detectLineEnding 的 CRLF / LF 判定 |
-| `tests/unit/renderer/theme.test.ts`、`theme-controller.test.ts`、`theme-coordinator.test.ts`、`localization.test.ts` | 主题与本地化纯函数与主题协调器 | isDarkTheme 与主题常量；resolveEffectiveTheme / resolveThemeMode / 亮暗主题校验 / code / content theme 解析；ThemeCoordinator 联动 content/code theme、状态栏同步与 Vditor setTheme 应用；resolveLocale / translate / formatIpcErrorMessage 与稳定错误码 |
+| `tests/unit/renderer/theme.test.ts`、`theme-controller.test.ts`、`theme-coordinator.test.ts`、`localization.test.ts` | 主题与本地化纯函数与主题协调器 | isDarkTheme 与主题常量；resolveEffectiveTheme / resolveThemeMode / 亮暗主题校验 / code / content theme 解析；ThemeCoordinator 联动 content/code theme、状态栏同步、Vditor setTheme 应用与色调切换后的 Mermaid 重绘回调；resolveLocale / translate / formatIpcErrorMessage 与稳定错误码 |
 | `tests/unit/renderer/notifications.test.ts`、`window-and-menu-controller.test.ts` | 通知与窗口/菜单控制器 | 状态消息、临时通知与确认对话框的计时、locale 切换与清理；窗口控件绑定与 dispose、菜单 checked 状态与命名命令分发、右键菜单互斥交接 |
 | `tests/unit/renderer/app-controller.test.ts` | `src/renderer/app/app-controller.ts` | 启动顺序、部分初始化失败回收、beforeunload、窗口快捷键、Markdown drop、open-files/menu 订阅和迟到回调清理 |
 | `tests/unit/renderer/application-shell-controller.test.ts`、`session-restore-controller.test.ts`、`recovery-restore-controller.test.ts` | 应用 shell 资源与会话恢复 | 重复 init/dispose、property handler/listener/observer/timer 清理；session DTO 捕获/恢复/激活与 unavailable 投影；recovery 候选加载、磁盘分类、identity 合并与不可用标签 |
@@ -1998,6 +2002,7 @@ flowchart TB
 - 亮/暗内容主题与壳层主题联动（`contentTheme: 'light'` → 深色壳层自动切换为 `'dark'`）
 - 深色壳层 + `ant-design` / `wechat` 内容主题下内联代码 / 表格 / 标题颜色可读
 - Monokai Pro Dark H1–H6 调色板（粉/黄/绿/青/紫/橙）、Monokai Pro Light H1–H6 调色板（红/橙/绿/蓝/紫/黑）与 Nord Dark H1–H6 调色板（Frost/Aurora 映射）在三模式下均正确；Nord 的禁用控件与弱化文字颜色契约正确
+- 深色壳层切换到 Elegant（及反向）后，文档中已渲染的 Mermaid 图表按当前色调重绘且不产生重复 SVG
 - `lightTheme` / `darkTheme` 偏好持久化，状态栏三态菜单使用用户分别选择的亮色与深色主题
 - 空标签 toolbar skeleton 与 Vditor toolbar mount 一起交接；窗口启动和编辑器重建时不显示脱离位置的空 toolbar，窄窗口换行/隐藏状态下 Files/Outline 边界稳定
 - 编辑 / 焦点 / 失焦状态下背景颜色稳定

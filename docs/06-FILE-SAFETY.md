@@ -21,7 +21,7 @@
 - 同一个物理文件在标签、保存队列、冲突状态、不可用状态和 watcher 生命周期中必须使用同一个 canonical identity。展示路径可以变化，不能代替 identity 做所有权判断。
 - 文件删除或暂时不可读时，不得因为磁盘状态变化而丢弃仍在内存中的正文；需要保留正文并暂停可能造成覆盖的自动保存。
 - 关闭标签、Save As、工作区切换、重命名和重建 editor 后到达的旧异步结果不得写入新的路径或新的标签状态。
-- watcher 的绑定必须经历“创建 → `ready` → 读取一次当前磁盘事实 → 接收实时事件”；`ignoreInitial` 不能替代 ready 后的 reconciliation。
+- watcher 的绑定必须经历“创建 → `ready` → 接收实时事件”，且 `ignoreInitial` 不能替代重绑与显式 reconcile 场景下 ready 后的一次磁盘事实读取；首次绑定的磁盘事实由打开流程的显式读取提供（`watchDocument(filePath, reconcile)` 只在重绑或调用方显式请求时在 ready 后读取）。
 - 用于展示的解码正文和用于安全写入比较的 `expectedBytes` 必须来自同一次原始磁盘读取，不能让两次读取之间的变化被误认为同一版本。
 
 ## 3. 文件身份
@@ -100,7 +100,7 @@ rename(临时文件, 目标文件)
 
 ### 7.4 资源健康回收站：路径化 `shell.trashItem` 的符号链接窗口
 
-资源健康页面的“移至系统回收站”在逐项复核候选仍位于工作区内、不是符号链接、仍未被最新磁盘扫描引用且文件身份/修改时间未变化之后，通过 Electron `shell.trashItem(path)` 按路径移入系统回收站。复核和 `trashItem` 之间仍存在与第 7.1 节同类的竞争窗口：外部进程可在最后一次路径复核后、调用回收站前，把候选或其父目录替换为符号链接，从而使按路径的删除作用于链接目标。Node/Electron 未提供跨平台的无跟随目录句柄 Trash 原语；现有 npm `trash` 等封装同样基于路径，无法消除该窗口。
+资源健康页面的“移至系统回收站”在逐项复核候选仍位于工作区内、不是符号链接、仍未被最新磁盘扫描引用且文件身份、修改时间与大小未变化之后，通过 Electron `shell.trashItem(path)` 按路径移入系统回收站。复核和 `trashItem` 之间仍存在与第 7.1 节同类的竞争窗口：外部进程可在最后一次路径复核后、调用回收站前，把候选或其父目录替换为符号链接，从而使按路径的删除作用于链接目标。Node/Electron 未提供跨平台的无跟随目录句柄 Trash 原语；现有 npm `trash` 等封装同样基于路径，无法消除该窗口。
 
 为此，资源健康将删除范围保守收束并保持“只读优先”：
 
@@ -121,12 +121,16 @@ rename(临时文件, 目标文件)
 - `src/main/services/file-manager.ts` 与 `src/main/services/safe-file-writer.ts`：基线、临时文件、替换和错误结果；
 - `src/main/services/file-identity.ts`：已存在、缺失祖先、大小写和符号链接 identity；
 - `src/main/services/file-watch-service.ts`：ready/reconciliation、generation、read revision 和 cleanup；
+- `src/main/services/recovery-store.ts`：私有恢复快照的目录/文件权限、schema 版本与上限、原子写入与显式清理；
+- `src/main/services/persistent-state-store.ts`：版本化 `state.json` 的白名单、一次性旧 TOML 状态迁移与串行原子写入（仅保存会话/窗口投影，不保存 recovery 正文）；
+- `src/main/services/resource-health-service.ts`：扫描输入边界、候选 revision、回收站前逐项复核与符号链接只读限制；
 - `src/main/save-dialog-path.ts`：`resolveSaveDialogDefaultPath()` 决定 `file:saveDialog` 的默认路径——Save As 传入的绝对 `defaultPath` 原样保留并优先于注入的工作区目录，只有裸文件名才与该目录拼接，否则回退到 `<目录>/untitled.md`；导出对话框仍保持各自的“目录 + basename”语义；
 - `src/renderer/app/app-composition.js`：content revision 与保存/外部变化交易组合；
 - `src/renderer/documents/document-save-controller.ts`：按 document ID 与 canonical identity 持有两级保存串行队列；
 - `src/renderer/documents/document-controller.ts`：打开、canonical identity 去重与 `transitionBindings()` 路径重绑定；
 - `src/renderer/state/store.ts`：`setExternalConflict` / `setExternalFileState` / `setRecoveryState` 等命名状态命令；
 - `src/renderer/documents/external-change-controller.ts`：watcher 正文的纯分类；
+- `src/renderer/documents/document-watch-controller.ts` 与 `src/renderer/documents/external-file-change-controller.ts`：按 identity 的 watch/rebind/unwatch 生命周期，以及上述纯分类结果的有状态消费与事件路由；
 - `src/renderer/documents/document-close-controller.ts` 与 `src/renderer/editor/recovery-runtime-controller.ts`：关闭去重、recovery timer/队列与失败后的 snapshot ID 保留；
 - `tests/unit/` 中对应的文件管理、identity、watcher、recovery 测试，`tests/unit/save-dialog-path.test.ts` 的跨平台 Save As 默认路径规则，以及 `tests/e2e/document-lifecycle.spec.ts` 中的文件生命周期与 Save As 默认路径回归。
 
