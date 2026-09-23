@@ -10,6 +10,7 @@
 
 ### Bug Fixes
 
+- **fix(editor):** Make Word wrap work immediately in all three editing modes without rebuilding Vditor. Long lines scroll horizontally when wrapping is off, while paragraph width remains independently adjustable in WYSIWYG and Instant Rendering.
 - **fix(theme):** Give Elegant settings inputs and selects a lighter control surface, distinct from the settings background.
 - **fix(theme):** Keep Elegant's Vditor quote blocks, code blocks, tables, and Mermaid diagrams aligned with the active light content and code themes after a theme-mode switch.
 - **fix(about):** Prevent the About logo from being dragged out as `app://` text while preserving its click-based Easter egg.

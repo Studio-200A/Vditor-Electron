@@ -185,6 +185,7 @@ export interface VditorDesktopAdapter {
     host: HTMLElement | null | undefined,
     mode: AdapterEditMode,
   ): HTMLElement | null;
+  applyWordWrap(host: HTMLElement | null | undefined, isEnabled: boolean): boolean;
   installCustomCaret(
     host: HTMLElement | null | undefined,
     getMode: () => AdapterEditMode,

@@ -680,6 +680,128 @@ test('switches to split view and renders source line numbers', async () => {
   }
 });
 
+test('toggles word wrap across editing modes while paragraph width stays independent', async () => {
+  const longLine = 'x'.repeat(300);
+  const running = await launchApp(
+    { editMode: 'ir', wordWrap: false, editorTextWidth: 40, caretStyle: 'bar' },
+    { 'word-wrap.md': `${longLine}\nlast` },
+  );
+  try {
+    const { page, testRoot } = running;
+    const host = page.locator('.editor-host.active');
+    await expect(host).toHaveAttribute('data-editor-ready', 'true');
+    await host.evaluate((node) => {
+      (node as HTMLElement).dataset.wordWrapRuntime = 'original';
+    });
+    const editorFor = (mode: 'ir' | 'wysiwyg' | 'sv') =>
+      page.locator(
+        `.editor-host.active .${mode === 'sv' ? 'vditor-sv' : `vditor-${mode} .vditor-reset`}`,
+      );
+    const switchTo = async (mode: 'ir' | 'wysiwyg' | 'sv') => {
+      await page.locator('#vditorToolbarMount button[data-type="edit-mode"]').click();
+      await page.locator(`#vditorToolbarMount button[data-mode="${mode}"]`).click();
+      await expect(editorFor(mode)).toBeVisible();
+    };
+    const expectWrap = async (mode: 'ir' | 'wysiwyg' | 'sv', isEnabled: boolean) => {
+      const editor = editorFor(mode);
+      await expect(editor).toHaveCSS('white-space', isEnabled ? 'pre-wrap' : 'pre');
+      await expect
+        .poll(() => editor.evaluate((node) => node.scrollWidth - node.clientWidth))
+        .toBeGreaterThan(isEnabled ? -1 : 100);
+      if (isEnabled)
+        expect(await editor.evaluate((node) => node.scrollWidth - node.clientWidth)).toBeLessThan(
+          3,
+        );
+    };
+
+    await expectWrap('ir', false);
+    await switchTo('wysiwyg');
+    await expectWrap('wysiwyg', false);
+    await switchTo('sv');
+    await expectWrap('sv', false);
+    const source = editorFor('sv');
+    await expect(page.locator('.editor-host.active .sv-line-number')).toHaveCount(2);
+    await source.evaluate((node) => {
+      const text = document.createTreeWalker(node, NodeFilter.SHOW_TEXT).nextNode();
+      if (!text) throw new Error('SV source has no text');
+      const range = document.createRange();
+      range.setStart(text, 0);
+      range.collapse(true);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      (node as HTMLElement).focus();
+    });
+    await page.keyboard.press('End');
+    await expect.poll(() => source.evaluate((node) => node.scrollLeft)).toBeGreaterThan(100);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const source = document.querySelector('.editor-host.active .vditor-sv');
+          const lastNumber = document.querySelector(
+            '.editor-host.active .sv-line-number:last-child',
+          );
+          if (!(source instanceof HTMLElement) || !lastNumber) return Number.POSITIVE_INFINITY;
+          const walker = document.createTreeWalker(source, NodeFilter.SHOW_TEXT);
+          let text = walker.nextNode();
+          while (text && text.textContent !== 'last') text = walker.nextNode();
+          if (!text) return Number.POSITIVE_INFINITY;
+          const range = document.createRange();
+          range.selectNodeContents(text);
+          return Math.abs(
+            lastNumber.getBoundingClientRect().top - range.getBoundingClientRect().top,
+          );
+        }),
+      )
+      .toBeLessThan(4);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const source = document.querySelector('.editor-host.active .vditor-sv');
+          const caret = document.querySelector('[data-vditor-desktop-caret="true"]');
+          const selection = window.getSelection();
+          if (
+            !(source instanceof HTMLElement) ||
+            !(caret instanceof HTMLElement) ||
+            !selection?.rangeCount
+          )
+            return Number.POSITIVE_INFINITY;
+          const range = selection.getRangeAt(0);
+          if (!range.collapsed || !source.contains(range.startContainer))
+            return Number.POSITIVE_INFINITY;
+          return Math.abs(caret.getBoundingClientRect().left - range.getBoundingClientRect().left);
+        }),
+      )
+      .toBeLessThan(4);
+    await expect(page.locator('.editor-host.active .vditor-preview .vditor-reset')).not.toHaveClass(
+      /vditor-desktop-no-wrap/,
+    );
+
+    await page.locator('#statusSettings').click();
+    await page.locator('.settings-nav [data-panel="editor"]').click();
+    await expect(page.locator('[name="editorTextWidth"]')).toHaveValue('40');
+    await page.locator('[name="wordWrap"]').check();
+    await page.locator('#saveSettings').click();
+    await expect(host).toHaveAttribute('data-word-wrap-runtime', 'original');
+    await expectWrap('sv', true);
+    await switchTo('ir');
+    await expectWrap('ir', true);
+    await switchTo('wysiwyg');
+    await expectWrap('wysiwyg', true);
+    await page.locator('#statusSettings').click();
+    await page.locator('.settings-nav [data-panel="editor"]').click();
+    await page.locator('[name="wordWrap"]').uncheck();
+    await page.locator('#saveSettings').click();
+    await expect(host).toHaveAttribute('data-word-wrap-runtime', 'original');
+    await expectWrap('wysiwyg', false);
+    expect(readSetting(testRoot, 'editor', 'wordWrap')).toBe(false);
+    expect(readSetting(testRoot, 'editor', 'editorTextWidth')).toBe(40);
+    expect(fs.readFileSync(path.join(testRoot, 'word-wrap.md'), 'utf8')).toBe(`${longLine}\nlast`);
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('closes a split-view tab after a toolbar layout refresh settles', async () => {
   const running = await launchApp(
     { editMode: 'sv' },

@@ -741,6 +741,21 @@
     return mode === 'sv' ? editor : editor.querySelector(selectors.reset) || editor;
   }
 
+  function applyWordWrap(host, isEnabled) {
+    if (!host || typeof isEnabled !== 'boolean') return false;
+    const parts = editorParts(host);
+    // Vditor 3.11.3 scrolls SV itself and the rendered editors' private reset roots.
+    // Mark only editable surfaces; the SV preview and nested code blocks keep their layout.
+    const editors = [
+      parts.source,
+      parts.instantRendering?.querySelector(selectors.reset),
+      parts.wysiwyg?.querySelector(selectors.reset),
+    ];
+    if (editors.some((editor) => !editor)) return false;
+    editors.forEach((editor) => editor.classList.toggle('vditor-desktop-no-wrap', !isEnabled));
+    return true;
+  }
+
   function installCustomCaret(host, getMode, getStyle) {
     if (!host || typeof getMode !== 'function' || typeof getStyle !== 'function') return () => {};
     const caret = document.createElement('div');
@@ -2231,6 +2246,7 @@
     scrollContainers,
     activeEditor,
     editorScrollContainer,
+    applyWordWrap,
     installCustomCaret,
     captureUndoHistory,
     scheduleUndoHistoryRestore,

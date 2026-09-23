@@ -42,6 +42,7 @@ export const ADAPTER_PUBLIC_KEYS = [
   'scrollContainers',
   'activeEditor',
   'editorScrollContainer',
+  'applyWordWrap',
   'installCustomCaret',
   'captureUndoHistory',
   'scheduleUndoHistoryRestore',
@@ -128,6 +129,7 @@ export function verifyAdapterCallContract(adapter: VditorDesktopAdapter, host: H
   adapter.scrollContainers(host);
   adapter.activeEditor(host, 'ir');
   adapter.editorScrollContainer(host, 'ir');
+  adapter.applyWordWrap(host, false);
   adapter.installCustomCaret(
     host,
     () => 'ir',

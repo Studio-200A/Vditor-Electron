@@ -386,7 +386,8 @@
       'settings.editorLayout': 'Editor layout',
       'settings.security': 'Security',
       'settings.editorTextWidth': 'Text paragraph width',
-      'settings.editorTextWidthHint': 'Applies to WYSIWYG and Instant Rendering modes.',
+      'settings.editorTextWidthHint':
+        'Applies to WYSIWYG and Instant Rendering modes. With word wrap off, long lines may need horizontal scrolling; adjust paragraph width to suit your reading layout.',
       'about.basedOnPrefix': 'Based on the ',
       'about.basedOnSuffix': ' project',
       'about.broughtByPrefix': 'Brought to you by ',
@@ -759,7 +760,8 @@
       'settings.editorLayout': '编辑器布局',
       'settings.security': '安全性',
       'settings.editorTextWidth': '文字段落宽度范围',
-      'settings.editorTextWidthHint': '应用于所见即所得和实时渲染模式。',
+      'settings.editorTextWidthHint':
+        '应用于所见即所得和实时渲染模式。关闭自动换行后，长行可能需要横向滚动；您可以配合调整段落宽度，以获得适合自己的阅读布局。',
       'about.basedOnPrefix': '基于 ',
       'about.basedOnSuffix': ' 项目打造',
       'about.broughtByPrefix': '由 ',
@@ -1132,7 +1134,8 @@
       'settings.editorLayout': '編輯器版面配置',
       'settings.security': '安全性',
       'settings.editorTextWidth': '文字段落寬度範圍',
-      'settings.editorTextWidthHint': '應用於所見即所得和即時渲染模式。',
+      'settings.editorTextWidthHint':
+        '應用於所見即所得和即時渲染模式。關閉自動換行後，長行可能需要橫向捲動；您可以配合調整段落寬度，以獲得適合自己的閱讀版面。',
       'about.basedOnPrefix': '基於 ',
       'about.basedOnSuffix': ' 專案打造',
       'about.broughtByPrefix': '由 ',

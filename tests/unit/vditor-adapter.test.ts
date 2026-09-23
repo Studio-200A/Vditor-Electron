@@ -74,6 +74,32 @@ describe('Vditor DOM compatibility adapter', () => {
     expect(adapter.scrollContainers(host).length).toBeGreaterThanOrEqual(4);
   });
 
+  it('toggles wrapping only on Vditor editable scroll roots', () => {
+    const host = createHost();
+    const { source, instantRendering, wysiwyg, preview } = adapter.editorParts(host);
+    const irRoot = instantRendering.querySelector('.vditor-reset');
+    const wysiwygRoot = wysiwyg.querySelector('.vditor-reset');
+    const previewRoot = preview.querySelector('.vditor-reset');
+
+    expect(adapter.applyWordWrap(host, false)).toBe(true);
+    expect(
+      [source, irRoot, wysiwygRoot].every((node) =>
+        node.classList.contains('vditor-desktop-no-wrap'),
+      ),
+    ).toBe(true);
+    expect(previewRoot.classList.contains('vditor-desktop-no-wrap')).toBe(false);
+
+    expect(adapter.applyWordWrap(host, true)).toBe(true);
+    expect(
+      [source, irRoot, wysiwygRoot].every(
+        (node) => !node.classList.contains('vditor-desktop-no-wrap'),
+      ),
+    ).toBe(true);
+    wysiwygRoot.remove();
+    expect(adapter.applyWordWrap(host, false)).toBe(false);
+    expect(source.classList.contains('vditor-desktop-no-wrap')).toBe(false);
+  });
+
   it('re-renders Mermaid from matching Markdown fences when the Vditor tone changes', () => {
     const host = window.document.createElement('section');
     host.innerHTML = '<code class="language-mermaid" data-processed="true"><svg></svg></code>';

@@ -20,6 +20,17 @@ describe('classifySettingsChange', () => {
     expect(change.shouldRebuildEditor).toBe(false);
   });
 
+  it('applies word wrap to live editors without rebuilding them', () => {
+    const change = classifySettingsChange(
+      { ...settings, wordWrap: true },
+      { ...settings, wordWrap: false },
+      VDITOR_INITIALIZATION_SETTINGS,
+    );
+
+    expect(change.impacts).toContain('live-editor');
+    expect(change.shouldRebuildEditor).toBe(false);
+  });
+
   it('treats editor and preview zoom as presentation changes', () => {
     const change = classifySettingsChange(
       settings,

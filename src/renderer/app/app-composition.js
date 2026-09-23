@@ -433,6 +433,7 @@
     },
     onModeChanged: (tab) => {
       if (tab.id === state.activeId) updateActiveUI();
+      VDITOR.applyWordWrap(tab.host, state.settings.wordWrap);
       scheduleSplitLineNumbers(tab);
       if (!tab.toolbarPreview) syncCaretStyle(tab);
     },
@@ -1485,12 +1486,21 @@
   }
 
   function applyLiveVditorSettings(changedSettings) {
-    if (!changedSettings.includes('previewMode') && !changedSettings.includes('caretStyle')) return;
+    if (
+      !changedSettings.includes('previewMode') &&
+      !changedSettings.includes('caretStyle') &&
+      !changedSettings.includes('wordWrap')
+    )
+      return;
     state.tabs.forEach((tab) => {
       if (!tab.vditor || !tab.ready || tab.toolbarPreview) return;
       if (changedSettings.includes('previewMode'))
         tab.vditor.setPreviewMode(state.settings.previewMode);
       if (changedSettings.includes('caretStyle')) syncCaretStyle(tab);
+      if (changedSettings.includes('wordWrap')) {
+        VDITOR.applyWordWrap(tab.host, state.settings.wordWrap);
+        scheduleSplitLineNumbers(tab);
+      }
     });
     if (changedSettings.includes('previewMode')) renderOutline();
   }
@@ -1610,6 +1620,7 @@
             return;
           }
           tab.host.dataset.contentTheme = state.settings.contentTheme;
+          VDITOR.applyWordWrap(tab.host, state.settings.wordWrap);
           imageRuntimeController.attach(tab);
           editorController.observeOutlineChanges(tab, () => {
             if (tab.id === state.activeId) scheduleOutline();

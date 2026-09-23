@@ -1197,6 +1197,12 @@ button.primary.danger {
   line-height: 1.5;
   padding-left: 52px;
 }
+/* Adapter marks Vditor 3.11.3's three editable scroll roots only. */
+.editor-host .vditor-desktop-no-wrap {
+  white-space: pre !important;
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+}
 .editor-host[data-vditor-desktop-custom-caret='true'] .vditor-sv,
 .editor-host[data-vditor-desktop-custom-caret='true'] .vditor-ir,
 .editor-host[data-vditor-desktop-custom-caret='true'] .vditor-wysiwyg {
