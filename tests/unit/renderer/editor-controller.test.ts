@@ -373,6 +373,165 @@ describe('EditorController', () => {
     expect(onModeChanged).not.toHaveBeenCalled();
   });
 
+  it('re-adopts the runtime representation as savepoint after a clean quiescent mode switch', () => {
+    controller.ensure(tab);
+    tab.ready = true;
+    tab.content = 'ir representation';
+    tab.savedContent = 'ir representation';
+    tab.modified = false;
+    editorContent = 'ir representation';
+
+    expect(controller.prepareModeTransition(tab, 'sv', () => {})).toBe(true);
+    // Vditor 3.11.3 completes the mode switch synchronously.
+    currentMode = 'sv';
+    editorContent = 'sv representation';
+    controller.synchronizeMode(tab);
+
+    expect(tab).toMatchObject({
+      mode: 'sv',
+      content: 'sv representation',
+      savedContent: 'sv representation',
+      modified: false,
+    });
+  });
+
+  it('reconciles the savepoint even when the shell already synced the mode field', () => {
+    controller.ensure(tab);
+    tab.ready = true;
+    tab.content = 'ir representation';
+    tab.savedContent = 'ir representation';
+    editorContent = 'ir representation';
+
+    controller.prepareModeTransition(tab, 'sv', () => {});
+    currentMode = 'sv';
+    tab.mode = 'sv';
+    editorContent = 'sv representation';
+    controller.synchronizeMode(tab);
+
+    expect(tab.savedContent).toBe('sv representation');
+    expect(tab.content).toBe('sv representation');
+  });
+
+  it('does not adopt undelivered edits as the savepoint across a mode switch', () => {
+    controller.ensure(tab);
+    tab.ready = true;
+    tab.content = '';
+    tab.savedContent = '';
+    tab.modified = false;
+    // The editor DOM already holds a fresh fill whose debounced `input` event
+    // has not been delivered yet, so `modified` is stale-false.
+    editorContent = 'caret target';
+
+    controller.prepareModeTransition(tab, 'sv', () => {});
+    currentMode = 'sv';
+    controller.synchronizeMode(tab);
+
+    expect(tab.mode).toBe('sv');
+    expect(tab).toMatchObject({ content: '', savedContent: '', modified: false });
+  });
+
+  it('does not adopt edits copied into content by blur before a mode switch', () => {
+    controller.ensure(tab);
+    tab.ready = true;
+    tab.content = 'caret target';
+    tab.savedContent = '';
+    tab.modified = false;
+    editorContent = 'caret target';
+
+    controller.prepareModeTransition(tab, 'sv', () => {});
+    currentMode = 'sv';
+    controller.synchronizeMode(tab);
+
+    expect(tab.savedContent).toBe('');
+    controller.applyInput(tab, 'caret target');
+    expect(tab.modified).toBe(true);
+  });
+
+  it('rejects a savepoint candidate when content changes before mode synchronization', () => {
+    controller.ensure(tab);
+    tab.ready = true;
+    tab.content = 'saved';
+    tab.savedContent = 'saved';
+    editorContent = 'saved';
+
+    controller.prepareModeTransition(tab, 'sv', () => {});
+    tab.content = 'late edit';
+    editorContent = 'late edit';
+    currentMode = 'sv';
+    controller.synchronizeMode(tab);
+
+    expect(tab.savedContent).toBe('saved');
+    controller.applyInput(tab, 'late edit');
+    expect(tab.modified).toBe(true);
+  });
+
+  it('keeps the savepoint of a dirty tab across a mode switch', () => {
+    controller.ensure(tab);
+    tab.ready = true;
+    tab.content = 'edited';
+    tab.savedContent = 'ir representation';
+    tab.modified = true;
+    editorContent = 'edited';
+
+    controller.prepareModeTransition(tab, 'sv', () => {});
+    currentMode = 'sv';
+    editorContent = 'sv representation';
+    controller.synchronizeMode(tab);
+
+    expect(tab).toMatchObject({
+      mode: 'sv',
+      content: 'edited',
+      savedContent: 'ir representation',
+      modified: true,
+    });
+  });
+
+  it('keeps pending recovery content authoritative across a mode switch', () => {
+    controller.ensure(tab);
+    tab.ready = true;
+    tab.content = 'disk content';
+    tab.savedContent = 'disk content';
+    tab.pendingEditorContent = true;
+    editorContent = 'disk content';
+
+    controller.prepareModeTransition(tab, 'sv', () => {});
+    currentMode = 'sv';
+    editorContent = 'sv representation';
+    controller.synchronizeMode(tab);
+
+    expect(tab).toMatchObject({
+      mode: 'sv',
+      content: 'disk content',
+      savedContent: 'disk content',
+    });
+  });
+
+  it('does not touch the savepoint when the runtime is not ready', () => {
+    controller.ensure(tab);
+    editorContent = 'sv representation';
+
+    expect(controller.prepareModeTransition(tab, 'sv', () => {})).toBe(false);
+    currentMode = 'sv';
+    controller.synchronizeMode(tab);
+
+    expect(tab.mode).toBe('sv');
+    expect(tab.savedContent).toBe('saved pending content');
+  });
+
+  it('leaves the savepoint alone when synchronizeMode runs without a prepared transition', () => {
+    controller.ensure(tab);
+    tab.ready = true;
+    tab.content = 'ir representation';
+    tab.savedContent = 'ir representation';
+    currentMode = 'sv';
+    editorContent = 'sv representation';
+
+    controller.synchronizeMode(tab);
+
+    expect(tab.mode).toBe('sv');
+    expect(tab.savedContent).toBe('ir representation');
+  });
+
   it('cancels a pending mode transition when the runtime is destroyed', () => {
     vi.useFakeTimers();
     const cancelFrame = vi.spyOn(globalThis, 'cancelAnimationFrame');
@@ -626,10 +785,115 @@ describe('EditorController', () => {
     tab.savedContent = 'saved';
     tab.modified = true;
     editorContent = 'draft';
+    readRuntimeContent.mockReturnValue('draft');
 
     controller.reconcileInitializedContent(tab, true);
 
     expect(tab).toMatchObject({ content: 'draft', savedContent: 'saved', modified: true });
+  });
+
+  it('adopts the editor representation as the savepoint when initialization is clean', () => {
+    tab.content = 'disk content';
+    tab.savedContent = 'disk content';
+    tab.modified = false;
+    editorContent = 'disk content';
+    readRuntimeContent.mockReturnValue('disk content\n');
+
+    controller.reconcileInitializedContent(tab, false);
+
+    expect(tab).toMatchObject({
+      content: 'disk content\n',
+      savedContent: 'disk content\n',
+      modified: false,
+    });
+    expect(updateDocument).toHaveBeenCalledWith(tab, {
+      content: 'disk content\n',
+      savedContent: 'disk content\n',
+      modified: false,
+    });
+  });
+
+  it('keeps the disk savepoint when initialization starts from a dirty document', () => {
+    tab.content = 'draft';
+    tab.savedContent = 'saved';
+    tab.modified = false;
+    editorContent = 'draft';
+    readRuntimeContent.mockReturnValue('draft\n');
+
+    controller.reconcileInitializedContent(tab, true);
+
+    expect(tab).toMatchObject({ content: 'draft\n', savedContent: 'saved', modified: true });
+  });
+
+  it('does not re-serialize pending recovery content while reconciling', () => {
+    tab.content = 'recovered';
+    tab.savedContent = 'saved';
+    tab.modified = false;
+    tab.pendingEditorContent = true;
+    readRuntimeContent.mockReturnValue('must not be used');
+    controller.ensure(tab);
+
+    controller.reconcileInitializedContent(tab, false);
+
+    expect(readRuntimeContent).not.toHaveBeenCalled();
+    expect(tab).toMatchObject({
+      content: 'recovered',
+      savedContent: 'saved',
+      modified: true,
+      pendingEditorContent: false,
+    });
+  });
+
+  it('adopts the re-serialized representation after a clean external reload', () => {
+    controller.ensure(tab);
+    tab.content = 'stale';
+    tab.savedContent = 'stale';
+    tab.modified = false;
+    readRuntimeContent.mockImplementation(() => `${editorContent}\n`);
+
+    expect(controller.applyExternalContent(tab, 'reloaded disk content')).toBe(true);
+
+    expect(setValue).toHaveBeenCalledWith('reloaded disk content', true);
+    expect(tab).toMatchObject({
+      content: 'reloaded disk content\n',
+      savedContent: 'reloaded disk content\n',
+      modified: false,
+    });
+  });
+
+  it('keeps the savepoint when an external reload targets a dirty document', () => {
+    controller.ensure(tab);
+    tab.content = 'draft';
+    tab.savedContent = 'saved';
+    tab.modified = true;
+    readRuntimeContent.mockImplementation(() => `${editorContent}\n`);
+
+    expect(controller.applyExternalContent(tab, 'reloaded disk content')).toBe(true);
+
+    expect(tab).toMatchObject({ savedContent: 'saved', modified: true });
+  });
+
+  it('keeps the savepoint when pending recovery content survives an external reload', () => {
+    controller.ensure(tab);
+    tab.modified = false;
+    tab.pendingEditorContent = true;
+    tab.savedContent = 'saved';
+    readRuntimeContent.mockImplementation(() => `${editorContent}\n`);
+
+    expect(controller.applyExternalContent(tab, 'reloaded disk content')).toBe(true);
+
+    expect(tab).toMatchObject({ savedContent: 'saved', pendingEditorContent: true });
+  });
+
+  it('does not reconcile the savepoint when the editor runtime is unavailable', () => {
+    tab.content = 'stale';
+    tab.savedContent = 'stale';
+    readRuntimeContent.mockReturnValue('must not be used');
+
+    expect(controller.applyExternalContent(tab, 'reloaded disk content')).toBe(false);
+
+    expect(readRuntimeContent).not.toHaveBeenCalled();
+    expect(tab).toMatchObject({ content: 'stale', savedContent: 'stale' });
   });
 
   it('updates editor-owned input state without retaining pending recovery content', () => {

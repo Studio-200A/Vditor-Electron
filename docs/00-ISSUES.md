@@ -1,18 +1,8 @@
 > [!NOTE]
 >
-> 本文档记录两类内容：一是当前版本的临时性问题，关闭后在此处收案并应用英文写入 `CHANGELOG.md` 对应开发版本的更新日志；二是与版本无关的长期技术债、架构风险点、改进建议和已收口约束（自 `01-CODE-STRUCTURE.md` 原 §16 迁入）。长期条目不因某个版本发布而删除，只更新状态、证据和归属。
+> 本文档记录尚未关闭的版本问题，以及与版本无关的长期技术债、架构风险点、改进建议和不得回退的约束。已解决的 0.2.6 问题及其用户可见结果见 `CHANGELOG.md`；长期事项在关闭条件满足前继续保留。
 >
 > `docs/01-CODE-STRUCTURE.md` 是代码架构导航地图，不再维护技术债清单。
-
-## SV 撤销回到保存内容后仍显示未保存标记
-
-**状态：** 递延至 Vditor 4.0 升级验证。
-
-在 Vditor 3.11.3 的 SV 模式中，编辑后撤销到视觉上与最后保存内容一致的状态时，文档标签仍可能显示未保存标记。Desktop 的脏状态由 Vditor `input(value)` 与 `tab.savedContent` 的严格字符串比较决定；Vditor 的 undo 工具栏状态只反映私有 undo/redo stack 长度，不表示应用层保存点，不能用于清除脏标记。
-
-尚未捕获该场景下两份 Markdown 的首个实际字符差异，不能在 3.11.3 中直接放宽比较或自动清除标记。Vditor 4.0 将 SV 从 `contenteditable <pre>` 重构为 `<textarea>`，undo 直接恢复 `value` 和 selection，可能消除 3.11.3 私有 DOM 序列化导致的差异；但其 `getMarkdown()` 仍会规范化末尾换行，因此不能预先承诺升级必然解决。
-
-0.3.0 的 Vditor 4.0 迁移必须增加保存后编辑、撤销到保存内容的 dirty-state 矩阵，并记录 `input(value)`、`savedContent`、首个差异 offset 和写盘结果。仅在确认输出与保存基线满足既定文档保真约束后关闭本问题。
 
 ## SV 标题锚点滚动同步依赖 Vditor 3.11.3 私有 heading marker DOM
 
@@ -29,35 +19,6 @@ Vditor 4.0 的 SV 是 `<textarea>`，源码面不再提供可读取的 heading m
 0.2.6 的 `30de87d` 修复了壳层亮暗切换后已渲染 Mermaid 图表仍保留旧色调的问题：Vditor 3.11.3 的 `setTheme()` 不会重绘 `data-processed="true"` 的图表，Desktop 因此在 `ThemeCoordinator.applyTheme()` 中经 adapter `refreshMermaidTheme()`（`src/renderer/vditor-adapter.js`）重新调用 `window.Vditor.mermaidRender`，并依赖私有的 `.language-mermaid` 节点、`data-processed` 标记与该静态渲染入口。当前只能按“Markdown 围栏与已渲染节点数量相等时一一配对，否则不改动编辑器”收敛风险，无法消除对私有入口的依赖：3.11.3 没有公开的图表重渲染或主题刷新 API，而重建编辑器会丢失选区、undo 与滚动状态。
 
 风险不是崩溃而是静默降级：若 4.0 改变节点结构、标记或渲染入口，图表将在主题切换后保留旧色调且 adapter 返回 `0`，除主题相关回归外无明显报错。关闭条件：在 4.0 上复核这三个私有契约并给出保留/重写/移除结论——若上游 `setTheme()` 自行重绘图表或提供公开重渲染入口，则删除 adapter 路径及其测试；否则迁移到新入口并保留“不配对即不改动”语义。证据为 `tests/unit/vditor-adapter.test.ts`、`tests/unit/renderer/theme-coordinator.test.ts` 与 `tests/e2e/app-shell.spec.ts` 的对应断言在 4.0 上仍然通过或按结论替换。升级验证项已记在 [`docs/07-VDITOR-UPGRADE.md`](07-VDITOR-UPGRADE.md)，根因与实现细节见 [`docs/09-DEV-NOTE.md`](09-DEV-NOTE.md#settheme-不重绘已渲染的-mermaid-图表)。
-
-## 设置项 `wordWrap`（自动换行）曾是可见但不生效的死开关
-
-**状态：** 已在 0.2.6 修复。保留原症状和关闭依据，供后续 Vditor 升级复核。
-
-修复前，设置 → Editor 面板已提供三语 checkbox（`settings.wordWrap`：`Word wrap` / `自动换行` / `自動換行`，`src/renderer/index.html` 中位于 `typewriterMode` 与 `rtl` 之间），默认值 `wordWrap: true`（`src/main/services/app-state.ts`），并在 `settings-store.ts` 白名单与 `ipc-validation.ts` 布尔边界中正常持久化和校验。但渲染进程与主进程没有消费者：`applyPresentationSettings()` 不为它写入 CSS 变量，`src/renderer/styles/app.css` 没有对应规则，`src/renderer/editor/editor-options.ts` 也不把它传给 Vditor。勾选与取消勾选的编辑器表现完全相同。
-
-长期未被发现的原因：Vditor 3.11.3 自己的 CSS 已对可编辑表面默认软换行（`.vditor-sv`、`.vditor-ir pre.vditor-reset`、`.vditor-wysiwyg pre.vditor-reset` 均为 `white-space: pre-wrap`），与默认值 `true` 恰好一致；只有用户想关闭软换行、改为横向滚动时才会暴露该开关无效。
-
-若选择实现，必须同时验证两处既有的 Vditor 私有几何假设，不得只加一条 CSS：
-
-1. **SV 行号定位**：adapter 的 `renderSplitDecorations()` 按逻辑源码行的 `Range.getClientRects()` 取“视觉最上方的 rect”放置行号（见 [`09-DEV-NOTE.md`](09-DEV-NOTE.md) 的“SV 行号与文档末尾留白必须分层”）。关闭软换行后长行不再折行，行高假设与滚动范围都会变化。
-2. **自绘 caret 几何**：`installCustomCaret()` 读取折叠 Range 矩形；SV 关闭软换行后引入横向滚动，需实测现有的 `scrollTop`/`scrollLeft` 增量平移 + 下一帧真实几何校正是否仍然准确。
-
-0.2.6 的实现由 `settings-controller.ts` 将 `wordWrap` 归为可即时应用的编辑器设置；adapter 的 `applyWordWrap()` 仅标记三种可编辑滚动根，`app.css` 关闭其软换行和断词，不改 SV preview 或代码块，不重建 Vditor。初始化、模式切换和设置保存后均重新应用。`editorTextWidth` 保持独立的 40–100% 范围，仍只作用于 WYSIWYG/IR；其三语说明补充了关闭换行后长行可能需要横向滚动。关闭依据：adapter 契约单测、设置变更分类单测，以及 `tests/e2e/editor-modes.spec.ts` 对三种模式、40% 宽度、SV 行号和自绘光标横向滚动的真实 Electron 回归；用户可见修复已写入 `CHANGELOG.md`。
-
-### 相关：仅持久化、无 UI 也无消费者的设置字段
-
-`scrollSync`、`headingAnchor`、`previewTextWidth` 三个 `AppSettings` 字段只存在于默认值、TOML 白名单与 IPC 校验中，渲染进程不读取，设置页也没有控件；`tabString` 同类，且残留一个无对应控件的 `settings.tabString` locale key。**状态：** 0.2.6 本次设置审计决定暂时保留这些无 UI 字段以兼容现有 `config.toml`，不作为 `wordWrap` 修复的一部分扩展功能。它们仍属待处理的设置模型债务；关闭条件是后续独立版本明确逐项实现或移除，并验证旧 TOML 键的读取、再次保存和 IPC 校验行为。
-
-## 关闭自动换行后段落宽度未限定横向滚动区域
-
-**状态：** 0.2.6 已关闭；专项自动测试通过，用户确认光标、选区、代码块、表格和 Vditor 浮层手测通过。
-
-症状：`wordWrap: false` 时，`editorTextWidth` 原有的左右 padding 跟随 WYSIWYG/IR 的 `.vditor-reset` 滚动根一起滚动。调窄宽度只改变长行的起点，滚动 viewport 仍占满整个编辑区，右侧留白在滚动到行尾前不可见。拥有文件为 `src/renderer/styles/app.css` 与负责标记 Vditor 私有根节点的 `src/renderer/vditor-adapter.js`。
-
-修复在关闭换行时将两侧留白改为滚动根的对称 margin，并清除其内部横向 padding；开启换行时仍使用原有 padding。40–100% 设置范围、SV 源码区及 preview 保持既有语义。`tests/unit/vditor-adapter.test.ts` 检查三种编辑根的标记，`tests/e2e/editor-modes.spec.ts` 检查 IR/WYSIWYG 在 40% 和 60% 宽度下的居中 viewport 与长行水平滚动。手测夹具和步骤位于 `tmp/word-wrap-width-manual/`（本地忽略目录）。关闭条件已满足：用户按该夹具确认光标、选区、代码块、表格和 Vditor 浮层可用，且专项自动测试通过。
-
----
 
 ## 长期技术债与架构风险
 
@@ -92,7 +53,7 @@ Vditor 4.0 的 SV 是 `<textarea>`，源码面不再提供可读取的 heading m
 
 11. **资源健康回收站仍存在路径化符号链接 TOCTOU 窗口**：`shell.trashItem(path)` 只接受路径字符串，复核与调用之间父目录仍可能被替换为符号链接。已通过“仅枚举直接图片文件 + 发现符号链接即只读禁用回收站”收束范围，但未消除该窗口；见 [`docs/06-FILE-SAFETY.md` §7.4](06-FILE-SAFETY.md#74-资源健康回收站路径化-shelltrashitem-的符号链接窗口) 与 [`docs/ARCHIVED/18-0.2.5-RESOURCE-HEALTH.md` §6.3.1](ARCHIVED/18-0.2.5-RESOURCE-HEALTH.md#631-符号链接与二级目录)。
 
-12. **设置模型仍有无效字段**：`wordWrap` 已在 0.2.6 修复；`scrollSync` / `headingAnchor` / `previewTextWidth` / `tabString` 仍是无 UI、无消费者的遗留字段；见本文上方的专项条目。
+12. **设置模型仍有无效字段**：`scrollSync`、`headingAnchor`、`previewTextWidth`、`tabString` 仅保留于默认值、TOML 白名单和 IPC 校验中，没有设置 UI 或功能消费者；`tabString` 还残留无对应控件的 locale key。为兼容现有 `config.toml` 暂时保留。关闭条件是后续独立版本逐项决定实现或移除，并验证旧 TOML 键的读取、再次保存和 IPC 校验行为。
 
 ### 改进建议（按优先级）
 

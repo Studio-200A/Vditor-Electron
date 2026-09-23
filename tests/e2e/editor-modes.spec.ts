@@ -2,7 +2,14 @@ import { expect, test } from '@playwright/test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { closeApp, createNewTab, launchApp, projectRoot, readSetting } from './support/app-harness';
+import {
+  closeApp,
+  createNewTab,
+  launchApp,
+  projectRoot,
+  readSetting,
+  replaceFileAtomically,
+} from './support/app-harness';
 
 test('finds, navigates, and replaces text in the active document', async () => {
   const running = await launchApp({}, { 'find.md': 'alpha beta alpha\nalpha' });
@@ -154,6 +161,28 @@ test('keeps one custom caret proxy across all editor modes and releases it on ta
     await page.locator('.document-tab.active b').click();
     await page.locator('#confirmActions [data-action="discard"]').click();
     await expect(page.locator('[data-vditor-desktop-caret="true"]')).toHaveCount(0);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps rapid input dirty when switching modes and asks before closing', async () => {
+  const running = await launchApp({ editMode: 'ir' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    await page.locator('.editor-host.active .vditor-ir .vditor-reset').fill('caret target');
+    await page.locator('#vditorToolbarMount button[data-type="edit-mode"]').click();
+    await page.locator('#vditorToolbarMount button[data-mode="wysiwyg"]').click();
+
+    await expect(page.locator('.editor-host.active .vditor-wysiwyg .vditor-reset')).toContainText(
+      'caret target',
+    );
+    await expect(page.locator('.document-tab.active .dirty')).toHaveText('●');
+    await page.locator('.document-tab.active b').click();
+    const discard = page.locator('#confirmActions [data-action="discard"]');
+    await expect(discard).toBeVisible();
+    await discard.click();
   } finally {
     await closeApp(running);
   }
@@ -2476,6 +2505,235 @@ test('keeps whitespace canvases isolated between tabs', async () => {
       '2',
     );
     await expect(page.locator('.editor-host:not(.active) .sv-whitespace-canvas')).toBeHidden();
+  } finally {
+    await closeApp(running);
+  }
+});
+
+const dirtyUndoFixture = [
+  '# Dirty Undo Fixture',
+  '',
+  'A plain paragraph with **bold** text and `inline code`.',
+  '',
+  '```js',
+  'const answer = 42;',
+  'console.log(answer);',
+  '```',
+  '',
+  '| Column A | Column B |',
+  '| --- | --- |',
+  '| 1 | 2 |',
+  '',
+  '- first item',
+  '- second item',
+  '',
+].join('\n');
+
+const modeEditorSelectors = {
+  sv: '.editor-host.active .vditor-sv',
+  ir: '.editor-host.active .vditor-ir .vditor-reset',
+  wysiwyg: '.editor-host.active .vditor-wysiwyg .vditor-reset',
+} as const;
+
+async function typeAtDocumentEnd(
+  page: import('@playwright/test').Page,
+  editorSelector: string,
+  text: string,
+) {
+  await page.locator(editorSelector).click();
+  await page.keyboard.press('Control+End');
+  await page.keyboard.press('End');
+  await page.keyboard.type(text);
+}
+
+async function undoFromToolbar(page: import('@playwright/test').Page) {
+  // Vditor records undo checkpoints on its `undoDelay` debounce. Let the latest
+  // edit settle first, or a single undo may collapse several edits into one
+  // step and restore an older state than intended.
+  await page.waitForTimeout(700);
+  const undoButton = page.locator('#vditorToolbarMount button[data-type="undo"]');
+  await expect(undoButton).not.toHaveClass(/vditor-menu--disabled/, { timeout: 5000 });
+  await undoButton.click();
+}
+
+async function expectUndoToInitialContentClearsDirtyFlag(
+  page: import('@playwright/test').Page,
+  editorSelector: string,
+  filePath: string,
+  originalContent: string,
+) {
+  await page.waitForSelector('.editor-host.active[data-editor-ready="true"]');
+  // Let Vditor record the initial undo-stack entry before typing; otherwise the
+  // first keystroke's debounce cancels it and undo never reaches two entries.
+  await page.waitForTimeout(700);
+  await typeAtDocumentEnd(page, editorSelector, '111');
+  await expect(page.locator('.document-tab.active .dirty')).toHaveText('●', { timeout: 5000 });
+
+  await undoFromToolbar(page);
+
+  await expect(page.locator('.document-tab.active .dirty')).toBeHidden({ timeout: 5000 });
+  expect(fs.readFileSync(filePath, 'utf8')).toBe(originalContent);
+
+  await typeAtDocumentEnd(page, editorSelector, '222');
+  await expect(page.locator('.document-tab.active .dirty')).toHaveText('●', { timeout: 5000 });
+  expect(fs.readFileSync(filePath, 'utf8')).toBe(originalContent);
+}
+
+for (const editMode of ['sv', 'ir', 'wysiwyg'] as const) {
+  test(`clears the dirty flag when undo returns to the initial ${editMode} document content`, async () => {
+    const running = await launchApp({ editMode }, { 'dirty-undo.md': dirtyUndoFixture });
+    try {
+      const { page, testRoot } = running;
+      await page.waitForSelector(modeEditorSelectors[editMode]);
+      await expectUndoToInitialContentClearsDirtyFlag(
+        page,
+        modeEditorSelectors[editMode],
+        path.join(testRoot, 'dirty-undo.md'),
+        dirtyUndoFixture,
+      );
+    } finally {
+      await closeApp(running);
+    }
+  });
+}
+
+test('clears the dirty flag when undo returns to a simple saved SV document', async () => {
+  const running = await launchApp({ editMode: 'sv' }, { 'simple-undo.md': 'Original draft\n' });
+  try {
+    const { page, testRoot } = running;
+    const filePath = path.join(testRoot, 'simple-undo.md');
+    await page.waitForSelector(modeEditorSelectors.sv);
+    await expectUndoToInitialContentClearsDirtyFlag(
+      page,
+      modeEditorSelectors.sv,
+      filePath,
+      'Original draft\n',
+    );
+
+    // An explicit save writes the editor representation and keeps the disk
+    // expectation in sync: an unchanged second save must not report a conflict.
+    await page.keyboard.press('Control+s');
+    await expect(page.locator('#statusMessage')).toContainText('Saved simple-undo.md');
+    await expect(page.locator('.document-tab.active .dirty')).toBeHidden();
+    await page.keyboard.press('Control+s');
+    await expect(page.locator('#statusMessage')).toContainText('Saved simple-undo.md');
+    const savedContent = fs.readFileSync(filePath, 'utf8');
+
+    // Undo back to the explicit save point also clears the dirty flag.
+    await page.waitForTimeout(700);
+    await typeAtDocumentEnd(page, modeEditorSelectors.sv, '333');
+    await expect(page.locator('.document-tab.active .dirty')).toHaveText('●', { timeout: 5000 });
+    await undoFromToolbar(page);
+    await expect(page.locator('.document-tab.active .dirty')).toBeHidden({ timeout: 5000 });
+    expect(fs.readFileSync(filePath, 'utf8')).toBe(savedContent);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('clears the dirty flag when undo returns to externally reloaded content', async () => {
+  const running = await launchApp({ editMode: 'sv' }, { 'reload-undo.md': 'Original draft\n' });
+  try {
+    const { page, testRoot } = running;
+    const filePath = path.join(testRoot, 'reload-undo.md');
+    await page.waitForSelector(modeEditorSelectors.sv);
+    await expect(page.locator(modeEditorSelectors.sv)).toContainText('Original draft');
+
+    replaceFileAtomically(filePath, 'Externally reloaded draft\n');
+    await expect(page.locator(modeEditorSelectors.sv)).toContainText('Externally reloaded draft', {
+      timeout: 10000,
+    });
+    await expect(page.locator('#statusMessage')).toContainText('Reloaded reload-undo.md from disk');
+
+    await expectUndoToInitialContentClearsDirtyFlag(
+      page,
+      modeEditorSelectors.sv,
+      filePath,
+      'Externally reloaded draft\n',
+    );
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('clears the dirty flag when undo returns to externally reloaded IR content', async () => {
+  const running = await launchApp({ editMode: 'ir' }, { 'reload-undo-ir.md': 'Original draft\n' });
+  try {
+    const { page, testRoot } = running;
+    const filePath = path.join(testRoot, 'reload-undo-ir.md');
+    await page.waitForSelector(modeEditorSelectors.ir);
+    await expect(page.locator(modeEditorSelectors.ir)).toContainText('Original draft');
+
+    replaceFileAtomically(filePath, dirtyUndoFixture);
+    await expect(page.locator(modeEditorSelectors.ir)).toContainText('Dirty Undo Fixture', {
+      timeout: 10000,
+    });
+
+    await expectUndoToInitialContentClearsDirtyFlag(
+      page,
+      modeEditorSelectors.ir,
+      filePath,
+      dirtyUndoFixture,
+    );
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('clears the dirty flag when undo returns to initial SV edge-case documents', async () => {
+  const startupFiles = {
+    'no-eol.md': 'Original draft',
+    'crlf.md': 'Line one\r\nLine two\r\n',
+    'empty.md': '',
+  };
+  const running = await launchApp({ editMode: 'sv' }, startupFiles);
+  try {
+    const { page, testRoot } = running;
+    for (const [name, originalContent] of Object.entries(startupFiles)) {
+      const filePath = path.join(testRoot, name);
+      await page.locator('.document-tab').filter({ hasText: name }).click();
+      await expectUndoToInitialContentClearsDirtyFlag(
+        page,
+        modeEditorSelectors.sv,
+        filePath,
+        originalContent,
+      );
+    }
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('clears the dirty flag when undo follows an in-session mode switch', async () => {
+  const running = await launchApp({ editMode: 'ir' }, { 'dirty-undo.md': dirtyUndoFixture });
+  try {
+    const { page, testRoot } = running;
+    const filePath = path.join(testRoot, 'dirty-undo.md');
+    await page.waitForSelector('.editor-host.active[data-editor-ready="true"]');
+
+    const switchMode = async (mode: 'wysiwyg' | 'sv') => {
+      await page.locator('#vditorToolbarMount button[data-type="edit-mode"]').click();
+      await page.locator(`#vditorToolbarMount button[data-mode="${mode}"]`).click();
+      await page.waitForSelector(modeEditorSelectors[mode]);
+      // Let the mode-transition sync (rAF + 50ms) run and Vditor settle before
+      // asserting the clean savepoint was re-adopted for the new mode.
+      await page.waitForTimeout(700);
+      await expect(page.locator('.document-tab.active .dirty')).toBeHidden();
+    };
+
+    await switchMode('wysiwyg');
+    await typeAtDocumentEnd(page, modeEditorSelectors.wysiwyg, '111');
+    await expect(page.locator('.document-tab.active .dirty')).toHaveText('●', { timeout: 5000 });
+    await undoFromToolbar(page);
+    await expect(page.locator('.document-tab.active .dirty')).toBeHidden({ timeout: 5000 });
+
+    await switchMode('sv');
+    await typeAtDocumentEnd(page, modeEditorSelectors.sv, '222');
+    await expect(page.locator('.document-tab.active .dirty')).toHaveText('●', { timeout: 5000 });
+    await undoFromToolbar(page);
+    await expect(page.locator('.document-tab.active .dirty')).toBeHidden({ timeout: 5000 });
+
+    expect(fs.readFileSync(filePath, 'utf8')).toBe(dirtyUndoFixture);
   } finally {
     await closeApp(running);
   }
