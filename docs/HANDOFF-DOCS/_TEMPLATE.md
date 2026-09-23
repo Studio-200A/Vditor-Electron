@@ -29,7 +29,7 @@ git tag -l                       # 版本基线 tag
 然后按顺序读：
 
 1. `AGENTS.md` —— 项目边界与通用约束（交接文档里只引用、不整段复制）。
-2. `docs/<编号>-<版本>-EXECUTION-TRACKER.md`（当前为 `docs/20-0.3.0-EXECUTION-TRACKER.md`）—— 总体路线状态表、本批次施工卡与执行记录（该文件当前分别为第 5、6、7 节；章节号以其实际标题为准）。
+2. 当前任务对应的执行 Tracker（从 `docs/README.md` 查找；尚未排期的 `docs/TBD/` 候选方案不作为当前执行依据）—— 总体路线状态表、本批次施工卡与执行记录；章节号以实际标题为准。
 3. `package.json` —— 当前版本号。
 4. 当前源码（尤其组合层入口 `src/renderer/app/app-composition.js`）—— 核对「哪些职责还在这、哪些已迁出」。
 5. 相关测试文件与 Tracker 中最近一次全量验证结果。

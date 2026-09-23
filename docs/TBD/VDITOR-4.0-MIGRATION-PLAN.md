@@ -1,18 +1,18 @@
-# Vditor-Electron 0.3.0 Vditor 4.0 升级计划
+# Vditor 4.0 升级候选方案（暂缓）
 
 > 项目仓库：<https://github.com/Studio-200A/Vditor-Electron>
-> 目标版本：`0.3.0`
+> 状态：暂缓；不属于任何已确定的 Vditor Desktop 版本计划，实施前须重新决定是否升级
 > 前置基线：启动迁移时的实际 HEAD（本计划撰写与修订时 `0.2.5` 已发布、`dev-0.2.6` 开发中），Vditor 固定 `3.11.3`
-> 唯一版本任务：升级 Vditor 至精确版本 `4.0.0`
+> 候选上游版本：`4.0.0`；实际目标版本须在重新决策时确认
 > 上游参考：`/home/shawnzhang/Projects/vditor` 的 `v4.0.0` tag，以及 issue [#1319](https://github.com/Vanessa219/vditor/issues/1319)
 
 ## 1. 文档用途
 
-本计划约束 0.3.0 的唯一工作：将 Desktop 从 Vditor 3.11.3 迁移到 4.0.0，同时保持本地优先 Markdown 文件、Electron 安全边界、文件保存/恢复/冲突语义和三种编辑模式。
+本候选方案记录将 Desktop 从 Vditor 3.11.3 迁移到 4.0.0 所需的边界和验证工作。当前暂缓实施；重新评估时先确认产品是否接受 SV 行为变化、上游目标版本及实际开发版本，再以当时的源码更新方案。
 
 这不是一次普通依赖更新。Vditor 4.0 将 SV 从私有 `contenteditable <pre>` 架构改为 `<textarea>`，上游同时明确放弃 SV 语法高亮和自动完成等能力。现有 `vditor-adapter.js`、SV 增强、样式与测试中的 3.11.3 DOM 假设必须逐项审计、重写、删除或降级；不得仅修改版本号和 selector。
 
-计划定义目标、边界、迁移阶段和完成标准。实际进度、提交、验证证据和阻塞项只写入 [`docs/20-0.3.0-EXECUTION-TRACKER.md`](20-0.3.0-EXECUTION-TRACKER.md)。
+本方案定义候选目标、边界、迁移阶段和完成标准。若决定实施，实际进度、提交、验证证据和阻塞项写入配套的 [执行账本](VDITOR-4.0-EXECUTION-TRACKER.md)。
 
 ## 2. 产品与迁移边界
 
@@ -20,16 +20,16 @@
 
 - 编辑普通 Markdown 文件，文件内容仍是唯一数据源；不引入私有格式、云同步、账户或遥测。
 - WYSIWYG、IR、SV 三种模式，离线 bundled Vditor 资源，`contextIsolation: true` 与 `nodeIntegration: false`。
-- 文件 identity、保存、自动保存、外部变化、恢复、watcher、TOCTOU 和本地资源协议契约；以 [`docs/06-FILE-SAFETY.md`](06-FILE-SAFETY.md) 为准。
+- 文件 identity、保存、自动保存、外部变化、恢复、watcher、TOCTOU 和本地资源协议契约；以 [`docs/06-FILE-SAFETY.md`](../06-FILE-SAFETY.md) 为准。
 - Vditor 私有 DOM 访问仍只存在于 `src/renderer/vditor-adapter.js`；业务 controller 不得为 4.0 增加散落 selector 或版本分支。
 - 原生与自绘 caret 设置；SV 不能使用不可用的 Range 几何时，优先选择可验证的原生 caret 或 textarea 专用实现，不伪造浏览器 Selection。
 
-### 2.2 本版本明确不做
+### 2.2 若实施单独升级任务，明确不做
 
 - 不新增用户功能、设置、编辑器引擎、框架或数据格式。
 - 不同时升级 Electron、Node、TypeScript 或其他主要依赖。
 - 不试图恢复 Vditor 4.0 上游已放弃的 SV 语法高亮、自动完成或 contenteditable 行为；是否接受该上游产品变化是开始实施前的决策门。
-- 不在没有差异证据时修复 [`docs/00-ISSUES.md`](00-ISSUES.md) 的 SV undo dirty-state 问题；仅把它纳入迁移验证矩阵。
+- 不重新调研 0.2.6 已在 3.11.3 收口的三模式撤销保存点规则（干净文档在初始化、干净重载、原生模式切换与显式保存时采用当前模式编辑器序列化表示作为 `savedContent`，磁盘原文仍由 `expectedSavedContent` 持有，见 [执行账本](VDITOR-4.0-EXECUTION-TRACKER.md) 决策 D6 的前提更新）；若实施 4.0 迁移，只复验同一规则，不重新打开 3.11.3 差异调研。
 
 ## 3. 4.0 架构断点
 
@@ -57,7 +57,7 @@ Vditor 3.11.3 的 SV 以 `<pre contenteditable>`、嵌套 source marker、`Range
 
 - 冻结启动批次时的实际 HEAD、工作区、`package.json`/锁文件、Vditor 3.11.3 版本检查和完整测试结果。
 - 在真实 3.11.3 Electron 中记录 SV 基线：编辑、撤销/重做、保存、末尾 LF/CRLF、空文档、空行、长行、列表缩进、查找替换、粘贴、右键、分栏、行号/空白符、滚动与 caret；另记录 WYSIWYG/IR 的不换行空格（U+00A0）输入/粘贴、切换模式和写盘结果。
-- 明确接受 Vditor 4.0 SV textarea 及其不再支持高亮/自动完成的上游变化；若产品不接受则终止 0.3.0，不安装依赖。
+- 明确接受 Vditor 4.0 SV textarea 及其不再支持高亮/自动完成的上游变化；若产品不接受则终止此候选迁移，不安装依赖。
 - 将每个 `vditor-adapter.js` 的 SV 私有 API 分类为：可保留、textarea API 重写、移除/降级，记录到 tracker。
 
 ### 阶段 1：依赖、离线资产与最小启动
@@ -84,26 +84,26 @@ Vditor 3.11.3 的 SV 以 `<pre contenteditable>`、嵌套 source marker、`Range
 
 ### 阶段 4：三模式集成、审计与发布准备
 
-- 回归 WYSIWYG、IR 与 SV 的内容、selection、undo/redo、工具栏、模式快捷键、预览、主题、字体、图片、表格、链接、导出和资源健康路径。主题路径必须包含壳层亮暗切换后已渲染 Mermaid 图表的重绘（adapter `refreshMermaidTheme()`，依赖 `window.Vditor.mermaidRender` 静态入口、`.language-mermaid` 与 `data-processed` 标记）；若 4.0 的 `setTheme()` 已自行重绘或提供公开重渲染入口，则删除该适配路径及其测试（见 [`docs/00-ISSUES.md`](00-ISSUES.md)）。
+- 回归 WYSIWYG、IR 与 SV 的内容、selection、undo/redo、工具栏、模式快捷键、预览、主题、字体、图片、表格、链接、导出和资源健康路径。主题路径必须包含壳层亮暗切换后已渲染 Mermaid 图表的重绘（adapter `refreshMermaidTheme()`，依赖 `window.Vditor.mermaidRender` 静态入口、`.language-mermaid` 与 `data-processed` 标记）；若 4.0 的 `setTheme()` 已自行重绘或提供公开重渲染入口，则删除该适配路径及其测试（见 [`docs/00-ISSUES.md`](../00-ISSUES.md)）。
 - 审查 Vditor 4.0 对 adapter 结构、CSS 覆盖、CSP、离线资产和类型 facade 的所有影响；更新 `docs/01-CODE-STRUCTURE.md`、`docs/07-VDITOR-UPGRADE.md`、README/CHANGELOG 与 tracker。
-- 运行完整检查、Linux 打包和人工验收；Windows/macOS 实机验证按 [`docs/04-CROSS-PLATFORM.md`](04-CROSS-PLATFORM.md) 记录，未执行不得宣称通过。
+- 运行完整检查、Linux 打包和人工验收；Windows/macOS 实机验证按 [`docs/04-CROSS-PLATFORM.md`](../04-CROSS-PLATFORM.md) 记录，未执行不得宣称通过。
 
 ## 6. 测试与验收
 
 每个阶段按最小充分范围运行 `npm run format:check`、`npm run lint`、`npm run typecheck`、`npm run typecheck:renderer`、`npm run check:vditor`、`npm test`、`npm run build` 和相关 Electron E2E。阶段 4 与发布前必须运行 `npm run check:all`；打包变化还须运行适当的 Linux release 命令。
 
-0.3.0 完成前必须满足：
+若决定实施此候选迁移，完成前必须满足：
 
 - Vditor 版本、离线资产和升级文档一致固定为 `4.0.0`。
 - 三种模式能编辑、保存、重开、切换和撤销/重做，且 Markdown 输出符合批准的 4.0 行为基线。
 - SV 的 textarea 架构不留下对 3.11.3 marker/Range/contenteditable 的生产依赖。
-- 保存点 dirty-state 矩阵可验证；[`docs/00-ISSUES.md`](00-ISSUES.md) 的问题要么有证据关闭，要么保留并明确 4.0 后的复现结果与下一步。
+- 保存点 dirty-state 矩阵可验证；0.2.6 已在 3.11.3 关闭的三模式撤销脏标记问题按决策 D6 的基线规则在 4.0 上复验：要么有证据证明同一规则在 4.0 成立，要么记录 4.0 的首个字符串差异与迁移结论。
 - 文件安全和 Electron 安全边界无回归；所有新增运行时资源有 disposer。
 - 用户手测通过 Linux 矩阵，未测试平台明确记录为递延项。
 
 ## 7. 提交与文档规则
 
-- 在 `dev-0.3.0` 或功能分支实施；一个提交只包含一个可验证迁移单元。
+- 在届时选定的开发分支或功能分支实施；一个提交只包含一个可验证迁移单元。
 - 不提交 `dist/`、`static/`、release 产物或外部 `/home/shawnzhang/Projects/vditor` 的修改。
 - 每个阶段结束更新 tracker 的状态、提交、验证、手测和遗留项；不把计划改写成日志。
 - 只有迁移完成、文档与测试同步后才更新 `docs/01-CODE-STRUCTURE.md` 的版本/架构描述，并在发布前最后复核。

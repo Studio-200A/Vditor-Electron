@@ -1,24 +1,24 @@
-# Vditor-Electron 0.3.0 执行路线图与进度账本
+# Vditor 4.0 升级候选执行路线图与进度账本（暂缓）
 
-> 原始目标：[`docs/19-0.3.0-VDITOR-4.0-MIGRATION-PLAN.md`](19-0.3.0-VDITOR-4.0-MIGRATION-PLAN.md)
+> 原始目标：[升级候选方案](VDITOR-4.0-MIGRATION-PLAN.md)
 > 建立日期：2026-09-09
-> 目标版本：`0.3.0`
-> 当前基线：`dev-0.2.6`（`0.2.5` 已发布），Vditor `3.11.3`；启动批次时必须记录实际 HEAD、工作区和测试结果
-> 目标上游版本：`vditor@4.0.0`；只读参考源码：`/home/shawnzhang/Projects/vditor` 的 `v4.0.0`
+> 状态：暂缓；不属于任何已确定的 Vditor Desktop 版本计划，未批准启动批次 0
+> 撰写时基线：`dev-0.2.6`（`0.2.5` 已发布），Vditor `3.11.3`；启动批次时必须记录实际 HEAD、工作区和测试结果
+> 候选上游版本：`vditor@4.0.0`；只读参考源码：`/home/shawnzhang/Projects/vditor` 的 `v4.0.0`；启动前须复核目标版本
 
 ## 1. 使用方式
 
-计划定义迁移边界和完成标准；本账本只记录批次状态、提交、验证、手测、失败证据和递延项。每个 Session 默认只处理一个批次，开工前检查当前 HEAD、工作区和实际源码，不覆盖用户已有改动。
+本账本为暂缓的候选路线；只有重新确认产品决策和目标版本后才开始记录批次状态、提交、验证、手测、失败证据和递延项。届时每个 Session 默认只处理一个批次，开工前检查当前 HEAD、工作区和实际源码，不覆盖用户已有改动。
 
 批次状态只能使用：`未开始`、`规划中`、`实施中`、`待手测`、`已完成`、`阻塞`。代码、约定自动化检查和约定手测都完成后才能标记为 `已完成`。E2E 若因环境无法启动，记录为环境限制，不得记为应用测试通过或失败。
 
-0.3.0 只做 Vditor 4.0 升级。发现无关问题先记录到 [`docs/00-ISSUES.md`](00-ISSUES.md)，不扩展版本范围。
+若决定实施，应将 Vditor 升级作为单独任务；发现无关问题先记录到 [`docs/00-ISSUES.md`](../00-ISSUES.md)，不扩展升级范围。
 
 ## 2. 共同约束
 
 - Vditor 4.0 的 SV 是 textarea，不是可以继续套用 3.11.3 selector 的兼容变更。任何 SVG、DOM、Range、caret、selection 或工具栏假设必须以目标源码和真实 Electron 为准。
 - 私有 Vditor 结构只在 adapter；业务层不得新增版本判断或直接访问 Vditor 内部节点。
-- 保存、恢复、外部变化、文件 identity、资源协议和 Electron 安全边界必须保持；见 [`docs/06-FILE-SAFETY.md`](06-FILE-SAFETY.md)。
+- 保存、恢复、外部变化、文件 identity、资源协议和 Electron 安全边界必须保持；见 [`docs/06-FILE-SAFETY.md`](../06-FILE-SAFETY.md)。
 - 保存点 dirty-state 必须比较真实 Markdown 字符串。toolbar undo/redo 是否可用不是保存状态证据。
 - 不恢复 4.0 已移除的 SV 高亮/自动完成，也不以 DOM shim 模拟 textarea；产品是否接受该变化是批次 0 的阻塞性决策。
 - 任何阶段完成后都必须可构建、可启动，且不保留同一功能的新旧 SV 双轨实现。
@@ -101,7 +101,7 @@
 
 ### 批次 4：三模式集成、独立审查与发布准备
 
-**必须完成：** 三模式和文件安全回归、adapter/CSS 审查、升级文档/结构图/CHANGELOG 更新、完整检查、Linux 打包和人工验收。adapter 审查除 SV 外必须逐项给出非 SV 私有契约的保留/重写/移除结论，至少包含 0.2.6（`30de87d`）的 `refreshMermaidTheme()`（`window.Vditor.mermaidRender` 静态入口、`.language-mermaid` 与 `data-processed` 标记），并把结论写入本文件第 7 节与 [`docs/00-ISSUES.md`](00-ISSUES.md) 的对应条目。
+**必须完成：** 三模式和文件安全回归、adapter/CSS 审查、升级文档/结构图/CHANGELOG 更新、完整检查、Linux 打包和人工验收。adapter 审查除 SV 外必须逐项给出非 SV 私有契约的保留/重写/移除结论，至少包含 0.2.6（`30de87d`）的 `refreshMermaidTheme()`（`window.Vditor.mermaidRender` 静态入口、`.language-mermaid` 与 `data-processed` 标记），并把结论写入本文件第 7 节与 [`docs/00-ISSUES.md`](../00-ISSUES.md) 的对应条目。
 
 **退出条件：** `npm run check:all` 通过，打包验证完成或环境限制明确记录，所有文档与 4.0.0 版本一致。
 
