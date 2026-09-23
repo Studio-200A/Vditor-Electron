@@ -96,7 +96,7 @@ Treat `01-CODE-STRUCTURE.md` as a **navigation map, not the source of truth**. I
 - Naming and formatting mechanics (casing, import ordering, etc.) are enforced by `.prettierrc.json` / `eslint.config.mjs` — do not restate or override them here.
 - Name things for their effect and domain, not their mechanics: booleans start with `is`/`has`/`can`/`should`/`expected`; callbacks and operations name their effect (`onChanged`, `persistWindowMaximized`) rather than generic terms like `handle`, `data`, `result`, `utils`. Model finite cross-boundary states with string-literal unions or discriminated result types instead of free-form strings.
 - In TypeScript, use interfaces for object-shaped contracts and classes only when they own behavior or lifecycle. Prefer `unknown` at untrusted boundaries and narrow it at runtime. Existing JavaScript and tests may use `any` only where their runtime boundary makes a precise type impractical.
-- Prefer named exports for reusable main-process services, types, and pure helpers. Write new renderer modules as TypeScript with explicit imports, bundled by `scripts/build-renderer.js`; do not add new IIFE/global-attachment browser scripts. Keep the transitional globals (`window.__vditorDesktopPureFunctions`, `window.__vditorDesktopApplication`) and the remaining plain scripts (`app/app-composition.js`, `locales.js`, `vditor-adapter.js`) in their current form until the approved composition migration replaces them.
+- Prefer named exports for reusable main-process services, types, and pure helpers. Write new renderer modules as TypeScript with explicit imports, bundled by `scripts/build-renderer.js`; do not add new plain IIFE/global-attachment browser scripts. Keep the transitional globals (`window.__vditorDesktopPureFunctions`, `window.__vditorDesktopApplication`) and the remaining plain scripts (`app/app-composition.js`, `vditor-adapter.js`) in their current form until the approved composition migration replaces them. The typed `locale/` entry publishes `window.VditorDesktopLocales` through the generated `locales.js` bundle for the existing composition load order.
 - Keep a one-off operation local to its caller. Extract a small named helper when behavior is repeated, security-sensitive, independently testable, or owns cleanup. Do not use line-count limits as a splitting rule: a cohesive transaction with error handling and cleanup may remain one function.
 
 ### Renderer composition layer
@@ -123,7 +123,7 @@ Treat `01-CODE-STRUCTURE.md` as a **navigation map, not the source of truth**. I
 ### Renderer, DOM, and Vditor integration
 
 - Renderer code may query application-owned DOM only. Use `textContent` or explicit DOM construction for untrusted content; do not interpolate file names, Markdown-derived values, paths, or external data into `innerHTML`.
-- Keep renderer UI strings, labels, tooltips, empty states, errors, and menu entries localized through `src/renderer/locales.js`; add all three supported locales in the same change.
+- Keep renderer UI strings, labels, tooltips, empty states, errors, and menu entries localized through `src/renderer/locale/`; add all three supported locales in the same change.
 - Reuse Vditor's own input, serialization, selection, and undo paths where available. Do not implement an edit by round-tripping the whole document through `getValue()` and `setValue()` if that would discard selection, undo history, mode state, or editor-owned DOM state.
 
 ### Tests and observable behavior
@@ -137,7 +137,7 @@ Treat `01-CODE-STRUCTURE.md` as a **navigation map, not the source of truth**. I
 
 ## Localization
 
-- Use the locale keys in `src/renderer/locales.js` for user-visible text, labels, titles, tooltips, dialogs, menus, and empty states.
+- Use the locale keys in `src/renderer/locale/` for user-visible text, labels, titles, tooltips, dialogs, menus, and empty states.
 - Keep the supported locale identifiers `en_US`, `zh_Hans`, and `zh_Hant`; use `system` only as the setting that resolves to one of those locales.
 - When adding a key, provide all three translations and keep English as the fallback source of truth.
 

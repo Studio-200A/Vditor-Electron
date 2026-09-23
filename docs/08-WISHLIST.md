@@ -275,7 +275,7 @@ toolbarMode: ToolbarMode;
 - 搜索状态保留在 renderer 内存中，不写入会话或设置。
 - 目录树的 `refreshTree()`、展开状态持久化和文件监听继续按现有逻辑工作；搜索只替换当前文件树的可见内容。
 - 工作区切换、文件树刷新、扩展名设置变化或搜索框清空时取消/忽略旧结果并重新同步显示。
-- 所有标签、提示、空结果和截断说明均通过 `src/renderer/locales.js` 提供 `en_US`、`zh_Hans`、`zh_Hant` 文案。
+- 所有标签、提示、空结果和截断说明均通过 `src/renderer/locale/` 提供 `en_US`、`zh_Hans`、`zh_Hant` 文案。
 
 ### 4. 验收
 

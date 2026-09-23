@@ -4,9 +4,11 @@ const fs = require('fs');
 
 const ENTRY = path.join(__dirname, '..', 'src', 'renderer', 'main.ts');
 const PURE_FUNCTIONS_ENTRY = path.join(__dirname, '..', 'src', 'renderer', 'pure-functions.ts');
+const LOCALES_ENTRY = path.join(__dirname, '..', 'src', 'renderer', 'locale', 'index.ts');
 const OUT_DIR = path.join(__dirname, '..', 'dist', 'renderer');
 const OUT_FILE = path.join(OUT_DIR, 'main.js');
 const PURE_FUNCTIONS_FILE = path.join(OUT_DIR, 'pure-functions.js');
+const LOCALES_FILE = path.join(OUT_DIR, 'locales.js');
 
 async function build() {
   if (!fs.existsSync(OUT_DIR)) {
@@ -30,7 +32,7 @@ async function build() {
     },
   };
 
-  const [mainResult, pureFunctionsResult] = await Promise.all([
+  const [mainResult, pureFunctionsResult, localesResult] = await Promise.all([
     esbuild.build({
       ...commonOptions,
       entryPoints: [ENTRY],
@@ -42,15 +44,25 @@ async function build() {
       outfile: PURE_FUNCTIONS_FILE,
       globalName: '__vditorDesktopPureFunctions',
     }),
+    esbuild.build({
+      ...commonOptions,
+      entryPoints: [LOCALES_ENTRY],
+      outfile: LOCALES_FILE,
+    }),
   ]);
 
-  if (mainResult.errors.length > 0 || pureFunctionsResult.errors.length > 0) {
+  if (
+    mainResult.errors.length > 0 ||
+    pureFunctionsResult.errors.length > 0 ||
+    localesResult.errors.length > 0
+  ) {
     console.error('Build failed with errors');
     process.exit(1);
   }
 
   console.log(`Renderer bundle: ${OUT_FILE}`);
   console.log(`Pure functions bundle: ${PURE_FUNCTIONS_FILE}`);
+  console.log(`Locales bundle: ${LOCALES_FILE}`);
 }
 
 build().catch((err) => {

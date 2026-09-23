@@ -2,6 +2,11 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { JSDOM } from 'jsdom';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { en_US } from '../../src/renderer/locale/en_US.js';
+import { zh_Hans } from '../../src/renderer/locale/zh_Hans.js';
+import { zh_Hant } from '../../src/renderer/locale/zh_Hant.js';
+
+const locales = { en_US, zh_Hans, zh_Hant };
 
 describe('renderer shell', () => {
   let document: Document;
@@ -16,7 +21,6 @@ describe('renderer shell', () => {
   let mainScript: string;
   let preloadScript: string;
   let vditorAdapterScript: string;
-  let localesScript: string;
   let packageMetadata: Record<string, unknown>;
 
   beforeAll(() => {
@@ -45,7 +49,6 @@ describe('renderer shell', () => {
     mainScript = fs.readFileSync(path.resolve('src/main/index.ts'), 'utf8');
     preloadScript = fs.readFileSync(path.resolve('src/main/preload.ts'), 'utf8');
     vditorAdapterScript = fs.readFileSync(path.resolve('src/renderer/vditor-adapter.js'), 'utf8');
-    localesScript = fs.readFileSync(path.resolve('src/renderer/locales.js'), 'utf8');
     packageMetadata = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8'));
   });
 
@@ -162,15 +165,10 @@ describe('renderer shell', () => {
   });
 
   it('provides complete Simplified and Traditional Chinese locales', () => {
-    const localeWindow: { VditorDesktopLocales?: Record<string, Record<string, string>> } = {};
-    new Function('window', localesScript)(localeWindow);
-    const locales = localeWindow.VditorDesktopLocales;
-    expect(locales).toBeDefined();
-    expect(Object.keys(locales || {})).toEqual(['en_US', 'zh_Hans', 'zh_Hant']);
-    expect(Object.keys(locales?.zh_Hans || {})).toEqual(Object.keys(locales?.en_US || {}));
-    expect(Object.keys(locales?.zh_Hant || {})).toEqual(Object.keys(locales?.en_US || {}));
-    expect(locales?.zh_Hant['settings.title']).toBe('Vditor Desktop 設定');
-    expect(localesScript).not.toContain('zh_CN: {');
+    expect(Object.keys(locales)).toEqual(['en_US', 'zh_Hans', 'zh_Hant']);
+    expect(Object.keys(locales.zh_Hans)).toEqual(Object.keys(locales.en_US));
+    expect(Object.keys(locales.zh_Hant)).toEqual(Object.keys(locales.en_US));
+    expect(locales.zh_Hant['settings.title']).toBe('Vditor Desktop 設定');
     expect(
       Array.from(document.querySelectorAll('[name="locale"] option')).map(
         (option) => (option as HTMLOptionElement).value,
@@ -413,8 +411,8 @@ describe('renderer shell', () => {
     expect(document.querySelectorAll('#statusThemeMenu [data-theme-mode]')).toHaveLength(3);
     expect(document.querySelector('#statusThemeToggle')).toBeNull();
     expect(document.querySelector('[name="systemTheme"]')).toBeNull();
-    expect(localesScript).not.toContain('settings.followSystemTheme');
-    expect(localesScript).not.toContain('status.toggleTheme');
+    expect(locales.en_US).not.toHaveProperty('settings.followSystemTheme');
+    expect(locales.en_US).not.toHaveProperty('status.toggleTheme');
     expect(document.querySelector('#statusVersion')).not.toBeNull();
     expect(document.querySelector('#app > .statusbar')).not.toBeNull();
     expect(css).toMatch(/\.statusbar\s*\{[^}]*font-family:\s*var\(--ui-font\)/s);
@@ -724,7 +722,7 @@ describe('renderer shell', () => {
         (option) => (option as HTMLOptionElement).value,
       ),
     ).toEqual(['always', 'auto', 'hidden']);
-    expect(localesScript).toContain("'settings.scrollbarMode': '滚动条显示状态'");
+    expect(locales.zh_Hans['settings.scrollbarMode']).toBe('滚动条显示状态');
   });
 
   it('offers an opt-in multi-platform layout preview', () => {
@@ -737,7 +735,7 @@ describe('renderer shell', () => {
     expect(document.querySelector('[name="lineNumbers"] + span')?.textContent).toBe(
       'Code block preview line numbers',
     );
-    expect(localesScript).toContain("'settings.lineNumbers': '代码块预览行号'");
+    expect(locales.zh_Hans['settings.lineNumbers']).toBe('代码块预览行号');
   });
 
   it('does not expose the unfinished split-editor heading folding behavior', () => {

@@ -85,7 +85,7 @@ adapter 负责：
 
 - 浮层结构：`src/renderer/index.html` 的 `#findWidget`。
 - 样式：`src/renderer/styles/app.css` 的 `.find-widget` 和 `::highlight` 区段。
-- 本地化：`src/renderer/locales.js` 的 `find.*`、`menu.find`，包含 `en_US`、`zh_Hans`、`zh_Hant`。
+- 本地化：`src/renderer/locale/` 三语字典中的 `find.*`、`menu.find`，包含 `en_US`、`zh_Hans`、`zh_Hant`。
 - 替换图标不保存在 `src/renderer/assets/`：`replace.svg` 与 `replace-all.svg` 来自 `lucide-static` 图标包，由 `scripts/copy-vditor-assets.js` 在构建时复制到 `dist/renderer/assets/symbolic/`；`app.css` 的 `.find-replace-icon` / `.find-replace-all-icon` 以相对路径 `../assets/symbolic/` 引用它们。
 
 #### 测试入口
@@ -196,7 +196,7 @@ Vditor 的 `keydown` 会先在编辑器 host 内运行。document 级应用监�
 - 布局、应用主题、收放动画、拖拽视觉状态：`src/renderer/styles/app.css`
 - 侧边栏联动、标签排序、菜单和快捷键：0.2.5 起分别由 `ui/sidebar-layout-controller.ts`、`documents/tab-controller.ts`、`ui/menu-controller.ts` 与 `app/app-controller.ts` 承担（原 `src/renderer/app.js` 已删除）
 - macOS 原生菜单：`src/main/menu.ts`
-- 文案：`src/renderer/locales.js`
+- 文案：`src/renderer/locale/`
 - 回归：`tests/unit/renderer-shell.test.ts`、`tests/e2e/*.spec.ts`
 
 ---

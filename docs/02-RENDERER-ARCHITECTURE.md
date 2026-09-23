@@ -29,7 +29,7 @@
 - `state/`：`AppStore`、带版本的会话/恢复快照与应用状态类型。
 - `core/` 与 `utils/`：生命周期原语与纯函数辅助；`types/` 与 `src/shared/contracts/`：带类型的浏览器与可序列化边界。
 - `styles/` 与 `assets/`：应用 CSS、主题样式表与图标、通知等静态资源。
-- 根级 `locales.js` 与 `pure-functions.ts`：分别为三语言 UI 文案全局对象与共享模块包（esbuild 第二入口）的源码，由 `index.html` 在 `app/app-composition.js` 之前加载。`pure-functions.ts` 不只导出纯函数：它是组合层以 `PURE.*` 消费的统一模块入口，同时再导出全部控制器类与其选项类型，因此名字仅反映历史起点，不表示内容边界。
+- `locale/` 下的 `en_US.ts`、`zh_Hans.ts`、`zh_Hant.ts` 分别保存三语 UI 文案；`locale/index.ts` 汇总字典，经 esbuild 生成 `dist/renderer/locales.js`，由 `index.html` 在 `app/app-composition.js` 之前加载并发布 `window.VditorDesktopLocales`。`pure-functions.ts` 是共享模块包的另一入口，组合层以 `PURE.*` 消费；它还导出控制器类与选项类型，名字仅反映历史起点。
 
 ## 生命周期规则
 

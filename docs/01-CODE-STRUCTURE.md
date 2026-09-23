@@ -1,8 +1,8 @@
 # Vditor-Electron Code Structure World Map
 
-- **最后同步：** 2026-09-22
+- **最后同步：** 2026-09-23
 - **基于的工作区：** `dev-0.2.6` 当前工作区实现（0.2.5 已收口发布；0.2.6 修复批次进行中）
-- **基于的提交：** `be8ef87`（最后一个代码提交；本文档描述该提交的代码状态，后续同步时更新此锚点，不维护递增的文档版本号）
+- **基于的提交：** `837c685`（本次 locale 字典拆分前的代码基线；本文档已纳入该拆分，后续同步时更新此锚点，不维护递增的文档版本号）
 - **对应 package.json 版本号：** 0.2.5（0.2.6 尚未 bump）
 - **技术债与改进建议：** 已迁至 [`docs/00-ISSUES.md`](00-ISSUES.md)，本地图不再维护
 
@@ -114,7 +114,11 @@ Vditor-Electron/
 │   ├── vditor-adapter.js          # Vditor 私有 DOM 适配层（集中选择器与结构假设）
 │   ├── resource-health/            # 资源健康页面与其扫描、选择、预览和覆盖层生命周期
 │   │   └── resource-health-controller.ts # 只消费窄 bridge 与语义 adapter API 的页面 controller
-│   ├── locales.js                 # 三语字典（en_US / zh_Hans / zh_Hant）
+│   ├── locale/                    # 三语 UI 字典与启动入口
+│   │   ├── en_US.ts               # 英文字典
+│   │   ├── zh_Hans.ts             # 简体中文字典
+│   │   ├── zh_Hant.ts             # 繁体中文字典
+│   │   └── index.ts               # 汇总并发布 window.VditorDesktopLocales
 │   ├── types/                     # renderer TypeScript 类型声明
 │   │   ├── bridges.d.ts           # window.appAPI / window.fileAPI 类型
 │   │   ├── vditor.d.ts            # Vditor 构造器与选项最小类型
@@ -494,7 +498,7 @@ webPreferences: {
 
 ```
 1. Vditor 全局构建（通过 <script src="app://app/vditor/dist/index.min.js">）
-2. locales.js（window.VditorDesktopLocales）
+2. locale/index.ts 构建的 locales.js（window.VditorDesktopLocales）
 3. vditor-adapter.js（window.VditorDesktopAdapter）
 4. pure-functions.js（window.__vditorDesktopPureFunctions，包含 AppController 与各 typed controller）
 5. app/app-composition.js（组合 IIFE，实例化并暴露 `window.__vditorDesktopApplication`）
@@ -1552,7 +1556,7 @@ build:assets:
 }
 ```
 
-**渲染进程类型检查：** `tsconfig.renderer.json`（`module: ES2022`、`moduleResolution: bundler`、`strict: true`、`noEmit: true`）覆盖 `src/renderer/**/*.ts` 与 `src/shared/**/*.ts`，包含 adapter 调用契约（`types/adapter-contract.ts`）；由 `npm run typecheck:renderer` 执行。组合 JavaScript（`app/app-composition.js`、`vditor-adapter.js`、`locales.js`）不参与 TypeScript 编译，esbuild 打包 `main.ts` 与 `pure-functions.ts`。
+**渲染进程类型检查：** `tsconfig.renderer.json`（`module: ES2022`、`moduleResolution: bundler`、`strict: true`、`noEmit: true`）覆盖 `src/renderer/**/*.ts` 与 `src/shared/**/*.ts`，包含 adapter 调用契约（`types/adapter-contract.ts`）和三语字典；由 `npm run typecheck:renderer` 执行。组合 JavaScript（`app/app-composition.js`、`vditor-adapter.js`）不参与 TypeScript 编译；esbuild 打包 `main.ts`、`pure-functions.ts` 与 `locale/index.ts`，后者生成 `dist/renderer/locales.js`。
 
 ### 13.2 构建工具配置
 
@@ -1699,7 +1703,7 @@ app.whenReady():
 BrowserWindow 加载 dist/renderer/index.html
   ↓
 app://app/vditor/dist/index.min.js  →  Vditor 全局
-app://app/locales.js               →  window.VditorDesktopLocales
+app://app/locales.js               →  locale/index.ts 构建产物 → window.VditorDesktopLocales
 app://app/vditor-adapter.js        →  window.VditorDesktopAdapter
 app://app/pure-functions.js        →  window.__vditorDesktopPureFunctions
 app://app/app/app-composition.js   →  IIFE 暴露 window.__vditorDesktopApplication
@@ -1779,7 +1783,7 @@ flowchart TB
         Controller["AppController + composition\n\(startup / commands / domain wiring\)"]
         Domains["Typed domain controllers\n\(documents / editor / workspace / settings / UI\)"]
         Adapter[vditor-adapter.js\nVditorDesktopAdapter]
-        Locales[locales.js\nVditorDesktopLocales]
+        Locales[locale/index.ts → locales.js\nVditorDesktopLocales]
         HTML["index.html\n\(DOM 壳层\)"]
     end
 
@@ -2042,7 +2046,7 @@ flowchart TB
 | `src/main/services/file-watch-service.ts` | 单元测试已覆盖 revision、ready/reconciliation 和 cleanup | 真实 Windows/macOS watcher 事件来源、合并时序、权限/占用反馈仍待实体机验证 |
 | `src/renderer/vditor-adapter.js`    | 单元测试与 E2E 均有                        | 覆盖 DOM 结构、链接交互、IR 展开切换、相对图片（含 Vditor 提前转换的 `app://app/` 路径）、`withOriginalImageSources` 替换恢复、`setDocumentLinkCursor` 不抑制标题、导出键 manifest（`ADAPTER_PUBLIC_KEYS`）与运行时冻结对象的一致性；仍缺少 `observeRelativeImageSources` 观察者回调直接单测与 `toolbarButton` 选择器注入防御 |
 | `src/renderer/app/app-composition.js` | 组合层通过各 domain controller 与 E2E 间接覆盖 | 剩余保存交易、标签命令、设置/session 组合和部分壳事件属过渡期组合协调；不再存在 `src/renderer/app.js` 旧入口源码字符串断言 |
-| `src/renderer/locales.js`           | `renderer-shell` 键完整性对等测试          | 无占位符参数替换 / 三语言字典完整性的独立单元测试                                                                                                                             |
+| `src/renderer/locale/`             | `renderer-shell` 与 `locale` 单测、运行时语言切换 E2E | 三语键和占位符对等、启动 bundle 发布全局字典；用户界面的实际语言切换由 Electron E2E 覆盖 |
 
 ---
 

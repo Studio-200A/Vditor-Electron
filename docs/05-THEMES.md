@@ -51,7 +51,7 @@ Monokai Pro Dark 和 Monokai Pro Light 是历史实现中的内容覆盖例外�
 | 暗色 | `monokai-pro-dark` | Monokai Pro Dark | 可选 |
 | 暗色 | `nord-dark` | Nord Dark | 可选 |
 
-设置页 radio 组的实际顺序为亮色 `classic` → `elegant` → `claude-light` → `monokai-pro-light`，暗色 `dark` → `nord-dark` → `claude-dark` → `monokai-pro-dark`（`tests/unit/renderer-shell.test.ts` 固定亮色组顺序）。显示名称来自 `src/renderer/locales.js` 的 `theme.*` 键：`zh_Hans` / `zh_Hant` 只本地化 `theme.light`（浅色/淺色）、`theme.dark`（深色）与 `theme.elegant`（雅致），其余主题保留英文名称。
+设置页 radio 组的实际顺序为亮色 `classic` → `elegant` → `claude-light` → `monokai-pro-light`，暗色 `dark` → `nord-dark` → `claude-dark` → `monokai-pro-dark`（`tests/unit/renderer-shell.test.ts` 固定亮色组顺序）。显示名称来自 `src/renderer/locale/` 三语字典的 `theme.*` 键：`zh_Hans` / `zh_Hant` 只本地化 `theme.light`（浅色/淺色）、`theme.dark`（深色）与 `theme.elegant`（雅致），其余主题保留英文名称。
 
 ### 3.2 亮暗主题独立选择
 
