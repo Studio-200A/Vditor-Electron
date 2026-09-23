@@ -746,13 +746,16 @@
     const parts = editorParts(host);
     // Vditor 3.11.3 scrolls SV itself and the rendered editors' private reset roots.
     // Mark only editable surfaces; the SV preview and nested code blocks keep their layout.
-    const editors = [
-      parts.source,
+    const renderedEditors = [
       parts.instantRendering?.querySelector(selectors.reset),
       parts.wysiwyg?.querySelector(selectors.reset),
     ];
-    if (editors.some((editor) => !editor)) return false;
-    editors.forEach((editor) => editor.classList.toggle('vditor-desktop-no-wrap', !isEnabled));
+    if (!parts.source || renderedEditors.some((editor) => !editor)) return false;
+    parts.source.classList.toggle('vditor-desktop-no-wrap', !isEnabled);
+    renderedEditors.forEach((editor) => {
+      editor.classList.toggle('vditor-desktop-no-wrap', !isEnabled);
+      editor.classList.toggle('vditor-desktop-narrow-scroll', !isEnabled);
+    });
     return true;
   }
 

@@ -87,12 +87,23 @@ describe('Vditor DOM compatibility adapter', () => {
         node.classList.contains('vditor-desktop-no-wrap'),
       ),
     ).toBe(true);
+    expect(
+      [irRoot, wysiwygRoot].every((node) =>
+        node.classList.contains('vditor-desktop-narrow-scroll'),
+      ),
+    ).toBe(true);
+    expect(source.classList.contains('vditor-desktop-narrow-scroll')).toBe(false);
     expect(previewRoot.classList.contains('vditor-desktop-no-wrap')).toBe(false);
 
     expect(adapter.applyWordWrap(host, true)).toBe(true);
     expect(
       [source, irRoot, wysiwygRoot].every(
         (node) => !node.classList.contains('vditor-desktop-no-wrap'),
+      ),
+    ).toBe(true);
+    expect(
+      [irRoot, wysiwygRoot].every(
+        (node) => !node.classList.contains('vditor-desktop-narrow-scroll'),
       ),
     ).toBe(true);
     wysiwygRoot.remove();

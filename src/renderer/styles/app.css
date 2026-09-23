@@ -1346,6 +1346,14 @@ html[data-scrollbar-mode='hidden'] .editor-host .vditor-reset table::-webkit-scr
   padding-left: max(32px, calc((100% - var(--editor-text-width)) / 2)) !important;
   scrollbar-gutter: stable both-edges;
 }
+/* Keep the user-chosen text column centered while its long lines scroll. */
+.editor-host .vditor-desktop-no-wrap.vditor-desktop-narrow-scroll {
+  margin-right: max(32px, calc((100% - var(--editor-text-width)) / 2));
+  margin-left: max(32px, calc((100% - var(--editor-text-width)) / 2));
+  padding-right: 0 !important;
+  padding-left: 0 !important;
+  scrollbar-gutter: auto;
+}
 .editor-host .vditor-sv {
   flex: 0 0 var(--split-source-width, 50%);
   scroll-timeline-name: --sv-source-scroll;

@@ -49,6 +49,14 @@ Vditor 4.0 的 SV 是 `<textarea>`，源码面不再提供可读取的 heading m
 
 `scrollSync`、`headingAnchor`、`previewTextWidth` 三个 `AppSettings` 字段只存在于默认值、TOML 白名单与 IPC 校验中，渲染进程不读取，设置页也没有控件；`tabString` 同类，且残留一个无对应控件的 `settings.tabString` locale key。**状态：** 0.2.6 本次设置审计决定暂时保留这些无 UI 字段以兼容现有 `config.toml`，不作为 `wordWrap` 修复的一部分扩展功能。它们仍属待处理的设置模型债务；关闭条件是后续独立版本明确逐项实现或移除，并验证旧 TOML 键的读取、再次保存和 IPC 校验行为。
 
+## 关闭自动换行后段落宽度未限定横向滚动区域
+
+**状态：** 0.2.6 已关闭；专项自动测试通过，用户确认光标、选区、代码块、表格和 Vditor 浮层手测通过。
+
+症状：`wordWrap: false` 时，`editorTextWidth` 原有的左右 padding 跟随 WYSIWYG/IR 的 `.vditor-reset` 滚动根一起滚动。调窄宽度只改变长行的起点，滚动 viewport 仍占满整个编辑区，右侧留白在滚动到行尾前不可见。拥有文件为 `src/renderer/styles/app.css` 与负责标记 Vditor 私有根节点的 `src/renderer/vditor-adapter.js`。
+
+修复在关闭换行时将两侧留白改为滚动根的对称 margin，并清除其内部横向 padding；开启换行时仍使用原有 padding。40–100% 设置范围、SV 源码区及 preview 保持既有语义。`tests/unit/vditor-adapter.test.ts` 检查三种编辑根的标记，`tests/e2e/editor-modes.spec.ts` 检查 IR/WYSIWYG 在 40% 和 60% 宽度下的居中 viewport 与长行水平滚动。手测夹具和步骤位于 `tmp/word-wrap-width-manual/`（本地忽略目录）。关闭条件已满足：用户按该夹具确认光标、选区、代码块、表格和 Vditor 浮层可用，且专项自动测试通过。
+
 ---
 
 ## 长期技术债与架构风险

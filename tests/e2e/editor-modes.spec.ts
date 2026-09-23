@@ -722,15 +722,17 @@ test('toggles word wrap across editing modes while paragraph width stays indepen
     const source = editorFor('sv');
     await expect(page.locator('.editor-host.active .sv-line-number')).toHaveCount(2);
     await source.evaluate((node) => {
-      const text = document.createTreeWalker(node, NodeFilter.SHOW_TEXT).nextNode();
-      if (!text) throw new Error('SV source has no text');
+      (node as HTMLElement).focus();
+      const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+      let text = walker.nextNode();
+      while (text && !text.textContent?.includes('x'.repeat(20))) text = walker.nextNode();
+      if (!text) throw new Error('SV source has no long line');
       const range = document.createRange();
       range.setStart(text, 0);
       range.collapse(true);
       const selection = window.getSelection();
       selection?.removeAllRanges();
       selection?.addRange(range);
-      (node as HTMLElement).focus();
     });
     await page.keyboard.press('End');
     await expect.poll(() => source.evaluate((node) => node.scrollLeft)).toBeGreaterThan(100);
@@ -797,6 +799,80 @@ test('toggles word wrap across editing modes while paragraph width stays indepen
     expect(readSetting(testRoot, 'editor', 'wordWrap')).toBe(false);
     expect(readSetting(testRoot, 'editor', 'editorTextWidth')).toBe(40);
     expect(fs.readFileSync(path.join(testRoot, 'word-wrap.md'), 'utf8')).toBe(`${longLine}\nlast`);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps horizontal scrolling inside the chosen paragraph width when wrapping is off', async () => {
+  const running = await launchApp(
+    { editMode: 'ir', wordWrap: false, editorTextWidth: 40 },
+    { 'narrow-scroll.md': 'X'.repeat(250) },
+  );
+  try {
+    const { page, testRoot } = running;
+    const inspectColumn = async (mode: 'ir' | 'wysiwyg', width: number) => {
+      const editor = page.locator(`.editor-host.active .vditor-${mode}`);
+      const reset = editor.locator(':scope > .vditor-reset');
+      await expect(reset).toHaveClass(/vditor-desktop-narrow-scroll/);
+      const geometry = await reset.evaluate((node) => {
+        const outer = node.parentElement;
+        if (!outer) throw new Error('Missing rendered editor');
+        const viewport = node.getBoundingClientRect();
+        const editor = outer.getBoundingClientRect();
+        return {
+          leftGap: viewport.left - editor.left,
+          rightGap: editor.right - viewport.right,
+          widthRatio: viewport.width / editor.width,
+          paddingLeft: Number.parseFloat(getComputedStyle(node).paddingLeft),
+          paddingRight: Number.parseFloat(getComputedStyle(node).paddingRight),
+          overflowX: getComputedStyle(node).overflowX,
+          scrollRange: node.scrollWidth - node.clientWidth,
+        };
+      });
+      expect(Math.abs(geometry.leftGap - geometry.rightGap)).toBeLessThan(2);
+      expect(geometry.widthRatio).toBeCloseTo(width / 100, 1);
+      expect(geometry.paddingLeft).toBe(0);
+      expect(geometry.paddingRight).toBe(0);
+      expect(geometry.overflowX).toBe('auto');
+      expect(geometry.scrollRange).toBeGreaterThan(100);
+      await reset.evaluate((node) => {
+        node.scrollLeft = node.scrollWidth;
+      });
+      await expect.poll(() => reset.evaluate((node) => node.scrollLeft)).toBeGreaterThan(100);
+      const lineEnd = await reset.evaluate((node) => {
+        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+        let text = walker.nextNode();
+        while (text && !text.textContent?.includes('X'.repeat(20))) text = walker.nextNode();
+        if (!text?.textContent) throw new Error('Missing long line');
+        const range = document.createRange();
+        const lineEnd = text.textContent.lastIndexOf('X');
+        range.setStart(text, lineEnd);
+        range.setEnd(text, lineEnd + 1);
+        const viewport = node.getBoundingClientRect();
+        const character = range.getBoundingClientRect();
+        return { left: character.left - viewport.left, right: viewport.right - character.right };
+      });
+      expect(lineEnd.left).toBeGreaterThanOrEqual(-2);
+      expect(lineEnd.right).toBeGreaterThanOrEqual(-2);
+    };
+
+    await inspectColumn('ir', 40);
+    await page.locator('#statusSettings').click();
+    await page.locator('.settings-nav [data-panel="editor"]').click();
+    const width = page.locator('#editorTextWidth');
+    await width.evaluate((node: HTMLInputElement) => {
+      node.value = '60';
+      node.dispatchEvent(new Event('input', { bubbles: true }));
+      node.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await expect(page.locator('#editorTextWidthValue')).toHaveText('60%');
+    await page.locator('#saveSettings').click();
+    await inspectColumn('ir', 60);
+    await page.locator('#vditorToolbarMount button[data-type="edit-mode"]').click();
+    await page.locator('#vditorToolbarMount button[data-mode="wysiwyg"]').click();
+    await inspectColumn('wysiwyg', 60);
+    expect(readSetting(testRoot, 'editor', 'editorTextWidth')).toBe(60);
   } finally {
     await closeApp(running);
   }
