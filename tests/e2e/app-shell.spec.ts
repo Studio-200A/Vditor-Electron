@@ -34,23 +34,6 @@ test('forwards Markdown files from a second application invocation', async () =>
   }
 });
 
-test('aligns the primary app menu with the titlebar lower edge', async () => {
-  const running = await launchApp();
-  try {
-    const { page } = running;
-    await page.locator('[data-menu="main"]').click();
-    const menuPosition = await page.evaluate(() => {
-      const popup = document.querySelector('.app-menu-popup')?.getBoundingClientRect();
-      const titlebar = document.querySelector('#windowTitlebar')?.getBoundingClientRect();
-      if (!popup || !titlebar) throw new Error('Application menu or titlebar is unavailable.');
-      return { popupTop: popup.top, titlebarBottom: titlebar.bottom };
-    });
-    expect(Math.abs(menuPosition.popupTop - menuPosition.titlebarBottom)).toBeLessThan(1);
-  } finally {
-    await closeApp(running);
-  }
-});
-
 test('creates numbered tabs and shows the empty state after closing all tabs', async () => {
   const running = await launchApp();
   try {
@@ -154,6 +137,15 @@ test('keeps titlebar file actions stable while the sidebar visibility changes', 
     await expect(page.locator('#appMenuBar [data-menu="main"]')).toHaveCount(1);
     await expect(page.locator('#appMenuBar .app-menu-logo')).toBeVisible();
     await expect(page.locator('.titlebar-drag-region')).toHaveCSS('width', '44px');
+    await page.locator('[data-menu="main"]').click();
+    const menuPosition = await page.evaluate(() => {
+      const popup = document.querySelector('.app-menu-popup')?.getBoundingClientRect();
+      const titlebar = document.querySelector('#windowTitlebar')?.getBoundingClientRect();
+      if (!popup || !titlebar) throw new Error('Application menu or titlebar is unavailable.');
+      return { popupTop: popup.top, titlebarBottom: titlebar.bottom };
+    });
+    expect(Math.abs(menuPosition.popupTop - menuPosition.titlebarBottom)).toBeLessThan(1);
+    await page.locator('[data-menu="main"]').click();
     const toolbarChrome = await page.evaluate(() => {
       const actions = document.querySelector('.titlebar-file-actions')?.getBoundingClientRect();
       const sidebar = document.querySelector('#sidebar')?.getBoundingClientRect();
@@ -2105,28 +2097,19 @@ test('shows a localized themed dialog when closing a window with unsaved changes
   }
 });
 
-test('keeps the native application window resizable', async () => {
-  const running = await launchApp();
-  try {
-    const { app, page } = running;
-    await expect
-      .poll(() =>
-        app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isResizable()),
-      )
-      .toBe(true);
-    await expect(page.locator('[data-window-resize]')).toHaveCount(0);
-  } finally {
-    await closeApp(running);
-  }
-});
-
-test('persists maximize and restored window states when they change', async () => {
+test('keeps native resizing and persists maximize and restored window states', async () => {
   const running = await launchApp({
     windowMaximized: false,
     windowBounds: { x: 80, y: 70, width: 1000, height: 700 },
   });
   try {
     const { app, page, testRoot } = running;
+    await expect
+      .poll(() =>
+        app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isResizable()),
+      )
+      .toBe(true);
+    await expect(page.locator('[data-window-resize]')).toHaveCount(0);
     await expect.poll(() => readSetting(testRoot, 'window', 'windowMaximized')).toBe(false);
     await page.locator('#windowMaximize').click();
     await expect

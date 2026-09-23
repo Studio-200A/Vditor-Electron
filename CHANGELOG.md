@@ -25,6 +25,7 @@
 
 - **refactor(localization):** Split the three UI dictionaries into typed language modules and generate the startup locale bundle without changing language switching or the existing renderer load order.
 - **fix(dependencies):** Upgrade Vitest and its mocker package to 4.1.11, and override the `electron-builder` transitive `js-yaml` dependency to 4.3.2, resolving the related Dependabot security alerts.
+- **test(e2e):** Consolidate titlebar menu alignment and native window resizing checks into related scenarios, and verify Split View list toolbar actions by their behavior after mode switches instead of counting private DOM mutations.
 
 
 ## 0.2.5 - Modularized Refactor

@@ -2313,56 +2313,29 @@ test('keeps split-view list toolbar actions stable while changing modes', async 
         page.locator(`.editor-host.active .vditor-${mode === 'wysiwyg' ? 'wysiwyg' : mode}`),
       ).toBeVisible();
     };
-    const observeSplitActionMutations = () =>
-      page.evaluate(() => {
-        const actions = ['outdent', 'indent'].map((type) => {
-          const button = document.querySelector(`#vditorToolbarMount button[data-type="${type}"]`);
-          const item = button?.closest('.vditor-toolbar__item');
-          if (!item) throw new Error(`Missing ${type} toolbar item`);
-          return item;
-        });
-        (
-          window as typeof window & { splitToolbarActionChanges?: number[] }
-        ).splitToolbarActionChanges = [0, 0];
-        const changes = (window as typeof window & { splitToolbarActionChanges: number[] })
-          .splitToolbarActionChanges;
-        const observer = new MutationObserver((records) => {
-          records.forEach((record) => {
-            const index = actions.indexOf(record.target as HTMLElement);
-            if (index >= 0 && record.attributeName === 'style') changes[index] += 1;
-          });
-        });
-        actions.forEach((item) =>
-          observer.observe(item, { attributes: true, attributeFilter: ['style'] }),
-        );
-        (
-          window as typeof window & { splitToolbarActionObserver?: MutationObserver }
-        ).splitToolbarActionObserver = observer;
-      });
-    const readSplitActionMutations = () =>
-      page.evaluate(() => {
-        (
-          window as typeof window & { splitToolbarActionObserver?: MutationObserver }
-        ).splitToolbarActionObserver?.disconnect();
-        return (window as typeof window & { splitToolbarActionChanges?: number[] })
-          .splitToolbarActionChanges;
-      });
-
     await switchTo('wysiwyg');
-    await observeSplitActionMutations();
     await switchTo('sv');
-    await page.waitForTimeout(75);
-    // Vditor performs its own single mode-transition update. Desktop keeps the
-    // actions visible with CSS, so it must not add the former delayed rewrite.
-    expect(await readSplitActionMutations()).toEqual([1, 1]);
-    await expect(page.locator('#vditorToolbarMount button[data-type="outdent"]')).toBeVisible();
-    await expect(page.locator('#vditorToolbarMount button[data-type="indent"]')).toBeVisible();
+    const source = page.locator('.editor-host.active .vditor-sv');
+    const outdent = page.locator('#vditorToolbarMount button[data-type="outdent"]');
+    const indent = page.locator('#vditorToolbarMount button[data-type="indent"]');
+    await expect(outdent).toBeVisible();
+    await expect(indent).toBeVisible();
+    await source.fill('- item');
+    await source.press('Home');
+    await source.press('ArrowRight');
+    await source.press('ArrowRight');
+    await indent.click();
+    await expect.poll(() => source.textContent()).toMatch(/^\s+- item/);
 
     await switchTo('ir');
-    await observeSplitActionMutations();
     await switchTo('sv');
-    await page.waitForTimeout(75);
-    expect(await readSplitActionMutations()).toEqual([1, 1]);
+    await expect(outdent).toBeVisible();
+    await expect(indent).toBeVisible();
+    await source.press('Home');
+    await source.press('ArrowRight');
+    await source.press('ArrowRight');
+    await outdent.click();
+    await expect.poll(() => source.textContent()).toMatch(/^- item/);
   } finally {
     await closeApp(running);
   }
