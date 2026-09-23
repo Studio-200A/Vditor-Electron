@@ -1139,6 +1139,23 @@ test('uses the sidebar surface for the custom main menu in light themes', async 
   }
 });
 
+test('shows Elegant hover states in navigation and menus', async () => {
+  const running = await launchApp({ theme: 'elegant', lightTheme: 'elegant' });
+  try {
+    const { page } = running;
+    const sidebarToggle = page.locator('#toggleSidebar');
+    await sidebarToggle.hover();
+    await expect(sidebarToggle).toHaveCSS('background-color', 'rgb(220, 215, 209)');
+
+    await page.locator('[data-menu="main"]').click();
+    const menuItem = page.locator('.app-menu-popup:not(.submenu) button:not(:disabled)').first();
+    await menuItem.hover();
+    await expect(menuItem).toHaveCSS('background-color', 'rgb(220, 215, 209)');
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('uses consistent navigation and document surfaces across all application themes', async () => {
   const themes = [
     { theme: 'classic', sidebar: 'rgb(240, 241, 243)', editor: 'rgb(255, 255, 255)' },
