@@ -1,13 +1,4 @@
-import {
-  app,
-  BrowserWindow,
-  ipcMain,
-  Menu,
-  nativeTheme,
-  screen,
-  session,
-  shell,
-} from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, nativeTheme, screen, session, shell } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'path';
 import { resolveApplicationPaths } from './app-paths';
@@ -27,10 +18,7 @@ import { SettingsStore } from './services/settings-store';
 import { PersistentStateStore } from './services/persistent-state-store';
 import { ResourceHealthService } from './services/resource-health-service';
 import { WindowCloseConfirmation } from './services/window-close-confirmation';
-import {
-  AppSettings,
-  DEFAULT_SETTINGS,
-} from './services/app-state';
+import { AppSettings, DEFAULT_SETTINGS } from './services/app-state';
 
 let mainWindow: BrowserWindow | null = null;
 let fileManager: FileManagerService;

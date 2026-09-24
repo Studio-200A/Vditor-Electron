@@ -33,10 +33,7 @@ import { ResourceHealthService } from '../../src/main/services/resource-health-s
 import { WindowCloseConfirmation } from '../../src/main/services/window-close-confirmation';
 import { DEFAULT_PERSISTENT_APP_STATE } from '../../src/main/services/app-state';
 import { LocalResourcePolicy } from '../../src/main/local-resource';
-import {
-  FROZEN_CHANNEL_REGISTRATIONS,
-  FROZEN_EVENT_CHANNELS,
-} from './ipc-channel-map.fixture';
+import { FROZEN_CHANNEL_REGISTRATIONS, FROZEN_EVENT_CHANNELS } from './ipc-channel-map.fixture';
 
 /**
  * Stage-5 registration coverage: the composition entry in ipc/register.ts must
@@ -106,9 +103,9 @@ describe('IPC channel registration coverage', () => {
   it('registers every frozen send channel exactly once', () => {
     registerIpcHandlers(controlledDeps());
 
-    const expected = FROZEN_CHANNEL_REGISTRATIONS.filter(
-      (entry) => entry.direction === 'send',
-    ).map((entry) => entry.channel);
+    const expected = FROZEN_CHANNEL_REGISTRATIONS.filter((entry) => entry.direction === 'send').map(
+      (entry) => entry.channel,
+    );
     expect(sendRegistrations).toHaveLength(expected.length);
     expect(new Set(sendRegistrations)).toEqual(new Set(expected));
   });
@@ -118,9 +115,7 @@ describe('IPC channel registration coverage', () => {
 
     expect(new Set(invokeRegistrations).size).toBe(invokeRegistrations.length);
     expect(new Set(sendRegistrations).size).toBe(sendRegistrations.length);
-    const overlap = invokeRegistrations.filter((channel) =>
-      sendRegistrations.includes(channel),
-    );
+    const overlap = invokeRegistrations.filter((channel) => sendRegistrations.includes(channel));
     expect(overlap).toEqual([]);
   });
 
