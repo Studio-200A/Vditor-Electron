@@ -262,6 +262,62 @@ describe('Vditor DOM compatibility adapter', () => {
     expect(host.dataset.vditorDesktopCustomCaret).toBeUndefined();
   });
 
+  it('positions an IR or WYSIWYG custom caret after a rendered inline marker', () => {
+    const runFrames = createFrameQueue();
+    const viewport = { bottom: 400, height: 400, left: 0, right: 600, top: 0, width: 600 };
+    Object.defineProperty(window.document, 'hasFocus', { configurable: true, value: () => true });
+    Object.defineProperties(window.Range.prototype, {
+      getClientRects: {
+        configurable: true,
+        value() {
+          return this.collapsed
+            ? []
+            : [{ left: 80, right: 120, top: 30, bottom: 50, width: 40, height: 20 }];
+        },
+      },
+      getBoundingClientRect: {
+        configurable: true,
+        value: () => ({ left: 0, right: 0, top: 0, bottom: 0, width: 0, height: 0 }),
+      },
+    });
+
+    for (const mode of ['ir', 'wysiwyg'] as const) {
+      const host = createHost();
+      window.document.body.append(host);
+      const parts = adapter.editorParts(host);
+      const editor =
+        parts[mode === 'ir' ? 'instantRendering' : 'wysiwyg'].querySelector<HTMLElement>(
+          '.vditor-reset',
+        )!;
+      editor.innerHTML = '<p data-block="0"><em>formatted</em></p>';
+      const paragraph = editor.firstElementChild!;
+      Object.defineProperty(host, 'getBoundingClientRect', { value: () => viewport });
+      Object.defineProperty(editor, 'getBoundingClientRect', { value: () => viewport });
+      editor.setAttribute('tabindex', '0');
+      editor.focus();
+      const range = window.document.createRange();
+      range.setStart(paragraph, paragraph.childNodes.length);
+      range.collapse(true);
+      window.getSelection()!.removeAllRanges();
+      window.getSelection()!.addRange(range);
+      const cleanup = adapter.installCustomCaret(
+        host,
+        () => mode,
+        () => 'bar',
+      );
+
+      host.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+      runFrames();
+      const caret = window.document.querySelector<HTMLElement>(
+        '[data-vditor-desktop-caret="true"]',
+      )!;
+      expect(caret.style.left).toBe('120px');
+      expect(paragraph.innerHTML).toBe('<em>formatted</em>');
+      cleanup();
+      host.remove();
+    }
+  });
+
   it('hides the custom caret at a restored IR heading marker boundary', () => {
     const host = createHost();
     window.document.body.append(host);

@@ -853,6 +853,33 @@
         range.startContainer.nodeType === Node.ELEMENT_NODE
           ? range.startContainer.childNodes[range.startOffset] || null
           : null;
+      const previousNode =
+        range.startContainer.nodeType === Node.ELEMENT_NODE && range.startOffset > 0
+          ? range.startContainer.childNodes[range.startOffset - 1]
+          : null;
+      const isPreviousInline =
+        previousNode?.nodeType === Node.TEXT_NODE ||
+        (previousNode?.nodeType === Node.ELEMENT_NODE &&
+          getComputedStyle(previousNode).display.startsWith('inline'));
+      if (isPreviousInline && range.startContainer !== editor) {
+        // Vditor 3.11.3 can restore a collapsed Range after an inline marker
+        // without geometry. The preceding inline node locates the insertion
+        // point; the block's left edge would draw the proxy at the line start.
+        const previousRange = range.cloneRange();
+        previousRange.selectNodeContents(previousNode);
+        const previousRects = Array.from(previousRange.getClientRects());
+        const previousRect = previousRects.at(-1);
+        if (previousRect?.height && Number.isFinite(previousRect.right)) {
+          return {
+            left: previousRect.right,
+            top: previousRect.top,
+            right: previousRect.right,
+            bottom: previousRect.bottom,
+            width: 0,
+            height: previousRect.height,
+          };
+        }
+      }
       const container = elementForNode(nextNode) || elementForNode(range.startContainer);
       const fallback =
         container && container !== editor && editor.contains(container)

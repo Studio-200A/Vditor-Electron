@@ -205,6 +205,48 @@ test('keeps the custom caret visible at the new line after Enter', async () => {
   }
 });
 
+for (const mode of ['ir', 'wysiwyg'] as const) {
+  for (const { label, input, inline } of [
+    { label: 'italic marker', input: '**粗体文字*', inline: 'em' },
+    { label: 'bold marker', input: '**粗体文字**', inline: 'strong' },
+    { label: 'code marker', input: '`行内代码`', inline: 'code' },
+  ]) {
+    test(`keeps the ${mode} custom caret after the ${label} at the insertion point`, async () => {
+      const running = await launchApp({ editMode: mode, caretStyle: 'bar' });
+      try {
+        const { page } = running;
+        await createNewTab(page);
+        const editor = page.locator(`.editor-host.active .vditor-${mode} .vditor-reset`);
+        await editor.click();
+        await page.keyboard.type(input, { delay: 120 });
+        await expect(editor.locator(inline)).toBeVisible();
+        const caret = page.locator('[data-vditor-desktop-caret="true"]');
+        await expect(caret).toBeVisible();
+        await expect
+          .poll(() =>
+            page.evaluate(() => {
+              const paragraph = document.querySelector('.editor-host.active .vditor-reset p');
+              const caret = document.querySelector('[data-vditor-desktop-caret="true"]');
+              if (!paragraph || !caret) return null;
+              const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+              let lastText: Text | null = null;
+              while (walker.nextNode()) lastText = walker.currentNode as Text;
+              if (!lastText) return null;
+              const range = document.createRange();
+              range.selectNodeContents(lastText);
+              return Math.abs(
+                caret.getBoundingClientRect().left - range.getBoundingClientRect().right,
+              );
+            }),
+          )
+          .toBeLessThan(8);
+      } finally {
+        await closeApp(running);
+      }
+    });
+  }
+}
+
 test('uses Chromium native caret when selected in editor settings', async () => {
   const running = await launchApp({ editMode: 'ir', caretStyle: 'bar' });
   try {
