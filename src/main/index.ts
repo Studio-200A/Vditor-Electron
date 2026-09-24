@@ -28,10 +28,8 @@ import {
   parseFiniteNumber,
   parseOptionalAbsolutePath,
   parseOptionalBoolean,
-  parseOptionalInteger,
   parseOptionalText,
   parseResourceHealthCandidateIds,
-  parseResourceRootPaths,
   parseText,
   requireArgumentCount,
 } from './ipc-validation';
@@ -40,6 +38,7 @@ import { createTrustedChannelRegistration } from './ipc/trusted-channel';
 import { registerRecoveryIpcHandlers } from './ipc/recovery';
 import { registerShellIntegrationIpcHandlers } from './ipc/shell-integration';
 import { registerSettingsIpcHandlers } from './ipc/settings';
+import { registerFileWatchingIpcHandlers } from './ipc/file-watching';
 import { registerPersistentStateIpcHandlers } from './ipc/persistent-state';
 import { resolveRelativeMarkdownLink } from './resolve-markdown-link';
 import { resolveSaveDialogDefaultPath } from './save-dialog-path';
@@ -53,8 +52,6 @@ import { WindowCloseConfirmation } from './services/window-close-confirmation';
 import {
   AppSettings,
   DEFAULT_SETTINGS,
-  WORKSPACE_READ_DEPTH_MAX,
-  WORKSPACE_READ_DEPTH_MIN,
 } from './services/app-state';
 
 let mainWindow: BrowserWindow | null = null;
@@ -537,32 +534,6 @@ function registerIpcHandlers(): void {
     requireArgumentCount(args, 2);
     return resolveRelativeMarkdownLink(parseAbsolutePath(args[0]), parseText(args[1]));
   });
-  handleTrusted(IPC_CHANNELS.fileSetWorkspaceWatch, (_event, ...args) => {
-    requireArgumentCount(args, 0, 2);
-    return fileWatchService.setWorkspace(
-      parseOptionalAbsolutePath(args[0]),
-      parseOptionalInteger(args[1], WORKSPACE_READ_DEPTH_MIN, WORKSPACE_READ_DEPTH_MAX),
-    );
-  });
-  handleTrusted(IPC_CHANNELS.fileWatchDocument, (_event, ...args) => {
-    requireArgumentCount(args, 1, 2);
-    return fileWatchService.watchDocument(
-      parseAbsolutePath(args[0]),
-      parseOptionalBoolean(args[1], false),
-    );
-  });
-  handleTrusted(IPC_CHANNELS.fileUnwatchDocument, (_event, ...args) => {
-    requireArgumentCount(args, 1, 2);
-    return fileWatchService.unwatchDocument(parseAbsolutePath(args[0]), parseOptionalText(args[1]));
-  });
-  handleTrusted(IPC_CHANNELS.fileResolveRenamedDocument, (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    return fileWatchService.resolveRenamedDocument(parseAbsolutePath(args[0]));
-  });
-  handleTrusted(IPC_CHANNELS.fileSetResourceRoots, (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    return localResourcePolicy.setRoots(parseResourceRootPaths(args[0]));
-  });
 
   const recoveryRegistration = {
     recoveryStore,
@@ -579,6 +550,11 @@ function registerIpcHandlers(): void {
     registration: { handleTrusted, onTrusted },
   });
   registerShellIntegrationIpcHandlers({
+    registration: { handleTrusted, onTrusted },
+  });
+  registerFileWatchingIpcHandlers({
+    fileWatchService,
+    localResourcePolicy,
     registration: { handleTrusted, onTrusted },
   });
   onTrusted(IPC_CHANNELS.appRendererReady, (_event, ...args) => {
