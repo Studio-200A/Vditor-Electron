@@ -55,7 +55,7 @@ Treat `01-CODE-STRUCTURE.md` as a **navigation map, not the source of truth**. I
 - Keep `docs/01-CODE-STRUCTURE.md` free of debt, risk, and improvement lists; it describes only the current code structure and points to `docs/00-ISSUES.md` for the rest.
 - Keep dated batch execution evidence, test totals, and manual-acceptance records in the version tracker under `docs/`, not in `docs/00-ISSUES.md`.
 - Close a temporary version issue by recording its resolution in English in the corresponding `CHANGELOG.md` version section. Close a long-term item only when its stated closing condition is met with evidence, such as focused tests or real-platform verification; rewording the entry is not a closure.
-- Do not delete long-term entries when a version ships. Update their status, evidence, and owning version instead, so the accumulated history stays traceable.
+- Delete a long-term entry once its stated closing condition is met with evidence; do not keep resolved entries around as stale clutter. User-visible outcomes live in `CHANGELOG.md`, and the implementation/verification history stays traceable through the version plan documents (archived under `ARCHIVED/`), so 00-ISSUES keeps only open items.
 
 ## Technical Standards
 

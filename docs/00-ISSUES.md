@@ -1,6 +1,6 @@
 > [!NOTE]
 >
-> 本文档记录尚未关闭的版本问题，以及与版本无关的长期技术债、架构风险点、改进建议和不得回退的约束。已解决的 0.2.6 问题及其用户可见结果见 `CHANGELOG.md`；长期事项在关闭条件满足前继续保留。
+> 本文档记录尚未关闭的版本问题，以及与版本无关的长期技术债、架构风险点、改进建议和不得回退的约束。已解决的问题直接从本文件删除，不留过期条目：用户可见结果记录在 `CHANGELOG.md`，实现与验证过程留在对应的开发计划文档（完成后归档至 `ARCHIVED/`）。
 >
 > `docs/01-CODE-STRUCTURE.md` 是代码架构导航地图，不再维护技术债清单。
 
@@ -33,27 +33,25 @@ Vditor 4.0 的 SV 是 `<textarea>`，源码面不再提供可读取的 heading m
 
 1. **`app/app-composition.js` 集中度仍然偏高**：0.2.5版本批次 4–8 及批次 9 已把文档生命周期命令、编辑器 runtime、工作区、设置、菜单、窗口、导出、侧栏、文档链接、查找替换、大纲 DOM、应用 shell 资源、session 恢复和主题协调迁入独立 controller；组合层仍承担保存交易、标签命令、设置/session 组合、状态栏、对话框和部分全局事件的协调，批次 9 已收口、剩余组合交易属于过渡期遗留而非未完成迁移。
 
-2. **IPC handler 曾全部集中在 `src/main/index.ts`（0.2.6 已关闭）**：0.2.6 已按 [`docs/19-0.2.6-IPC-MODULARIZATION-PLAN.md`](19-0.2.6-IPC-MODULARIZATION-PLAN.md) 把全部 64 个渲染器→主进程通道（56 invoke + 8 send）迁入 `src/main/ipc/` 的 11 个领域模块，并由 `ipc/register.ts` 组合入口统一注册；`index.ts` 只构造依赖与窄回调。证据：`tests/unit/ipc-channel-coverage.test.ts`（56/8 逐通道对齐冻结映射，无重复、无方向互换）、专项 Electron E2E（阶段 3/4/5 共 47 项），以及用户于 0.2.6 全量 `npm run check:all` 通过（`tmp/console-output.txt`：格式/双端类型检查/lint/Vditor 检查/项目检查、单测 80 文件 662/662、E2E 186/186）。行为保持型迁移，`ipc-contract.ts`/`preload.ts`/renderer 零 diff。
+2. **preload API surface 缺乏独立类型契约测试（已部分缓解）**：真实 Electron E2E 会覆盖当前桥接调用，但新增能力仍需同时更新 channel、preload、main handler 和行为测试。0.2.6 的 `tests/unit/ipc-channel-map.test.ts` 与 `tests/unit/ipc-channel-coverage.test.ts` 已把通道注册与 `IPC_CHANNELS` 契约锁定为单测期望，通道遗漏/漂移可被单测检出；但 preload 桥接层自身的类型契约测试仍未建立，本条保持未关闭。
 
-3. **preload API surface 缺乏独立类型契约测试（已部分缓解）**：真实 Electron E2E 会覆盖当前桥接调用，但新增能力仍需同时更新 channel、preload、main handler 和行为测试。0.2.6 的 `tests/unit/ipc-channel-map.test.ts` 与 `tests/unit/ipc-channel-coverage.test.ts` 已把通道注册与 `IPC_CHANNELS` 契约锁定为单测期望，通道遗漏/漂移可被单测检出；但 preload 桥接层自身的类型契约测试仍未建立，本条保持未关闭。
+3. **跨平台替换语义尚未实机验证**：文档安全写入已在 Linux 通过故障和 Electron 测试；Windows/macOS 对锁定目标、替换和大小写路径的真实语义按 [`docs/04-CROSS-PLATFORM.md`](04-CROSS-PLATFORM.md) 待实体机验证。
 
-4. **跨平台替换语义尚未实机验证**：文档安全写入已在 Linux 通过故障和 Electron 测试；Windows/macOS 对锁定目标、替换和大小写路径的真实语义按 [`docs/04-CROSS-PLATFORM.md`](04-CROSS-PLATFORM.md) 待实体机验证。
+4. **`local-file://` 直接 handler 单测仍缺失**：受控根、URL/native-path、realpath 和 MIME 策略已有纯单测与 Electron E2E；协议层的直接 `Response` 单测仍可在后续测试维护中补充。
 
-5. **`local-file://` 直接 handler 单测仍缺失**：受控根、URL/native-path、realpath 和 MIME 策略已有纯单测与 Electron E2E；协议层的直接 `Response` 单测仍可在后续测试维护中补充。
+5. **非展示设置仍会触发全标签重建**：`saveSettings()` 已将主题、内容/代码主题、缩放和滚动条等展示设置分类为热应用；仍会对影响 Vditor 初始化契约的设置重建标签。重建期的 undo、滚动位置与模式状态已受保护，选区保护仍受 Vditor 3.11.3 上游限制（见 [`docs/09-DEV-NOTE.md`](09-DEV-NOTE.md) 的 undo/光标恢复记录）。
 
-6. **非展示设置仍会触发全标签重建**：`saveSettings()` 已将主题、内容/代码主题、缩放和滚动条等展示设置分类为热应用；仍会对影响 Vditor 初始化契约的设置重建标签。重建期的 undo、滚动位置与模式状态已受保护，选区保护仍受 Vditor 3.11.3 上游限制（见 [`docs/09-DEV-NOTE.md`](09-DEV-NOTE.md) 的 undo/光标恢复记录）。
+6. **部分 Vditor 私有 DOM 知识需继续审计**：`app/app-composition.js` 仍包含 editor 组合回调和少量 adapter 语义调用；新的 controller 不得重新引入 `VDITOR.selectors` 或未通过 adapter 暴露的 DOM 查询。
 
-7. **部分 Vditor 私有 DOM 知识需继续审计**：`app/app-composition.js` 仍包含 editor 组合回调和少量 adapter 语义调用；新的 controller 不得重新引入 `VDITOR.selectors` 或未通过 adapter 暴露的 DOM 查询。
+7. **Windows/Linux 无原生菜单**：仅 macOS 使用 `Menu.buildFromTemplate`（File / View / Tools 三组），其他平台完全依赖渲染器自定义菜单，原生集成度不对称。
 
-8. **Windows/Linux 无原生菜单**：仅 macOS 使用 `Menu.buildFromTemplate`（File / View / Tools 三组），其他平台完全依赖渲染器自定义菜单，原生集成度不对称。
+8. **无近期文件 UI**：`recentFiles` 数据已写入 `state.json`，但无 UI 入口展示。
 
-9. **无近期文件 UI**：`recentFiles` 数据已写入 `state.json`，但无 UI 入口展示。
+9. **已有目标仍存在最终替换 TOCTOU 边界**：安全写入器会携带 expected bytes 并在临近替换处复核，但当前 Node/Electron 文件 API 没有跨平台的通用原子 CAS；长期边界和关闭条件见 [`docs/06-FILE-SAFETY.md` §7](06-FILE-SAFETY.md#7-已知原子性边界已有目标的-toctou)。
 
-10. **已有目标仍存在最终替换 TOCTOU 边界**：安全写入器会携带 expected bytes 并在临近替换处复核，但当前 Node/Electron 文件 API 没有跨平台的通用原子 CAS；长期边界和关闭条件见 [`docs/06-FILE-SAFETY.md` §7](06-FILE-SAFETY.md#7-已知原子性边界已有目标的-toctou)。
+10. **资源健康回收站仍存在路径化符号链接 TOCTOU 窗口**：`shell.trashItem(path)` 只接受路径字符串，复核与调用之间父目录仍可能被替换为符号链接。已通过“仅枚举直接图片文件 + 发现符号链接即只读禁用回收站”收束范围，但未消除该窗口；见 [`docs/06-FILE-SAFETY.md` §7.4](06-FILE-SAFETY.md#74-资源健康回收站路径化-shelltrashitem-的符号链接窗口) 与 [`docs/ARCHIVED/18-0.2.5-RESOURCE-HEALTH.md` §6.3.1](ARCHIVED/18-0.2.5-RESOURCE-HEALTH.md#631-符号链接与二级目录)。
 
-11. **资源健康回收站仍存在路径化符号链接 TOCTOU 窗口**：`shell.trashItem(path)` 只接受路径字符串，复核与调用之间父目录仍可能被替换为符号链接。已通过“仅枚举直接图片文件 + 发现符号链接即只读禁用回收站”收束范围，但未消除该窗口；见 [`docs/06-FILE-SAFETY.md` §7.4](06-FILE-SAFETY.md#74-资源健康回收站路径化-shelltrashitem-的符号链接窗口) 与 [`docs/ARCHIVED/18-0.2.5-RESOURCE-HEALTH.md` §6.3.1](ARCHIVED/18-0.2.5-RESOURCE-HEALTH.md#631-符号链接与二级目录)。
-
-12. **设置模型仍有无效字段**：`scrollSync`、`headingAnchor`、`previewTextWidth`、`tabString` 仅保留于默认值、TOML 白名单和 IPC 校验中，没有设置 UI 或功能消费者；`tabString` 还残留无对应控件的 locale key。为兼容现有 `config.toml` 暂时保留。关闭条件是后续独立版本逐项决定实现或移除，并验证旧 TOML 键的读取、再次保存和 IPC 校验行为。
+11. **设置模型仍有无效字段**：`scrollSync`、`headingAnchor`、`previewTextWidth`、`tabString` 仅保留于默认值、TOML 白名单和 IPC 校验中，没有设置 UI 或功能消费者；`tabString` 还残留无对应控件的 locale key。为兼容现有 `config.toml` 暂时保留。关闭条件是后续独立版本逐项决定实现或移除，并验证旧 TOML 键的读取、再次保存和 IPC 校验行为。
 
 ### 改进建议（按优先级）
 
@@ -64,14 +62,14 @@ Vditor 4.0 的 SV 是 `<textarea>`，源码面不再提供可读取的 heading m
 
 **P2（架构）：**
 
-3. 将 `index.ts` 中的 IPC handler 分拆到职责明确的模块，保持 `src/main/ipc/` 只在确有边界时建立，不创建空壳模块。（0.2.6 已收口：11 个领域模块 + 组合入口，均承载实际 handler，无空壳；用户全量 `npm run check:all` 已通过，见架构风险点 #2 的关闭证据）
+（无未决项；原 IPC handler 拆分建议已于 0.2.6 完成并删除）
 
 **P3（功能完善）：**
 
-4. 实现近期文件列表 UI。
-5. 为 `app:openExternal` 补充 URL 长度上限校验。格式校验已由 `src/main/validated-url.ts` 实现（拒绝非字符串、首尾空白、原始控制字符和非法百分号编码），本条只剩长度边界未定。
-6. 补充缺失的 Windows/macOS 发布配置。
-7. 主题切换时避免为没有 Mermaid 的文档读取全文：`ThemeCoordinator.applyTheme()` 目前对每个已初始化 tab 无条件调用 `vditor.getValue()` 再交给 adapter 解析围栏，而 adapter 在无围栏时直接返回 `0`；大文档或多标签时这是一次无收益的全文序列化。关闭条件：经 adapter 语义接口（例如 `hasRenderedMermaid(host)`）先判定再读取正文，或缓存围栏来源，并补充大文档/多标签的耗时证据与对应单测；不得为此把私有 selector 上提到业务层。
+3. 实现近期文件列表 UI。
+4. 为 `app:openExternal` 补充 URL 长度上限校验。格式校验已由 `src/main/validated-url.ts` 实现（拒绝非字符串、首尾空白、原始控制字符和非法百分号编码），本条只剩长度边界未定。
+5. 补充缺失的 Windows/macOS 发布配置。
+6. 主题切换时避免为没有 Mermaid 的文档读取全文：`ThemeCoordinator.applyTheme()` 目前对每个已初始化 tab 无条件调用 `vditor.getValue()` 再交给 adapter 解析围栏，而 adapter 在无围栏时直接返回 `0`；大文档或多标签时这是一次无收益的全文序列化。关闭条件：经 adapter 语义接口（例如 `hasRenderedMermaid(host)`）先判定再读取正文，或缓存围栏来源，并补充大文档/多标签的耗时证据与对应单测；不得为此把私有 selector 上提到业务层。
 
 ### 已收口结论与不得回退的约束
 
