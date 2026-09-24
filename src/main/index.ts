@@ -19,9 +19,6 @@ import { IPC_CHANNELS } from './ipc-contract';
 import { LocalResourcePolicy } from './local-resource';
 import {
   parseFiniteNumber,
-  parseOptionalAbsolutePath,
-  parseOptionalText,
-  parseText,
   requireArgumentCount,
 } from './ipc-validation';
 import { classifyNavigation } from './navigation-policy';
@@ -33,6 +30,7 @@ import { registerFileWatchingIpcHandlers } from './ipc/file-watching';
 import { registerFileOperationsIpcHandlers } from './ipc/file-operations';
 import { registerFileDialogsIpcHandlers, createSavePathChooser } from './ipc/file-dialogs';
 import { registerResourceHealthIpcHandlers } from './ipc/resource-health';
+import { registerExportPdfIpcHandlers, isExportWebContents } from './ipc/export-pdf';
 import { registerPersistentStateIpcHandlers } from './ipc/persistent-state';
 import { FileManagerService } from './services/file-manager';
 import { FileWatchService } from './services/file-watch-service';
@@ -60,7 +58,6 @@ let windowMaximizedState = false;
 let windowBoundsSaveTimer: NodeJS.Timeout | null = null;
 let rendererReady = false;
 let pendingOpenFiles: string[] = [];
-const exportWebContents = new WeakSet<Electron.WebContents>();
 
 const applicationPaths = resolveApplicationPaths();
 fs.mkdirSync(applicationPaths.chromiumDir, { recursive: true });
@@ -417,6 +414,11 @@ function registerIpcHandlers(): void {
     },
     registration: { handleTrusted, onTrusted },
   });
+  registerExportPdfIpcHandlers({
+    chooseSavePath,
+    fileManager,
+    registration: { handleTrusted, onTrusted },
+  });
   onTrusted(IPC_CHANNELS.appRendererReady, (_event, ...args) => {
     requireArgumentCount(args, 0);
     rendererReady = true;
@@ -453,42 +455,6 @@ function registerIpcHandlers(): void {
     const factor = parseFiniteNumber(args[0], 75, 200) / 100;
     mainWindow?.webContents.setZoomFactor(factor);
     return factor;
-  });
-  handleTrusted(IPC_CHANNELS.appExportPdf, async (_event, ...args) => {
-    requireArgumentCount(args, 1, 3);
-    const html = parseText(args[0]);
-    const defaultPath = parseOptionalText(args[1]);
-    const defaultDirectory = parseOptionalAbsolutePath(args[2]);
-    const output = await chooseSavePath(
-      'Export PDF',
-      defaultDirectory
-        ? path.join(defaultDirectory, path.basename(defaultPath || 'document.pdf'))
-        : defaultPath || 'document.pdf',
-      [{ name: 'PDF', extensions: ['pdf'] }],
-    );
-    if (!output) return null;
-    const exportWindow = new BrowserWindow({
-      show: false,
-      webPreferences: {
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-      },
-    });
-    exportWebContents.add(exportWindow.webContents);
-    try {
-      exportWindow.webContents.on('will-navigate', (event) => event.preventDefault());
-      exportWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-      await exportWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-      const pdf = await exportWindow.webContents.printToPDF({
-        printBackground: true,
-        pageSize: 'A4',
-      });
-      await fileManager.writeBinaryFile(output, pdf);
-      return output;
-    } finally {
-      exportWindow.destroy();
-    }
   });
   onTrusted(IPC_CHANNELS.appToggleFullscreen, (_event, ...args) => {
     requireArgumentCount(args, 0);
@@ -578,7 +544,7 @@ app.on('before-quit', () => {
 });
 app.on('web-contents-created', (_event, contents) => {
   contents.on('will-navigate', (event, navigationUrl) => {
-    if (exportWebContents.has(contents)) {
+    if (isExportWebContents(contents)) {
       event.preventDefault();
       return;
     }
@@ -590,7 +556,7 @@ app.on('web-contents-created', (_event, contents) => {
     if (decision.kind === 'external') void shell.openExternal(decision.url);
   });
   contents.setWindowOpenHandler(({ url }) => {
-    if (exportWebContents.has(contents)) return { action: 'deny' };
+    if (isExportWebContents(contents)) return { action: 'deny' };
     const decision = classifyNavigation(url);
     if (decision.kind === 'external') void shell.openExternal(decision.url);
     return { action: 'deny' };
