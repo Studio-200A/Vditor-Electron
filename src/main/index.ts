@@ -15,16 +15,12 @@ import { registerAppProtocol } from './protocol';
 import { shouldBlockRemoteSvgImage } from './remote-svg-policy';
 import { createAppMenu } from './menu';
 import { extractOpenFilePaths } from './open-files';
-import { invalidIpcArgument } from './ipc-guard';
 import { IPC_CHANNELS } from './ipc-contract';
-import { formatLocalResourceBase, LocalResourcePolicy } from './local-resource';
+import { LocalResourcePolicy } from './local-resource';
 import {
-  parseAbsolutePath,
-  parseBoolean,
   parseFiniteNumber,
   parseOptionalAbsolutePath,
   parseOptionalText,
-  parseResourceHealthCandidateIds,
   parseText,
   requireArgumentCount,
 } from './ipc-validation';
@@ -36,6 +32,7 @@ import { registerSettingsIpcHandlers } from './ipc/settings';
 import { registerFileWatchingIpcHandlers } from './ipc/file-watching';
 import { registerFileOperationsIpcHandlers } from './ipc/file-operations';
 import { registerFileDialogsIpcHandlers, createSavePathChooser } from './ipc/file-dialogs';
+import { registerResourceHealthIpcHandlers } from './ipc/resource-health';
 import { registerPersistentStateIpcHandlers } from './ipc/persistent-state';
 import { FileManagerService } from './services/file-manager';
 import { FileWatchService } from './services/file-watch-service';
@@ -409,6 +406,17 @@ function registerIpcHandlers(): void {
     fileWatchService,
     registration: { handleTrusted, onTrusted },
   });
+  registerResourceHealthIpcHandlers({
+    resourceHealthService,
+    settingsStore,
+    onMenuEligibilityChanged: (eligible) => {
+      if (resourceHealthMenuEligible !== eligible) {
+        resourceHealthMenuEligible = eligible;
+        updateApplicationMenu();
+      }
+    },
+    registration: { handleTrusted, onTrusted },
+  });
   onTrusted(IPC_CHANNELS.appRendererReady, (_event, ...args) => {
     requireArgumentCount(args, 0);
     rendererReady = true;
@@ -445,60 +453,6 @@ function registerIpcHandlers(): void {
     const factor = parseFiniteNumber(args[0], 75, 200) / 100;
     mainWindow?.webContents.setZoomFactor(factor);
     return factor;
-  });
-  handleTrusted(IPC_CHANNELS.appResourceHealthEligible, async (_event, ...args) => {
-    requireArgumentCount(args, 2);
-    return resourceHealthService.isEligible({
-      documentPath: parseAbsolutePath(args[0]),
-      workspacePath: parseAbsolutePath(args[1]),
-    });
-  });
-  handleTrusted(IPC_CHANNELS.appSetResourceHealthEligible, (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    const eligible = parseBoolean(args[0]);
-    if (resourceHealthMenuEligible !== eligible) {
-      resourceHealthMenuEligible = eligible;
-      updateApplicationMenu();
-    }
-  });
-  handleTrusted(IPC_CHANNELS.appResourceHealthScan, (_event, ...args) => {
-    requireArgumentCount(args, 2);
-    return resourceHealthService.scan({
-      documentPath: parseAbsolutePath(args[0]),
-      workspacePath: parseAbsolutePath(args[1]),
-      pasteImagesDir: settingsStore.get('pasteImagesDir'),
-      allowSvgImages: settingsStore.get('allowSvgImages'),
-    });
-  });
-  handleTrusted(IPC_CHANNELS.appResourceHealthReveal, (_event, ...args) => {
-    requireArgumentCount(args, 2);
-    const candidatePath = resourceHealthService.resolveCandidate(
-      parseText(args[0], 128),
-      parseText(args[1], 128),
-    );
-    if (!candidatePath) invalidIpcArgument();
-    shell.showItemInFolder(candidatePath);
-  });
-  handleTrusted(IPC_CHANNELS.appResourceHealthPreview, (_event, ...args) => {
-    requireArgumentCount(args, 2);
-    const candidatePath = resourceHealthService.resolvePreviewCandidate(
-      parseText(args[0], 128),
-      parseText(args[1], 128),
-    );
-    if (!candidatePath) return null;
-    return `${formatLocalResourceBase(path.dirname(candidatePath))}${encodeURIComponent(path.basename(candidatePath))}`;
-  });
-  handleTrusted(IPC_CHANNELS.appResourceHealthTrash, (_event, ...args) => {
-    requireArgumentCount(args, 2);
-    return resourceHealthService.trashCandidates(
-      parseText(args[0], 128),
-      parseResourceHealthCandidateIds(args[1]),
-      (candidatePath) => shell.trashItem(candidatePath),
-    );
-  });
-  onTrusted(IPC_CHANNELS.appResourceHealthDiscard, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    resourceHealthService.clear();
   });
   handleTrusted(IPC_CHANNELS.appExportPdf, async (_event, ...args) => {
     requireArgumentCount(args, 1, 3);
