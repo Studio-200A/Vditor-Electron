@@ -37,7 +37,7 @@ Vditor Desktop 不修改 `node_modules/vditor` 的源码，但工具栏合并、
 
 1. 新建单独升级分支，阅读目标版本变更记录。
 2. 使用精确版本安装：`npm install --save-exact vditor@<version>`。
-3. 同步 `src/main/index.ts` 中关于页版本号。
+3. 同步 `src/main/ipc/app-shell.ts` 中 `app:getInfo` 的关于页 Vditor 版本号（`npm run check:vditor` 校验该字面量与 package.json、lock 和 node_modules 一致）。
 4. 检查目标包 `dist/index.css`、工具栏、SV、IR、WYSIWYG 和 preview DOM 变化。
 5. 先运行 `npm run check:vditor` 和 `npm run typecheck:renderer`，再运行 `npm run check:all`。
 6. 手工验证三种编辑模式、统一工具栏和状态栏模式菜单、主题菜单与壳层亮暗切换后已渲染 Mermaid 图表的色调重绘、列表缩进、工具栏与 `Ctrl/Cmd+Alt+7/8/9` 模式切换后的文档位置（SV 以源码区为准）及状态栏同步、SV 行号/灰点/滚动、查找匹配定位、原生 outline 入口持续隐藏、Desktop 大纲跳转，以及 WYSIWYG/IR 长表格的横向滚动保留和光标可见性。

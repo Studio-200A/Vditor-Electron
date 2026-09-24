@@ -125,6 +125,7 @@ rename(临时文件, 目标文件)
 - `src/main/services/persistent-state-store.ts`：版本化 `state.json` 的白名单、一次性旧 TOML 状态迁移与串行原子写入（仅保存会话/窗口投影，不保存 recovery 正文）；
 - `src/main/services/resource-health-service.ts`：扫描输入边界、候选 revision、回收站前逐项复核与符号链接只读限制；
 - `src/main/save-dialog-path.ts`：`resolveSaveDialogDefaultPath()` 决定 `file:saveDialog` 的默认路径——Save As 传入的绝对 `defaultPath` 原样保留并优先于注入的工作区目录，只有裸文件名才与该目录拼接，否则回退到 `<目录>/untitled.md`；导出对话框仍保持各自的“目录 + basename”语义；
+- `src/main/ipc/`：`file-operations.ts`（`file:write` / `writeDocument` / `delete` / `rename` 等文件通道）、`file-watching.ts`（`file:setWorkspaceWatch` / `watchDocument` / `unwatchDocument`）、`file-dialogs.ts`（`file:saveDialog` / `exportDialog`）与 `trusted-channel.ts`（信任校验与错误规范化）是这些通道的注册入口；0.2.6 IPC 模块化后它们经 `index.ts` 注入的服务与窄回调工作，文件安全语义仍由上列服务与 renderer 控制器所有；
 - `src/renderer/app/app-composition.js`：content revision 与保存/外部变化交易组合；
 - `src/renderer/documents/document-save-controller.ts`：按 document ID 与 canonical identity 持有两级保存串行队列；
 - `src/renderer/documents/document-controller.ts`：打开、canonical identity 去重与 `transitionBindings()` 路径重绑定；

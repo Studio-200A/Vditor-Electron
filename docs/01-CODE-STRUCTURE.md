@@ -1,8 +1,8 @@
 # Vditor-Electron Code Structure World Map
 
-- **最后同步：** 2026-09-23
+- **最后同步：** 2026-09-24
 - **基于的工作区：** `dev-0.2.6` 当前工作区实现（0.2.5 已收口发布；0.2.6 修复批次进行中）
-- **基于的提交：** `387f158`（本文档描述该提交的代码状态，后续同步时更新此锚点，不维护递增的文档版本号）
+- **基于的提交：** `7d9f5d8`（本文档描述该提交的代码状态，后续同步时更新此锚点，不维护递增的文档版本号）
 - **对应 package.json 版本号：** 0.2.5（0.2.6 尚未 bump）
 - **技术债与改进建议：** 已迁至 [`docs/00-ISSUES.md`](00-ISSUES.md)，本地图不再维护
 
@@ -16,7 +16,7 @@
 
 **核心功能：** 多标签页 Markdown 编辑、三种编辑模式（IR/SV/WYSIWYG）、分栏预览、文件树侧栏、文档大纲、查找替换、图片插入与压缩、资源健康检查（未引用/缺失图片引用）、HTML/PDF 导出、TOML 偏好与版本化 JSON 状态持久化、三语国际化（英/简/繁）。
 
-**开发阶段：** 0.2.5 渲染层架构重构全部完成（批次 0–11 收口，0.2.5 开发收口）。批次 8 完成工作区、设置、菜单、窗口和导出域迁移；批次 8.1 校正 Vditor adapter 的完整类型 facade 与防漂移证据并完成复审；批次 9 已删除 legacy `app.js` 入口、收口组合层职责和行为测试，用户全量测试与手测通过；批次 10 完成文档同步、`.github/workflows/quality.yml` CI gate、性能与包体对比、Linux 候选包（portable/AppImage）与实机冒烟，并修复候选手测暴露的自绘光标与“设置触发编辑器重建后撤销失效”问题（提交 `5f34490`）；批次 11 最终独立审查收口三个阻塞项修复与最终人工验收。`AppController` 负责启动顺序、窗口级命令、拖放和 IPC 订阅；`app/app-composition.js` 是迁移后的组合层，仅承担保存交易、标签命令、设置/session 组合和部分全局事件的协调，各领域 runtime、自动保存 timer、recovery、共享 toolbar、Split View、outline、find、图片 runtime、文档链接、激活协调、应用 shell 资源和主题协调均已有明确 controller；DocumentController 与组合层仍保留文件 identity、保存交易、外部变化和 recovery 安全动作的语义所有权。0.2.0 的文件安全、恢复、watcher、冲突与跨平台边界继续作为不可改变的行为基线。精确的批次状态、手测、首轮失败及重跑证据只记录在 [`docs/ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md`](ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md)，本地图不维护实时测试总数。主题架构和内置主题见 [`docs/05-THEMES.md`](05-THEMES.md)，renderer 的模块边界见 [`docs/02-RENDERER-ARCHITECTURE.md`](02-RENDERER-ARCHITECTURE.md)。GitHub alert 序列化还原兼容层（`editor/github-alerts.ts`，提交 `0ded7ed`）在 0.2.5 收口阶段交付，已随 v0.2.5 发布。0.2.6 修复批次（进行中）在上述架构内交付：source-only SV 的大纲不可用空态、编辑器重建时按 tab 保留 SV pane 布局（`EditorController.rebuildSplitViewLayouts`）、基于标题锚点配对的 SV source → preview 滚动同步（adapter `syncSplitScroll()`）、Nord Dark 与 Elegant 两套内置壳层主题、设置页每行最多四张主题预览卡片、About logo 不可拖出（`draggable="false"`，保留点击彩蛋）、亮暗色调切换后经 adapter `refreshMermaidTheme()` 重绘已渲染的 Mermaid 图表、三模式自动换行实时生效与关闭换行时的居中横向滚动列（adapter `applyWordWrap()`）、Elegant 共享 hover 对比度增强、撤销回退到保存内容时三模式清除脏标记（干净文档以编辑器序列化表示作为 dirty 保存点，`EditorController` 保存点对账）、renderer locale 字典拆分为 `src/renderer/locale/` 三语模块（esbuild 第三入口生成启动 `locales.js`），以及 Vitest 4.1.11 升级与 `js-yaml` 4.3.2 override。
+**开发阶段：** 0.2.5 渲染层架构重构全部完成（批次 0–11 收口，0.2.5 开发收口）。批次 8 完成工作区、设置、菜单、窗口和导出域迁移；批次 8.1 校正 Vditor adapter 的完整类型 facade 与防漂移证据并完成复审；批次 9 已删除 legacy `app.js` 入口、收口组合层职责和行为测试，用户全量测试与手测通过；批次 10 完成文档同步、`.github/workflows/quality.yml` CI gate、性能与包体对比、Linux 候选包（portable/AppImage）与实机冒烟，并修复候选手测暴露的自绘光标与“设置触发编辑器重建后撤销失效”问题（提交 `5f34490`）；批次 11 最终独立审查收口三个阻塞项修复与最终人工验收。`AppController` 负责启动顺序、窗口级命令、拖放和 IPC 订阅；`app/app-composition.js` 是迁移后的组合层，仅承担保存交易、标签命令、设置/session 组合和部分全局事件的协调，各领域 runtime、自动保存 timer、recovery、共享 toolbar、Split View、outline、find、图片 runtime、文档链接、激活协调、应用 shell 资源和主题协调均已有明确 controller；DocumentController 与组合层仍保留文件 identity、保存交易、外部变化和 recovery 安全动作的语义所有权。0.2.0 的文件安全、恢复、watcher、冲突与跨平台边界继续作为不可改变的行为基线。精确的批次状态、手测、首轮失败及重跑证据只记录在 [`docs/ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md`](ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md)，本地图不维护实时测试总数。主题架构和内置主题见 [`docs/05-THEMES.md`](05-THEMES.md)，renderer 的模块边界见 [`docs/02-RENDERER-ARCHITECTURE.md`](02-RENDERER-ARCHITECTURE.md)。GitHub alert 序列化还原兼容层（`editor/github-alerts.ts`，提交 `0ded7ed`）在 0.2.5 收口阶段交付，已随 v0.2.5 发布。0.2.6 修复批次（进行中）在上述架构内交付：source-only SV 的大纲不可用空态、编辑器重建时按 tab 保留 SV pane 布局（`EditorController.rebuildSplitViewLayouts`）、基于标题锚点配对的 SV source → preview 滚动同步（adapter `syncSplitScroll()`）、Nord Dark 与 Elegant 两套内置壳层主题、设置页每行最多四张主题预览卡片、About logo 不可拖出（`draggable="false"`，保留点击彩蛋）、亮暗色调切换后经 adapter `refreshMermaidTheme()` 重绘已渲染的 Mermaid 图表、三模式自动换行实时生效与关闭换行时的居中横向滚动列（adapter `applyWordWrap()`）、Elegant 共享 hover 对比度增强、撤销回退到保存内容时三模式清除脏标记（干净文档以编辑器序列化表示作为 dirty 保存点，`EditorController` 保存点对账）、renderer locale 字典拆分为 `src/renderer/locale/` 三语模块（esbuild 第三入口生成启动 `locales.js`）、主进程 IPC handler 模块化（64 个渲染器→主进程通道迁入 `src/main/ipc/` 的 11 个领域模块，`ipc/register.ts` 组合入口统一注册，`index.ts` 只构造依赖；见 [`docs/19-0.2.6-IPC-MODULARIZATION-PLAN.md`](19-0.2.6-IPC-MODULARIZATION-PLAN.md)），以及 Vitest 4.1.11 升级与 `js-yaml` 4.3.2 override。
 
 ---
 
@@ -40,7 +40,7 @@
 | 引擎     | Vditor 3.11.3（精确固定）                                                                                      |
 | 模式     | WYSIWYG / IR（默认）/ SV（Split View）                                                                         |
 | 资源加载 | 离线：通过 `app://` 协议加载 `static/dist/`                                                                    |
-| 版本校验 | `scripts/check-vditor-version.js` 验证 package.json、lock 文件、node_modules 与 main/index.ts 的硬编码版本一致 |
+| 版本校验 | `scripts/check-vditor-version.js` 验证 package.json、lock 文件、node_modules 与 `src/main/ipc/app-shell.ts` 中 `app:getInfo` 的硬编码版本一致 |
 
 ### 构建工具
 
@@ -229,7 +229,7 @@ Vditor-Electron/
 │   ├── unit/                      # Vitest 单元测试
 │   └── e2e/                       # Playwright Electron E2E 测试
 ├── scripts/                       # 构建辅助脚本
-│   ├── build-renderer.js          # esbuild renderer bundle（main.ts → dist/renderer/main.js，pure-functions.ts → dist/renderer/pure-functions.js）
+│   ├── build-renderer.js          # esbuild renderer bundle（main.ts → dist/renderer/main.js，pure-functions.ts → dist/renderer/pure-functions.js，locale/index.ts → dist/renderer/locales.js）
 │   ├── copy-vditor-assets.js      # 复制 Vditor、renderer（跳过 .ts），并生成 Lucide 图标到 dist/
 │   ├── check-vditor-version.js    # Vditor 版本一致性校验
 │   ├── check-project-metadata.js  # package.json / lock / 稳定应用 ID / Linux 元数据一致性检查
@@ -880,6 +880,20 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 
 **Handler 注册（0.2.6 模块化）：** 全部 64 个渲染器→主进程通道（56 invoke + 8 send）由 `src/main/ipc/` 的 11 个领域模块实现；`ipc/register.ts` 组合入口创建唯一的 `ipc/trusted-channel.ts` 信任包装器并统一注册，`index.ts` 在 `app.whenReady()` 内构造 `IpcRegistrationDeps`（已初始化服务、懒窗口 getter 与命名窄回调）后调用它。共享可变状态（`rendererReady`、菜单资格、窗口状态机）仍由 `index.ts` 持有，模块仅经回调触发。`tests/unit/ipc-channel-map.test.ts` 与 `tests/unit/ipc-channel-coverage.test.ts` 以冻结映射锁定通道集合与注册方向。
 
+| 领域模块 | 注册通道（invoke / send） |
+| --- | --- |
+| `file-dialogs.ts` | invoke：`file:openDialog`、`file:openFolderDialog`、`file:saveDialog`、`file:exportDialog`（`chooseSavePath` 供 `export-pdf.ts` 复用） |
+| `file-operations.ts` | invoke：`file:read`、`file:write`、`file:writeDocument`、`file:writeBinary`、`file:exists`、`file:identity`、`file:listDir`、`file:create`、`file:rename`、`file:prepareRename`、`file:delete`、`file:basename`、`file:dirname`、`file:relative`、`file:rebasePath`、`file:resolveMarkdownLink` |
+| `file-watching.ts` | invoke：`file:setWorkspaceWatch`、`file:watchDocument`、`file:unwatchDocument`、`file:resolveRenamedDocument`、`file:setResourceRoots` |
+| `settings.ts` | invoke：`app:getSettings`、`app:getDefaultSettings`、`app:saveSettings`、`app:resetSettings`、`app:getSettingsPath`、`app:getSettingsDisplayPath` |
+| `persistent-state.ts` | invoke：`app:getPersistentState`、`app:savePersistentState`、`app:clearPersistentState` |
+| `recovery.ts` | invoke：`app:getRecoveryCandidates`、`app:restoreRecovery`、`app:saveRecovery`、`app:discardRecovery` |
+| `shell-integration.ts` | invoke：`app:openExternal`、`app:showItemInFolder`、`app:openDirectory`、`app:readClipboard`、`app:writeClipboard` |
+| `resource-health.ts` | invoke：`app:resourceHealthEligible`、`app:setResourceHealthEligible`、`app:resourceHealthScan`、`app:resourceHealthReveal`、`app:resourceHealthPreview`、`app:resourceHealthTrash`；send：`app:resourceHealthDiscard` |
+| `export-pdf.ts` | invoke：`app:exportPDF`（`isExportWebContents()` 供 `index.ts` 的 `web-contents-created` 导航守卫使用） |
+| `window-controls.ts` | invoke：`app:isFullscreen`、`app:isMaximized`、`app:setZoomFactor`；send：`app:toggleFullscreen`、`window:minimize`、`window:maximize`、`window:close` |
+| `app-shell.ts` | invoke：`app:getSystemLocale`、`app:getSystemTheme`、`app:getInfo`；send：`app:rendererReady`、`app:toggleDevTools`、`app:closeConfirmed` |
+
 ### 8.1 完整 IPC 通道表
 
 #### invoke 通道（render → main，返回 Promise）
@@ -1512,12 +1526,14 @@ npm run build
 build:main:
   tsc -p tsconfig.main.json      → dist/main/index.js
                                   → dist/main/preload.js
+                                  → dist/main/ipc/*.js
                                   → dist/main/services/*.js
 
 build:renderer:
   node scripts/build-renderer.js
   ├── src/renderer/main.ts        → dist/renderer/main.js（esbuild bundle）
-  └── src/renderer/pure-functions.ts → dist/renderer/pure-functions.js（esbuild bundle）
+  ├── src/renderer/pure-functions.ts → dist/renderer/pure-functions.js（esbuild bundle）
+  └── src/renderer/locale/index.ts → dist/renderer/locales.js（esbuild bundle，三语字典启动入口）
 
 build:assets:
   node scripts/copy-vditor-assets.js
@@ -1578,7 +1594,7 @@ build:assets:
 
 ### 13.2 构建工具配置
 
-**无 Vite / Webpack。** 主进程使用 `tsc`（`tsconfig.main.json`）；渲染进程使用 **esbuild** 打包（`scripts/build-renderer.js`：`main.ts` → `dist/renderer/main.js`，`pure-functions.ts` → `dist/renderer/pure-functions.js`），其余 HTML/CSS/项目自有 JS 与静态资源由 `scripts/copy-vditor-assets.js` 复制（跳过 `.ts`）。
+**无 Vite / Webpack。** 主进程使用 `tsc`（`tsconfig.main.json`）；渲染进程使用 **esbuild** 打包（`scripts/build-renderer.js`：`main.ts` → `dist/renderer/main.js`，`pure-functions.ts` → `dist/renderer/pure-functions.js`，`locale/index.ts` → `dist/renderer/locales.js`），其余 HTML/CSS/项目自有 JS 与静态资源由 `scripts/copy-vditor-assets.js` 复制（跳过 `.ts`）。
 
 ### 13.3 ESLint 配置（`eslint.config.mjs`）
 
@@ -1640,7 +1656,7 @@ build:assets:
 | 命令 | 作用 |
 |---|---|
 | `npm run build:main` | `tsc -p tsconfig.main.json` 编译主进程 → `dist/main/` |
-| `npm run build:renderer` | `scripts/build-renderer.js` esbuild 打包 `main.ts` → `dist/renderer/main.js`，`pure-functions.ts` → `dist/renderer/pure-functions.js` |
+| `npm run build:renderer` | `scripts/build-renderer.js` esbuild 打包 `main.ts` → `dist/renderer/main.js`，`pure-functions.ts` → `dist/renderer/pure-functions.js`，`locale/index.ts` → `dist/renderer/locales.js` |
 | `npm run build:assets` | `scripts/copy-vditor-assets.js` 复制 Vditor 离线资源、渲染器文件，并从 `lucide-static` 生成选定 SVG |
 | `npm run build` | = `build:main` + `build:renderer` + `build:assets` 的组合 |
 | `npm run start` | `build` + `electron .` 启动应用 |
@@ -1656,7 +1672,7 @@ build:assets:
 | `npm run typecheck` | `tsc -p tsconfig.main.json --noEmit` 主进程类型检查 |
 | `npm run typecheck:renderer` | `tsc -p tsconfig.renderer.json --noEmit`；strict renderer 类型检查，包含 adapter 调用契约 |
 | `npm run check:project` | `scripts/check-project-metadata.js` 校验 package.json / lock / 稳定应用 ID / Linux 元数据一致 |
-| `npm run check:vditor` | `scripts/check-vditor-version.js` 校验 package.json / lock / node_modules / 主源码版本一致 |
+| `npm run check:vditor` | `scripts/check-vditor-version.js` 校验 package.json / lock / node_modules 与 `src/main/ipc/app-shell.ts` 中 `app:getInfo` 的版本一致 |
 | `npm test` | `vitest run` 运行全部单元测试 |
 | `npm run test:watch` | `vitest` 监听模式运行单元测试 |
 | `npm run test:e2e` | `build` + `run-electron-e2e.js` 运行 E2E；Linux 优先复用本地 Electron `dist` |
@@ -1789,7 +1805,7 @@ flowchart TB
         IPCContract[ipc-contract.ts\nIPC_CHANNELS]
         IPCGuard[ipc-guard.ts\ntrusted main frame + errors]
         IPCValidation[ipc-validation.ts\nruntime argument validation]
-        IPC[index.ts\nregisterIpcHandlers]
+        IPC[ipc/register.ts\nregisterIpcHandlers]
     end
 
     subgraph preload[BrowserWindow / preload.ts]
@@ -1870,6 +1886,10 @@ flowchart TB
 | `tests/unit/resolve-markdown-link.test.ts` | `src/main/resolve-markdown-link.ts` | 相对 Markdown 路径、`../`、百分号编码、片段、Windows 路径、缺失/绝对/协议/非 Markdown/非法编码目标拒绝 |
 | `tests/unit/ipc-guard.test.ts`      | `src/main/ipc-guard.ts`              | 当前主窗口 `webContents`、顶层 sender frame、可信 `app://app` 页面与稳定 `IPC_UNTRUSTED_RENDERER` 错误边界 |
 | `tests/unit/ipc-validation.test.ts` | `src/main/ipc-validation.ts`         | 参数数量、绝对路径、跨平台文件名、枚举、数值、文本/二进制大小、设置对象和 `IPC_INVALID_ARGUMENT` 边界 |
+| `tests/unit/ipc-trusted-channel.test.ts` | `src/main/ipc/trusted-channel.ts` | invoke 信任校验在 handler 执行前完成、framed/非 app 页面拒绝、受信调用返回值透传、send 拒绝只上报不抛出、handler 失败的错误规范化与日志、每次调用读取当前窗口而非缓存 |
+| `tests/unit/ipc-channel-map.test.ts`、`ipc-channel-map.fixture.ts` | `src/main/ipc-contract.ts` 与冻结通道映射 | `IPC_CHANNELS` 每个值恰好出现一次；冻结 56 invoke + 8 send 注册与 7 个 main→renderer 事件通道；事件通道不进入注册映射 |
+| `tests/unit/ipc-channel-coverage.test.ts` | `src/main/ipc/register.ts` 与全部领域注册模块 | 以受控依赖和捕获式 `ipcMain` 断言 56 invoke、8 send 各注册一次、无重复或方向互换、不注册 main→renderer 事件通道、只注册 contract 声明的通道 |
+| `tests/unit/ipc-file-watching.test.ts` | `src/main/ipc/file-watching.ts` | `file:setWorkspaceWatch` 的绝对路径与范围内深度转发、缺省深度为 undefined、无参数时 unwatch、越界深度和非数值深度拒绝且不触碰服务、相对工作区路径拒绝 |
 | `tests/unit/local-resource.test.ts` | `src/main/local-resource.ts`         | 固定 authority 的 POSIX/Windows drive/UNC URL、词法拒绝、路径边界、私有根、canonical 越界、根撤销、MIME allowlist 与安全拒绝分类 |
 | `tests/unit/remote-svg-policy.test.ts` | `src/main/remote-svg-policy.ts` | HTTP(S) 图片 URL 的 `.svg` 路径识别、无扩展名 SVG MIME 响应识别、默认阻止与开启后放行边界 |
 | `tests/unit/save-dialog-path.test.ts` | `src/main/save-dialog-path.ts` | POSIX/Windows drive/UNC 绝对默认路径原样保留且忽略注入目录（Save As 转发当前绝对路径时不重复拼接工作区）、相对文件名与默认目录拼接（POSIX/Windows）及无目录时原样返回、无默认路径时在默认目录下预填 `untitled.md` 或回退裸文件名、自定义回退名、空默认路径视为缺失 |
@@ -2058,7 +2078,8 @@ flowchart TB
 
 | 模块                                | 当前状态                                   | 待补充                                                                                                                                                                        |
 | ----------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/main/index.ts`                 | E2E + URL/导航策略单测                     | 缺乏 `resolveSystemLocale` / `isMaximizedLikeBounds` / `initialWindowBackground` 主题映射 / watcher `on('all')` 事件流的单元测试                |
+| `src/main/index.ts`                 | E2E + URL/导航策略单测                     | IPC handler 已迁至 `src/main/ipc/`（见下行）；仍缺乏 `resolveSystemLocale` / `isMaximizedLikeBounds` / `initialWindowBackground` 主题映射 / watcher `on('all')` 事件流的单元测试                |
+| `src/main/ipc/`                     | 通道注册/信任包装/参数转发单测 + Electron E2E | 通道集合与注册方向已由 `ipc-channel-map` / `ipc-channel-coverage` 锁定，`trusted-channel` 与 `file-watching` 有聚焦单测；各领域 handler 的业务行为仍主要依赖真实 Electron E2E，尚无逐模块的 direct 单测 |
 | `src/main/preload.ts`               | 仅 E2E 覆盖                                | 无 Bridge API surface 类型契约测试                                                                                                                                            |
 | `src/main/protocol.ts`              | app URL 单测 + local-resource 策略单测 + 资源 E2E | 仍无 protocol handler 直接单测；响应头和 neutral 404 目前由真实 Electron E2E 覆盖                                                                              |
 | `src/main/menu.ts`                  | 仅 E2E 覆盖                                | 无三语言菜单标签生成的独立测试                                                                                                                                                |

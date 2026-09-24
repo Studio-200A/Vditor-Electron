@@ -14,6 +14,7 @@
 | `07-VDITOR-UPGRADE.md`                  | Vditor 版本升级的兼容边界、检查步骤和验收要求。                            |
 | `08-WISHLIST.md`                        | 尚未排入版本计划的长期想法，不作为当前版本的承诺。                         |
 | `09-DEV-NOTE.md`                        | 开发过程中有用内容的笔记记录。                                             |
+| `19-0.2.6-IPC-MODULARIZATION-PLAN.md`   | 0.2.6 主进程 IPC handler 模块化的行为保持型重构计划与阶段记录；发布归档时移入 `ARCHIVED/`。 |
 | `TBD/`                                  | 暂缓且尚未指定 Desktop 版本的候选方案；Vditor 4.0 升级方案与执行账本见 [迁移方案](TBD/VDITOR-4.0-MIGRATION-PLAN.md) 和 [执行账本](TBD/VDITOR-4.0-EXECUTION-TRACKER.md)。 |
 | `HANDOFF-DOCS/`                         | 不同版本开发过程中，跨对话、跨coding agent、跨LLM的批次交接文档留底。      |
 | `ARCHIVED`                              | 已经完成的往期开发文档留档（10–18 号，涵盖 0.1.3、0.1.5、0.2.0、0.2.5）。  |
