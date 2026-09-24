@@ -24,6 +24,7 @@
 ### Refactor
 
 - **refactor(localization):** Split the three UI dictionaries into typed language modules and generate the startup locale bundle without changing language switching or the existing renderer load order.
+- **refactor(ipc):** Split the 18 centralized IPC handler registrations for recovery snapshots, persistent application state, shell/clipboard integration, and settings out of `src/main/index.ts` into `src/main/ipc/` domain modules with explicit dependency injection, together with the shared trusted-channel registration wrappers. Channel names, request/response shapes, validation, and error semantics are unchanged, and unit tests now cover the trust wrappers and a frozen map of all 64 renderer-facing channels.
 
 ### Project Maintenance
 
