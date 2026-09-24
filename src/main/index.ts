@@ -41,6 +41,7 @@ import {
 } from './ipc-validation';
 import { classifyNavigation } from './navigation-policy';
 import { createTrustedChannelRegistration } from './ipc/trusted-channel';
+import { registerRecoveryIpcHandlers } from './ipc/recovery';
 import { resolveRelativeMarkdownLink } from './resolve-markdown-link';
 import { resolveSaveDialogDefaultPath } from './save-dialog-path';
 import { FileManagerService } from './services/file-manager';
@@ -587,22 +588,11 @@ function registerIpcHandlers(): void {
     requireArgumentCount(args, 0);
     return persistentStateStore.getAll();
   });
-  handleTrusted(IPC_CHANNELS.appGetRecoveryCandidates, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    return recoveryStore.listCandidates();
-  });
-  handleTrusted(IPC_CHANNELS.appRestoreRecovery, (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    return recoveryStore.restore(parseText(args[0], 128));
-  });
-  handleTrusted(IPC_CHANNELS.appSaveRecovery, (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    return recoveryStore.save(args[0]);
-  });
-  handleTrusted(IPC_CHANNELS.appDiscardRecovery, (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    return recoveryStore.discard(parseText(args[0], 128));
-  });
+  const recoveryRegistration = {
+    recoveryStore,
+    registration: { handleTrusted, onTrusted },
+  };
+  registerRecoveryIpcHandlers(recoveryRegistration);
   onTrusted(IPC_CHANNELS.appRendererReady, (_event, ...args) => {
     requireArgumentCount(args, 0);
     rendererReady = true;
