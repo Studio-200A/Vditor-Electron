@@ -27,7 +27,7 @@ export function registerFileWatchingIpcHandlers(deps: FileWatchingIpcDeps): void
     requireArgumentCount(args, 0, 2);
     return fileWatchService.setWorkspace(
       parseOptionalAbsolutePath(args[0]),
-      parseOptionalInteger(args, WORKSPACE_READ_DEPTH_MIN, WORKSPACE_READ_DEPTH_MAX),
+      parseOptionalInteger(args[1], WORKSPACE_READ_DEPTH_MIN, WORKSPACE_READ_DEPTH_MAX),
     );
   });
   handleTrusted(IPC_CHANNELS.fileWatchDocument, (_event, ...args) => {
