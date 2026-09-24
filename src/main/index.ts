@@ -32,7 +32,6 @@ import {
   parseOptionalText,
   parseResourceHealthCandidateIds,
   parseResourceRootPaths,
-  parseSettingsPatch,
   parseText,
   requireArgumentCount,
 } from './ipc-validation';
@@ -40,6 +39,7 @@ import { classifyNavigation } from './navigation-policy';
 import { createTrustedChannelRegistration } from './ipc/trusted-channel';
 import { registerRecoveryIpcHandlers } from './ipc/recovery';
 import { registerShellIntegrationIpcHandlers } from './ipc/shell-integration';
+import { registerSettingsIpcHandlers } from './ipc/settings';
 import { registerPersistentStateIpcHandlers } from './ipc/persistent-state';
 import { resolveRelativeMarkdownLink } from './resolve-markdown-link';
 import { resolveSaveDialogDefaultPath } from './save-dialog-path';
@@ -564,15 +564,16 @@ function registerIpcHandlers(): void {
     return localResourcePolicy.setRoots(parseResourceRootPaths(args[0]));
   });
 
-  handleTrusted(IPC_CHANNELS.appGetSettings, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    return settingsStore.getAll();
-  });
   const recoveryRegistration = {
     recoveryStore,
     registration: { handleTrusted, onTrusted },
   };
   registerRecoveryIpcHandlers(recoveryRegistration);
+  registerSettingsIpcHandlers({
+    settingsStore,
+    onMenuAffectingSettingsChanged: (settings) => updateApplicationMenu(settings),
+    registration: { handleTrusted, onTrusted },
+  });
   registerPersistentStateIpcHandlers({
     persistentStateStore,
     registration: { handleTrusted, onTrusted },
@@ -584,50 +585,6 @@ function registerIpcHandlers(): void {
     requireArgumentCount(args, 0);
     rendererReady = true;
     flushPendingOpenFiles();
-  });
-  handleTrusted(IPC_CHANNELS.appGetDefaultSettings, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    return structuredClone(DEFAULT_SETTINGS);
-  });
-  handleTrusted(IPC_CHANNELS.appSaveSettings, async (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    const settings = parseSettingsPatch(args[0]);
-    const savedSettings = settingsStore.updateOrThrow(settings);
-    if (Object.hasOwn(settings, 'allowSvgImages') && !savedSettings.allowSvgImages) {
-      // A previously decoded remote SVG may otherwise be reused without a new webRequest
-      // callback after the user revokes rendering permission. This setting changes rarely,
-      // so clearing the shared HTTP cache is preferable to leaving a stale permission window.
-      try {
-        await session.defaultSession.clearCache();
-      } catch (error) {
-        console.warn('[svg] Unable to clear the image cache after rendering was disabled.', error);
-      }
-    }
-    if (
-      Object.hasOwn(settings, 'locale') ||
-      Object.hasOwn(settings, 'editMode') ||
-      Object.hasOwn(settings, 'devToolsEnabled')
-    )
-      updateApplicationMenu(savedSettings);
-    return savedSettings;
-  });
-  handleTrusted(IPC_CHANNELS.appResetSettings, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    const settings = settingsStore.reset();
-    updateApplicationMenu(settings);
-    return settings;
-  });
-  handleTrusted(IPC_CHANNELS.appGetSettingsPath, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    return settingsStore.getPath();
-  });
-  handleTrusted(IPC_CHANNELS.appGetSettingsDisplayPath, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    const settingsPath = settingsStore.getPath();
-    const homePath = app.getPath('home');
-    return settingsPath.startsWith(homePath)
-      ? `~${settingsPath.slice(homePath.length)}`
-      : settingsPath;
   });
   handleTrusted(IPC_CHANNELS.appGetSystemLocale, (_event, ...args) => {
     requireArgumentCount(args, 0);
