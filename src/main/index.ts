@@ -32,7 +32,6 @@ import {
   parseOptionalBoolean,
   parseOptionalInteger,
   parseOptionalText,
-  parsePersistentStatePatch,
   parseResourceHealthCandidateIds,
   parseResourceRootPaths,
   parseSettingsPatch,
@@ -42,6 +41,7 @@ import {
 import { classifyNavigation } from './navigation-policy';
 import { createTrustedChannelRegistration } from './ipc/trusted-channel';
 import { registerRecoveryIpcHandlers } from './ipc/recovery';
+import { registerPersistentStateIpcHandlers } from './ipc/persistent-state';
 import { resolveRelativeMarkdownLink } from './resolve-markdown-link';
 import { resolveSaveDialogDefaultPath } from './save-dialog-path';
 import { FileManagerService } from './services/file-manager';
@@ -584,15 +584,15 @@ function registerIpcHandlers(): void {
     requireArgumentCount(args, 0);
     return settingsStore.getAll();
   });
-  handleTrusted(IPC_CHANNELS.appGetPersistentState, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    return persistentStateStore.getAll();
-  });
   const recoveryRegistration = {
     recoveryStore,
     registration: { handleTrusted, onTrusted },
   };
   registerRecoveryIpcHandlers(recoveryRegistration);
+  registerPersistentStateIpcHandlers({
+    persistentStateStore,
+    registration: { handleTrusted, onTrusted },
+  });
   onTrusted(IPC_CHANNELS.appRendererReady, (_event, ...args) => {
     requireArgumentCount(args, 0);
     rendererReady = true;
@@ -629,14 +629,6 @@ function registerIpcHandlers(): void {
     const settings = settingsStore.reset();
     updateApplicationMenu(settings);
     return settings;
-  });
-  handleTrusted(IPC_CHANNELS.appSavePersistentState, async (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    return persistentStateStore.updateOrThrow(parsePersistentStatePatch(args[0]));
-  });
-  handleTrusted(IPC_CHANNELS.appClearPersistentState, async (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    return persistentStateStore.clearOrThrow();
   });
   handleTrusted(IPC_CHANNELS.appGetSettingsPath, (_event, ...args) => {
     requireArgumentCount(args, 0);
