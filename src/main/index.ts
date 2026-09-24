@@ -1,7 +1,6 @@
 import {
   app,
   BrowserWindow,
-  clipboard,
   dialog,
   ipcMain,
   Menu,
@@ -17,7 +16,6 @@ import { registerAppProtocol } from './protocol';
 import { shouldBlockRemoteSvgImage } from './remote-svg-policy';
 import { createAppMenu } from './menu';
 import { extractOpenFilePaths } from './open-files';
-import { allowedExternalUrl } from './external-url';
 import { invalidIpcArgument } from './ipc-guard';
 import { IPC_CHANNELS } from './ipc-contract';
 import { formatLocalResourceBase, LocalResourcePolicy } from './local-resource';
@@ -41,6 +39,7 @@ import {
 import { classifyNavigation } from './navigation-policy';
 import { createTrustedChannelRegistration } from './ipc/trusted-channel';
 import { registerRecoveryIpcHandlers } from './ipc/recovery';
+import { registerShellIntegrationIpcHandlers } from './ipc/shell-integration';
 import { registerPersistentStateIpcHandlers } from './ipc/persistent-state';
 import { resolveRelativeMarkdownLink } from './resolve-markdown-link';
 import { resolveSaveDialogDefaultPath } from './save-dialog-path';
@@ -386,21 +385,6 @@ async function chooseSavePath(
   return result.canceled || !result.filePath ? null : result.filePath;
 }
 
-async function readClipboardContents(): Promise<{ text: string; html: string }> {
-  // Electron 44 exposes the clipboard through asynchronous W3C-style methods; rich HTML is
-  // read from a ClipboardItem because the former readHTML() convenience method was removed.
-  const text = await clipboard.readText();
-  let html = '';
-  for (const item of await clipboard.read()) {
-    if (!item.types.includes('text/html')) continue;
-    const htmlPayload = await item.getType('text/html');
-    if (!('text' in htmlPayload)) continue;
-    html = await htmlPayload.text();
-    break;
-  }
-  return { text, html };
-}
-
 function registerIpcHandlers(): void {
   const { handleTrusted, onTrusted } = createTrustedChannelRegistration({
     registerInvoke: (channel, listener) => ipcMain.handle(channel, listener),
@@ -593,6 +577,9 @@ function registerIpcHandlers(): void {
     persistentStateStore,
     registration: { handleTrusted, onTrusted },
   });
+  registerShellIntegrationIpcHandlers({
+    registration: { handleTrusted, onTrusted },
+  });
   onTrusted(IPC_CHANNELS.appRendererReady, (_event, ...args) => {
     requireArgumentCount(args, 0);
     rendererReady = true;
@@ -673,28 +660,6 @@ function registerIpcHandlers(): void {
     const factor = parseFiniteNumber(args[0], 75, 200) / 100;
     mainWindow?.webContents.setZoomFactor(factor);
     return factor;
-  });
-  handleTrusted(IPC_CHANNELS.appReadClipboard, async (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    return readClipboardContents();
-  });
-  handleTrusted(IPC_CHANNELS.appWriteClipboard, async (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    await clipboard.writeText(parseText(args[0]));
-  });
-  handleTrusted(IPC_CHANNELS.appOpenExternal, (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    const externalUrl = allowedExternalUrl(args[0]);
-    if (!externalUrl) throw new Error('Unsupported URL protocol');
-    return shell.openExternal(externalUrl);
-  });
-  handleTrusted(IPC_CHANNELS.appShowItemInFolder, (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    return shell.showItemInFolder(parseAbsolutePath(args[0]));
-  });
-  handleTrusted(IPC_CHANNELS.appOpenDirectory, (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    return shell.openPath(parseAbsolutePath(args[0]));
   });
   handleTrusted(IPC_CHANNELS.appResourceHealthEligible, async (_event, ...args) => {
     requireArgumentCount(args, 2);
