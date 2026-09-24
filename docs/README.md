@@ -21,7 +21,7 @@
 
 ## 近期主要版本计划
 
-1. `0.2.6`（进行中）：修复批次，开发分支 `dev-0.2.6`，对应 `CHANGELOG.md` 的「0.2.6 - TBA」章节；包含 SV 标题锚点滚动同步、source-only 大纲空态提示、编辑器重建后保留 SV 布局、三模式自动换行实时生效与撤销回退保存点清除脏标记、Nord Dark 与 Elegant 两套内置壳层主题、每行最多四张主题预览卡片、亮暗切换后重绘已渲染 Mermaid、About logo 不可拖出，以及 Vitest 与 `js-yaml` 依赖安全升级等。
+1. `0.2.6`（进行中）：修复批次，开发分支 `dev-0.2.6`，对应 `CHANGELOG.md` 的「0.2.6 - TBA」章节；包含 SV 标题锚点滚动同步、source-only 大纲空态提示、编辑器重建后保留 SV 布局、三模式自动换行实时生效与撤销回退保存点清除脏标记、Nord Dark 与 Elegant 两套内置壳层主题、每行最多四张主题预览卡片、亮暗切换后重绘已渲染 Mermaid、About logo 不可拖出，以及 Vitest 与 `js-yaml` 依赖安全升级等。另含内部 IPC handler 模块化重构（行为保持型），轻量计划见 [`19-0.2.6-IPC-MODULARIZATION-PLAN.md`](19-0.2.6-IPC-MODULARIZATION-PLAN.md)，完成后归档。
 2. 后续版本：根据实际需求从 `08-WISHLIST.md` 选择功能，并单独建立对应版本计划。Vditor 4.0 升级暂缓，尚未指定 Desktop 版本；只有重新确认 SV 行为变化、升级收益与目标版本后，才将 `TBD/` 中的候选方案纳入版本计划。
 
 版本计划是开发约束而非不可变承诺；实施前应以当前代码、测试结果和用户需求为准更新文档。

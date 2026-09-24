@@ -102,8 +102,10 @@ Treat `01-CODE-STRUCTURE.md` as a **navigation map, not the source of truth**. I
 ### Renderer composition layer
 
 - Treat `src/renderer/app/app-composition.js` as a composition boundary: it may create the store and controllers, inject narrow dependencies, wire startup/dispose callbacks, and retain small, named cross-domain coordination callbacks.
+- Do not start another systematic split of `app-composition.js` merely to make it thinner. Keep its existing responsibilities until a concrete change reveals a clear owner and a behavior-preserving extraction boundary.
+- Do not add a new responsibility, domain, or product capability to `app-composition.js`. Implement new behavior that can live in a module in the owning renderer domain, even when that module does not yet exist; add only the narrow construction, dependency injection, and cross-domain wiring needed to connect it.
 - Do not extract code solely to reduce the composition file's line count. Extract a controller when behavior owns domain state, runtime resources, a security boundary, or an independently testable transaction.
-- Do not add direct Store writes, bridge subscriptions, timers, observers, event listeners, watcher ownership, or Vditor private-DOM access to the composition layer when an existing domain controller can own the behavior.
+- Do not add direct Store writes, bridge subscriptions, timers, observers, event listeners, watcher ownership, or Vditor private-DOM access to the composition layer for new behavior. Put those responsibilities in the owning controller or adapter, with an explicit cleanup path where applicable.
 - A composition callback must name the coordinated use case and remain narrow. If it accumulates state transitions, resource lifecycle, or reusable business rules, move the behavior to a focused controller with tests and an explicit cleanup path.
 
 ### Renderer module placement
