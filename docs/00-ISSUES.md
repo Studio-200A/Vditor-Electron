@@ -33,9 +33,9 @@ Vditor 4.0 的 SV 是 `<textarea>`，源码面不再提供可读取的 heading m
 
 1. **`app/app-composition.js` 集中度仍然偏高**：0.2.5版本批次 4–8 及批次 9 已把文档生命周期命令、编辑器 runtime、工作区、设置、菜单、窗口、导出、侧栏、文档链接、查找替换、大纲 DOM、应用 shell 资源、session 恢复和主题协调迁入独立 controller；组合层仍承担保存交易、标签命令、设置/session 组合、状态栏、对话框和部分全局事件的协调，批次 9 已收口、剩余组合交易属于过渡期遗留而非未完成迁移。
 
-2. **IPC handler 仍集中在 `src/main/index.ts`**：当前仓库没有 `src/main/ipc/` 实现目录，所有 handler 由 `registerIpcHandlers()` 注册；这仍是拆分候选，但不应为此预先创建空模块。
+2. **IPC handler 曾全部集中在 `src/main/index.ts`（0.2.6 已实现模块化，用户全量验证待完成）**：0.2.6 已按 [`docs/19-0.2.6-IPC-MODULARIZATION-PLAN.md`](19-0.2.6-IPC-MODULARIZATION-PLAN.md) 把全部 64 个渲染器→主进程通道（56 invoke + 8 send）迁入 `src/main/ipc/` 的 11 个领域模块，并由 `ipc/register.ts` 组合入口统一注册；`index.ts` 只构造依赖与窄回调。证据：`tests/unit/ipc-channel-coverage.test.ts`（56/8 逐通道对齐冻结映射，无重复、无方向互换）与专项 Electron E2E（阶段 3/4/5 共 47 项）在 Linux 通过。关闭条件：用户手动运行 `npm run check:all` 通过且无本重构相关失败；在此之前保持本条为“实现完成，用户全量验证待完成”状态。
 
-3. **preload API surface 缺乏独立类型契约测试**：真实 Electron E2E 会覆盖当前桥接调用，但新增能力仍需同时更新 channel、preload、main handler 和行为测试。
+3. **preload API surface 缺乏独立类型契约测试（已部分缓解）**：真实 Electron E2E 会覆盖当前桥接调用，但新增能力仍需同时更新 channel、preload、main handler 和行为测试。0.2.6 的 `tests/unit/ipc-channel-map.test.ts` 与 `tests/unit/ipc-channel-coverage.test.ts` 已把通道注册与 `IPC_CHANNELS` 契约锁定为单测期望，通道遗漏/漂移可被单测检出；但 preload 桥接层自身的类型契约测试仍未建立，本条保持未关闭。
 
 4. **跨平台替换语义尚未实机验证**：文档安全写入已在 Linux 通过故障和 Electron 测试；Windows/macOS 对锁定目标、替换和大小写路径的真实语义按 [`docs/04-CROSS-PLATFORM.md`](04-CROSS-PLATFORM.md) 待实体机验证。
 
@@ -64,7 +64,7 @@ Vditor 4.0 的 SV 是 `<textarea>`，源码面不再提供可读取的 heading m
 
 **P2（架构）：**
 
-3. 将 `index.ts` 中的 IPC handler 分拆到职责明确的模块，保持 `src/main/ipc/` 只在确有边界时建立，不创建空壳目录。
+3. 将 `index.ts` 中的 IPC handler 分拆到职责明确的模块，保持 `src/main/ipc/` 只在确有边界时建立，不创建空壳目录。（0.2.6 已实现：11 个领域模块 + 组合入口，均承载实际 handler，无空壳；状态见架构风险点 #2，待用户全量验证后收口）
 
 **P3（功能完善）：**
 

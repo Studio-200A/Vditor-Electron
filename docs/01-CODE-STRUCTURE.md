@@ -74,8 +74,22 @@
 Vditor-Electron/
 ├── src/                           # 项目源代码（唯一源目录）
 │   ├── main/                      # Electron 主进程（TypeScript）
-│   │   ├── index.ts               # 主入口，应用生命周期、所有 IPC handler 注册
+│   │   ├── index.ts               # 主入口：应用生命周期、启动编排与 IPC 依赖构造
 │   │   ├── preload.ts             # preload 脚本，contextBridge 暴露 API
+│   │   ├── ipc/                   # IPC 领域注册模块（0.2.6 模块化）
+│   │   │   ├── trusted-channel.ts # handleTrusted/onTrusted 信任包装与错误规范化
+│   │   │   ├── register.ts        # 总注册入口：创建共享包装器并组合 11 个领域模块
+│   │   │   ├── file-dialogs.ts    # 打开/保存/导出对话框（导出 createSavePathChooser）
+│   │   │   ├── file-operations.ts # 文件内容与树操作（16 通道）
+│   │   │   ├── file-watching.ts   # 工作区/文档 watcher 与受控资源根
+│   │   │   ├── settings.ts        # 设置读写与菜单更新回调
+│   │   │   ├── persistent-state.ts # state.json 持久状态
+│   │   │   ├── recovery.ts        # 恢复快照
+│   │   │   ├── shell-integration.ts # 外部 URL/目录展示与剪贴板
+│   │   │   ├── resource-health.ts # 资源健康扫描与回收站
+│   │   │   ├── export-pdf.ts      # PDF 导出（导出 isExportWebContents 导航守卫判定）
+│   │   │   ├── window-controls.ts # 窗口控制与缩放
+│   │   │   └── app-shell.ts       # 系统信息、renderer ready 与关闭确认
 │   │   ├── ipc-contract.ts        # renderer-facing IPC channel 常量
 │   │   ├── ipc-guard.ts           # 可信顶层 renderer 来源校验与稳定错误码
 │   │   ├── ipc-validation.ts      # 高风险 IPC 参数的运行时解析与边界校验
@@ -261,7 +275,7 @@ Vditor-Electron/
    ├── new RecoveryStore(recoveryDir)      // 初始化私有恢复快照存储
    ├── new FileManagerService()           // 初始化文件服务
    ├── new FileWatchService(...)          // 初始化工作区和打开文档的文件监听服务
-   ├── registerIpcHandlers()              // 注册所有 IPC 通道
+   ├── registerApplicationIpcHandlers()  // 构造依赖并调用 ipc/register.ts 注册全部 IPC 通道
    ├── Menu.setApplicationMenu(...)       // macOS 设置原生菜单，其他平台置 null
    ├── nativeTheme.on('updated', ...)      // 监听系统主题变更
    └── createWindow()                     // 创建主窗口
@@ -864,6 +878,8 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 
 ## 8. IPC 通信架构
 
+**Handler 注册（0.2.6 模块化）：** 全部 64 个渲染器→主进程通道（56 invoke + 8 send）由 `src/main/ipc/` 的 11 个领域模块实现；`ipc/register.ts` 组合入口创建唯一的 `ipc/trusted-channel.ts` 信任包装器并统一注册，`index.ts` 在 `app.whenReady()` 内构造 `IpcRegistrationDeps`（已初始化服务、懒窗口 getter 与命名窄回调）后调用它。共享可变状态（`rendererReady`、菜单资格、窗口状态机）仍由 `index.ts` 持有，模块仅经回调触发。`tests/unit/ipc-channel-map.test.ts` 与 `tests/unit/ipc-channel-coverage.test.ts` 以冻结映射锁定通道集合与注册方向。
+
 ### 8.1 完整 IPC 通道表
 
 #### invoke 通道（render → main，返回 Promise）
@@ -961,7 +977,8 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 
 ### 8.3 错误处理机制
 
-- `ipcMain.handle` 抛出的异常通过 IPC 框架返回给渲染器为 Promise rejection
+- 所有 handler 经 `ipc/trusted-channel.ts` 包装注册：invoke 通道信任校验在 `try` 外，不可信调用直接收到原始 `IPC_UNTRUSTED_RENDERER` rejection 且 handler 不执行；send 通道校验在 `try` 内，拒绝时上报而不中断主进程
+- 其余错误经 `normalizeIpcError` 规范化后抛给渲染器（Promise rejection），并按通道记录 `console.error`（`IPC_UNTRUSTED_RENDERER`/`IPC_INVALID_ARGUMENT` 类校验错误不记录）
 - `app/app-composition.js` 通过 `try/catch` 捕获组合层 `window.fileAPI` 调用，在状态栏显示 `message.xxx...Failed` 消息；领域 controller 通过注入 bridge 接口返回可恢复结果
 - `app.saveSettings` 不捕获异常；若 `saveSettings` 调用失败，错误冒泡到调用方
 - `app.openExternal` 对非法协议主动 `throw new Error`，渲染器捕获并在 UI 提示
@@ -1696,7 +1713,7 @@ app.whenReady():
   new RecoveryStore()              # recovery-store.ts：加载/保存私有恢复快照
   new FileManagerService()         # file-manager.ts：注册文件服务
   new FileWatchService()           # file-watch-service.ts：工作区与文档 watcher 所有权
-  registerIpcHandlers()            # index.ts：注册所有 ipcMain.handle / ipcMain.on
+  registerApplicationIpcHandlers()  # ipc/register.ts：组合入口注册所有 ipcMain.handle / ipcMain.on
   new Menu (macOS)                 # menu.ts：设置原生菜单（其他平台 null）
   createWindow()                   # 创建 BrowserWindow → loadURL('app://app/index.html')
   （模块加载期已创建 ResourceHealthService 与 WindowCloseConfirmation 单例）
