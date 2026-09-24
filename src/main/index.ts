@@ -18,18 +18,8 @@ import { extractOpenFilePaths } from './open-files';
 import { IPC_CHANNELS } from './ipc-contract';
 import { LocalResourcePolicy } from './local-resource';
 import { classifyNavigation } from './navigation-policy';
-import { createTrustedChannelRegistration } from './ipc/trusted-channel';
-import { registerRecoveryIpcHandlers } from './ipc/recovery';
-import { registerShellIntegrationIpcHandlers } from './ipc/shell-integration';
-import { registerSettingsIpcHandlers } from './ipc/settings';
-import { registerFileWatchingIpcHandlers } from './ipc/file-watching';
-import { registerFileOperationsIpcHandlers } from './ipc/file-operations';
-import { registerFileDialogsIpcHandlers, createSavePathChooser } from './ipc/file-dialogs';
-import { registerResourceHealthIpcHandlers } from './ipc/resource-health';
-import { registerExportPdfIpcHandlers, isExportWebContents } from './ipc/export-pdf';
-import { registerWindowControlsIpcHandlers } from './ipc/window-controls';
-import { registerAppShellIpcHandlers } from './ipc/app-shell';
-import { registerPersistentStateIpcHandlers } from './ipc/persistent-state';
+import { registerIpcHandlers } from './ipc/register';
+import { isExportWebContents } from './ipc/export-pdf';
 import { FileManagerService } from './services/file-manager';
 import { FileWatchService } from './services/file-watch-service';
 import { RecoveryStore } from './services/recovery-store';
@@ -360,78 +350,33 @@ function createWindow(): void {
   });
 }
 
-const chooseSavePath = createSavePathChooser(() => mainWindow);
-
-function registerIpcHandlers(): void {
-  const { handleTrusted, onTrusted } = createTrustedChannelRegistration({
+function registerApplicationIpcHandlers(): void {
+  registerIpcHandlers({
     registerInvoke: (channel, listener) => ipcMain.handle(channel, listener),
     registerMessage: (channel, listener) => ipcMain.on(channel, listener),
     getMainWindow: () => mainWindow,
-  });
-  registerFileDialogsIpcHandlers({
-    getMainWindow: () => mainWindow,
-    tr,
-    registration: { handleTrusted, onTrusted },
-  });
-
-  const recoveryRegistration = {
-    recoveryStore,
-    registration: { handleTrusted, onTrusted },
-  };
-  registerRecoveryIpcHandlers(recoveryRegistration);
-  registerSettingsIpcHandlers({
-    settingsStore,
-    onMenuAffectingSettingsChanged: (settings) => updateApplicationMenu(settings),
-    registration: { handleTrusted, onTrusted },
-  });
-  registerPersistentStateIpcHandlers({
-    persistentStateStore,
-    registration: { handleTrusted, onTrusted },
-  });
-  registerShellIntegrationIpcHandlers({
-    registration: { handleTrusted, onTrusted },
-  });
-  registerFileWatchingIpcHandlers({
-    fileWatchService,
-    localResourcePolicy,
-    registration: { handleTrusted, onTrusted },
-  });
-  registerFileOperationsIpcHandlers({
     fileManager,
     fileWatchService,
-    registration: { handleTrusted, onTrusted },
-  });
-  registerResourceHealthIpcHandlers({
-    resourceHealthService,
     settingsStore,
+    persistentStateStore,
+    recoveryStore,
+    resourceHealthService,
+    localResourcePolicy,
+    windowCloseConfirmation,
+    isWindowMaximized,
+    toggleWindowMaximized,
+    tr,
+    onMenuAffectingSettingsChanged: (settings) => updateApplicationMenu(settings),
     onMenuEligibilityChanged: (eligible) => {
       if (resourceHealthMenuEligible !== eligible) {
         resourceHealthMenuEligible = eligible;
         updateApplicationMenu();
       }
     },
-    registration: { handleTrusted, onTrusted },
-  });
-  registerExportPdfIpcHandlers({
-    chooseSavePath,
-    fileManager,
-    registration: { handleTrusted, onTrusted },
-  });
-  registerWindowControlsIpcHandlers({
-    getMainWindow: () => mainWindow,
-    isWindowMaximized,
-    toggleWindowMaximized,
-    registration: { handleTrusted, onTrusted },
-  });
-  registerAppShellIpcHandlers({
-    getMainWindow: () => mainWindow,
-    settingsStore,
-    windowCloseConfirmation,
     onRendererReady: () => {
       rendererReady = true;
       flushPendingOpenFiles();
     },
-    registration: { handleTrusted, onTrusted },
   });
 }
 
@@ -470,7 +415,7 @@ if (!ownsSingleInstanceLock) {
       (filePath) => fileManager.readFile(filePath),
       (event) => send(IPC_CHANNELS.fileChanged, event),
     );
-    registerIpcHandlers();
+    registerApplicationIpcHandlers();
     updateApplicationMenu();
     nativeTheme.on('updated', () =>
       send(
