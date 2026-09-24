@@ -17,10 +17,6 @@ import { createAppMenu } from './menu';
 import { extractOpenFilePaths } from './open-files';
 import { IPC_CHANNELS } from './ipc-contract';
 import { LocalResourcePolicy } from './local-resource';
-import {
-  parseFiniteNumber,
-  requireArgumentCount,
-} from './ipc-validation';
 import { classifyNavigation } from './navigation-policy';
 import { createTrustedChannelRegistration } from './ipc/trusted-channel';
 import { registerRecoveryIpcHandlers } from './ipc/recovery';
@@ -31,6 +27,8 @@ import { registerFileOperationsIpcHandlers } from './ipc/file-operations';
 import { registerFileDialogsIpcHandlers, createSavePathChooser } from './ipc/file-dialogs';
 import { registerResourceHealthIpcHandlers } from './ipc/resource-health';
 import { registerExportPdfIpcHandlers, isExportWebContents } from './ipc/export-pdf';
+import { registerWindowControlsIpcHandlers } from './ipc/window-controls';
+import { registerAppShellIpcHandlers } from './ipc/app-shell';
 import { registerPersistentStateIpcHandlers } from './ipc/persistent-state';
 import { FileManagerService } from './services/file-manager';
 import { FileWatchService } from './services/file-watch-service';
@@ -419,68 +417,21 @@ function registerIpcHandlers(): void {
     fileManager,
     registration: { handleTrusted, onTrusted },
   });
-  onTrusted(IPC_CHANNELS.appRendererReady, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    rendererReady = true;
-    flushPendingOpenFiles();
+  registerWindowControlsIpcHandlers({
+    getMainWindow: () => mainWindow,
+    isWindowMaximized,
+    toggleWindowMaximized,
+    registration: { handleTrusted, onTrusted },
   });
-  handleTrusted(IPC_CHANNELS.appGetSystemLocale, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    return app.getLocale();
-  });
-  handleTrusted(IPC_CHANNELS.appGetSystemTheme, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    return nativeTheme.shouldUseDarkColors ? 'dark' : 'classic';
-  });
-  handleTrusted(IPC_CHANNELS.appIsFullscreen, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    return mainWindow?.isFullScreen() || false;
-  });
-  handleTrusted(IPC_CHANNELS.appIsMaximized, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    return isWindowMaximized();
-  });
-  handleTrusted(IPC_CHANNELS.appGetInfo, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    return {
-      app: app.getVersion(),
-      electron: process.versions.electron,
-      node: process.versions.node,
-      platform: process.platform,
-      vditor: '3.11.3',
-    };
-  });
-  handleTrusted(IPC_CHANNELS.appSetZoomFactor, (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    const factor = parseFiniteNumber(args[0], 75, 200) / 100;
-    mainWindow?.webContents.setZoomFactor(factor);
-    return factor;
-  });
-  onTrusted(IPC_CHANNELS.appToggleFullscreen, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    mainWindow?.setFullScreen(!mainWindow.isFullScreen());
-  });
-  onTrusted(IPC_CHANNELS.windowMinimize, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    mainWindow?.minimize();
-  });
-  onTrusted(IPC_CHANNELS.windowMaximize, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    toggleWindowMaximized();
-  });
-  onTrusted(IPC_CHANNELS.windowClose, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    mainWindow?.close();
-  });
-  onTrusted(IPC_CHANNELS.appToggleDevTools, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    if (!mainWindow || !settingsStore.get('devToolsEnabled')) return;
-    mainWindow.webContents.toggleDevTools();
-  });
-  onTrusted(IPC_CHANNELS.appCloseConfirmed, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    if (mainWindow) windowCloseConfirmation.confirm(mainWindow);
-    mainWindow?.close();
+  registerAppShellIpcHandlers({
+    getMainWindow: () => mainWindow,
+    settingsStore,
+    windowCloseConfirmation,
+    onRendererReady: () => {
+      rendererReady = true;
+      flushPendingOpenFiles();
+    },
+    registration: { handleTrusted, onTrusted },
   });
 }
 
