@@ -1,7 +1,6 @@
 import {
   app,
   BrowserWindow,
-  dialog,
   ipcMain,
   Menu,
   nativeTheme,
@@ -22,7 +21,6 @@ import { formatLocalResourceBase, LocalResourcePolicy } from './local-resource';
 import {
   parseAbsolutePath,
   parseBoolean,
-  parseEnum,
   parseFiniteNumber,
   parseOptionalAbsolutePath,
   parseOptionalText,
@@ -37,8 +35,8 @@ import { registerShellIntegrationIpcHandlers } from './ipc/shell-integration';
 import { registerSettingsIpcHandlers } from './ipc/settings';
 import { registerFileWatchingIpcHandlers } from './ipc/file-watching';
 import { registerFileOperationsIpcHandlers } from './ipc/file-operations';
+import { registerFileDialogsIpcHandlers, createSavePathChooser } from './ipc/file-dialogs';
 import { registerPersistentStateIpcHandlers } from './ipc/persistent-state';
-import { resolveSaveDialogDefaultPath } from './save-dialog-path';
 import { FileManagerService } from './services/file-manager';
 import { FileWatchService } from './services/file-watch-service';
 import { RecoveryStore } from './services/recovery-store';
@@ -370,14 +368,7 @@ function createWindow(): void {
   });
 }
 
-async function chooseSavePath(
-  title: string,
-  defaultPath: string,
-  filters: Electron.FileFilter[],
-): Promise<string | null> {
-  const result = await dialog.showSaveDialog(mainWindow!, { title, defaultPath, filters });
-  return result.canceled || !result.filePath ? null : result.filePath;
-}
+const chooseSavePath = createSavePathChooser(() => mainWindow);
 
 function registerIpcHandlers(): void {
   const { handleTrusted, onTrusted } = createTrustedChannelRegistration({
@@ -385,55 +376,10 @@ function registerIpcHandlers(): void {
     registerMessage: (channel, listener) => ipcMain.on(channel, listener),
     getMainWindow: () => mainWindow,
   });
-  handleTrusted(IPC_CHANNELS.fileOpenDialog, async (_event, ...args) => {
-    requireArgumentCount(args, 0, 1);
-    const defaultDirectory = parseOptionalAbsolutePath(args[0]);
-    const result = await dialog.showOpenDialog(mainWindow!, {
-      title: tr('Open Markdown Files', '打开 Markdown 文件', '開啟 Markdown 檔案'),
-      filters: [
-        { name: 'Markdown', extensions: ['md', 'markdown', 'mdown', 'mkd', 'mkdn'] },
-        { name: 'All Files', extensions: ['*'] },
-      ],
-      properties: ['openFile', 'multiSelections'],
-      defaultPath: defaultDirectory,
-    });
-    return result.canceled ? [] : result.filePaths;
-  });
-  handleTrusted(IPC_CHANNELS.fileOpenFolderDialog, async (_event, ...args) => {
-    requireArgumentCount(args, 0, 1);
-    const defaultDirectory = parseOptionalAbsolutePath(args[0]);
-    const result = await dialog.showOpenDialog(mainWindow!, {
-      title: tr('Open Folder', '打开文件夹', '開啟資料夾'),
-      properties: ['openDirectory'],
-      defaultPath: defaultDirectory,
-    });
-    return result.canceled ? null : result.filePaths[0];
-  });
-  handleTrusted(IPC_CHANNELS.fileSaveDialog, (_event, ...args) => {
-    requireArgumentCount(args, 0, 2);
-    const defaultPath = parseOptionalText(args[0]);
-    const defaultDirectory = parseOptionalAbsolutePath(args[1]);
-    return chooseSavePath(
-      tr('Save Markdown File', '保存 Markdown 文件', '儲存 Markdown 檔案'),
-      resolveSaveDialogDefaultPath(defaultPath, defaultDirectory),
-      [
-        { name: 'Markdown', extensions: ['md', 'markdown'] },
-        { name: 'All Files', extensions: ['*'] },
-      ],
-    );
-  });
-  handleTrusted(IPC_CHANNELS.fileExportDialog, (_event, ...args) => {
-    requireArgumentCount(args, 1, 3);
-    const type = parseEnum(args[0], ['html', 'pdf']);
-    const defaultPath = parseOptionalText(args[1]);
-    const defaultDirectory = parseOptionalAbsolutePath(args[2]);
-    return chooseSavePath(
-      `Export ${type.toUpperCase()}`,
-      defaultDirectory
-        ? path.join(defaultDirectory, path.basename(defaultPath || `document.${type}`))
-        : defaultPath || `document.${type}`,
-      [{ name: type.toUpperCase(), extensions: [type] }],
-    );
+  registerFileDialogsIpcHandlers({
+    getMainWindow: () => mainWindow,
+    tr,
+    registration: { handleTrusted, onTrusted },
   });
 
   const recoveryRegistration = {
