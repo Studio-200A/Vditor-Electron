@@ -18,7 +18,7 @@ import { shouldBlockRemoteSvgImage } from './remote-svg-policy';
 import { createAppMenu } from './menu';
 import { extractOpenFilePaths } from './open-files';
 import { allowedExternalUrl } from './external-url';
-import { invalidIpcArgument, normalizeIpcError, requireTrustedMainFrame } from './ipc-guard';
+import { invalidIpcArgument } from './ipc-guard';
 import { IPC_CHANNELS } from './ipc-contract';
 import { formatLocalResourceBase, LocalResourcePolicy } from './local-resource';
 import {
@@ -40,6 +40,7 @@ import {
   requireArgumentCount,
 } from './ipc-validation';
 import { classifyNavigation } from './navigation-policy';
+import { createTrustedChannelRegistration } from './ipc/trusted-channel';
 import { resolveRelativeMarkdownLink } from './resolve-markdown-link';
 import { resolveSaveDialogDefaultPath } from './save-dialog-path';
 import { FileManagerService } from './services/file-manager';
@@ -399,43 +400,12 @@ async function readClipboardContents(): Promise<{ text: string; html: string }> 
   return { text, html };
 }
 
-type TrustedInvokeHandler = (event: Electron.IpcMainInvokeEvent, ...args: unknown[]) => unknown;
-type TrustedMessageHandler = (event: Electron.IpcMainEvent, ...args: unknown[]) => void;
-
-function handleTrusted(channel: string, handler: TrustedInvokeHandler): void {
-  ipcMain.handle(channel, async (event, ...args) => {
-    requireTrustedMainFrame(event, mainWindow?.webContents);
-    try {
-      return await handler(event, ...args);
-    } catch (error) {
-      throw reportIpcFailure(channel, error);
-    }
-  });
-}
-
-function onTrusted(channel: string, handler: TrustedMessageHandler): void {
-  ipcMain.on(channel, (event, ...args) => {
-    try {
-      requireTrustedMainFrame(event, mainWindow?.webContents);
-      handler(event, ...args);
-    } catch (error) {
-      reportIpcFailure(channel, error);
-    }
-  });
-}
-
-function reportIpcFailure(channel: string, error: unknown): Error {
-  const normalized = normalizeIpcError(error);
-  if (!(
-    normalized instanceof Error &&
-    'code' in normalized &&
-    (normalized.code === 'IPC_UNTRUSTED_RENDERER' || normalized.code === 'IPC_INVALID_ARGUMENT')
-  ))
-    console.error(`IPC ${channel} failed:`, error);
-  return normalized;
-}
-
 function registerIpcHandlers(): void {
+  const { handleTrusted, onTrusted } = createTrustedChannelRegistration({
+    registerInvoke: (channel, listener) => ipcMain.handle(channel, listener),
+    registerMessage: (channel, listener) => ipcMain.on(channel, listener),
+    getMainWindow: () => mainWindow,
+  });
   handleTrusted(IPC_CHANNELS.fileOpenDialog, async (_event, ...args) => {
     requireArgumentCount(args, 0, 1);
     const defaultDirectory = parseOptionalAbsolutePath(args[0]);
