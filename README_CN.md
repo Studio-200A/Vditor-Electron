@@ -11,14 +11,15 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Studio-200A/Vditor-Electron/releases"><img src="https://img.shields.io/badge/version-0.2.5-blue" alt="Version 0.2.5" /></a>
+  <a href="https://github.com/Studio-200A/Vditor-Electron/releases"><img src="https://img.shields.io/badge/version-0.2.6-blue" alt="Version 0.2.6" /></a>
+  <a href="https://github.com/Vanessa219/vditor"><img src="https://img.shields.io/badge/vditor%20version-3.11.3-blue" alt="Vditor version 3.11.3" /></a>
   <a href="https://github.com/Studio-200A/Vditor-Electron/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License" /></a>
-  <a href="https://github.com/Studio-200A/Vditor-Electron"><img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey" alt="Linux, Windows and macOS" /></a>
+  <a href="https://github.com/Studio-200A/Vditor-Electron/releases"><img src="https://img.shields.io/badge/builds-Linux%20x86__64-lightgrey" alt="Linux x86_64 构建" /></a>
   <a href="https://github.com/prettier/prettier"><img src="https://img.shields.io/badge/code_style-prettier-ff69b4.svg" alt="code style: prettier" /></a>
 
 </p>
 
-Vditor Desktop 把 [Vditor](https://github.com/Vanessa219/vditor)——**最好用的 Markdown 编辑内核之一**——装进了它本该拥有的桌面外壳。没有专有格式，也没有任何锁定：你写下的内容，任何时候落在磁盘上的都是一份最普通的 `.md` 文件。在此基础上，软件补全了一款真正的桌面工具该有、而网页版编辑器给不了的部分：多标签、工作区、资源管理器、Vditor 自带大纲、主题、会话恢复和桌面文件关联。
+Vditor Desktop 把 [Vditor](https://github.com/Vanessa219/vditor)——**最好用的 Markdown 编辑内核之一**——装进了它本该拥有的桌面外壳。没有专有格式，也没有任何锁定：保存后的文档是普通的 Markdown 文件，例如 `.md`，可以用其他编辑器打开；尚未保存的修改会在应用中标明。在此基础上，软件补全了一款真正的桌面工具该有、而网页版编辑器给不了的部分：多标签、工作区、资源管理器、Vditor 自带大纲、主题、会话恢复和桌面文件关联。
 
 ![Vditor Desktop 浅色主题](assets/screenshot-light.webp)
 
@@ -40,7 +41,7 @@ Vditor Desktop 把 [Vditor](https://github.com/Vanessa219/vditor)——**最好�
 
 ## 为什么选择 Vditor Desktop
 
-- **只属于你的本地文件：** 不需要账号，不需要云同步，也没有专有格式。写下的就是磁盘上一份普通的 `.md` 文件，随时能用任何其他编辑器打开、迁移，永远不会被任何软件绑定。
+- **只属于你的本地文件：** 不需要账号，不需要云同步，也没有专有格式。保存后的文档是普通的 Markdown 文件，可以用其他编辑器打开、迁移。
 - **想怎么写就怎么写：** 想看最终排版效果就用所见即所得，想兼顾语法和视觉就用即时渲染，想左右对照就用分栏预览——写作过程中随时切换，不用中断思路。
 - **真正的桌面端，不是网页套壳：** 可以从命令行或文件管理器直接打开文件，把任意目录当作项目来用，下次打开时标签页和窗口布局都还在原地。
 - **文件树与编辑器天然一体，而不是买一赠一：** 不用离开文档就能新建、重命名和整理文件，也能直接在资源管理器的右键菜单里打开新工作区或把文件送进回收站。
@@ -60,6 +61,8 @@ Vditor Desktop 把 [Vditor](https://github.com/Vanessa219/vditor)——**最好�
 
 可以通过统一工具栏或“视图 → 编辑模式”切换模式。分栏预览提供源码行号、可配置 Tab 空格数、可选的空白字符灰点、可拖动的分隔线以及自动隐藏的预览滚动条。“设置 → 编辑器”还提供光标样式选项，可在原生、下划线、竖线和竖块之间选择，兼顾系统原生文本光标与自绘光标。
 
+三种模式都支持**自动换行**。关闭后，长行可以横向滚动；在所见即所得和即时渲染模式中，文字段落宽度仍可单独调整。
+
 ## 不打扰写作的工作区
 
 大多数时候你不是在“管理一个编辑器”，只是在写东西。Vditor Desktop 尽量让周围这些工具在你没用到之前保持安静。
@@ -72,8 +75,6 @@ Vditor Desktop 把 [Vditor](https://github.com/Vanessa219/vditor)——**最好�
 - 支持保存、另存为、导出可移植 HTML 或图片自包含的 PDF，下次打开软件时上一次的工作区和窗口状态会自动恢复。
 - 查找替换不需要一个拍在脸上的弹窗，`Ctrl/Cmd + F` 召唤紧凑面板搞定。
 - 图片直接拖进文档就行，它们会落进一个可配置的资源目录，无论是本地图片还是在线图片，三种模式下都能正常预览。需要 SVG 时也能随时开启，应用会先多问一句。
-
-目录重命名/删除和工作区级资源限制仍属于后续工作；重要文档请保留备份。
 
 ## 尽心保护你和你的内容
 
@@ -88,10 +89,10 @@ Vditor Desktop 把你的写作当作需要保护的内容，而不是可以随�
 ### 其他安全防线
 
 - **让每一次跳转都更有分寸：** Markdown 里的网页和邮件链接只会把明确支持的 `http:`、`https:` 和 `mailto:` 交给系统处理；脚本、危险协议和不受信任的应用页面会被拦截，不让一条链接把编辑器带到不该去的地方。
-- **本地预览有边界：** 本地图片只会从当前工作区或已打开文档的父目录提供；不存在、越界、主动内容和未知类型都会统一失败，Markdown 源文仍保持普通相对路径。
+- **本地图片预览有边界：** 应用会限制 Markdown 中的图片引用可预览哪些本地路径，文档仍保持普通的相对路径。
 - **需要时再启用 SVG：** SVG 预览默认关闭，打开陌生文档时更安心，也更可预期。当文档确实需要 SVG 时，可在“设置 → 编辑器 → 安全性”开启，并确认提示。遇到不熟悉的 SVG，尤其是来自网络的图片，建议先核对来源；本地文件也可以先用文本编辑器看看内容。
-- **渲染防线层层收紧：** 编辑器保持 context isolation 开启、Node integration 关闭；脚本策略只允许应用内置资源及 Vditor 所需的精确 MathJax loader，Markdown 的 XSS 过滤默认开启。只有在明确风险提示后才能为可信文档关闭过滤；其余防线只能降低风险，不能让不受信任的 HTML 变得安全。
-- **更谨慎地保存：** 采用同目录临时文件保存机制；内容未变化时不会重写，保存失败也会保留原文件和编辑器中的未保存内容。
+- **谨慎渲染文档：** Markdown 中可能有风险的 HTML 默认会被过滤。关闭过滤前，应用会明确提示风险；只应为可信文档这样做，陌生 HTML 不会因此变得安全。
+- **更谨慎地保存：** 应用会先准备好新内容，再替换原文件；内容未变化时不会重写，保存失败也会保留原文件和编辑器中的未保存内容。
 - **异常退出后仍可找回：** 未保存内容会写入私有恢复快照。重新打开软件时，会先检查原文件是否仍保持不变，再决定是否允许保存恢复版本；如果情况不安全，可以将恢复内容另存到其他位置。
 - **主动感知外部变化：** 软件会监控所有已打开文件，包括工作区外独立打开的文件。没有本地修改时可以自动重载；存在本地修改时会暂停自动保存，并持续提醒你处理。
 - **引导解决内容冲突：** 因外部编辑产生内容冲突时，自带经过悉心设计的引导解决方案──重新加载磁盘上的稳定版本、将当前内容另存为、保留为未命名文档、忽略外部变化，或经过明确确认后覆盖磁盘版本。如果磁盘再次发生变化，之前的覆盖确认会自动失效。
@@ -148,11 +149,13 @@ Vditor Desktop 把你的写作当作需要保护的内容，而不是可以随�
 
 > [!NOTE]
 >
-> TOML 配置文件可直接阅读，按应用、外观、字体、编辑器、预览、文件、工作区、窗口和会话设置分类。外观部分分别保存 `lightTheme` 和 `darkTheme`；状态栏主题模式菜单提供固定浅色、固定深色和跟随系统三种模式，`systemTheme` 记录第三种选择，并根据这两项偏好解析当前主题。Claude 应用主题只定义应用颜色，不替代 Vditor 的内容主题或代码块主题设置。
+> TOML 配置文件可直接阅读，按应用、外观、字体、编辑器、预览、文件、工作区、窗口和会话设置分类。浅色与深色主题会分别记住你的选择；可以从状态栏切换，也可以跟随系统。内容主题和代码块主题保留各自的设置。
 >
 > 异常恢复快照单独存放在上表所列的私有应用数据目录中；保存或放弃恢复后会删除，且不会被作为本地文档资源提供。
 
 ## 安装与运行
+
+从 [Releases 页面](https://github.com/Studio-200A/Vditor-Electron/releases)下载 Linux x86_64 的 AppImage 或 Portable 压缩包。AppImage 添加可执行权限后即可运行；Portable 压缩包解压后可启动 `vditor-desktop`。Windows 和 macOS 构建及实体机验证仍待完成。
 
 <details>
 <summary>从源码运行</summary>
@@ -166,9 +169,7 @@ npm ci
 npm start
 ```
 
-`npm ci` 和 electron-builder 的 Electron 二进制下载均使用 npmmirror 源（`https://registry.npmmirror.com/-/binary/electron/`）。在 Linux 上，`npm run test:e2e` 会优先复用已解压的 `node_modules/electron/dist` 运行时，再决定是否下载。固定版本 Electron 44.1.0 的运行时会缓存在本地，不会修改 lockfile。该运行时要求 macOS 13 或更高版本，Electron 44 也不再提供 Windows 32 位或 Linux ARMv7 预构建程序。本仓库的 Linux 发布脚本目前只生成 x86_64；Windows/macOS 打包和实体机验证仍是独立的平台工作。
-
-构建过程会将 Vditor 的资源复制到本地，运行时不依赖 Vditor CDN。
+编辑器核心资源已内置在本地，使用时不依赖 Vditor CDN。平台支持与验证范围见[跨平台说明](docs/04-CROSS-PLATFORM.md)。
 
 </details>
 
@@ -191,9 +192,7 @@ release/vditor-desktop-x86_64-<版本号>-portable.AppImage
 
 Portable 压缩包中的 desktop 文件使用 `/path/to/vditor-desktop` 作为安装路径占位符。安装到桌面环境前，请将其替换为实际解压路径。AppImage 添加可执行权限后即可运行。
 
-发行脚本会在打包前校验项目 metadata 以及固定的 AppImage 工具/runtime SHA-256。由于 appimagetool 内置的 advisory 校验器会拒绝本项目稳定的、包含连字符的反向域名 ID，脚本传入 `--no-appstream`；项目自身的 metadata 检查仍会强制 AppStream 和 desktop 引用使用完整且一致的应用 ID。
-
-目前 Linux 是主要开发和验证平台；项目已经包含 Windows 和 macOS 的窗口及数据目录适配，但文件监听（watcher）、权限、路径大小写、打包和发布仍需在实体设备上验证。
+目前 Linux 是主要开发和验证平台。Windows 和 macOS 的后续工作见[跨平台说明](docs/04-CROSS-PLATFORM.md)。
 
 </details>
 

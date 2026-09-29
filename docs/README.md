@@ -16,12 +16,12 @@
 | `09-DEV-NOTE.md`              | 开发过程中有用内容的笔记记录。                                                                                                                                                                     |
 | `TBD/`                        | 暂缓且尚未指定 Desktop 版本的候选方案；Vditor 4.0 升级方案与执行账本见 [迁移方案](TBD/VDITOR-4.0-MIGRATION-PLAN.md) 和 [执行账本](TBD/VDITOR-4.0-EXECUTION-TRACKER.md)。                           |
 | `HANDOFF-DOCS/`               | 不同版本开发过程中，跨对话、跨coding agent、跨LLM的批次交接文档留底。                                                                                                                              |
-| `ARCHIVED`                    | 已经完成的往期开发文档留档（10–18 号，涵盖 0.1.3、0.1.5、0.2.0、0.2.5）。                                                                                                                          |
+| `ARCHIVED`                    | 已经完成的往期开发文档留档（10–19 号，涵盖 0.1.3、0.1.5、0.2.0、0.2.5 及 0.2.6 IPC 模块化）。                                                                                                    |
 | `assets/`                     | 文档图片等静态资源的占位目录（当前仅含 .gitkeep）。                                                                                                                                                |
 
 ## 近期主要版本计划
 
-1. `0.2.6`（进行中）：修复批次，开发分支 `dev-0.2.6`，对应 `CHANGELOG.md` 的「0.2.6 - TBA」章节；包含 SV 标题锚点滚动同步、source-only 大纲空态提示、编辑器重建后保留 SV 布局、三模式自动换行实时生效与撤销回退保存点清除脏标记、Nord Dark 与 Elegant 两套内置壳层主题、每行最多四张主题预览卡片、亮暗切换后重绘已渲染 Mermaid、About logo 不可拖出，以及 Vitest 与 `js-yaml` 依赖安全升级等。另含内部 IPC handler 模块化重构（行为保持型），轻量计划见 [`19-0.2.6-IPC-MODULARIZATION-PLAN.md`](19-0.2.6-IPC-MODULARIZATION-PLAN.md)，完成后归档。
+1. `0.2.6`（进行中）：修复批次，开发分支 `dev-0.2.6`，对应 `CHANGELOG.md` 的「0.2.6 - Editing and Theme Refinements」章节；包含 SV 标题锚点滚动同步、source-only 大纲空态提示、编辑器重建后保留 SV 布局、三模式自动换行实时生效与撤销回退保存点清除脏标记、Nord Dark 与 Elegant 两套内置壳层主题、每行最多四张主题预览卡片、亮暗切换后重绘已渲染 Mermaid、About logo 不可拖出，以及 Vitest 与 `js-yaml` 依赖安全升级等。另含内部 IPC handler 模块化重构（行为保持型），执行记录见 [`19-0.2.6-IPC-MODULARIZATION-PLAN.md`](ARCHIVED/19-0.2.6-IPC-MODULARIZATION-PLAN.md)。
 2. 后续版本：根据实际需求从 `08-WISHLIST.md` 选择功能，并单独建立对应版本计划。Vditor 4.0 升级暂缓，尚未指定 Desktop 版本；只有重新确认 SV 行为变化、升级收益与目标版本后，才将 `TBD/` 中的候选方案纳入版本计划。
 
 版本计划是开发约束而非不可变承诺；实施前应以当前代码、测试结果和用户需求为准更新文档。

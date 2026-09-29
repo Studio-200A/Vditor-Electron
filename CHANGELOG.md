@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.6 - TBA
+## 0.2.6 - Editing and Theme Refinements
 
 ### New Features
 
