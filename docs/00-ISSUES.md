@@ -4,6 +4,18 @@
 >
 > `docs/01-CODE-STRUCTURE.md` 是代码架构导航地图，不再维护技术债清单。
 
+## Vditor 3.11.3: 空文档首次 Enter 在 SV 和 IR 中没有形成下一行
+
+**状态：** 待上游编辑语义修复与产品决策；0.2.6 已修复三种模式的自绘光标尺寸，尚未实现统一换行。
+
+真实 Electron 中，新建空文档按 Enter 后，Vditor 3.11.3 的 SV 将选区恢复到第一行空 `span[data-type="text"]`，IR 只留下一个空 `p[data-block="0"]`；继续输入 `x` 都落在第一行。WYSIWYG 保留两个空段落，光标可见地移到第二行，但随后输入 `x` 的 `getValue()` 仍为 `"x\n"`。原生和自绘光标的内容与选区结果相同；仅代理尺寸属于 Desktop 的 `src/renderer/vditor-adapter.js`。SV/IR 的行为由 `node_modules/vditor/src/ts/sv/`、`node_modules/vditor/src/ts/ir/` 的输入重解析和 Lute 规范化负责。公开 `insertMD("\n")`、临时移动 SV Range 或添加空块均不能在下一次输入后保留第二行，事后回写全文又会破坏选区、撤销与文件保真。关闭条件：经明确决策采用上游修复、可复现的固定补丁发行物或通过行为矩阵验证的升级版本后，三种模式在空文档按一次 Enter 均保持光标尺寸、占位提示消失且插入点位于第二行；随后输入、`getValue()`、保存重开与撤销/重做结果一致。
+
+## Vditor 3.11.3 的 SV 段落间空行在编辑后移动
+
+**状态：** 延期；尚未定位到可移植的上游修复，也未批准 3.11.3 补丁发行物或 4.0 迁移。Desktop 维持 Vditor 3.11.3 原生输入与序列化路径。
+
+在新文档的 SV 中输入 `test`、两次 Enter、`123`，再按 ↑ 到第二行输入 `123`，原来第三行的 `123` 会移到第四行，中间留一个空行。真实 Electron 中将 `caretStyle` 分别设为 `native` 和 `block`，两者得到相同的 Vditor DOM 与 Selection；因此这一内容变化不由 Desktop 自绘光标造成。行为属于 `node_modules/vditor/src/ts/sv/` 的输入、解析与段落重建路径；Desktop 的 `src/renderer/vditor-adapter.js` 只绘制代理光标，不能在该层改写 Markdown 或替换 Vditor 的 undo/selection 路径。升级到 4.0 不是唯一可能路径，也尚未证明能修复这一序列；可评估上游 3.x 修复，或经明确决策维护以 3.11.3 为基线、独立构建且固定版本的最小补丁发行物，不直接修改安装后的 `node_modules`。关闭条件：选定路径后以原生光标和自绘光标分别重放该序列，确认输入第二行不会额外移动原有第三行内容，并检查保存后的 Markdown、选区、撤销/重做及三种模式的回归。
+
 ## SV 标题锚点滚动同步依赖 Vditor 3.11.3 私有 heading marker DOM
 
 **状态：** 未决的 Vditor 4.0 升级风险；升级暂缓，未指定 Desktop 版本。若重新评估，按 [候选方案](TBD/VDITOR-4.0-MIGRATION-PLAN.md) 的阶段 3 和 [执行账本](TBD/VDITOR-4.0-EXECUTION-TRACKER.md) 的 SV 行为矩阵与增强结论验证。

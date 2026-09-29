@@ -205,6 +205,149 @@ test('keeps the custom caret visible at the new line after Enter', async () => {
   }
 });
 
+test('keeps the SV block caret to source line height after an empty heading marker', async () => {
+  const running = await launchApp({ editMode: 'sv', caretStyle: 'block', previewMode: 'editor' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    const source = page.locator('.editor-host.active .vditor-sv');
+    await source.click();
+    await page.keyboard.type('# ', { delay: 120 });
+    await expect(source.locator('[data-type="heading-marker"]')).toHaveText('# ');
+    const caret = page.locator('[data-vditor-desktop-caret="true"]');
+    await expect(caret).toBeVisible();
+    const { caretHeight, sourceLineHeight } = await page.evaluate(() => ({
+      caretHeight: document
+        .querySelector('[data-vditor-desktop-caret="true"]')!
+        .getBoundingClientRect().height,
+      sourceLineHeight: Number.parseFloat(
+        getComputedStyle(document.querySelector('.editor-host.active .vditor-sv')!).lineHeight,
+      ),
+    }));
+    expect(caretHeight).toBeLessThanOrEqual(sourceLineHeight * 1.2);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps the SV block caret size stable after Enter in an empty document', async () => {
+  const running = await launchApp({ editMode: 'sv', caretStyle: 'block', previewMode: 'editor' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    const source = page.locator('.editor-host.active .vditor-sv');
+    await source.click();
+    const caret = page.locator('[data-vditor-desktop-caret="true"]');
+    await expect(caret).toBeVisible();
+    const initial = await caret.evaluate((node) => ({
+      width: Number.parseFloat((node as HTMLElement).style.width),
+      height: Number.parseFloat((node as HTMLElement).style.height),
+    }));
+    await page.keyboard.press('Enter');
+    await expect(source.locator('[data-type="text"]')).toHaveCount(1);
+    await page.waitForTimeout(200);
+    const afterEnter = await caret.evaluate((node) => ({
+      width: Number.parseFloat((node as HTMLElement).style.width),
+      height: Number.parseFloat((node as HTMLElement).style.height),
+    }));
+    expect(afterEnter).toEqual(initial);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+for (const mode of ['ir', 'wysiwyg'] as const) {
+  test(`keeps the ${mode} block caret size stable after Enter in an empty document`, async () => {
+    const running = await launchApp({ editMode: mode, caretStyle: 'block' });
+    try {
+      const { page } = running;
+      await createNewTab(page);
+      const editor = page.locator(`.editor-host.active .vditor-${mode} .vditor-reset`);
+      await editor.click();
+      const caret = page.locator('[data-vditor-desktop-caret="true"]');
+      await expect(caret).toBeVisible();
+      const initial = await caret.evaluate((node) => ({
+        width: Number.parseFloat((node as HTMLElement).style.width),
+        height: Number.parseFloat((node as HTMLElement).style.height),
+        top: Number.parseFloat((node as HTMLElement).style.top),
+      }));
+      await page.keyboard.press('Enter');
+      await expect(editor.locator('p[data-block="0"]')).toHaveCount(mode === 'ir' ? 1 : 2);
+      await page.waitForTimeout(200);
+      const afterEnter = await caret.evaluate((node) => ({
+        width: Number.parseFloat((node as HTMLElement).style.width),
+        height: Number.parseFloat((node as HTMLElement).style.height),
+        top: Number.parseFloat((node as HTMLElement).style.top),
+      }));
+      expect(afterEnter.width).toBe(initial.width);
+      expect(afterEnter.height).toBe(initial.height);
+      if (mode === 'wysiwyg') expect(afterEnter.top - initial.top).toBeGreaterThan(16);
+    } finally {
+      await closeApp(running);
+    }
+  });
+}
+
+test('keeps the SV custom caret on the new line after a table separator', async () => {
+  const running = await launchApp({ editMode: 'sv', caretStyle: 'block', previewMode: 'editor' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    const source = page.locator('.editor-host.active .vditor-sv');
+    await source.click();
+    await page.keyboard.type('# chart test\n\n| head1 | head2 | head3 |\n|:-|:-|:-|', {
+      delay: 60,
+    });
+    await page.keyboard.press('Enter');
+    await expect(source.locator('[data-type="table"]')).toBeVisible();
+    const caret = page.locator('[data-vditor-desktop-caret="true"]');
+    await expect(caret).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const table = document.querySelector(
+            '.editor-host.active .vditor-sv [data-type="table"]',
+          );
+          const caret = document.querySelector<HTMLElement>('[data-vditor-desktop-caret="true"]');
+          const selection = window.getSelection();
+          const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+          if (!table || !caret || !range || range.startContainer !== table.firstChild) return false;
+          if (range.startContainer.textContent?.[range.startOffset - 1] !== '\n') return false;
+          const caretLeft =
+            caret.parentElement!.getBoundingClientRect().left + Number.parseFloat(caret.style.left);
+          return Math.abs(caretLeft - table.getBoundingClientRect().left) < 3;
+        }),
+      )
+      .toBe(true);
+    const before = await caret.evaluate((node) => {
+      const layer = node.parentElement;
+      if (!layer) throw new Error('Expected custom caret layer');
+      const layerRect = layer.getBoundingClientRect();
+      return {
+        x: layerRect.left + Number.parseFloat((node as HTMLElement).style.left),
+        y: layerRect.top + Number.parseFloat((node as HTMLElement).style.top),
+      };
+    });
+    await page.keyboard.type('x');
+    await expect(source.locator('[data-type="table"]')).toContainText('x');
+    const inserted = await source.locator('[data-type="table"]').evaluate((table) => {
+      const text = table.firstChild;
+      if (!text || text.nodeType !== Node.TEXT_NODE || !text.textContent?.endsWith('x')) {
+        throw new Error('Expected inserted text in the table source');
+      }
+      const range = document.createRange();
+      range.setStart(text, text.textContent.length - 1);
+      range.setEnd(text, text.textContent.length);
+      const rect = range.getBoundingClientRect();
+      return { left: rect.left, top: rect.top };
+    });
+    expect(Math.abs(before.x - inserted.left)).toBeLessThan(3);
+    expect(Math.abs(before.y - inserted.top)).toBeLessThan(3);
+  } finally {
+    await closeApp(running);
+  }
+});
+
 for (const mode of ['ir', 'wysiwyg'] as const) {
   for (const { label, input, inline } of [
     { label: 'italic marker', input: '**粗体文字*', inline: 'em' },

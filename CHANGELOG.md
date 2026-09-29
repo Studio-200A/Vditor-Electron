@@ -10,6 +10,8 @@
 
 ### Bug Fixes
 
+- **fix(editor):** Keep the SV custom caret at a stable source-line size in empty documents and after `# `, and place it at the next line's insertion point after Enter on a table separator.
+- **fix(editor):** Keep the Instant Rendering and WYSIWYG block caret at its original size when Enter turns an empty editor into empty paragraphs.
 - **fix(editor):** Keep the custom caret at the insertion point after inline Markdown formatting in Instant Rendering and WYSIWYG, including bold and inline code markers.
 - **fix(editor):** Make Word wrap work immediately in all three editing modes without rebuilding Vditor. Long lines scroll horizontally when wrapping is off, while paragraph width remains independently adjustable in WYSIWYG and Instant Rendering.
 - **fix(editor):** Keep the chosen paragraph width centered in WYSIWYG and Instant Rendering when word wrap is off, with horizontal scrolling inside that text column.

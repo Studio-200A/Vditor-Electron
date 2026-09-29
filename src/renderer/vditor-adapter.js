@@ -20,6 +20,7 @@
     reset: '.vditor-reset',
     sourceNewline: 'span[data-type="newline"]',
     sourceHeading: '[data-type="heading-marker"]',
+    sourceTable: 'span[data-type="table"]',
     sourceBlock: '[data-block="0"]',
     table: 'table',
     tableCell: 'td,th',
@@ -776,6 +777,7 @@
     let hasUserInteraction = host.dataset.vditorDesktopCaretInteracted === 'true';
     let pendingScrollOffsetX = 0;
     let pendingScrollOffsetY = 0;
+    let emptyRenderedCaret = null;
     const scrollPositions = new WeakMap();
 
     const reducedMotion = () =>
@@ -808,7 +810,7 @@
         previousNode.classList.contains('vditor-ir__marker--heading')
       );
     };
-    const caretRect = (range, editor) => {
+    const caretRect = (range, editor, mode) => {
       const lineHeightFor = (target) => {
         const style = getComputedStyle(target);
         const lineHeight = Number.parseFloat(style.lineHeight);
@@ -829,11 +831,12 @@
         (rect.width > 0 || rect.height > 0)
       ) {
         const container = elementForNode(range.startContainer);
-        const styleTarget = closestWithin(range.startContainer, selectors.table, editor)
-          ? editor
-          : container && editor.contains(container)
-            ? container
-            : editor;
+        const styleTarget =
+          mode === 'sv' || closestWithin(range.startContainer, selectors.table, editor)
+            ? editor
+            : container && editor.contains(container)
+              ? container
+              : editor;
         const expectedHeight = lineHeightFor(styleTarget);
         // A collapsed Range at a Vditor block boundary can report its whole
         // replaced block after delete or history restore. Keep its insertion
@@ -848,6 +851,34 @@
           width: rect.width,
           height,
         };
+      }
+      if (
+        mode === 'sv' &&
+        range.startContainer.nodeType === Node.TEXT_NODE &&
+        range.startOffset > 0 &&
+        range.startContainer.textContent?.[range.startOffset - 1] === '\n' &&
+        elementForNode(range.startContainer)?.matches(selectors.sourceTable)
+      ) {
+        // Vditor 3.11.3 keeps a table-source Enter selection after a text newline.
+        // Chromium gives that collapsed Range no rect, while the newline's rect
+        // still identifies the preceding line. Advance one source line visually.
+        const newlineRange = range.cloneRange();
+        newlineRange.setStart(range.startContainer, range.startOffset - 1);
+        const newlineRect = Array.from(newlineRange.getClientRects()).at(-1);
+        const sourceSpan = elementForNode(range.startContainer);
+        const sourceRect = sourceSpan?.getBoundingClientRect();
+        if (newlineRect?.height && sourceRect && Number.isFinite(sourceRect.left)) {
+          const height = lineHeightFor(editor);
+          const top = newlineRect.top + height;
+          return {
+            left: sourceRect.left,
+            top,
+            right: sourceRect.left,
+            bottom: top + height,
+            width: 0,
+            height,
+          };
+        }
       }
       const nextNode =
         range.startContainer.nodeType === Node.ELEMENT_NODE
@@ -887,7 +918,9 @@
           : null;
       if (fallback?.height) {
         const expectedHeight = lineHeightFor(
-          closestWithin(range.startContainer, selectors.table, editor) ? editor : container,
+          mode === 'sv' || closestWithin(range.startContainer, selectors.table, editor)
+            ? editor
+            : container,
         );
         return {
           left: fallback.left,
@@ -982,7 +1015,7 @@
         hide();
         return;
       }
-      const rect = caretRect(range, editor);
+      const rect = caretRect(range, editor, mode);
       if (!rect) {
         hide();
         return;
@@ -995,7 +1028,37 @@
         hide();
         return;
       }
-      const height = Math.max(1, rect.height);
+      // Vditor 3.11.3 alternates between a glyph-sized Range and an empty
+      // source span after Enter. Both occupy the same SV source line.
+      const sourceLineHeight =
+        mode === 'sv' ? Number.parseFloat(getComputedStyle(editor).lineHeight) : NaN;
+      const editorStyle = getComputedStyle(editor);
+      const fontSignature = `${editorStyle.fontFamily}|${editorStyle.fontSize}|${editorStyle.fontWeight}|${editorStyle.lineHeight}`;
+      if (mode !== 'sv' && editor.childNodes.length === 0) {
+        emptyRenderedCaret = { mode, fontSignature, height: rect.height };
+      }
+      const isEmptyRenderedParagraph =
+        mode !== 'sv' &&
+        editor.children.length > 0 &&
+        Array.from(editor.children).every(
+          (child) =>
+            child.tagName === 'P' &&
+            (child.childNodes.length === 0 ||
+              (child.childNodes.length === 1 && child.firstChild.nodeName === 'BR')),
+        );
+      // An empty IR/WYSIWYG paragraph reports its 24px box rather than the
+      // glyph-sized insertion caret. Preserve the empty editor's measured size.
+      const renderedEmptyHeight =
+        isEmptyRenderedParagraph &&
+        emptyRenderedCaret?.mode === mode &&
+        emptyRenderedCaret.fontSignature === fontSignature
+          ? emptyRenderedCaret.height
+          : null;
+      const height = Math.max(
+        1,
+        Number.isFinite(sourceLineHeight) ? sourceLineHeight : renderedEmptyHeight || rect.height,
+      );
+      const top = rect.top + (renderedEmptyHeight ? (rect.height - height) / 2 : 0);
       const width =
         style === 'underline'
           ? 8
@@ -1008,7 +1071,7 @@
       caret.style.width = `${width}px`;
       caret.style.height = `${style === 'underline' ? 2 : height}px`;
       caret.style.left = `${rect.left - layerOffset.left}px`;
-      caret.style.top = `${(style === 'underline' ? rect.bottom - 2 : rect.top) - layerOffset.top}px`;
+      caret.style.top = `${(style === 'underline' ? top + height - 2 : top) - layerOffset.top}px`;
       pendingScrollOffsetX = 0;
       pendingScrollOffsetY = 0;
       caret.style.translate = '';
@@ -1016,7 +1079,7 @@
       host.dataset.vditorDesktopCustomCaret = 'true';
       if (animate && previousRect && !reducedMotion()) {
         const dx = previousRect.left - rect.left;
-        const dy = previousRect.top - rect.top;
+        const dy = previousRect.top - top;
         if (dx || dy) {
           animation?.cancel();
           animation = caret.animate(
@@ -1027,7 +1090,7 @@
       }
       if (shouldRestartBlink && isWindowFocused) restartBlink();
       else if (!shouldRestartBlink) caret.classList.remove('is-blinking');
-      previousRect = { left: rect.left, top: rect.top };
+      previousRect = { left: rect.left, top };
     };
     const schedule = (animate = true, afterVditorFrame = true, shouldRestartBlink = animate) => {
       if (frame !== null) window.cancelAnimationFrame(frame);
