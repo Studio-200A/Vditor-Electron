@@ -52,6 +52,11 @@
     return mount?.querySelector(selectors.toolbar) || null;
   }
 
+  function isInitializedEditorHost(host) {
+    // Vditor 3.11.3 marks the application-owned host after initUI builds its editor.
+    return !!host?.classList.contains('vditor');
+  }
+
   function createRebuildSnapshot(host) {
     if (!host?.classList.contains('active') || !host.parentElement) return () => {};
     const snapshot = host.cloneNode(true);
@@ -169,6 +174,20 @@
     return { button, item, trigger, type: trigger?.dataset.type || '' };
   }
 
+  function editModeFromToolbarTarget(target) {
+    const { button, item, trigger, type } = toolbarContext(target);
+    if (
+      type !== 'edit-mode' ||
+      !button ||
+      button === trigger ||
+      !toolbarHint(item)?.contains(button)
+    )
+      return null;
+    // Vditor 3.11.3 binds mode changes to buttons in its private edit-mode hint.
+    const mode = button.dataset.mode;
+    return ['wysiwyg', 'ir', 'sv'].includes(mode) ? mode : null;
+  }
+
   function toolbarButton(toolbar, type) {
     if (!/^[a-z0-9-]+$/i.test(type)) return null;
     return toolbar?.querySelector(`button[data-type="${type}"]`) || null;
@@ -235,6 +254,8 @@
   }
 
   function clearToolbarHoverTooltips(root = document) {
+    // Vditor 3.11.3 styles this hover class but its bundled JS does not add it.
+    // Keep cleanup defensive when an integration applies it to toolbar controls.
     hoverTooltips(root).forEach((tooltip) => tooltip.classList.remove('vditor-tooltipped--hover'));
   }
 
@@ -2301,12 +2322,14 @@
   window.VditorDesktopAdapter = Object.freeze({
     editorParts,
     mountedToolbar,
+    isInitializedEditorHost,
     createRebuildSnapshot,
     ensureSplitResizer,
     splitViewVisibility,
     restorePreviewOnly,
     refreshMermaidTheme,
     toolbarContext,
+    editModeFromToolbarTarget,
     toolbarButton,
     hideNativeOutlineControl,
     keepSplitToolbarActionsAvailable,

@@ -767,6 +767,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | ------------------------------------- | ----------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
 | `editorParts(host)`                   | `host`                        | `{ toolbar, content, source, instantRendering, wysiwyg, preview }` | 返回编辑器各子视图 DOM 节点                                                                                            |
 | `mountedToolbar(mount)`               | `mount`                       | `Element \| null`                                                  | 返回共享挂载点中当前已挂载的 Vditor toolbar 节点，供 `validateHost` 与工具栏交接使用，不暴露 selector 常量               |
+| `isInitializedEditorHost(host)`       | `host`                        | `boolean`                                                          | 通过 Vditor 3.11.3 初始化时设置的主机 class 判断活动编辑器是否已建立，供侧栏拖动时冻结 host 宽度使用 |
 | `ensureSplitResizer(host)` / `splitViewVisibility(host, mode)` | `host, mode` | `divider \| null` / `{ sourceVisible, previewVisible } \| null` | 在私有 SV content/pane 结构中创建或返回 Desktop divider，并按当前 Vditor 模式报告两 pane 的语义可见性 |
 | `validateHost(host, mountedToolbar?)` | `host, toolbar?`              | `{ valid, missing[] }`                                             | 检查编辑子视图、preview content、toolbar 节点与 8 个必需按钮（edit-mode/both/preview/outdent/indent/outline/content-theme/code-theme），返回结构完整性报告 |
 | `activeEditor(host, mode)`            | `host, 'sv'\|'ir'\|'wysiwyg'` | `Element`                                                          | 根据编辑模式返回当前活动编辑器节点                                                                                     |
@@ -786,6 +787,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | 函数                                | 入参            | 返回值                            | 用途                                                                          |
 | ----------------------------------- | --------------- | --------------------------------- | ----------------------------------------------------------------------------- |
 | `toolbarContext(target)`            | `eventTarget`   | `{ button, item, trigger, type }` | 从点击目标提取工具栏按钮上下文                                                |
+| `editModeFromToolbarTarget(target)` | `eventTarget`   | `'wysiwyg'\|'ir'\|'sv' \| null` | 仅从 Vditor edit-mode 工具栏项的私有 hint 按钮读取有效模式，供切换前后协调使用 |
 | `toolbarButton(toolbar, type)`      | `toolbar, type` | `Element \| null`                 | 按 `data-type` 查找工具栏按钮（含防注入正则校验）                             |
 | `restorePreviewOnly(host)`          | `host`          | `boolean`                          | 重建后恢复 preview-only 布局：Vditor 3.11.3 没有公开的 preview-only setter，经 Vditor 自身 Preview toolbar action 隐藏 SV 源码栏，不改变配置的 source/both 布局 |
 | `hideNativeOutlineControl(toolbar)` | `toolbar`       | `boolean`                          | 为 Vditor 内部 outline 项设置应用标记，交由 CSS 隐藏重复入口                 |

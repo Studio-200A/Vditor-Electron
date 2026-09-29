@@ -4,12 +4,14 @@ import type { VditorDesktopAdapter } from './adapter.js';
 export const ADAPTER_PUBLIC_KEYS = [
   'editorParts',
   'mountedToolbar',
+  'isInitializedEditorHost',
   'createRebuildSnapshot',
   'ensureSplitResizer',
   'splitViewVisibility',
   'restorePreviewOnly',
   'refreshMermaidTheme',
   'toolbarContext',
+  'editModeFromToolbarTarget',
   'toolbarButton',
   'hideNativeOutlineControl',
   'keepSplitToolbarActionsAvailable',
@@ -93,11 +95,13 @@ export function verifyAdapterCallContract(adapter: VditorDesktopAdapter, host: H
 
   adapter.ensureSplitResizer(host);
   adapter.mountedToolbar(host);
+  adapter.isInitializedEditorHost(host);
   adapter.createRebuildSnapshot(host);
   adapter.splitViewVisibility(host, 'sv');
   adapter.restorePreviewOnly(host);
   adapter.refreshMermaidTheme(host, '```mermaid\ngraph TD\n```', 'classic');
   adapter.toolbarContext(host);
+  adapter.editModeFromToolbarTarget(host);
   adapter.toolbarButton(toolbar, 'edit-mode');
   adapter.hideNativeOutlineControl(toolbar);
   adapter.keepSplitToolbarActionsAvailable(toolbar);

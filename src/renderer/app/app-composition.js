@@ -1721,8 +1721,10 @@
       }
       return;
     }
-    if (type === 'edit-mode' && ['wysiwyg', 'ir', 'sv'].includes(button.dataset.mode)) {
-      prepareVditorModeTransition(tab, button.dataset.mode);
+    const selectedMode =
+      type === 'edit-mode' ? VDITOR.editModeFromToolbarTarget(event.target) : null;
+    if (selectedMode) {
+      prepareVditorModeTransition(tab, selectedMode);
     } else if (type === 'code-theme') {
       const codeTheme = button.textContent.trim();
       if (!codeTheme) return;
@@ -1895,8 +1897,7 @@
     tab.host.addEventListener(
       'click',
       (event) => {
-        const modeButton = event.target.closest && event.target.closest('[data-mode]');
-        if (!modeButton || !['wysiwyg', 'ir', 'sv'].includes(modeButton.dataset.mode)) return;
+        if (!VDITOR.editModeFromToolbarTarget(event.target)) return;
         const generation = tab.editorRuntimeGeneration;
         setTimeout(() => {
           synchronizeVditorMode(tab, generation);
@@ -2970,7 +2971,7 @@
       // moved by the resize. A long document therefore reflows once on mouseup
       // instead of for every pointer update.
       frozenEditorHost = activeTab()?.host || null;
-      if (frozenEditorHost?.classList.contains('vditor')) {
+      if (VDITOR.isInitializedEditorHost(frozenEditorHost)) {
         const editorWidth = frozenEditorHost.getBoundingClientRect().width;
         frozenEditorHostStyle = Object.fromEntries(
           ['inset', 'left', 'width', 'transform'].map((property) => [

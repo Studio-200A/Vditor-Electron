@@ -74,6 +74,45 @@ describe('Vditor DOM compatibility adapter', () => {
     expect(adapter.scrollContainers(host).length).toBeGreaterThanOrEqual(4);
   });
 
+  it('recognizes only hosts initialized by Vditor', () => {
+    const host = createHost();
+    expect(adapter.isInitializedEditorHost(null)).toBe(false);
+    expect(adapter.isInitializedEditorHost(host)).toBe(false);
+    host.classList.add('vditor');
+    expect(adapter.isInitializedEditorHost(host)).toBe(true);
+    host.classList.remove('vditor');
+    expect(adapter.isInitializedEditorHost(host)).toBe(false);
+  });
+
+  it('reads edit modes only from Vditor edit-mode toolbar buttons', () => {
+    const host = createHost();
+    const item = host.querySelector<HTMLButtonElement>(
+      'button[data-type="edit-mode"]',
+    )!.parentElement!;
+    item.insertAdjacentHTML(
+      'beforeend',
+      '<div class="vditor-hint"><button data-mode="ir"><span>IR</span></button><button data-mode="other">Other</button></div>',
+    );
+    const modeButton = item.querySelector<HTMLButtonElement>('button[data-mode="ir"]')!;
+    const outsideHint = window.document.createElement('button');
+    outsideHint.dataset.mode = 'sv';
+    item.append(outsideHint);
+    const unrelatedButton = window.document.createElement('button');
+    unrelatedButton.dataset.mode = 'sv';
+    host.append(unrelatedButton);
+
+    expect(adapter.editModeFromToolbarTarget(modeButton.firstElementChild)).toBe('ir');
+    expect(
+      adapter.editModeFromToolbarTarget(item.querySelector('button[data-mode="other"]')),
+    ).toBeNull();
+    expect(adapter.editModeFromToolbarTarget(outsideHint)).toBeNull();
+    expect(
+      adapter.editModeFromToolbarTarget(item.querySelector('button[data-type="edit-mode"]')),
+    ).toBeNull();
+    expect(adapter.editModeFromToolbarTarget(unrelatedButton)).toBeNull();
+    expect(adapter.editModeFromToolbarTarget(null)).toBeNull();
+  });
+
   it('toggles wrapping only on Vditor editable scroll roots', () => {
     const host = createHost();
     const { source, instantRendering, wysiwyg, preview } = adapter.editorParts(host);

@@ -109,6 +109,7 @@ export interface ClipboardContent {
 export interface VditorDesktopAdapter {
   editorParts(host: HTMLElement | null | undefined): EditorParts;
   mountedToolbar(mount: HTMLElement | null | undefined): HTMLElement | null;
+  isInitializedEditorHost(host: HTMLElement | null | undefined): boolean;
   createRebuildSnapshot(host: HTMLElement | null | undefined): () => void;
   ensureSplitResizer(host: HTMLElement | null | undefined): HTMLElement | null;
   splitViewVisibility(
@@ -122,6 +123,7 @@ export interface VditorDesktopAdapter {
     theme: 'classic' | 'dark',
   ): number;
   toolbarContext(target: EventTarget | null | undefined): ToolbarContext;
+  editModeFromToolbarTarget(target: EventTarget | null | undefined): AdapterEditMode | null;
   toolbarButton(toolbar: HTMLElement | null | undefined, type: string): HTMLButtonElement | null;
   hideNativeOutlineControl(toolbar: HTMLElement | null | undefined): boolean;
   keepSplitToolbarActionsAvailable(toolbar: HTMLElement | null | undefined): boolean;

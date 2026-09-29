@@ -12,6 +12,8 @@ Vditor Desktop 不修改 `node_modules/vditor` 的源码，但工具栏合并、
 - `tests/unit/vditor-adapter.test.ts` 验证适配层自身，并将运行时冻结对象的全部导出键与类型 manifest（`src/renderer/types/adapter-contract.ts` 的 `ADAPTER_PUBLIC_KEYS`）精确比对；导出成员数量以该 manifest 为唯一事实来源，文档不维护计数。
 - Electron E2E 中的 `Vditor DOM integration contract` 验证真实 Vditor 构建产物。
 - code/content theme toolbar menu 的 hover tooltip 仅可通过 adapter 的 `clearToolbarHoverTooltips()` 清理；升级 Vditor 时须验证选择主题后 tooltip 正常收起。
+- Vditor 3.11.3 在 `initUI()` 后给应用提供的编辑器 host 添加 `.vditor`，销毁时移除；adapter 的 `isInitializedEditorHost()` 只向侧栏拖动协调层报告该主机是否已初始化。升级时须确认打开文档后侧栏拖动期间编辑器宽度保持稳定，mouseup 后才重新布局；空 host 不应被冻结。
+- Vditor 3.11.3 的 edit-mode 工具栏项在私有 `.vditor-hint` 内放置 `button[data-mode]`。adapter 的 `editModeFromToolbarTarget()` 仅接受该工具栏项中的三种有效模式，供工具栏点击和模式同步使用；升级时须验证从 Vditor 工具栏切换 WYSIWYG/IR/SV 后状态与滚动位置正确，其他 `data-mode` 按钮不触发编辑模式同步。
 - Vditor 3.11.3 的模式切换仍会操作内部 `outline` 工具项；adapter 保留该项作为不可见占位，并通过应用专用 data attribute 和 CSS `display: none !important` 隐藏入口。升级时须验证三种模式切换正常，且原生 outline 控制不出现。
 - Vditor 3.11.3 的 `setTheme()` 不会重绘已经 `data-processed="true"` 的 Mermaid SVG。adapter 的 `refreshMermaidTheme()` 只读取已渲染 Mermaid 节点，并仅在它们与当前 Markdown 的 Mermaid 围栏可一一匹配时，暂时隔离单个节点后调用 Vditor 本地 Mermaid renderer；不得重建编辑器或经 `getValue()`/`setValue()` 回写全文。升级时须验证 Dark → Elegant（及反向）后已有 Mermaid 只生成一个 SVG、采用新色调，围栏与渲染节点数量不匹配时图表保持不变。
 - 同一私有切换路径会在 SV 中隐藏并禁用 `outdent` / `indent`；adapter 为它们设置应用专用稳定占位标记，CSS 保持按钮可见且应用捕获层处理 source-selection 缩进。升级时须确认 WYSIWYG/IR → SV 没有延迟二次工具栏重排，且 SV 缩进与反缩进仍可用。
