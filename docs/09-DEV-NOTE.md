@@ -1,12 +1,51 @@
 # 开发笔记
 
-本文记录已确认的实现边界、上游兼容结论与架构决策，不充当待办清单或实时测试台账。阅读时按主题进入对应一级分类；每条记录的版本、验证范围与升级复核要求保留在其自身小节。
+本文记录已确认的实现边界、上游兼容结论与架构决策，不充当待办清单或实时测试台账。文档按功能域组织而非开发时间线：唯一的未决事项置于开头，其后依次为应用功能、Vditor 各兼容域与渲染架构；每条记录的版本、验证范围与升级复核要求保留在其自身小节。
+
+- [未决事项](#未决事项)：Vditor 3.11.3 空行与回车规则
+- [应用功能与工作台](#应用功能与工作台)：搜索与替换、工作区 UI 与窗口布局
+- [Vditor 编辑器兼容性：模式切换与视图行为](#vditor-编辑器兼容性模式切换与视图行为)：工具栏耦合、内容位置、SV 双列同步滚动、pane 布局重建、SV 行号
+- [Vditor 编辑器兼容性：输入、Undo 与选区](#vditor-编辑器兼容性输入undo-与选区)：undo 光标恢复、编辑区右键菜单、长表格横向滚动补偿
+- [Vditor 编辑器兼容性：渲染、序列化与主题](#vditor-编辑器兼容性渲染序列化与主题)：IR 自绘光标、GitHub Alerts 回写、部分格式选区复制、Mermaid 主题重绘
+- [渲染架构与模块边界](#渲染架构与模块边界)：composition 层模块化重构边界
+
+## 未决事项
+
+本节收录尚无结论、仍需上游修复或产品决策的问题。当前全文仅此一项未决；其余各节均为已解决事项的过程记录。
+
+### Vditor 3.11.3 空行与回车规则
+
+以下记录的是当前锁定版本的可观察编辑行为，不表示 Desktop 已改变 Vditor 的输入规则。真实 Electron 中切换 `caretStyle: native` / `block` 后，内容与原生 Selection 的结果一致；Desktop 的 `src/renderer/vditor-adapter.js` 只为自绘光标读取选区几何。三个现象彼此相关，但文首空行的序列化丢失不能仅靠改变回车后的光标位置解决。
+
+#### 空文档首次回车的模式差异
+
+**描述：** 新建空文档，SV 与 IR 按一次 Enter 后，灰色“开始书写 Markdown”提示消失，但后续输入仍落在第一行；SV 出现空的 source text/newline 结构，IR 只留下一个空 `p[data-block="0"]`。WYSIWYG 的原生选区可见地移到第二个空段落，后续输入显示在第二行；但该空行没有成为可保存的 Markdown。此前在真实 Electron 中输入 `x` 后，WYSIWYG 的 `getValue()` 为 `"x\n"`，SV 与 IR 也未保留文首空行。
+
+**成因：** 三种模式使用不同的 Enter/input 路径。SV 的 `processKeydown()` 自行插入 `\n`；在空块或段首走 `processAfterRender()`，只有非空且不在段首时才调用重解析的 `inputEvent()`，所以空文档回车不能简单等同于生成下一段。IR 的输入路径经 `SpinVditorIRDOM` 规范化空段落；WYSIWYG 在该情形保留浏览器产生的两个空段落，但 Lute 的 DOM → Markdown 转换不保留前置空段落。Vditor 的 [3.10.1 变更记录](https://github.com/Vanessa219/vditor/blob/master/CHANGELOG.md)曾将“内容为空时回车禁止光标跳动”列为改动；它不能证明三种模式目前的视觉与序列化差异都是有意设计。
+
+**上游代码：** `node_modules/vditor/src/ts/sv/processKeydown.ts` 的 Enter 分支（约 125–153 行）；`node_modules/vditor/src/ts/ir/input.ts` 的 `SpinVditorIRDOM` 调用（约 174–185 行）；`node_modules/vditor/src/ts/wysiwyg/index.ts` 的 `insertParagraph` 输入分支（约 403–408 行）；`node_modules/vditor/src/ts/markdown/getMarkdown.ts` 的三模式序列化。
+
+#### SV 段落间空行在第二行输入后移动
+
+**描述：** 在 SV 新文档第一行输入 `123`，按两次 Enter，在第三行输入 `234`；按 ↑ 回到空的第二行输入 `345` 后，`234` 跑到第四行，第三行出现空行。原生和自绘光标均复现同样的 Vditor DOM 与 Selection，故不是自绘光标画错位置。
+
+**成因：** SV 的输入处理在当前块插入光标标记，将当前块及可能存在的前一块文本送入 `processSpinVditorSVDOM()`，由 Lute `SpinVditorSVDOM` 重新解析，再替换块并按 `<wbr>` 恢复选区。处理函数还会把连续的两个 newline span 分到相邻的 source 块。第二行插入文字时触发这条块重建与空行规范化路径，导致后续空行位置变化；目前仅定位到这条处理链，尚未把额外空行归因到某一条单独的 Lute AST 规则。
+
+**上游代码：** `node_modules/vditor/src/ts/sv/inputEvent.ts` 的块文本合并、重解析、DOM 替换与 `setRangeByWbr()`（约 117–179 行）；`node_modules/vditor/src/ts/sv/process.ts` 的 `processSpinVditorSVDOM()` 与连续 newline span 分块（约 54–61 行）；实际解析实现位于打包的 `node_modules/vditor/dist/js/lute/lute.min.js`。
+
+#### 文首空行在切换编辑模式时丢失
+
+**描述：** 在 IR 或 WYSIWYG 的空文档中连续按多次 Enter，再输入 `123`、两次 Enter、`234`；切到 SV 后 `123` 位于第一行、`234` 位于第三行，先前文首的多行空白消失。切回 IR/WYSIWYG 后也不会恢复。正文中间 `123` 与 `234` 的空行仍保留。
+
+**成因：** Vditor `setEditMode()` 先调用 `getMarkdown()`，再从所得 Markdown 重建目标模式。当前打包的 Lute 1.7.6 可独立复现：IR 的 `VditorIRDOM2Md()` 和 WYSIWYG 的 `VditorDOM2Md()` 都将四个前置空 `<p data-block="0">` 后接 `123` 转为 `"123\n"`；将 `"\n\n\n123\n\n234\n"` 转回两种模式 DOM，也都从 `123` 段落开始。文首空行在第一次 DOM → Markdown 转换时就已经丢失，切换模式只是将结果显露出来；通过 `getValue()` 保存同样无法保留。作为语法背景，[CommonMark](https://spec.commonmark.org/spec) 解析时忽略文档首尾空行，但编辑区可见空段落与可保存文本不一致仍是使用时需要知晓的边界。
+
+**上游代码：** `node_modules/vditor/src/ts/toolbar/EditMode.ts` 的 `setEditMode()`（约 23–30、48–60、78–120 行）；`node_modules/vditor/src/ts/markdown/getMarkdown.ts` 的 `VditorDOM2Md()` / `VditorIRDOM2Md()`（约 3–10 行）；转换实现在 `node_modules/vditor/dist/js/lute/lute.min.js`。Desktop 没有在模式切换时补写或清除文首空行。
 
 ## 应用功能与工作台
 
 ### 搜索与替换
 
-#### 实现版本：0.1.3
+**实现版本：** 0.1.3
 
 搜索与替换已实现，用于多个 agent 和对话之间同步实现边界，不是待开发 issue。
 
@@ -110,13 +149,9 @@ adapter 负责：
 - 后续加入大小写、全词或正则选项时，先扩展纯字符串匹配和测试；正则必须拒绝非法或可空匹配。
 - 若增加 tab 独立搜索 session，应将 query、matches、index 和 tab ID 收束为一个对象，不能让旧 tab 的 Range descriptor 复用到新 tab。
 
----
+### 工作区 UI 与窗口布局
 
-### 工作区 UI 改版
-
-#### 实现版本：0.1.3
-
-#### 当前状态
+**实现版本：** 0.1.3
 
 核心工作区 UI 已在 0.1.3 实现并通过自动化回归。文件保存原子化、工作区外 watcher、删除/目录移动恢复和跨重启冲突恢复不属于本轮（0.1.3）交付范围，已在后续版本交付，见 `docs/06-FILE-SAFETY.md` 与 `docs/ARCHIVED/12-0.2.0-DEVELOPMENT-PLAN.md`。
 
@@ -199,13 +234,11 @@ Vditor 的 `keydown` 会先在编辑器 host 内运行。document 级应用监�
 - 文案：`src/renderer/locale/`
 - 回归：`tests/unit/renderer-shell.test.ts`、`tests/e2e/*.spec.ts`
 
----
-
-## Vditor 编辑器兼容性：模式、交互与表格
+## Vditor 编辑器兼容性：模式切换与视图行为
 
 ### 模式切换与工具栏内部耦合
 
-#### 记录版本：0.1.5
+**记录版本：** 0.1.5
 
 #### 现象
 
@@ -238,7 +271,7 @@ Desktop 侧栏已作为唯一的大纲入口，原生 Vditor 大纲面板关闭�
 - 原生对齐实现只保留一份 snapshot：preview 可见时取 preview，否则取当前模式编辑区。不要再把原生 DOM 标题、Markdown fallback 和另一套目标数组按下标拼接；集合不一致时行号、折叠 key 和跳转目标都会错位。Outline 视图隐藏期间无需调用 `getValue()` 或重建树，切换到该视图时再刷新即可。0.2.6 起该规则前增加一道不可用判定：SV source-only（preview 隐藏）没有可提供标题的渲染表面，大纲不再对源码编辑区取 snapshot 并误报“无标题”，而由 composition 注入的 `isUnavailable` 回调（基于 adapter `splitViewVisibility` 判定源码栏可见且 preview 隐藏）显示 `sidebar.outlineUnavailableInSourceOnly` 空态，提示打开 preview 或切换到 WYSIWYG/IR；工具栏 preview 开关（`previewMode` 设置）变化时会重新渲染大纲。
 - SV preview 在模式切换后异步渲染，不能用固定延迟补偿。由 adapter 的可清理 MutationObserver 监听模式 style 与内容变化并触发防抖刷新；标签重建、关闭时必须 disconnect，避免旧 host 与回调泄漏。
 
-#### 模式切换后的内容位置只能近似对应
+### 模式切换后的内容位置只能近似对应
 
 Vditor 3.11.3 切换模式时先序列化当前 Markdown，再分别通过 `Md2VditorDOM`、`Md2VditorIRDOM` 或 `processSpinVditorSVDOM` 重建目标模式的私有 DOM。三种模式没有共享的版面节点，也没有公开的跨模式源码位置到滚动坐标映射 API。
 
@@ -246,9 +279,9 @@ Vditor 3.11.3 切换模式时先序列化当前 Markdown，再分别通过 `Md2V
 
 除非未来由 Vditor 提供稳定的源码位置映射能力，否则不要在 Desktop 层按私有 DOM 节点、HTML 文本或估算行高建立跨模式锚点。这会把上游模式差异变成更脆弱的应用层启发式，并在原始 HTML、表格、代码块和异步预览中产生新的偏差。升级 Vditor 时应重新检查模式转换 API；若上游新增稳定映射接口，再单独评估精确位置恢复。
 
-#### SV 模式双列同步滚动
+### SV 模式双列同步滚动
 
-##### 记录版本：0.2.6
+**记录版本：** 0.2.6
 
 Vditor 3.11.3 原生只在 SV 源码栏滚动时同步 preview。它以源码栏的 `scrollTop`、可视高度与总可滚动高度计算预览栏的比例位置；滚动接近中后段时会以底边作补偿。该机制不建立 Markdown 源码位置与渲染节点之间的语义映射。
 
@@ -258,9 +291,9 @@ Desktop 保留上游的单向交互：用户滚动 preview 时源码栏不回写
 
 私有选择器、标题几何和回退判断只能位于 `src/renderer/vditor-adapter.js`；`SplitViewController` 继续仅拥有 source scroll listener 的生命周期，composition 不保存同步状态。升级 Vditor 时须复核这两套标题集合、20% 对齐、复杂 HTML/表格文档、回退路径及 preview 独立阅读；对应要求同步记录在 `docs/07-VDITOR-UPGRADE.md`。
 
-#### 设置触发编辑器重建时保留 SV pane 布局
+### 设置触发编辑器重建时保留 SV pane 布局
 
-##### 记录版本：0.2.6
+**记录版本：** 0.2.6
 
 仅影响初始化参数的设置变化会按 tab 重建 Vditor 实例（`settings-controller.ts` 的 `shouldRebuildEditor` → `rebuildEditors()`）。0.2.6 之前，重建后的 SV 一律回到默认双栏形态，丢失用户经工具栏切出的 source-only 或 preview-only pane 状态。
 
@@ -268,7 +301,7 @@ Desktop 保留上游的单向交互：用户滚动 preview 时源码栏不回写
 
 私有可见性判定与 Preview 按钮点击只能位于 `vditor-adapter.js`；升级 Vditor 时须复核 `splitViewVisibility` 与 `restorePreviewOnly` 的行为。回归覆盖：`tests/unit/renderer/editor-controller.test.ts`（布局捕获、还原与清理）、`tests/unit/renderer/outline-controller.test.ts`（不可用空态）、`tests/unit/vditor-adapter.test.ts` 与 `tests/e2e/editor-modes.spec.ts`（真实重建设置场景）。
 
-#### SV 行号与文档末尾留白必须分层
+### SV 行号与文档末尾留白必须分层
 
 GNOME Text Editor 的 `EditorSourceView` 通过 `gtk_text_view_set_bottom_margin()` 提供与可见区域高度相关的 overscroll，行号仍由 GtkSourceView gutter 按文本 buffer 的实际行渲染。留白属于视图滚动范围，不属于文档内容，也不会生成行号。
 
@@ -276,9 +309,11 @@ Desktop 的对应实现保持同一边界：Vditor 3.11.3 的 `--editor-bottom` 
 
 SV 的原始 HTML marker 可在一个元素内包含多行和嵌套的 `data-type="newline"`；实际文本行数可能高于 marker 数，不能在 marker 用尽后按固定行高猜算，否则行号会延伸进 overscroll。行号位置应取逻辑源码行所有 client rect 中视觉最上方的 rect，不能假定 `Range.getClientRects()` 的第一个结果一定是行首；长行折行时，该假定会把行号放到换行标记末端。滚动监听还须跟随 Vditor 替换后的当前 SV 节点，并在旧节点上清理。
 
+## Vditor 编辑器兼容性：输入、Undo 与选区
+
 ### Undo、选区与编辑器右键菜单
 
-#### 记录版本：0.1.5
+**记录版本：** 0.1.5
 
 Vditor 3.11.3 会以 `undoDelay`（Desktop 当前配置为 500ms）防抖写入 undo 栈。连续编辑若间隔不超过该窗口，会合并为同一个撤销步骤；例如先清空一个表格单元格、随即在表格外输入文字，单次 Ctrl/Cmd+Z 可能同时回退两项更改，并把光标恢复到该合并步骤保存的表格位置。
 
@@ -309,8 +344,6 @@ Desktop 因此只在 adapter 中保存/恢复编辑 Range、识别真实 `td` / 
 
 右键菜单自身是应用层共享的 `#contextMenu`：文件树和编辑区不再争用不同容器。编辑菜单仅捕获当前活动标签的可编辑表面，SV preview、查找输入框、设置与文件树不被接管；菜单在视窗边界内定位，`Escape`、外部点击、标签/模式切换、重建和标签关闭都会清理保存的 Range。撤销/重做不在右键菜单中提供，继续使用 Ctrl/Cmd+Z、Ctrl/Cmd+Shift+Z 与 Vditor 工具栏，避免将 Vditor 3.11.3 的私有 undo 快照限制伪装成稳定的菜单命令。由于 Chromium 的 `execCommand('paste')` 不能可靠地向 Vditor 传递剪贴板数据，preload 只暴露 `readClipboard()`，由 adapter 构造 Vditor 既有的 paste 事件；纯文本粘贴不传递 HTML。
 
----
-
 ### 长表格编辑横向滚动补偿
 
 #### 问题与边界
@@ -340,11 +373,78 @@ Vditor `3.11.3` 的 WYSIWYG/IR 将表格本身作为横向滚动容器（`displa
 - 不得把短单元格首次粘贴超宽的“不跟随”单独修成另一套规则，除非产品另行决定偏离上游行为。
 - Vditor 升级时按照 `docs/07-VDITOR-UPGRADE.md` 验证此私有契约；若上游已保留表格横向位置或提供公共 API，应删除本补偿。
 
----
+## Vditor 编辑器兼容性：渲染、序列化与主题
+
+### IR 折叠标题 marker 的自绘光标异常
+
+**记录版本：** 0.2.5 / 2026-09-09
+
+#### 现象
+
+打开首行为 Markdown 标题的文档，在标题下方编辑内容后撤销，IR 模式的自绘 caret 有时显示在异常位置，且高度会接近标题整行而不是普通文本行高。关闭标签并重新打开后可以稳定复现。WYSIWYG 不受影响；它没有 IR 的折叠 Markdown marker DOM。
+
+将设置中的 `caretStyle` 切换为 `native` 后，Chromium 原生 caret 在同一撤销状态不绘制。这排除了 Desktop 的编辑器重建、保存状态、undo owner 交接或普通 Range 定位时序是根因的可能。
+
+#### 根因
+
+Vditor 3.11.3 的 IR 标题在未展开时使用 `.vditor-ir__marker--heading` 表示 `# ` 语法。撤销恢复 selection 时，Vditor 可能将折叠 Range 放在该 marker 的文本 offset `0`，也可能放在该 marker 后的元素边界。
+
+这些位置不是普通正文插入点。Chromium 原生 caret 将它们视为不可绘制状态；自绘实现若直接消费 Range 几何，则会取得 marker 或标题块的矩形，并错误画出位置和高度异常的 caret。
+
+标题语法展开后，marker 是用户可编辑的正常输入表面，不能按“所有 Markdown 标签都隐藏”处理。
+
+#### 最终修复
+
+`src/renderer/vditor-adapter.js` 的 `installCustomCaret()` 在计算 Range 矩形前识别仅限 IR 的 Vditor 私有结构：
+
+1. selection 位于未展开标题 marker 的文本内时，隐藏自绘 caret。
+2. selection 位于隐藏标题 marker 后的元素边界时，隐藏自绘 caret。
+3. 标题带有 `vditor-ir__node--expand` 时，marker 内 selection 继续走正常自绘路径。
+
+该策略对齐 Chromium 原生渲染，而不修改真实 selection、Vditor 内容、undo 历史或编辑器实例生命周期。
+
+#### 回归约束
+
+- 私有 class/selection 判断只能保留在 `vditor-adapter.js`；Vditor 升级时审查 `.vditor-ir__marker--heading` 与 `vditor-ir__node--expand` 的结构和原生 caret 行为。
+- `tests/unit/vditor-adapter.test.ts` 覆盖 marker 内与 marker 后边界的隐藏行为，以及展开 marker 的正常绘制。
+- `tests/e2e/editor-modes.spec.ts` 覆盖首行标题、标题下方编辑、等待 Vditor undo history、撤销后恢复到折叠 marker selection 的真实 Electron 路径。
+- 不要恢复“测量标题正文首字”或基于保存状态、`modified`、快捷键接管来抑制 caret 的方案；它们不描述实际 DOM/selection 根因，并可能破坏正常编辑或 undo 行为。
+
+### GitHub Alerts 的上游展示文本回写
+
+**记录版本：** 0.2.5 / 2026-09-10
+
+#### 现象
+
+GitHub 风格的 warning block quote 使用以下语法：
+
+```markdown
+> [!NOTE]
+> 正文
+```
+
+Vditor 3.11.3 开启 `preview.markdown.callout` 后可以正常渲染这类 alert，但其底层 Lute 会把展示用的默认 emoji 和标题加入编辑器 DOM。无标题的 `NOTE` 会出现 `✏️ Note`，其他内置类型也会出现对应的 `💡 Tip`、`❗ Important`、`⚠️ Warning` 或 `🚨 Caution`。当 Vditor 调用 `getValue()` 或触发内容回调时，这些展示文本可能被重新序列化为 Markdown。
+
+该写回不一定触发 `input`，因此文档可能没有 dirty 标记；用户打开后即使没有输入，后续保存也可能把展示性文本写进原始文件。该现象在 Vditor 作者部署的网页版同样存在，属于 Vditor/Lute 的上游 round-trip 缺陷，而非 Electron 文件写入层造成。
+
+#### Desktop 兼容策略
+
+Desktop 保持 callout 渲染开启，不通过关闭 `callout` 来牺牲预览效果。`src/renderer/editor/github-alerts.ts` 的 `restoreGitHubAlertHeaders(markdown, previousMarkdown)` 使用编辑前的 Markdown 作为来源基线：
+
+- 无标题 alert 只移除 Lute 补入的完整默认 emoji/标题；
+- 有用户标题的 alert 只移除 Lute 补入的前置 emoji；
+- 用户原本显式写入的 emoji/标题保持不变；
+- 非五种内置 GitHub alert 和无法确认来源的文本保持不变。
+
+该函数在初始化对账、`input`、`blur`、重建前读取和保存读取边界复用，确保展示文本不会进入 `tab.content`、recovery 或最终写盘。它是纯 Markdown 规范化，不访问 Vditor 私有 DOM，因此不应迁移到 `vditor-adapter.js`。
+
+#### 已知边界与升级复核
+
+SV 模式另有 Vditor 自身的空引用行/文末换行格式化差异；那是独立的序列化格式问题，本节的兼容层不回滚该差异。Vditor/Lute 升级时需要重新核对五种 alert 的无标题、自定义标题、显式 emoji、三种编辑模式和保存路径；若上游为 alert DOM 增加“标题是否由源 Markdown 显式提供”的可逆信息，应优先移除 Desktop 兼容层并改用上游公共语义。
 
 ### WYSIWYG 部分格式选区复制
 
-#### 记录版本：0.2.5 / 2026-09-04
+**记录版本：** 0.2.5 / 2026-09-04
 
 在 Vditor 3.11.3 的 WYSIWYG 中，视觉上选中加粗文本 `abc`（其 DOM 位于`<strong>` 内）后，通过 Ctrl/Cmd+C 或 Desktop 编辑器右键菜单 Copy 复制，再粘贴，结果为普通文本 `abc`。IR 中若连同 `**` Markdown 标记一起选中，复制结果为`**abc**`，粘贴后会恢复加粗；这不是两个 Desktop 菜单路径的差异。
 
@@ -358,13 +458,32 @@ Vditor `3.11.3` 的 WYSIWYG/IR 将表格本身作为横向滚动容器（`displa
 
 本轮 Electron 专项覆盖完整 Markdown 语义选区在 WYSIWYG、IR 中经快捷键及右键菜单Copy/Paste 的往返：剪贴板 HTML 为空，Markdown、粗体和列表语义保持一致。该测试不将上述已确认的上游限制编码为 Desktop 行为承诺。
 
----
+### setTheme() 不重绘已渲染的 Mermaid 图表
+
+**记录版本：** 0.2.6 / 2026-09-17
+
+#### 现象
+
+Vditor 3.11.3 把 ` ```mermaid ` 围栏渲染为 `.language-mermaid[data-processed="true"]` 节点，并用内联 SVG 替换其原始文本；图表配色由渲染当时传入的 Mermaid `theme`（`classic` / `dark`）写入 SVG。`setTheme(theme, contentTheme, codeTheme, path)` 只切换内容主题与代码主题样式表，不会重新渲染已标记 `data-processed` 的图表。因此在已打开含 Mermaid 的文档后切换亮/暗壳层主题（例如 Dark → Elegant），引用块、表格和代码块随内容主题变化，而图表仍停留在旧色调。重建编辑器可以解决，但会丢失选区、undo 与滚动状态，不是可接受的手段。
+
+#### Desktop 策略
+
+`ThemeCoordinator.applyTheme()` 在对每个 tab 调用 `setTheme()` 后，经注入的 `refreshMermaidTheme(host, markdown, tone)` 回调重绘图表；tone 取壳层明暗（`dark` / `classic`），markdown 取该 tab 的 `vditor.getValue()`，仅作为围栏来源读取，不回写文档。
+
+adapter 的 `refreshMermaidTheme()`（`src/renderer/vditor-adapter.js`）先解析 Markdown 中的 Mermaid 围栏（` ``` ` 或 `~~~`，最多 3 个前导空格，info string 为 `mermaid`），再收集 host 内 `data-processed="true"` 的 `.language-mermaid` 节点：
+
+- 两侧数量相等且非空时，按顺序一一配对，逐个把围栏源码写回节点 `textContent`、移除 `data-processed`，原位置临时以注释占位，在离屏 `DocumentFragment` 中调用 `window.Vditor.mermaidRender(fragment, 'app://app/vditor', tone)`，渲染后把节点放回原位；返回重绘数量。
+- 围栏缺失、数量不等、参数非法或 `Vditor.mermaidRender` 不是函数时返回 `0` 且不改动编辑器：宁可保留旧色调图表，也不冒险把某个图表与另一段围栏配对。
+
+#### 已知边界与升级复核
+
+`Vditor.mermaidRender` 是上游静态入口而非稳定公开契约，`.language-mermaid` 与 `data-processed` 也是私有 DOM 约定；两者与围栏解析、占位替换逻辑只能位于 `vditor-adapter.js`，业务层只经 `ThemeCoordinator` 的注入回调使用。不得改为重建编辑器或经 `getValue()`/`setValue()` 回写全文。回归覆盖：`tests/unit/vditor-adapter.test.ts`（配对重绘与不配对时保持原图表）、`tests/unit/renderer/theme-coordinator.test.ts`（按当前色调注入回调）、`tests/e2e/app-shell.spec.ts`（真实 Electron 中 Dark → Elegant 切换后图表重绘且只有一个 SVG）。升级 Vditor 时的复核项记录在 [`docs/07-VDITOR-UPGRADE.md`](07-VDITOR-UPGRADE.md)，主题层说明见 [`docs/05-THEMES.md`](05-THEMES.md)。
 
 ## 渲染架构与模块边界
 
 ### 模块化重构边界
 
-#### 记录版本：0.2.5 / 2026-09-10
+**记录版本：** 0.2.5 / 2026-09-10
 
 #### 背景
 
@@ -466,95 +585,3 @@ Vditor `3.11.3` 的 WYSIWYG/IR 将表格本身作为横向滚动容器（`displa
 - `updateActiveUI` + 状态栏更新函数 → 如果状态栏逻辑继续增长，可考虑提取为 `StatusBarController`
 
 这些微调只在相关函数增长到值得提取时再做，当前不主动推进。
-
----
-
-## Vditor 编辑器兼容性：渲染与序列化
-
-### IR 折叠标题 marker 的自绘光标异常
-
-#### 记录版本：0.2.5 / 2026-09-09
-
-#### 现象
-
-打开首行为 Markdown 标题的文档，在标题下方编辑内容后撤销，IR 模式的自绘 caret 有时显示在异常位置，且高度会接近标题整行而不是普通文本行高。关闭标签并重新打开后可以稳定复现。WYSIWYG 不受影响；它没有 IR 的折叠 Markdown marker DOM。
-
-将设置中的 `caretStyle` 切换为 `native` 后，Chromium 原生 caret 在同一撤销状态不绘制。这排除了 Desktop 的编辑器重建、保存状态、undo owner 交接或普通 Range 定位时序是根因的可能。
-
-#### 根因
-
-Vditor 3.11.3 的 IR 标题在未展开时使用 `.vditor-ir__marker--heading` 表示 `# ` 语法。撤销恢复 selection 时，Vditor 可能将折叠 Range 放在该 marker 的文本 offset `0`，也可能放在该 marker 后的元素边界。
-
-这些位置不是普通正文插入点。Chromium 原生 caret 将它们视为不可绘制状态；自绘实现若直接消费 Range 几何，则会取得 marker 或标题块的矩形，并错误画出位置和高度异常的 caret。
-
-标题语法展开后，marker 是用户可编辑的正常输入表面，不能按“所有 Markdown 标签都隐藏”处理。
-
-#### 最终修复
-
-`src/renderer/vditor-adapter.js` 的 `installCustomCaret()` 在计算 Range 矩形前识别仅限 IR 的 Vditor 私有结构：
-
-1. selection 位于未展开标题 marker 的文本内时，隐藏自绘 caret。
-2. selection 位于隐藏标题 marker 后的元素边界时，隐藏自绘 caret。
-3. 标题带有 `vditor-ir__node--expand` 时，marker 内 selection 继续走正常自绘路径。
-
-该策略对齐 Chromium 原生渲染，而不修改真实 selection、Vditor 内容、undo 历史或编辑器实例生命周期。
-
-#### 回归约束
-
-- 私有 class/selection 判断只能保留在 `vditor-adapter.js`；Vditor 升级时审查 `.vditor-ir__marker--heading` 与 `vditor-ir__node--expand` 的结构和原生 caret 行为。
-- `tests/unit/vditor-adapter.test.ts` 覆盖 marker 内与 marker 后边界的隐藏行为，以及展开 marker 的正常绘制。
-- `tests/e2e/editor-modes.spec.ts` 覆盖首行标题、标题下方编辑、等待 Vditor undo history、撤销后恢复到折叠 marker selection 的真实 Electron 路径。
-- 不要恢复“测量标题正文首字”或基于保存状态、`modified`、快捷键接管来抑制 caret 的方案；它们不描述实际 DOM/selection 根因，并可能破坏正常编辑或 undo 行为。
-
-### GitHub Alerts 的上游展示文本回写
-
-#### 记录版本：0.2.5 / 2026-09-10
-
-#### 现象
-
-GitHub 风格的 warning block quote 使用以下语法：
-
-```markdown
-> [!NOTE]
-> 正文
-```
-
-Vditor 3.11.3 开启 `preview.markdown.callout` 后可以正常渲染这类 alert，但其底层 Lute 会把展示用的默认 emoji 和标题加入编辑器 DOM。无标题的 `NOTE` 会出现 `✏️ Note`，其他内置类型也会出现对应的 `💡 Tip`、`❗ Important`、`⚠️ Warning` 或 `🚨 Caution`。当 Vditor 调用 `getValue()` 或触发内容回调时，这些展示文本可能被重新序列化为 Markdown。
-
-该写回不一定触发 `input`，因此文档可能没有 dirty 标记；用户打开后即使没有输入，后续保存也可能把展示性文本写进原始文件。该现象在 Vditor 作者部署的网页版同样存在，属于 Vditor/Lute 的上游 round-trip 缺陷，而非 Electron 文件写入层造成。
-
-#### Desktop 兼容策略
-
-Desktop 保持 callout 渲染开启，不通过关闭 `callout` 来牺牲预览效果。`src/renderer/editor/github-alerts.ts` 的 `restoreGitHubAlertHeaders(markdown, previousMarkdown)` 使用编辑前的 Markdown 作为来源基线：
-
-- 无标题 alert 只移除 Lute 补入的完整默认 emoji/标题；
-- 有用户标题的 alert 只移除 Lute 补入的前置 emoji；
-- 用户原本显式写入的 emoji/标题保持不变；
-- 非五种内置 GitHub alert 和无法确认来源的文本保持不变。
-
-该函数在初始化对账、`input`、`blur`、重建前读取和保存读取边界复用，确保展示文本不会进入 `tab.content`、recovery 或最终写盘。它是纯 Markdown 规范化，不访问 Vditor 私有 DOM，因此不应迁移到 `vditor-adapter.js`。
-
-#### 已知边界与升级复核
-
-SV 模式另有 Vditor 自身的空引用行/文末换行格式化差异；那是独立的序列化格式问题，本节的兼容层不回滚该差异。Vditor/Lute 升级时需要重新核对五种 alert 的无标题、自定义标题、显式 emoji、三种编辑模式和保存路径；若上游为 alert DOM 增加“标题是否由源 Markdown 显式提供”的可逆信息，应优先移除 Desktop 兼容层并改用上游公共语义。
-
-### setTheme() 不重绘已渲染的 Mermaid 图表
-
-#### 记录版本：0.2.6 / 2026-09-17
-
-#### 现象
-
-Vditor 3.11.3 把 ` ```mermaid ` 围栏渲染为 `.language-mermaid[data-processed="true"]` 节点，并用内联 SVG 替换其原始文本；图表配色由渲染当时传入的 Mermaid `theme`（`classic` / `dark`）写入 SVG。`setTheme(theme, contentTheme, codeTheme, path)` 只切换内容主题与代码主题样式表，不会重新渲染已标记 `data-processed` 的图表。因此在已打开含 Mermaid 的文档后切换亮/暗壳层主题（例如 Dark → Elegant），引用块、表格和代码块随内容主题变化，而图表仍停留在旧色调。重建编辑器可以解决，但会丢失选区、undo 与滚动状态，不是可接受的手段。
-
-#### Desktop 策略
-
-`ThemeCoordinator.applyTheme()` 在对每个 tab 调用 `setTheme()` 后，经注入的 `refreshMermaidTheme(host, markdown, tone)` 回调重绘图表；tone 取壳层明暗（`dark` / `classic`），markdown 取该 tab 的 `vditor.getValue()`，仅作为围栏来源读取，不回写文档。
-
-adapter 的 `refreshMermaidTheme()`（`src/renderer/vditor-adapter.js`）先解析 Markdown 中的 Mermaid 围栏（` ``` ` 或 `~~~`，最多 3 个前导空格，info string 为 `mermaid`），再收集 host 内 `data-processed="true"` 的 `.language-mermaid` 节点：
-
-- 两侧数量相等且非空时，按顺序一一配对，逐个把围栏源码写回节点 `textContent`、移除 `data-processed`，原位置临时以注释占位，在离屏 `DocumentFragment` 中调用 `window.Vditor.mermaidRender(fragment, 'app://app/vditor', tone)`，渲染后把节点放回原位；返回重绘数量。
-- 围栏缺失、数量不等、参数非法或 `Vditor.mermaidRender` 不是函数时返回 `0` 且不改动编辑器：宁可保留旧色调图表，也不冒险把某个图表与另一段围栏配对。
-
-#### 已知边界与升级复核
-
-`Vditor.mermaidRender` 是上游静态入口而非稳定公开契约，`.language-mermaid` 与 `data-processed` 也是私有 DOM 约定；两者与围栏解析、占位替换逻辑只能位于 `vditor-adapter.js`，业务层只经 `ThemeCoordinator` 的注入回调使用。不得改为重建编辑器或经 `getValue()`/`setValue()` 回写全文。回归覆盖：`tests/unit/vditor-adapter.test.ts`（配对重绘与不配对时保持原图表）、`tests/unit/renderer/theme-coordinator.test.ts`（按当前色调注入回调）、`tests/e2e/app-shell.spec.ts`（真实 Electron 中 Dark → Elegant 切换后图表重绘且只有一个 SVG）。升级 Vditor 时的复核项记录在 [`docs/07-VDITOR-UPGRADE.md`](07-VDITOR-UPGRADE.md)，主题层说明见 [`docs/05-THEMES.md`](05-THEMES.md)。

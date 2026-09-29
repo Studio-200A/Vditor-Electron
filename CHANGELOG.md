@@ -10,19 +10,24 @@
 
 ### Bug Fixes
 
+#### Editor
+
 - **fix(editor):** Keep the SV custom caret at a stable source-line size in empty documents and after `# `, and place it at the next line's insertion point after Enter on a table separator.
 - **fix(editor):** Keep the Instant Rendering and WYSIWYG block caret at its original size when Enter turns an empty editor into empty paragraphs.
 - **fix(editor):** Keep the custom caret at the insertion point after inline Markdown formatting in Instant Rendering and WYSIWYG, including bold and inline code markers.
 - **fix(editor):** Make Word wrap work immediately in all three editing modes without rebuilding Vditor. Long lines scroll horizontally when wrapping is off, while paragraph width remains independently adjustable in WYSIWYG and Instant Rendering.
 - **fix(editor):** Keep the chosen paragraph width centered in WYSIWYG and Instant Rendering when word wrap is off, with horizontal scrolling inside that text column.
+- **fix(editor):** Clear the unsaved-changes marker when undo returns a document to its last saved state in all three editing modes. Clean documents now adopt Vditor's serialized editor representation as their dirty-state savepoint when opened, on conflict-free external reloads, and after in-session editing-mode switches (each mode serializes the same document slightly differently). Rapid typing followed by a mode switch keeps unsaved content dirty and retains the close confirmation. Files on disk stay byte-identical until an explicit save, and the disk expectation used for conflict detection is unchanged.
+- **fix(split view):** Preserve each SV tab's source-only, preview-only, or two-pane layout when an initialization-only setting rebuilds its editor.
+- **fix(split view):** Improve SV source-to-preview scrolling for complex Markdown: matching source and rendered headings now align at roughly 20% of each pane, while preview reading remains independent and unmatched heading structures safely retain Vditor's native proportional fallback.
+
+#### Theme
+
 - **fix(theme):** Give Elegant settings inputs and selects a lighter control surface, distinct from the settings background.
 - **fix(theme):** Increase Elegant's shared hover contrast so navigation, menus, and titlebar controls show a clear hover state.
 - **fix(theme):** Keep Elegant's Vditor quote blocks, code blocks, tables, and Mermaid diagrams aligned with the active light content and code themes after a theme-mode switch.
 - **fix(about):** Prevent the About logo from being dragged out as `app://` text while preserving its click-based Easter egg.
 - **fix(outline):** In source-only Split View, the Outline sidebar now explains that rendered preview, WYSIWYG, or Instant Rendering mode is required instead of incorrectly reporting that the document has no headings.
-- **fix(split view):** Preserve each SV tab's source-only, preview-only, or two-pane layout when an initialization-only setting rebuilds its editor.
-- **fix(split view):** Improve SV source-to-preview scrolling for complex Markdown: matching source and rendered headings now align at roughly 20% of each pane, while preview reading remains independent and unmatched heading structures safely retain Vditor's native proportional fallback.
-- **fix(editor):** Clear the unsaved-changes marker when undo returns a document to its last saved state in all three editing modes. Clean documents now adopt Vditor's serialized editor representation as their dirty-state savepoint when opened, on conflict-free external reloads, and after in-session editing-mode switches (each mode serializes the same document slightly differently). Rapid typing followed by a mode switch keeps unsaved content dirty and retains the close confirmation. Files on disk stay byte-identical until an explicit save, and the disk expectation used for conflict detection is unchanged.
 
 ### Refactor
 

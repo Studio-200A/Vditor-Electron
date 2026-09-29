@@ -86,6 +86,7 @@ Treat `01-CODE-STRUCTURE.md` as a **navigation map, not the source of truth**. I
 ### Code consistency and agent conventions
 
 - Code formatting follows the root `.prettierrc.json`; static analysis follows `eslint.config.mjs`; use repository scripts for verification. Do not override these rules with personal or agent preferences.
+- Prettier already excludes Markdown files via `.prettierignore` (`*.md` / `*.markdown`): after editing documentation, do not run Prettier or `npm run format:check` just to format the Markdown itself; the remaining check scope is code files.
 - Rules take precedence in this order: security and product boundaries, automated configuration, this document, then verified stable code in the same responsibility domain. Resolve conflicts in favor of the higher-priority rule; when uncertain, inspect the source and relevant tests rather than introducing another equivalent pattern.
 - Within the same responsibility domain, follow verified stable conventions for naming, imports/exports, error handling, and lifecycle management. Do not introduce parallel equivalent patterns in that domain. When a migration plan defines a new pattern, follow it and migrate the old pattern progressively.
 - Do not rewrite legacy code or change a file's language solely for style consistency. Preserve the current language boundary and follow the relevant versioned migration plan.
