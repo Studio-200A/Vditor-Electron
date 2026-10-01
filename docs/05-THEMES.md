@@ -1,6 +1,6 @@
 # Vditor Desktop 主题架构
 
-> 本文是 Vditor Desktop 主题系统的长期设计与实现说明。当前主题扩展最初作为 0.2.0 计划外的“批次 6.5”启动，并由批次 6.6 补齐为六套主题；施工记录保留在 [`docs/ARCHIVED/13-0.2.0-EXECUTION-TRACKER.md`](ARCHIVED/13-0.2.0-EXECUTION-TRACKER.md) 中。
+> 本文是 Vditor Desktop 主题系统的长期设计与实现说明。主题扩展最初作为 0.2.0 计划外的“批次 6.5”启动；历史施工记录保留在 [`docs/ARCHIVED/13-0.2.0-EXECUTION-TRACKER.md`](ARCHIVED/13-0.2.0-EXECUTION-TRACKER.md) 中。
 
 ## 1. 主题系统的职责边界
 
@@ -17,7 +17,7 @@ Vditor Desktop 的主题系统分为应用壳层主题和 Vditor 内容主题两
 
 Vditor 原生工具栏中的代码预览主题设置控制 WYSIWYG、IR 和 SV 预览区代码块的高亮风格。应用主题不重复定义这部分颜色，从而尊重 Vditor 的上游能力和升级边界。
 
-Monokai Pro Dark 和 Monokai Pro Light 是历史实现中的例外：应用 CSS 额外提供了少量内容可读性修正和 H1–H6 标题色，以保持既有视觉特征；代码块高亮仍由 Vditor code theme 控制。Claude 主题不复制 Monokai 专属的 H1–H6 标题色覆盖；但 Ant Design 与 WeChat 内容主题是按浅色文档设计，应用在深色壳层（`dark`、`claude-dark`、`monokai-pro-dark` 三者并列）下会将其显式浅色文字/表格/标题重映射为壳层深色语义变量，Claude Dark 自 0.2.5 批次 11 起参与该通用可读性重映射。
+Monokai Pro Dark 和 Monokai Pro Light 是历史实现中的内容覆盖例外：应用 CSS 额外提供少量可读性修正和 H1–H6 标题色，以保持既有视觉特征。Nord Dark 也有受限的 H1–H6 标题色覆盖，以匹配其参考主题的标题调色；两类覆盖均不改变代码块高亮，后者仍由 Vditor code theme 控制。Claude 主题不复制这些标题色覆盖；但 Ant Design 与 WeChat 内容主题是按浅色文档设计，应用在深色壳层（`dark`、`claude-dark`、`monokai-pro-dark`、`nord-dark`）下会将其显式浅色文字/表格/标题重映射为壳层深色语义变量，Claude Dark 自 0.2.5 批次 11 起参与该通用可读性重映射。
 
 ## 2. 当前实现分层
 
@@ -30,7 +30,7 @@ Monokai Pro Dark 和 Monokai Pro Light 是历史实现中的例外：应用 CSS 
 | 主题控制器纯函数 | `src/renderer/ui/theme-controller.ts` | 主题解析与校验：`resolveEffectiveTheme`、`resolveThemeMode`、`validateDarkTheme`、`validateLightTheme`、`getPreferredCodeTheme`、`resolveContentTheme` |
 | 主题 DOM 操作 | `src/renderer/ui/theme-coordinator.ts` | 应用 `data-theme`、切换 Vditor 内容/代码主题、同步状态栏三态主题菜单和设置控件（依赖注入的 `theme-controller.ts` 纯函数与 `vditor-adapter.js` 语义回调） |
 | 应用视觉变量 | `src/renderer/styles/app.css` | 布局、通用组件、共享语义变量；`:root` 默认主题变量（classic） |
-| 主题样式文件 | `src/renderer/styles/themes/*.css` | 各主题独立 CSS 文件（dark、claude-light、claude-dark、monokai-pro-light、monokai-pro-dark） |
+| 主题样式文件 | `src/renderer/styles/themes/*.css` | 各主题独立 CSS 文件（dark、claude-light、claude-dark、elegant、monokai-pro-light、monokai-pro-dark、nord-dark） |
 | Vditor 边界 | `src/renderer/vditor-adapter.js` | 集中处理 Vditor toolbar、主题菜单和私有 DOM 结构访问 |
 | 行为测试 | `tests/unit/*`、`tests/e2e/*.spec.ts` | 覆盖配置、主题控件、颜色契约、主题切换和真实 Electron 行为 |
 
@@ -38,23 +38,27 @@ Monokai Pro Dark 和 Monokai Pro Light 是历史实现中的例外：应用 CSS 
 
 ## 3. 当前状态模型
 
-### 3.1 六套应用主题
+### 3.1 内置应用主题
 
 | 色调 | 配置值 | 显示名称 | 默认状态 |
 | ---- | ------ | -------- | -------- |
 | 亮色 | `classic` | Light | `lightTheme` 默认值 |
 | 亮色 | `claude-light` | Claude Light | 可选 |
+| 亮色 | `elegant` | Elegant | 可选 |
 | 亮色 | `monokai-pro-light` | Monokai Pro Light | 可选 |
 | 暗色 | `dark` | Dark | `darkTheme` 默认值 |
 | 暗色 | `claude-dark` | Claude Dark | 可选 |
 | 暗色 | `monokai-pro-dark` | Monokai Pro Dark | 可选 |
+| 暗色 | `nord-dark` | Nord Dark | 可选 |
+
+设置页 radio 组的实际顺序为亮色 `classic` → `elegant` → `claude-light` → `monokai-pro-light`，暗色 `dark` → `nord-dark` → `claude-dark` → `monokai-pro-dark`（`tests/unit/renderer-shell.test.ts` 固定亮色组顺序）。显示名称来自 `src/renderer/locale/` 三语字典的 `theme.*` 键：`zh_Hans` / `zh_Hant` 只本地化 `theme.light`（浅色/淺色）、`theme.dark`（深色）与 `theme.elegant`（雅致），其余主题保留英文名称。
 
 ### 3.2 亮暗主题独立选择
 
 设置页分别保存：
 
-- `lightTheme`：`classic`、`claude-light` 或 `monokai-pro-light`；
-- `darkTheme`：`dark`、`claude-dark` 或 `monokai-pro-dark`。
+- `lightTheme`：`classic`、`claude-light`、`elegant` 或 `monokai-pro-light`；
+- `darkTheme`：`dark`、`claude-dark`、`monokai-pro-dark` 或 `nord-dark`。
 
 `theme` 表示固定亮/暗模式下的当前应用主题，`systemTheme` 表示状态栏主题模式是否选择系统自动匹配。TOML 文件使用 `[appearance]` 段落承载这些字段，但 `AppSettings` 中它们是顶层字段。设置页只编辑 `lightTheme` 与 `darkTheme`，三态模式从状态栏主题菜单选择。解析关系为：
 
@@ -90,15 +94,18 @@ Vditor 内容和代码主题仍各自保存亮暗偏好：`lightCodeTheme` / `da
 - `--bg`：应用整体背景；
 - `--panel` / `--panel-2`：卡片、输入控件和次级面板；
 - `--settings-control-surface`：设置页文本、数字和下拉控件的可编辑表面；
-- `--hover`：通用 hover 表面；
+- `--hover`：通用 hover 表面，供文件树、大纲、右键菜单、应用菜单弹层与标题栏按钮共用；它必须与各自的基准表面形成可辨识的层级；
+- `--tree-active`：文件树活动项的 accent 混合选中表面（默认由 `--accent` 派生）；
 - `--text` / `--muted`：正文和弱化文字；
+- `--disabled-control-color`：禁用控件与不可用菜单项的前景色（默认由 `--muted` 混合派生，Nord Dark 直接映射 `nord3`）；
 - `--border`：边框和分割线；
 - `--accent`：当前主题交互强调色和键盘焦点环；
 - `--on-accent`：accent 背景上的默认前景色；
 - `--brand-accent`：品牌或主题强调场景使用的 accent；
-- `--danger`：危险操作颜色。
+- `--danger`：危险操作颜色；
+- `--top-surface-shadow`：顶部 chrome（工具栏或标题栏）向下的分隔投影，由各主题按自身表面色重写。
 
-Monokai Pro 主题额外定义了 `--monokai-code-bg`、`--monokai-input-bg` 和 `--monokai-h1` 至 `--monokai-h6` 等变量，用于编辑器内容可读性修正和标题色。
+Monokai Pro 主题额外定义了 `--monokai-code-bg`、`--monokai-input-bg` 和 `--monokai-h1` 至 `--monokai-h6` 等变量，用于编辑器内容可读性修正和标题色。Nord Dark 定义 `--nord-h1` 至 `--nord-h6`，仅覆盖 Vditor IR、WYSIWYG 与预览标题颜色。
 
 按钮、焦点环和状态提示应引用语义变量，不应在组件规则中重复写主题专属颜色。
 
@@ -113,17 +120,19 @@ Monokai Pro 主题额外定义了 `--monokai-code-bg`、`--monokai-input-bg` 和
 | Classic | `#f7f7f8` | `#f0f1f3` | `#ffffff` | 导航壳层略灰，文档画布为白色 |
 | Dark | `#17181a` | `#202124` | `#18191c` | 编辑区相对 sidebar 各 RGB 通道差 8 |
 | Claude Light | `#faf9f5` | `#f5f4ed` | `#faf9f5` | 暖灰 sidebar，纸张感编辑区 |
+| Elegant | `#f0edea` | `#eae6e1` | `#f0edea` | ColaMD 雅致主题的暖灰纸张壳层 |
 | Claude Dark | `#141413` | `#30302e` | `#262624` | 暖暗导航壳层略亮，文档画布略深 |
 | Monokai Pro Dark | `#2d2a2e` | `#2d2a2e` | `#272428` | 保留 Monokai 色调，文档画布略深 |
+| Nord Dark | `#2e3440` | `#3b4252` | `#2e3440` | Nord Polar Night 壳层，导航使用较亮一阶表面 |
 | Monokai Pro Light | `#faf4f2` | `#ede7e5` | `#faf4f2` | sidebar 略深一档、编辑区暖白，Monokai Pro Dark 的同族浅色 |
 
-`.sidebar`、Windows/Linux 自定义主菜单的触发按钮与下拉菜单、titlebar、共享 Vditor toolbar、Files/Outline navigation、无标签的 `.editor-area` 及其新建/打开操作，以及设置页的 titlebar、导航、footer 和右侧边缘都使用 `--sidebar-surface`；这样顶部 chrome、菜单、空工作区和设置页 chrome 随六套主题呈现同一中性导航壳层色，不与输入控件共用 `--panel` 的白色或近白色表面。Files/Outline 实际归属 `#sidebar`：工具栏显示时作为侧栏上缘的顶部导航，隐藏时成为侧栏内容首项；两种状态使用相同 surface、border、hover、active 与 focus 语义。工具栏显示时由 toolbar 的 `--top-surface-shadow` 提供顶部分隔，隐藏时改由稳定的 titlebar 提供该投影，避免两层投影叠加。`--panel-2` 保留给状态栏等其他次级表面。编辑器宿主、`.vditor-content`、`.vditor-sv`、`.vditor-ir`、`.vditor-wysiwyg`、`.vditor-preview`、`.vditor-reset` 以及 SV 行号栏使用 `--editor-surface`，使行号栏成为文档画布的一部分，仅由右侧边框分隔；设置页具体内容区域也使用编辑区表面。浅色主题的文档画布较导航壳层明亮，深色主题则较暗。标签 hover 一律使用主题的 `--hover`，不使用跨主题固定颜色。
+`.sidebar`、Windows/Linux 自定义主菜单的触发按钮与下拉菜单、titlebar、共享 Vditor toolbar、Files/Outline navigation、无标签的 `.editor-area` 及其新建/打开操作，以及设置页的 titlebar、导航、footer 和右侧边缘都使用 `--sidebar-surface`；这样顶部 chrome、菜单、空工作区和设置页 chrome 随各主题呈现同一中性导航壳层色，不与输入控件共用 `--panel` 的白色或近白色表面。Files/Outline 实际归属 `#sidebar`：工具栏显示时作为侧栏上缘的顶部导航，隐藏时成为侧栏内容首项；两种状态使用相同 surface、border、hover、active 与 focus 语义。工具栏显示时由 toolbar 的 `--top-surface-shadow` 提供顶部分隔，隐藏时改由稳定的 titlebar 提供该投影，避免两层投影叠加。`--panel-2` 保留给状态栏等其他次级表面。编辑器宿主、`.vditor-content`、`.vditor-sv`、`.vditor-ir`、`.vditor-wysiwyg`、`.vditor-preview`、`.vditor-reset` 以及 SV 行号栏使用 `--editor-surface`，使行号栏成为文档画布的一部分，仅由右侧边框分隔；设置页具体内容区域也使用编辑区表面。浅色主题的文档画布较导航壳层明亮，深色主题则较暗。标签 hover 一律使用主题的 `--hover`，不使用跨主题固定颜色。
 
-## 5. 六套主题的实际实现
+## 5. 内置主题的实际实现
 
 ### 5.1 Classic
 
-默认亮色壳层。sidebar 为白色、编辑区为浅灰色，accent 为 `#3578e5`，作为 `lightTheme` 的默认和保底值，通常搭配 Vditor 的浅色内容/代码主题。
+默认亮色壳层。sidebar 为浅灰 `#f0f1f3`、编辑区为白色 `#ffffff`，accent 为 `#3578e5`，作为 `lightTheme` 的默认和保底值，通常搭配 Vditor 的浅色内容/代码主题。
 
 ### 5.2 Dark
 
@@ -135,13 +144,21 @@ Monokai Pro 主题额外定义了 `--monokai-code-bg`、`--monokai-input-bg` 和
 
 ### 5.4 Claude Dark
 
-将 Claude Light 的暖色体系转换为低对比度深色壳层：应用背景为 `#141413`，sidebar 和编辑区均为 `#30302e`，次级面板为 `#262624`，hover 表面为 `#3d3d3a`，文字为 `#faf9f5`，弱化文字为 `#c2c0b6`。accent 和品牌强调色同样为 `#d97757`，分割线使用 `rgb(222 220 209 / 12%)`，主按钮使用白色文字。
+将 Claude Light 的暖色体系转换为低对比度深色壳层：应用背景为 `#141413`，sidebar 为 `#30302e`，编辑区与次级面板均为 `#262624`，hover 表面为 `#3d3d3a`，文字为 `#faf9f5`，弱化文字为 `#c2c0b6`。accent 和品牌强调色同样为 `#d97757`，分割线使用 `rgb(222 220 209 / 12%)`，主按钮使用白色文字。
 
-### 5.5 Monokai Pro Dark
+### 5.5 Elegant
 
-既有深色主题。应用、sidebar 和编辑区基准表面为 `#2d2a2e`，accent 为 Monokai 黄色 `#ffd866`，并使用 Monokai 风格的输入背景、代码块背景、链接、引用和分割线颜色。应用 CSS 为 H1–H6 提供粉、黄、绿、青、紫、橙六级标题色；这些内容可读性覆盖是 Monokai 的历史特例，代码块高亮仍由 Vditor code theme 提供。
+Elegant 采用 [ColaMD elegant.css](https://github.com/marswaveai/ColaMD/blob/main/themes/elegant.css) 的暖灰纸张调色：应用和编辑区为 `#f0edea`，sidebar 和面板为 `#eae6e1`，设置表单控件为更亮的 `#faf8f5`，正文为 `#2c2c2c`，弱化文字为 `#6c6c6c`，边框为 `#d8d3ce`。通用 hover 表面为更深的暖灰 `#dcd7d1`，使文件树、大纲、右键菜单、应用菜单弹层和标题栏按钮在 sidebar 上有清晰但不过重的悬停层次。交互强调色为 `#bc4424`，危险操作使用陶土色 `#c44b2b`。它只定义应用壳层变量，不覆盖 Vditor 的引用、表格、代码块或 Mermaid 配色；这些内容由关联的 Vditor 浅色内容与代码主题负责。Vditor 3.11.3 不会在 `setTheme()` 后重绘已有 Mermaid SVG，因此亮暗色调切换时，主题协调器会通过适配器仅在当前 Markdown 围栏与已渲染图表一一匹配时重新调用 Vditor 的本地 Mermaid 渲染器；不匹配时保持原图表不变。
 
-### 5.6 Monokai Pro Light
+### 5.6 Nord Dark
+
+Nord Dark 使用 [Nord 官方 palette](https://github.com/nordtheme/nord/blob/develop/src/nord.css) 的 Polar Night、Snow Storm、Frost 和 Aurora 色组，不引入 palette 外颜色。`nord0` `#2e3440` 作为应用与编辑器表面，`nord1` `#3b4252` 作为导航和控件表面，`nord3` `#4c566a` 用于禁用控件与分割线，`nord4` `#d8dee9` 为常规文字，`nord8` `#88c0d0` 为交互强调色，`nord11` `#bf616a` 为危险操作色。设置 H4、`.muted` 与 `.version-info` 使用 `nord4` 与 `nord0` 的混合色，保持弱化层级而不成为强调色。其 H1–H6 内容覆盖是受限例外：依次使用 `nord8`、`nord9`、`nord10`、`nord15`、`nord14`、`nord13`，仅作用于 Vditor 的 IR、WYSIWYG 与预览标题。Vditor 内容和代码主题仍通过既有 `setTheme()` 链路独立管理。
+
+### 5.7 Monokai Pro Dark
+
+既有深色主题。应用背景与 sidebar 基准表面为 `#2d2a2e`，编辑区为略深的 `#272428`，accent 为 Monokai 黄色 `#ffd866`，并使用 Monokai 风格的输入背景、代码块背景、链接、引用和分割线颜色。应用 CSS 为 H1–H6 提供粉、黄、绿、青、紫、橙六级标题色；这些内容可读性覆盖是 Monokai 的历史特例，代码块高亮仍由 Vditor code theme 提供。
+
+### 5.8 Monokai Pro Light
 
 Monokai Pro Dark 的同族浅色主题，调色取自官方 Monokai Pro Light VS Code 主题（非 Filter Sun）。应用和编辑区基准表面为暖白 `#faf4f2`，sidebar 为略深的 `#ede7e5`，次级面板为 `#e0dad9`，文字为 `#29242a`，弱化文字为 `#706b6e`，低强调暖灰边框为 `#d8d3d1`，accent 和品牌强调色为 Monokai 红 `#e14775`。与 Monokai Pro Dark 一样，应用 CSS 复用输入背景、代码块背景、链接、引用和分割线的内容可读性覆盖，并为 H1–H6 提供红、橙、绿、蓝、紫、黑六级标题色；代码块高亮仍由 Vditor code theme 提供。
 
@@ -149,15 +166,15 @@ Monokai Pro Dark 的同族浅色主题，调色取自官方 Monokai Pro Light VS
 
 设置页使用两个 fieldset：亮色应用主题和暗色应用主题。每个选项包含 radio input、主题预览 SVG 和本地化名称。
 
-预览卡片使用统一最大宽度和统一网格约束。亮色和暗色选项数量不同不改变单卡片宽度；可用空间不足时整体缩小。预览只表现应用壳层的结构和颜色，不模拟 Vditor 的代码高亮主题。
+预览卡片使用统一最大宽度和统一网格约束：`.theme-picker` 为 `grid-template-columns: repeat(4, minmax(0, 1fr))`，即每行最多四张卡片，亮色和暗色两组共用该规则。亮色和暗色选项数量不同不改变单卡片宽度；可用空间不足时整体缩小。预览只表现应用壳层的结构和颜色，不模拟 Vditor 的代码高亮主题。
 
 新增主题时应加入对应色调的 radio 组、SVG 预览类、CSS 变量和测试，不应为单个主题组增加独立布局规则。
 
 ## 7. 测试契约
 
-当前测试覆盖配置字段、旧字段忽略、亮暗独立主题组、六张预览卡片、预览宽度、Claude surface/accent/按钮文字/hover/分割线、状态栏三态主题菜单、系统主题解析，以及编辑器在失焦、聚焦和 IR/WYSIWYG/SV 切换时的编辑区表面。
+当前测试覆盖配置字段、旧字段忽略、亮暗独立主题组及其 radio 顺序、主题预览卡片、每行最多四张卡片的网格约束与预览宽度、Claude surface/accent/按钮文字/hover/分割线、Elegant 壳层调色、导航与菜单 hover 以及 Mermaid 色调重绘、Nord palette 语义变量与 H1–H6 标题色、状态栏三态主题菜单、系统主题解析，以及编辑器在失焦、聚焦和 IR/WYSIWYG/SV 切换时的编辑区表面。
 
-截至 2026-08-27，用户手动运行的 Linux `npm run check:all` 已包含主题、状态栏菜单、工具栏边界和六套主题相关回归；Windows/macOS 的窗口系统主题和原生集成仍按 [`docs/04-CROSS-PLATFORM.md` §9](04-CROSS-PLATFORM.md#9-020-批次-7-推迟的平台验证) 单独验证。
+截至 2026-08-27，用户手动运行的 Linux `npm run check:all` 已包含主题、状态栏菜单、工具栏边界和当时内置主题相关回归；Windows/macOS 的窗口系统主题和原生集成仍按 [`docs/04-CROSS-PLATFORM.md` §9](04-CROSS-PLATFORM.md#9-020-批次-7-推迟的平台验证) 单独验证。其后 0.2.5 批次 11（2026-09-10）为 Claude Dark 参与 Ant Design/WeChat 内容主题深色可读性重映射再次调整了 `app.css` 并同步更新 app-shell E2E 断言；该改动已随 v0.2.5 发布，上述时间戳不涵盖这一轮变化。0.2.6 新增的 Nord Dark、Elegant、四张预览卡片网格与 Mermaid 色调重绘由 `tests/unit/renderer/theme*.test.ts`、`tests/unit/vditor-adapter.test.ts`、`tests/unit/renderer-shell.test.ts` 与 `tests/e2e/app-shell.spec.ts` 的自动断言覆盖；用户已于 2026-09-17（Elegant 主题与其设置控件表面修复提交当日）在 Linux 手动运行 `npm run check:all` 并通过，该次运行是 0.2.6 主题批次（Nord Dark、Elegant、预览卡片网格与 Mermaid 色调重绘）的全量验收证据。精确测试总数与重跑细节属于版本执行记录，本文只保留日期、平台与范围；Windows/macOS 的窗口系统主题和原生集成仍按上述 §9 单独验证。
 
 Vditor toolbar 的主题菜单继续由 adapter 管理，应用主题不会绕过 Vditor 的 code theme。涉及主题代码、renderer shell 或设置持久化的改动，应至少运行格式检查、相关单测、构建和相关 Electron E2E；合并前遵循项目要求运行 `npm run check:all`。
 
@@ -170,4 +187,5 @@ Vditor toolbar 的主题菜单继续由 adapter 管理，应用主题不会绕�
 3. 复用 `--sidebar-surface` 和 `--editor-surface`，按视觉结果决定两者关系。
 4. 不在主题中定义字体、Vditor 内容主题或代码块高亮。
 5. 只在确有上游不足时增加应用层内容覆盖，并记录原因。
-6. 更新设置预览、本地化、单测、E2E、README、CHANGELOG 和本文件。
+6. 更新设置预览、本地化、单测、E2E、README、CHANGELOG 和本文件；若使用外部 palette，记录其官方来源与语义颜色映射。
+7. 若主题行为依赖 Vditor 非公开渲染入口（例如 Mermaid 重绘依赖 `Vditor.mermaidRender` 与 `data-processed` 标记），私有访问只能位于 `vditor-adapter.js`，并同步补充 focused adapter 测试、本文件的主题说明与 [`docs/07-VDITOR-UPGRADE.md`](07-VDITOR-UPGRADE.md) 的升级验证项。

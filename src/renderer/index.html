@@ -11,6 +11,13 @@
     <link rel="stylesheet" href="app://app/vditor/dist/index.css" />
     <link rel="stylesheet" href="app://app/styles/app.css" />
     <link id="theme-dark" rel="stylesheet" href="app://app/styles/themes/dark.css" disabled />
+    <link id="theme-elegant" rel="stylesheet" href="app://app/styles/themes/elegant.css" disabled />
+    <link
+      id="theme-nord-dark"
+      rel="stylesheet"
+      href="app://app/styles/themes/nord-dark.css"
+      disabled
+    />
     <link
       id="theme-monokai-pro-dark"
       rel="stylesheet"
@@ -454,7 +461,7 @@
               </button>
             </div>
           </div>
-          <span id="statusVersion">v0.2.5</span>
+          <span id="statusVersion">v0.2.6</span>
         </div>
       </footer>
     </div>
@@ -578,6 +585,35 @@
                     </span>
                     <span data-i18n="theme.light">Light</span>
                   </label>
+                  <label class="theme-option theme-option-elegant">
+                    <input
+                      class="theme-option-input"
+                      name="lightTheme"
+                      type="radio"
+                      value="elegant"
+                    />
+                    <span class="theme-preview">
+                      <svg viewBox="0 0 120 72" aria-hidden="true">
+                        <rect
+                          class="theme-preview-window"
+                          x="1"
+                          y="1"
+                          width="118"
+                          height="70"
+                          rx="6"
+                        />
+                        <path
+                          class="theme-preview-chrome"
+                          d="M1 7a6 6 0 0 1 6-6h106a6 6 0 0 1 6 6v12H1z"
+                        />
+                        <rect class="theme-preview-sidebar" x="1" y="19" width="29" height="52" />
+                        <path class="theme-preview-muted" d="M8 28h14M8 36h10M8 44h14" />
+                        <path class="theme-preview-heading" d="M39 29h42M39 39h64" />
+                        <path class="theme-preview-text" d="M39 49h53M39 57h42" />
+                      </svg>
+                    </span>
+                    <span data-i18n="theme.elegant">Elegant</span>
+                  </label>
                   <label class="theme-option theme-option-claude-light">
                     <input
                       class="theme-option-input"
@@ -666,6 +702,35 @@
                       </svg>
                     </span>
                     <span data-i18n="theme.dark">Dark</span>
+                  </label>
+                  <label class="theme-option theme-option-nord-dark">
+                    <input
+                      class="theme-option-input"
+                      name="darkTheme"
+                      type="radio"
+                      value="nord-dark"
+                    />
+                    <span class="theme-preview">
+                      <svg viewBox="0 0 120 72" aria-hidden="true">
+                        <rect
+                          class="theme-preview-window"
+                          x="1"
+                          y="1"
+                          width="118"
+                          height="70"
+                          rx="6"
+                        />
+                        <path
+                          class="theme-preview-chrome"
+                          d="M1 7a6 6 0 0 1 6-6h106a6 6 0 0 1 6 6v12H1z"
+                        />
+                        <rect class="theme-preview-sidebar" x="1" y="19" width="29" height="52" />
+                        <path class="theme-preview-muted" d="M8 28h14M8 36h10M8 44h14" />
+                        <path class="theme-preview-heading" d="M39 29h42M39 39h64" />
+                        <path class="theme-preview-text" d="M39 49h53M39 57h42" />
+                      </svg>
+                    </span>
+                    <span data-i18n="theme.nordDark">Nord Dark</span>
                   </label>
                   <label class="theme-option theme-option-claude-dark">
                     <input
@@ -1370,7 +1435,8 @@
                 ></label
               >
               <p class="muted" data-i18n="settings.editorTextWidthHint">
-                Applies to WYSIWYG and Instant Rendering modes.
+                Applies to WYSIWYG and Instant Rendering modes. With word wrap off, long lines may
+                need horizontal scrolling; adjust paragraph width to suit your reading layout.
               </p>
               <h4 class="settings-subheading" data-i18n="settings.security">Security</h4>
               <div class="settings-security-card">
@@ -1533,6 +1599,7 @@
                   class="about-logo"
                   src="app://app/assets/app-icon/vditor-desktop.svg"
                   alt=""
+                  draggable="false"
                   data-easter-egg="vanessa"
                 />
                 <h3>Vditor Desktop</h3>

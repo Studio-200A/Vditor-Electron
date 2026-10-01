@@ -1,15 +1,4 @@
-import {
-  app,
-  BrowserWindow,
-  clipboard,
-  dialog,
-  ipcMain,
-  Menu,
-  nativeTheme,
-  screen,
-  session,
-  shell,
-} from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, nativeTheme, screen, session, shell } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'path';
 import { resolveApplicationPaths } from './app-paths';
@@ -17,31 +6,11 @@ import { registerAppProtocol } from './protocol';
 import { shouldBlockRemoteSvgImage } from './remote-svg-policy';
 import { createAppMenu } from './menu';
 import { extractOpenFilePaths } from './open-files';
-import { allowedExternalUrl } from './external-url';
-import { invalidIpcArgument, normalizeIpcError, requireTrustedMainFrame } from './ipc-guard';
 import { IPC_CHANNELS } from './ipc-contract';
-import { formatLocalResourceBase, LocalResourcePolicy } from './local-resource';
-import {
-  parseAbsolutePath,
-  parseBinary,
-  parseBoolean,
-  parseEnum,
-  parseFileName,
-  parseFiniteNumber,
-  parseOptionalAbsolutePath,
-  parseOptionalBoolean,
-  parseOptionalInteger,
-  parseOptionalText,
-  parsePersistentStatePatch,
-  parseResourceHealthCandidateIds,
-  parseResourceRootPaths,
-  parseSettingsPatch,
-  parseText,
-  requireArgumentCount,
-} from './ipc-validation';
+import { LocalResourcePolicy } from './local-resource';
 import { classifyNavigation } from './navigation-policy';
-import { resolveRelativeMarkdownLink } from './resolve-markdown-link';
-import { resolveSaveDialogDefaultPath } from './save-dialog-path';
+import { registerIpcHandlers } from './ipc/register';
+import { isExportWebContents } from './ipc/export-pdf';
 import { FileManagerService } from './services/file-manager';
 import { FileWatchService } from './services/file-watch-service';
 import { RecoveryStore } from './services/recovery-store';
@@ -49,12 +18,7 @@ import { SettingsStore } from './services/settings-store';
 import { PersistentStateStore } from './services/persistent-state-store';
 import { ResourceHealthService } from './services/resource-health-service';
 import { WindowCloseConfirmation } from './services/window-close-confirmation';
-import {
-  AppSettings,
-  DEFAULT_SETTINGS,
-  WORKSPACE_READ_DEPTH_MAX,
-  WORKSPACE_READ_DEPTH_MIN,
-} from './services/app-state';
+import { AppSettings, DEFAULT_SETTINGS } from './services/app-state';
 
 let mainWindow: BrowserWindow | null = null;
 let fileManager: FileManagerService;
@@ -70,7 +34,6 @@ let windowMaximizedState = false;
 let windowBoundsSaveTimer: NodeJS.Timeout | null = null;
 let rendererReady = false;
 let pendingOpenFiles: string[] = [];
-const exportWebContents = new WeakSet<Electron.WebContents>();
 
 const applicationPaths = resolveApplicationPaths();
 fs.mkdirSync(applicationPaths.chromiumDir, { recursive: true });
@@ -276,6 +239,8 @@ function initialWindowBackground(settings: AppSettings): string {
       : settings.lightTheme
     : settings.theme;
   if (theme === 'monokai-pro-dark') return '#2d2a2e';
+  if (theme === 'nord-dark') return '#2e3440';
+  if (theme === 'elegant') return '#f0edea';
   if (theme === 'monokai-pro-light') return '#faf4f2';
   if (theme === 'claude-dark') return '#141413';
   if (theme === 'claude-light') return '#faf9f5';
@@ -373,490 +338,33 @@ function createWindow(): void {
   });
 }
 
-async function chooseSavePath(
-  title: string,
-  defaultPath: string,
-  filters: Electron.FileFilter[],
-): Promise<string | null> {
-  const result = await dialog.showSaveDialog(mainWindow!, { title, defaultPath, filters });
-  return result.canceled || !result.filePath ? null : result.filePath;
-}
-
-async function readClipboardContents(): Promise<{ text: string; html: string }> {
-  // Electron 44 exposes the clipboard through asynchronous W3C-style methods; rich HTML is
-  // read from a ClipboardItem because the former readHTML() convenience method was removed.
-  const text = await clipboard.readText();
-  let html = '';
-  for (const item of await clipboard.read()) {
-    if (!item.types.includes('text/html')) continue;
-    const htmlPayload = await item.getType('text/html');
-    if (!('text' in htmlPayload)) continue;
-    html = await htmlPayload.text();
-    break;
-  }
-  return { text, html };
-}
-
-type TrustedInvokeHandler = (event: Electron.IpcMainInvokeEvent, ...args: unknown[]) => unknown;
-type TrustedMessageHandler = (event: Electron.IpcMainEvent, ...args: unknown[]) => void;
-
-function handleTrusted(channel: string, handler: TrustedInvokeHandler): void {
-  ipcMain.handle(channel, async (event, ...args) => {
-    requireTrustedMainFrame(event, mainWindow?.webContents);
-    try {
-      return await handler(event, ...args);
-    } catch (error) {
-      throw reportIpcFailure(channel, error);
-    }
-  });
-}
-
-function onTrusted(channel: string, handler: TrustedMessageHandler): void {
-  ipcMain.on(channel, (event, ...args) => {
-    try {
-      requireTrustedMainFrame(event, mainWindow?.webContents);
-      handler(event, ...args);
-    } catch (error) {
-      reportIpcFailure(channel, error);
-    }
-  });
-}
-
-function reportIpcFailure(channel: string, error: unknown): Error {
-  const normalized = normalizeIpcError(error);
-  if (!(
-    normalized instanceof Error &&
-    'code' in normalized &&
-    (normalized.code === 'IPC_UNTRUSTED_RENDERER' || normalized.code === 'IPC_INVALID_ARGUMENT')
-  ))
-    console.error(`IPC ${channel} failed:`, error);
-  return normalized;
-}
-
-function registerIpcHandlers(): void {
-  handleTrusted(IPC_CHANNELS.fileOpenDialog, async (_event, ...args) => {
-    requireArgumentCount(args, 0, 1);
-    const defaultDirectory = parseOptionalAbsolutePath(args[0]);
-    const result = await dialog.showOpenDialog(mainWindow!, {
-      title: tr('Open Markdown Files', '打开 Markdown 文件', '開啟 Markdown 檔案'),
-      filters: [
-        { name: 'Markdown', extensions: ['md', 'markdown', 'mdown', 'mkd', 'mkdn'] },
-        { name: 'All Files', extensions: ['*'] },
-      ],
-      properties: ['openFile', 'multiSelections'],
-      defaultPath: defaultDirectory,
-    });
-    return result.canceled ? [] : result.filePaths;
-  });
-  handleTrusted(IPC_CHANNELS.fileOpenFolderDialog, async (_event, ...args) => {
-    requireArgumentCount(args, 0, 1);
-    const defaultDirectory = parseOptionalAbsolutePath(args[0]);
-    const result = await dialog.showOpenDialog(mainWindow!, {
-      title: tr('Open Folder', '打开文件夹', '開啟資料夾'),
-      properties: ['openDirectory'],
-      defaultPath: defaultDirectory,
-    });
-    return result.canceled ? null : result.filePaths[0];
-  });
-  handleTrusted(IPC_CHANNELS.fileSaveDialog, (_event, ...args) => {
-    requireArgumentCount(args, 0, 2);
-    const defaultPath = parseOptionalText(args[0]);
-    const defaultDirectory = parseOptionalAbsolutePath(args[1]);
-    return chooseSavePath(
-      tr('Save Markdown File', '保存 Markdown 文件', '儲存 Markdown 檔案'),
-      resolveSaveDialogDefaultPath(defaultPath, defaultDirectory),
-      [
-        { name: 'Markdown', extensions: ['md', 'markdown'] },
-        { name: 'All Files', extensions: ['*'] },
-      ],
-    );
-  });
-  handleTrusted(IPC_CHANNELS.fileExportDialog, (_event, ...args) => {
-    requireArgumentCount(args, 1, 3);
-    const type = parseEnum(args[0], ['html', 'pdf']);
-    const defaultPath = parseOptionalText(args[1]);
-    const defaultDirectory = parseOptionalAbsolutePath(args[2]);
-    return chooseSavePath(
-      `Export ${type.toUpperCase()}`,
-      defaultDirectory
-        ? path.join(defaultDirectory, path.basename(defaultPath || `document.${type}`))
-        : defaultPath || `document.${type}`,
-      [{ name: type.toUpperCase(), extensions: [type] }],
-    );
-  });
-  handleTrusted(IPC_CHANNELS.fileRead, (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    return fileManager.readFile(parseAbsolutePath(args[0]));
-  });
-  handleTrusted(IPC_CHANNELS.fileWrite, (_event, ...args) => {
-    requireArgumentCount(args, 2);
-    return fileManager.writeFile(parseAbsolutePath(args[0]), parseText(args[1]));
-  });
-  handleTrusted(IPC_CHANNELS.fileWriteDocument, async (_event, ...args) => {
-    requireArgumentCount(args, 2, 4);
-    const filePath = parseAbsolutePath(args[0]);
-    const content = parseText(args[1]);
-    const expectedContent = parseOptionalText(args[2]);
-    const expectedAbsent = parseOptionalBoolean(args[3], false);
-    if (expectedContent !== undefined && expectedAbsent) invalidIpcArgument();
-    const result = await fileManager.writeDocument(
-      filePath,
-      content,
-      expectedContent,
-      expectedAbsent,
-    );
-    if (!('error' in result)) fileWatchService.markOwnDocumentWrite(filePath);
-    return result;
-  });
-  handleTrusted(IPC_CHANNELS.fileWriteBinary, (_event, ...args) => {
-    requireArgumentCount(args, 2);
-    return fileManager.writeBinaryFile(parseAbsolutePath(args[0]), parseBinary(args[1]));
-  });
-  handleTrusted(IPC_CHANNELS.fileExists, (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    return fileManager.exists(parseAbsolutePath(args[0]));
-  });
-  handleTrusted(IPC_CHANNELS.fileIdentity, (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    return fileManager.fileIdentity(parseAbsolutePath(args[0]));
-  });
-  handleTrusted(IPC_CHANNELS.fileListDir, (_event, ...args) => {
-    requireArgumentCount(args, 1, 2);
-    return fileManager.listDir(parseAbsolutePath(args[0]), parseOptionalAbsolutePath(args[1]));
-  });
-  handleTrusted(IPC_CHANNELS.fileCreate, (_event, ...args) => {
-    requireArgumentCount(args, 3);
-    return fileManager.createItem(
-      parseAbsolutePath(args[0]),
-      parseFileName(args[1]),
-      parseEnum(args[2], ['file', 'directory']),
-    );
-  });
-  handleTrusted(IPC_CHANNELS.fileRename, async (_event, ...args) => {
-    requireArgumentCount(args, 2);
-    const oldPath = parseAbsolutePath(args[0]);
-    const newName = parseFileName(args[1]);
-    const destination = await fileManager.prepareRename(oldPath, newName);
-    fileWatchService.markOwnWorkspaceRename(oldPath, destination);
-    try {
-      return await fileManager.renameItem(oldPath, newName);
-    } catch (error) {
-      fileWatchService.clearOwnWorkspaceRename(oldPath, destination);
-      throw error;
-    }
-  });
-  handleTrusted(IPC_CHANNELS.filePrepareRename, (_event, ...args) => {
-    requireArgumentCount(args, 2);
-    return fileManager.prepareRename(parseAbsolutePath(args[0]), parseFileName(args[1]));
-  });
-  handleTrusted(IPC_CHANNELS.fileDelete, (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    return shell.trashItem(parseAbsolutePath(args[0]));
-  });
-  handleTrusted(IPC_CHANNELS.fileBasename, (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    return path.basename(parseAbsolutePath(args[0]));
-  });
-  handleTrusted(IPC_CHANNELS.fileDirname, (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    return path.dirname(parseAbsolutePath(args[0]));
-  });
-  handleTrusted(IPC_CHANNELS.fileRelative, (_event, ...args) => {
-    requireArgumentCount(args, 2);
-    return path
-      .relative(parseAbsolutePath(args[0]), parseAbsolutePath(args[1]))
-      .split(path.sep)
-      .join('/');
-  });
-  handleTrusted(IPC_CHANNELS.fileRebasePath, (_event, ...args) => {
-    requireArgumentCount(args, 3);
-    return fileManager.rebasePath(
-      parseAbsolutePath(args[0]),
-      parseAbsolutePath(args[1]),
-      parseAbsolutePath(args[2]),
-    );
-  });
-  handleTrusted(IPC_CHANNELS.fileResolveMarkdownLink, (_event, ...args) => {
-    requireArgumentCount(args, 2);
-    return resolveRelativeMarkdownLink(parseAbsolutePath(args[0]), parseText(args[1]));
-  });
-  handleTrusted(IPC_CHANNELS.fileSetWorkspaceWatch, (_event, ...args) => {
-    requireArgumentCount(args, 0, 2);
-    return fileWatchService.setWorkspace(
-      parseOptionalAbsolutePath(args[0]),
-      parseOptionalInteger(args[1], WORKSPACE_READ_DEPTH_MIN, WORKSPACE_READ_DEPTH_MAX),
-    );
-  });
-  handleTrusted(IPC_CHANNELS.fileWatchDocument, (_event, ...args) => {
-    requireArgumentCount(args, 1, 2);
-    return fileWatchService.watchDocument(
-      parseAbsolutePath(args[0]),
-      parseOptionalBoolean(args[1], false),
-    );
-  });
-  handleTrusted(IPC_CHANNELS.fileUnwatchDocument, (_event, ...args) => {
-    requireArgumentCount(args, 1, 2);
-    return fileWatchService.unwatchDocument(parseAbsolutePath(args[0]), parseOptionalText(args[1]));
-  });
-  handleTrusted(IPC_CHANNELS.fileResolveRenamedDocument, (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    return fileWatchService.resolveRenamedDocument(parseAbsolutePath(args[0]));
-  });
-  handleTrusted(IPC_CHANNELS.fileSetResourceRoots, (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    return localResourcePolicy.setRoots(parseResourceRootPaths(args[0]));
-  });
-
-  handleTrusted(IPC_CHANNELS.appGetSettings, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    return settingsStore.getAll();
-  });
-  handleTrusted(IPC_CHANNELS.appGetPersistentState, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    return persistentStateStore.getAll();
-  });
-  handleTrusted(IPC_CHANNELS.appGetRecoveryCandidates, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    return recoveryStore.listCandidates();
-  });
-  handleTrusted(IPC_CHANNELS.appRestoreRecovery, (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    return recoveryStore.restore(parseText(args[0], 128));
-  });
-  handleTrusted(IPC_CHANNELS.appSaveRecovery, (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    return recoveryStore.save(args[0]);
-  });
-  handleTrusted(IPC_CHANNELS.appDiscardRecovery, (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    return recoveryStore.discard(parseText(args[0], 128));
-  });
-  onTrusted(IPC_CHANNELS.appRendererReady, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    rendererReady = true;
-    flushPendingOpenFiles();
-  });
-  handleTrusted(IPC_CHANNELS.appGetDefaultSettings, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    return structuredClone(DEFAULT_SETTINGS);
-  });
-  handleTrusted(IPC_CHANNELS.appSaveSettings, async (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    const settings = parseSettingsPatch(args[0]);
-    const savedSettings = settingsStore.updateOrThrow(settings);
-    if (Object.hasOwn(settings, 'allowSvgImages') && !savedSettings.allowSvgImages) {
-      // A previously decoded remote SVG may otherwise be reused without a new webRequest
-      // callback after the user revokes rendering permission. This setting changes rarely,
-      // so clearing the shared HTTP cache is preferable to leaving a stale permission window.
-      try {
-        await session.defaultSession.clearCache();
-      } catch (error) {
-        console.warn('[svg] Unable to clear the image cache after rendering was disabled.', error);
+function registerApplicationIpcHandlers(): void {
+  registerIpcHandlers({
+    registerInvoke: (channel, listener) => ipcMain.handle(channel, listener),
+    registerMessage: (channel, listener) => ipcMain.on(channel, listener),
+    getMainWindow: () => mainWindow,
+    fileManager,
+    fileWatchService,
+    settingsStore,
+    persistentStateStore,
+    recoveryStore,
+    resourceHealthService,
+    localResourcePolicy,
+    windowCloseConfirmation,
+    isWindowMaximized,
+    toggleWindowMaximized,
+    tr,
+    onMenuAffectingSettingsChanged: (settings) => updateApplicationMenu(settings),
+    onMenuEligibilityChanged: (eligible) => {
+      if (resourceHealthMenuEligible !== eligible) {
+        resourceHealthMenuEligible = eligible;
+        updateApplicationMenu();
       }
-    }
-    if (
-      Object.hasOwn(settings, 'locale') ||
-      Object.hasOwn(settings, 'editMode') ||
-      Object.hasOwn(settings, 'devToolsEnabled')
-    )
-      updateApplicationMenu(savedSettings);
-    return savedSettings;
-  });
-  handleTrusted(IPC_CHANNELS.appResetSettings, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    const settings = settingsStore.reset();
-    updateApplicationMenu(settings);
-    return settings;
-  });
-  handleTrusted(IPC_CHANNELS.appSavePersistentState, async (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    return persistentStateStore.updateOrThrow(parsePersistentStatePatch(args[0]));
-  });
-  handleTrusted(IPC_CHANNELS.appClearPersistentState, async (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    return persistentStateStore.clearOrThrow();
-  });
-  handleTrusted(IPC_CHANNELS.appGetSettingsPath, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    return settingsStore.getPath();
-  });
-  handleTrusted(IPC_CHANNELS.appGetSettingsDisplayPath, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    const settingsPath = settingsStore.getPath();
-    const homePath = app.getPath('home');
-    return settingsPath.startsWith(homePath)
-      ? `~${settingsPath.slice(homePath.length)}`
-      : settingsPath;
-  });
-  handleTrusted(IPC_CHANNELS.appGetSystemLocale, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    return app.getLocale();
-  });
-  handleTrusted(IPC_CHANNELS.appGetSystemTheme, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    return nativeTheme.shouldUseDarkColors ? 'dark' : 'classic';
-  });
-  handleTrusted(IPC_CHANNELS.appIsFullscreen, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    return mainWindow?.isFullScreen() || false;
-  });
-  handleTrusted(IPC_CHANNELS.appIsMaximized, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    return isWindowMaximized();
-  });
-  handleTrusted(IPC_CHANNELS.appGetInfo, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    return {
-      app: app.getVersion(),
-      electron: process.versions.electron,
-      node: process.versions.node,
-      platform: process.platform,
-      vditor: '3.11.3',
-    };
-  });
-  handleTrusted(IPC_CHANNELS.appSetZoomFactor, (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    const factor = parseFiniteNumber(args[0], 75, 200) / 100;
-    mainWindow?.webContents.setZoomFactor(factor);
-    return factor;
-  });
-  handleTrusted(IPC_CHANNELS.appReadClipboard, async (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    return readClipboardContents();
-  });
-  handleTrusted(IPC_CHANNELS.appWriteClipboard, async (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    await clipboard.writeText(parseText(args[0]));
-  });
-  handleTrusted(IPC_CHANNELS.appOpenExternal, (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    const externalUrl = allowedExternalUrl(args[0]);
-    if (!externalUrl) throw new Error('Unsupported URL protocol');
-    return shell.openExternal(externalUrl);
-  });
-  handleTrusted(IPC_CHANNELS.appShowItemInFolder, (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    return shell.showItemInFolder(parseAbsolutePath(args[0]));
-  });
-  handleTrusted(IPC_CHANNELS.appOpenDirectory, (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    return shell.openPath(parseAbsolutePath(args[0]));
-  });
-  handleTrusted(IPC_CHANNELS.appResourceHealthEligible, async (_event, ...args) => {
-    requireArgumentCount(args, 2);
-    return resourceHealthService.isEligible({
-      documentPath: parseAbsolutePath(args[0]),
-      workspacePath: parseAbsolutePath(args[1]),
-    });
-  });
-  handleTrusted(IPC_CHANNELS.appSetResourceHealthEligible, (_event, ...args) => {
-    requireArgumentCount(args, 1);
-    const eligible = parseBoolean(args[0]);
-    if (resourceHealthMenuEligible !== eligible) {
-      resourceHealthMenuEligible = eligible;
-      updateApplicationMenu();
-    }
-  });
-  handleTrusted(IPC_CHANNELS.appResourceHealthScan, (_event, ...args) => {
-    requireArgumentCount(args, 2);
-    return resourceHealthService.scan({
-      documentPath: parseAbsolutePath(args[0]),
-      workspacePath: parseAbsolutePath(args[1]),
-      pasteImagesDir: settingsStore.get('pasteImagesDir'),
-      allowSvgImages: settingsStore.get('allowSvgImages'),
-    });
-  });
-  handleTrusted(IPC_CHANNELS.appResourceHealthReveal, (_event, ...args) => {
-    requireArgumentCount(args, 2);
-    const candidatePath = resourceHealthService.resolveCandidate(
-      parseText(args[0], 128),
-      parseText(args[1], 128),
-    );
-    if (!candidatePath) invalidIpcArgument();
-    shell.showItemInFolder(candidatePath);
-  });
-  handleTrusted(IPC_CHANNELS.appResourceHealthPreview, (_event, ...args) => {
-    requireArgumentCount(args, 2);
-    const candidatePath = resourceHealthService.resolvePreviewCandidate(
-      parseText(args[0], 128),
-      parseText(args[1], 128),
-    );
-    if (!candidatePath) return null;
-    return `${formatLocalResourceBase(path.dirname(candidatePath))}${encodeURIComponent(path.basename(candidatePath))}`;
-  });
-  handleTrusted(IPC_CHANNELS.appResourceHealthTrash, (_event, ...args) => {
-    requireArgumentCount(args, 2);
-    return resourceHealthService.trashCandidates(
-      parseText(args[0], 128),
-      parseResourceHealthCandidateIds(args[1]),
-      (candidatePath) => shell.trashItem(candidatePath),
-    );
-  });
-  onTrusted(IPC_CHANNELS.appResourceHealthDiscard, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    resourceHealthService.clear();
-  });
-  handleTrusted(IPC_CHANNELS.appExportPdf, async (_event, ...args) => {
-    requireArgumentCount(args, 1, 3);
-    const html = parseText(args[0]);
-    const defaultPath = parseOptionalText(args[1]);
-    const defaultDirectory = parseOptionalAbsolutePath(args[2]);
-    const output = await chooseSavePath(
-      'Export PDF',
-      defaultDirectory
-        ? path.join(defaultDirectory, path.basename(defaultPath || 'document.pdf'))
-        : defaultPath || 'document.pdf',
-      [{ name: 'PDF', extensions: ['pdf'] }],
-    );
-    if (!output) return null;
-    const exportWindow = new BrowserWindow({
-      show: false,
-      webPreferences: {
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-      },
-    });
-    exportWebContents.add(exportWindow.webContents);
-    try {
-      exportWindow.webContents.on('will-navigate', (event) => event.preventDefault());
-      exportWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-      await exportWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-      const pdf = await exportWindow.webContents.printToPDF({
-        printBackground: true,
-        pageSize: 'A4',
-      });
-      await fileManager.writeBinaryFile(output, pdf);
-      return output;
-    } finally {
-      exportWindow.destroy();
-    }
-  });
-  onTrusted(IPC_CHANNELS.appToggleFullscreen, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    mainWindow?.setFullScreen(!mainWindow.isFullScreen());
-  });
-  onTrusted(IPC_CHANNELS.windowMinimize, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    mainWindow?.minimize();
-  });
-  onTrusted(IPC_CHANNELS.windowMaximize, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    toggleWindowMaximized();
-  });
-  onTrusted(IPC_CHANNELS.windowClose, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    mainWindow?.close();
-  });
-  onTrusted(IPC_CHANNELS.appToggleDevTools, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    if (!mainWindow || !settingsStore.get('devToolsEnabled')) return;
-    mainWindow.webContents.toggleDevTools();
-  });
-  onTrusted(IPC_CHANNELS.appCloseConfirmed, (_event, ...args) => {
-    requireArgumentCount(args, 0);
-    if (mainWindow) windowCloseConfirmation.confirm(mainWindow);
-    mainWindow?.close();
+    },
+    onRendererReady: () => {
+      rendererReady = true;
+      flushPendingOpenFiles();
+    },
   });
 }
 
@@ -895,7 +403,7 @@ if (!ownsSingleInstanceLock) {
       (filePath) => fileManager.readFile(filePath),
       (event) => send(IPC_CHANNELS.fileChanged, event),
     );
-    registerIpcHandlers();
+    registerApplicationIpcHandlers();
     updateApplicationMenu();
     nativeTheme.on('updated', () =>
       send(
@@ -920,7 +428,7 @@ app.on('before-quit', () => {
 });
 app.on('web-contents-created', (_event, contents) => {
   contents.on('will-navigate', (event, navigationUrl) => {
-    if (exportWebContents.has(contents)) {
+    if (isExportWebContents(contents)) {
       event.preventDefault();
       return;
     }
@@ -932,7 +440,7 @@ app.on('web-contents-created', (_event, contents) => {
     if (decision.kind === 'external') void shell.openExternal(decision.url);
   });
   contents.setWindowOpenHandler(({ url }) => {
-    if (exportWebContents.has(contents)) return { action: 'deny' };
+    if (isExportWebContents(contents)) return { action: 'deny' };
     const decision = classifyNavigation(url);
     if (decision.kind === 'external') void shell.openExternal(decision.url);
     return { action: 'deny' };

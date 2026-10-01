@@ -18,11 +18,34 @@
 2. 需要时，将 `package.json` 和 `package-lock.json` 更新为新版本。
 3. 在 `CHANGELOG.md` 中添加新版本章节。
 4. 当安装方式或用户可见行为发生变化时，更新面向产品的文档。
-5. 运行必要的检查，包括格式化、lint、类型检查、Vditor 一致性检查、单元测试、构建以及适用的 Electron E2E 测试。
-6. 项目文档管理：根据最新代码状态更新 `CHANGELOG.md` 及 `docs/` 中的其他文档。对于安全敏感的发布，还应视情况校对 `docs/01-CODE-STRUCTURE.md`、执行追踪器、`docs/06-FILE-SAFETY.md` 和 `docs/04-CROSS-PLATFORM.md`。
+5. 运行必要的本地验证（格式化、lint、类型检查、Vditor 一致性检查、单元测试、构建以及适用的 Electron E2E 测试），具体命令见下表。
+6. 项目文档管理：根据最新代码状态更新 `CHANGELOG.md` 及 `docs/` 中的其他文档。新发现的技术债、架构风险和改进建议记入 `docs/00-ISSUES.md`（长期条目的唯一存放处，`01-CODE-STRUCTURE.md` 不再维护这类清单）。对于安全敏感的发布，还应视情况校对 `docs/01-CODE-STRUCTURE.md`、执行追踪器、`docs/06-FILE-SAFETY.md` 和 `docs/04-CROSS-PLATFORM.md`。
 7. 将就绪的发布变更提交到开发分支并推送。
 
+本地验证命令（定义于 `package.json` 的 `scripts`）：
+
+| 命令 | 用途 |
+| --- | --- |
+| `npm run check` | 聚合检查：`format:check`、`check:project`、`lint`、`typecheck`、`typecheck:renderer`、`check:vditor`、`test`、`build` |
+| `npm run check:all` | 在 `check` 基础上追加 `test:e2e` 的完整自动化检查 |
+| `npm run typecheck:renderer` | 单独执行渲染进程 strict TypeScript 检查 |
+| `npm run test:e2e` | 单独执行 Electron Playwright E2E（先运行 `build`） |
+
+`AGENTS.md` 要求：迭代期间使用最小充分验证即可，但在合并影响双进程或渲染外壳的功能之前必须运行 `npm run check:all`。
+
 保持发布准备变更在 pull request 中可评审，避免在发布标签创建之后修改源文件。
+
+## 环境与测试基础设施
+
+- Node.js 版本约束由 `package.json` 的 `engines` 定义：`^22.22.2 || ^24.15.0 || >=26.0.0`；CI（`.github/workflows/quality.yml`）实际使用 Node 24.15.0。
+- 单元/集成测试使用 Vitest 4.1.11；Electron E2E 使用 `@playwright/test`（`^1.62.1`）。
+- `package.json` 的 `overrides` 将 `electron-builder` 的传递依赖 `js-yaml` 固定为 4.3.2，对应 0.2.6 批次修复的 Dependabot 安全公告；除非确认该传递依赖已升级到不受影响的版本，否则不要在依赖升级时移除此 override。
+
+## Electron E2E 失败判定
+
+- Electron E2E 因执行环境限制而无法启动（例如沙箱禁止 Chromium 单实例 socket）时，报告为环境限制，不算应用测试失败。
+- 只有断言实际执行且失败，才判定为应用失败；启动失败不等于测试失败。
+- 不得用单元测试静默替代 E2E 用例。GUI/Electron E2E 可能需要在正常沙箱之外执行。
 
 ## Pull request 与合并
 
@@ -41,12 +64,12 @@
 pull request 合并之后：
 
 1. 打开 GitHub 的 **New release** 页面。
-2. 使用仓库既定的标签约定创建一个新标签，如 `<version>` 或 `v<version>`。
+2. 使用仓库既定的标签约定创建一个新标签，格式统一为 `v<version>`（如 `v0.2.5`）。0.1.x 时期的历史标签没有 `v` 前缀，自 `v0.2.0` 起统一为 `v<version>`，新标签必须遵循该格式。
 3. 将标签目标设置为 `main` 上最终合并后的提交。
 4. 填写发布标题，并将 `CHANGELOG.md` 中对应的版本章节复制到 release notes 中。
 5. 将 release 保存为草稿。
 
-标签必须在构建发布包之前创建。这使构建元数据生成器能够将标签解析为该发布所代表的精确提交。
+标签必须在构建发布包之前创建，使产物与 `main` 上该发布对应的精确提交一致。构建脚本本身不解析 git 标签：`scripts/release-linux.js` 只从 `package.json` 读取 `version` 并用于产物文件名，`scripts/check-project-metadata.js` 校验 `package.json`、lock 文件、README 徽章与 `index.html` 回退版本的一致性，关于页版本来自主进程的 `app.getVersion()`。因此“包版本与发布标签一致”必须由发布前的版本 bump 保证，而不是由构建步骤推导。
 
 ## 构建发布产物
 
@@ -58,7 +81,9 @@ git switch --detach v<version>
 npm run release:linux
 ```
 
-将 `v<version>` 替换为实际标签名。该命令生成配置好的 Linux 发布产物，包括未打包的应用、便携归档和 AppImage。若只需要某一个产物，使用对应的 `release:linux:*` 脚本。
+将 `v<version>` 替换为实际标签名。`release:linux` 只能在 Linux x86_64 主机上运行，先执行 `scripts/check-project-metadata.js`，再用 `electron-builder --linux dir --x64` 生成未打包的应用目录 `release/linux-unpacked`（始终生成的中间产物），随后产出便携归档 `vditor-desktop-x86_64-<version>-portable.tar.gz` 与 `vditor-desktop-x86_64-<version>-portable.AppImage`。AppImage 使用缓存到 `.cache/appimage-tools` 的 `appimagetool 1.9.1` 与经 SHA-256 校验的 type2 runtime，并以 `--no-appstream` 跳过会拒绝含连字符的稳定反向域应用 ID 的 AppStream 建议校验（ID 本身由 `check:project` 校验）。仅便携归档和 AppImage 有专属的 `release:linux:portable` 与 `release:linux:appimage` 脚本。
+
+`package.json` 的 `build.linux.target` 还声明了 `deb` 与 `rpm`，但当前发布流程不使用它们：只有直接运行 `npm run dist`（`electron-builder` 默认目标）才会生成 deb/rpm，`npm run pack` 则只生成未打包目录供本地冒烟。
 
 在上传之前，请确认：
 

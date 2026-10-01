@@ -109,13 +109,21 @@ export interface ClipboardContent {
 export interface VditorDesktopAdapter {
   editorParts(host: HTMLElement | null | undefined): EditorParts;
   mountedToolbar(mount: HTMLElement | null | undefined): HTMLElement | null;
+  isInitializedEditorHost(host: HTMLElement | null | undefined): boolean;
   createRebuildSnapshot(host: HTMLElement | null | undefined): () => void;
   ensureSplitResizer(host: HTMLElement | null | undefined): HTMLElement | null;
   splitViewVisibility(
     host: HTMLElement | null | undefined,
     mode: AdapterEditMode,
   ): { readonly sourceVisible: boolean; readonly previewVisible: boolean } | null;
+  restorePreviewOnly(host: HTMLElement | null | undefined): boolean;
+  refreshMermaidTheme(
+    host: HTMLElement | null | undefined,
+    markdown: string,
+    theme: 'classic' | 'dark',
+  ): number;
   toolbarContext(target: EventTarget | null | undefined): ToolbarContext;
+  editModeFromToolbarTarget(target: EventTarget | null | undefined): AdapterEditMode | null;
   toolbarButton(toolbar: HTMLElement | null | undefined, type: string): HTMLButtonElement | null;
   hideNativeOutlineControl(toolbar: HTMLElement | null | undefined): boolean;
   keepSplitToolbarActionsAvailable(toolbar: HTMLElement | null | undefined): boolean;
@@ -136,6 +144,7 @@ export interface VditorDesktopAdapter {
     showWhitespace: boolean,
     tabSize: number,
   ): boolean;
+  syncSplitScroll(host: HTMLElement | null | undefined): boolean;
   syncSplitDecorationScroll(host: HTMLElement | null | undefined): boolean;
   captureSplitIndentSelection(host: HTMLElement | null | undefined): Range | null;
   applySplitListIndent(
@@ -178,6 +187,7 @@ export interface VditorDesktopAdapter {
     host: HTMLElement | null | undefined,
     mode: AdapterEditMode,
   ): HTMLElement | null;
+  applyWordWrap(host: HTMLElement | null | undefined, isEnabled: boolean): boolean;
   installCustomCaret(
     host: HTMLElement | null | undefined,
     getMode: () => AdapterEditMode,

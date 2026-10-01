@@ -2157,6 +2157,7 @@ test('resolves external file conflicts without silently overwriting disk changes
       ['dark', 'rgb(255, 255, 255)'],
       ['monokai-pro-dark', 'rgb(255, 255, 255)'],
       ['monokai-pro-light', 'rgb(255, 255, 255)'],
+      ['elegant', 'rgb(255, 255, 255)'],
     ]) {
       await page.evaluate((nextTheme) => {
         if (nextTheme) {
@@ -2180,7 +2181,9 @@ test('resolves external file conflicts without silently overwriting disk changes
             ? 'rgb(255, 97, 136)'
             : theme === 'monokai-pro-light'
               ? 'rgb(225, 71, 117)'
-              : 'rgb(199, 59, 59)',
+              : theme === 'elegant'
+                ? 'rgb(196, 75, 43)'
+                : 'rgb(199, 59, 59)',
       );
     }
     await expect(overwriteDialog.locator('.confirm-card')).toHaveClass(/confirm-card-draggable/);

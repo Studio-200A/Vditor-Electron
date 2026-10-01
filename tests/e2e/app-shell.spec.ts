@@ -34,23 +34,6 @@ test('forwards Markdown files from a second application invocation', async () =>
   }
 });
 
-test('aligns the primary app menu with the titlebar lower edge', async () => {
-  const running = await launchApp();
-  try {
-    const { page } = running;
-    await page.locator('[data-menu="main"]').click();
-    const menuPosition = await page.evaluate(() => {
-      const popup = document.querySelector('.app-menu-popup')?.getBoundingClientRect();
-      const titlebar = document.querySelector('#windowTitlebar')?.getBoundingClientRect();
-      if (!popup || !titlebar) throw new Error('Application menu or titlebar is unavailable.');
-      return { popupTop: popup.top, titlebarBottom: titlebar.bottom };
-    });
-    expect(Math.abs(menuPosition.popupTop - menuPosition.titlebarBottom)).toBeLessThan(1);
-  } finally {
-    await closeApp(running);
-  }
-});
-
 test('creates numbered tabs and shows the empty state after closing all tabs', async () => {
   const running = await launchApp();
   try {
@@ -154,6 +137,15 @@ test('keeps titlebar file actions stable while the sidebar visibility changes', 
     await expect(page.locator('#appMenuBar [data-menu="main"]')).toHaveCount(1);
     await expect(page.locator('#appMenuBar .app-menu-logo')).toBeVisible();
     await expect(page.locator('.titlebar-drag-region')).toHaveCSS('width', '44px');
+    await page.locator('[data-menu="main"]').click();
+    const menuPosition = await page.evaluate(() => {
+      const popup = document.querySelector('.app-menu-popup')?.getBoundingClientRect();
+      const titlebar = document.querySelector('#windowTitlebar')?.getBoundingClientRect();
+      if (!popup || !titlebar) throw new Error('Application menu or titlebar is unavailable.');
+      return { popupTop: popup.top, titlebarBottom: titlebar.bottom };
+    });
+    expect(Math.abs(menuPosition.popupTop - menuPosition.titlebarBottom)).toBeLessThan(1);
+    await page.locator('[data-menu="main"]').click();
     const toolbarChrome = await page.evaluate(() => {
       const actions = document.querySelector('.titlebar-file-actions')?.getBoundingClientRect();
       const sidebar = document.querySelector('#sidebar')?.getBoundingClientRect();
@@ -576,6 +568,7 @@ test('keeps the sidebar tab boundary stable while toggling a wrapped toolbar acr
     const themes = [
       'classic',
       'dark',
+      'elegant',
       'monokai-pro-light',
       'monokai-pro-dark',
       'claude-light',
@@ -791,6 +784,53 @@ test('links Light and Dark content themes to the application theme', async () =>
     await selectThemeMode(page, 'dark');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await expect.poll(() => readSetting(testRoot, 'appearance', 'contentTheme')).toBe('ant-design');
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('re-renders existing Mermaid diagrams when switching from Dark to Elegant', async () => {
+  const running = await launchApp(
+    {
+      theme: 'dark',
+      darkTheme: 'dark',
+      lightTheme: 'elegant',
+      contentTheme: 'dark',
+      codeTheme: 'github-dark',
+      darkCodeTheme: 'github-dark',
+      lightCodeTheme: 'github',
+      editMode: 'ir',
+    },
+    { 'diagram.md': '```mermaid\ngraph TD\n  A --> B\n```' },
+  );
+  try {
+    const { page } = running;
+    const mermaid = page.locator('.editor-host.active .language-mermaid');
+    await expect(mermaid.locator('svg')).toBeVisible();
+    await page.evaluate(() => {
+      const vditor = (window as unknown as { Vditor?: Record<string, unknown> }).Vditor;
+      if (!vditor || typeof vditor.mermaidRender !== 'function') {
+        throw new Error('Vditor Mermaid renderer is unavailable.');
+      }
+      const original = vditor.mermaidRender as (...args: unknown[]) => unknown;
+      let calls = 0;
+      vditor.mermaidRender = (...args: unknown[]) => {
+        calls += 1;
+        return original(...args);
+      };
+      (
+        window as unknown as { __mermaidThemeRefreshCalls?: () => number }
+      ).__mermaidThemeRefreshCalls = () => calls;
+    });
+
+    await selectThemeMode(page, 'light');
+
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'elegant');
+    await expect(page.locator('#vditorContentTheme')).toHaveAttribute('href', /light\.css$/);
+    await expect(mermaid.locator('svg')).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => window.__mermaidThemeRefreshCalls?.() ?? 0))
+      .toBe(1);
   } finally {
     await closeApp(running);
   }
@@ -1091,12 +1131,31 @@ test('uses the sidebar surface for the custom main menu in light themes', async 
   }
 });
 
+test('shows Elegant hover states in navigation and menus', async () => {
+  const running = await launchApp({ theme: 'elegant', lightTheme: 'elegant' });
+  try {
+    const { page } = running;
+    const sidebarToggle = page.locator('#toggleSidebar');
+    await sidebarToggle.hover();
+    await expect(sidebarToggle).toHaveCSS('background-color', 'rgb(220, 215, 209)');
+
+    await page.locator('[data-menu="main"]').click();
+    const menuItem = page.locator('.app-menu-popup:not(.submenu) button:not(:disabled)').first();
+    await menuItem.hover();
+    await expect(menuItem).toHaveCSS('background-color', 'rgb(220, 215, 209)');
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('uses consistent navigation and document surfaces across all application themes', async () => {
   const themes = [
     { theme: 'classic', sidebar: 'rgb(240, 241, 243)', editor: 'rgb(255, 255, 255)' },
     { theme: 'dark', sidebar: 'rgb(32, 33, 36)', editor: 'rgb(24, 25, 28)' },
     { theme: 'claude-light', sidebar: 'rgb(245, 244, 237)', editor: 'rgb(250, 249, 245)' },
+    { theme: 'elegant', sidebar: 'rgb(234, 230, 225)', editor: 'rgb(240, 237, 234)' },
     { theme: 'claude-dark', sidebar: 'rgb(48, 48, 46)', editor: 'rgb(38, 38, 36)' },
+    { theme: 'nord-dark', sidebar: 'rgb(59, 66, 82)', editor: 'rgb(46, 52, 64)' },
     { theme: 'monokai-pro-light', sidebar: 'rgb(237, 231, 229)', editor: 'rgb(250, 244, 242)' },
     { theme: 'monokai-pro-dark', sidebar: 'rgb(45, 42, 46)', editor: 'rgb(39, 36, 40)' },
   ] as const;
@@ -1191,7 +1250,7 @@ test('saves settings live and keeps the enlarged settings dialog draggable', asy
     const { page } = running;
     await page.locator('#statusSettings').click();
     const card = page.locator('.settings-card');
-    await expect(page.locator('.theme-preview')).toHaveCount(6);
+    await expect(page.locator('.theme-preview')).toHaveCount(8);
     await expect(page.locator('[name="lightTheme"][value="classic"]')).toBeChecked();
     await expect(page.locator('[name="darkTheme"][value="dark"]')).toBeChecked();
     const themePreviewWidths = await page
@@ -2038,28 +2097,19 @@ test('shows a localized themed dialog when closing a window with unsaved changes
   }
 });
 
-test('keeps the native application window resizable', async () => {
-  const running = await launchApp();
-  try {
-    const { app, page } = running;
-    await expect
-      .poll(() =>
-        app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isResizable()),
-      )
-      .toBe(true);
-    await expect(page.locator('[data-window-resize]')).toHaveCount(0);
-  } finally {
-    await closeApp(running);
-  }
-});
-
-test('persists maximize and restored window states when they change', async () => {
+test('keeps native resizing and persists maximize and restored window states', async () => {
   const running = await launchApp({
     windowMaximized: false,
     windowBounds: { x: 80, y: 70, width: 1000, height: 700 },
   });
   try {
     const { app, page, testRoot } = running;
+    await expect
+      .poll(() =>
+        app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isResizable()),
+      )
+      .toBe(true);
+    await expect(page.locator('[data-window-resize]')).toHaveCount(0);
     await expect.poll(() => readSetting(testRoot, 'window', 'windowMaximized')).toBe(false);
     await page.locator('#windowMaximize').click();
     await expect

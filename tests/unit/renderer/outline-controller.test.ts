@@ -58,6 +58,32 @@ describe('OutlineController', () => {
     vi.useRealTimers();
   });
 
+  it('explains when the active source-only Split View cannot provide an outline', () => {
+    const view = document.createElement('section');
+    view.classList.add('active');
+    const tree = document.createElement('div');
+    const tab = {
+      host: document.createElement('section'),
+      mode: 'sv',
+      outlineCollapsed: new Set<string>(),
+    };
+    const getSnapshot = vi.fn(() => [{ level: 1, key: 'top', text: 'Top' }]);
+    const controller = new OutlineController({
+      view,
+      tree,
+      getActiveTab: () => tab,
+      isUnavailable: () => true,
+      getSnapshot,
+      scrollToHeading: () => {},
+      translate: (key) => key,
+    });
+
+    controller.render();
+
+    expect(tree.textContent).toBe('sidebar.outlineUnavailableInSourceOnly');
+    expect(getSnapshot).not.toHaveBeenCalled();
+  });
+
   it('cancels an old deferred refresh and renders the newly active runtime', () => {
     vi.useFakeTimers();
     const view = document.createElement('section');

@@ -2,6 +2,11 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { JSDOM } from 'jsdom';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { en_US } from '../../src/renderer/locale/en_US.js';
+import { zh_Hans } from '../../src/renderer/locale/zh_Hans.js';
+import { zh_Hant } from '../../src/renderer/locale/zh_Hant.js';
+
+const locales = { en_US, zh_Hans, zh_Hant };
 
 describe('renderer shell', () => {
   let document: Document;
@@ -9,12 +14,13 @@ describe('renderer shell', () => {
   let darkThemeCss: string;
   let claudeLightCss: string;
   let claudeDarkCss: string;
+  let elegantCss: string;
   let monokaiDarkCss: string;
   let monokaiLightCss: string;
+  let nordDarkCss: string;
   let mainScript: string;
   let preloadScript: string;
   let vditorAdapterScript: string;
-  let localesScript: string;
   let packageMetadata: Record<string, unknown>;
 
   beforeAll(() => {
@@ -30,6 +36,7 @@ describe('renderer shell', () => {
       path.resolve('src/renderer/styles/themes/claude-dark.css'),
       'utf8',
     );
+    elegantCss = fs.readFileSync(path.resolve('src/renderer/styles/themes/elegant.css'), 'utf8');
     monokaiDarkCss = fs.readFileSync(
       path.resolve('src/renderer/styles/themes/monokai-pro-dark.css'),
       'utf8',
@@ -38,10 +45,10 @@ describe('renderer shell', () => {
       path.resolve('src/renderer/styles/themes/monokai-pro-light.css'),
       'utf8',
     );
+    nordDarkCss = fs.readFileSync(path.resolve('src/renderer/styles/themes/nord-dark.css'), 'utf8');
     mainScript = fs.readFileSync(path.resolve('src/main/index.ts'), 'utf8');
     preloadScript = fs.readFileSync(path.resolve('src/main/preload.ts'), 'utf8');
     vditorAdapterScript = fs.readFileSync(path.resolve('src/renderer/vditor-adapter.js'), 'utf8');
-    localesScript = fs.readFileSync(path.resolve('src/renderer/locales.js'), 'utf8');
     packageMetadata = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8'));
   });
 
@@ -158,15 +165,10 @@ describe('renderer shell', () => {
   });
 
   it('provides complete Simplified and Traditional Chinese locales', () => {
-    const localeWindow: { VditorDesktopLocales?: Record<string, Record<string, string>> } = {};
-    new Function('window', localesScript)(localeWindow);
-    const locales = localeWindow.VditorDesktopLocales;
-    expect(locales).toBeDefined();
-    expect(Object.keys(locales || {})).toEqual(['en_US', 'zh_Hans', 'zh_Hant']);
-    expect(Object.keys(locales?.zh_Hans || {})).toEqual(Object.keys(locales?.en_US || {}));
-    expect(Object.keys(locales?.zh_Hant || {})).toEqual(Object.keys(locales?.en_US || {}));
-    expect(locales?.zh_Hant['settings.title']).toBe('Vditor Desktop 設定');
-    expect(localesScript).not.toContain('zh_CN: {');
+    expect(Object.keys(locales)).toEqual(['en_US', 'zh_Hans', 'zh_Hant']);
+    expect(Object.keys(locales.zh_Hans)).toEqual(Object.keys(locales.en_US));
+    expect(Object.keys(locales.zh_Hant)).toEqual(Object.keys(locales.en_US));
+    expect(locales.zh_Hant['settings.title']).toBe('Vditor Desktop 設定');
     expect(
       Array.from(document.querySelectorAll('[name="locale"] option')).map(
         (option) => (option as HTMLOptionElement).value,
@@ -409,8 +411,8 @@ describe('renderer shell', () => {
     expect(document.querySelectorAll('#statusThemeMenu [data-theme-mode]')).toHaveLength(3);
     expect(document.querySelector('#statusThemeToggle')).toBeNull();
     expect(document.querySelector('[name="systemTheme"]')).toBeNull();
-    expect(localesScript).not.toContain('settings.followSystemTheme');
-    expect(localesScript).not.toContain('status.toggleTheme');
+    expect(locales.en_US).not.toHaveProperty('settings.followSystemTheme');
+    expect(locales.en_US).not.toHaveProperty('status.toggleTheme');
     expect(document.querySelector('#statusVersion')).not.toBeNull();
     expect(document.querySelector('#app > .statusbar')).not.toBeNull();
     expect(css).toMatch(/\.statusbar\s*\{[^}]*font-family:\s*var\(--ui-font\)/s);
@@ -462,17 +464,27 @@ describe('renderer shell', () => {
   it('offers separately selectable light and dark application theme preferences', () => {
     expect(
       document.querySelectorAll('.theme-picker input[type="radio"][name="lightTheme"]'),
-    ).toHaveLength(3);
+    ).toHaveLength(4);
     expect(
       document.querySelectorAll('.theme-picker input[type="radio"][name="darkTheme"]'),
-    ).toHaveLength(3);
+    ).toHaveLength(4);
     expect(document.querySelector('[name="lightTheme"][value="claude-light"]')).not.toBeNull();
+    expect(document.querySelector('[name="lightTheme"][value="elegant"]')).not.toBeNull();
     expect(document.querySelector('[name="lightTheme"][value="monokai-pro-light"]')).not.toBeNull();
     expect(document.querySelector('[name="darkTheme"][value="claude-dark"]')).not.toBeNull();
     expect(document.querySelector('[name="darkTheme"][value="monokai-pro-dark"]')).not.toBeNull();
+    expect(document.querySelector('[name="darkTheme"][value="nord-dark"]')).not.toBeNull();
     expect(document.querySelector('.theme-picker-light')).not.toBeNull();
     expect(document.querySelector('.theme-picker-dark')).not.toBeNull();
-    expect(document.querySelectorAll('.theme-preview svg')).toHaveLength(6);
+    expect(css).toMatch(
+      /\.theme-picker\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/s,
+    );
+    expect(document.querySelectorAll('.theme-preview svg')).toHaveLength(8);
+    expect(
+      Array.from(document.querySelectorAll<HTMLInputElement>('[name="lightTheme"]')).map(
+        (input) => input.value,
+      ),
+    ).toEqual(['classic', 'elegant', 'claude-light', 'monokai-pro-light']);
     expect(document.querySelector('[name="systemTheme"]')).toBeNull();
     expect(document.querySelector('.settings-right-edge')).not.toBeNull();
     expect(css).toContain("mask-image: url('../assets/symbolic/light-symbolic.svg')");
@@ -506,6 +518,16 @@ describe('renderer shell', () => {
     expect(claudeLightCss).toMatch(
       /:root\[data-theme='claude-light'\] \.modal-close:hover\s*\{[^}]*background:\s*#e8e6dc[^}]*color:\s*var\(--text\)/s,
     );
+    expect(elegantCss).toMatch(
+      /:root\[data-theme='elegant'\]\s*\{[^}]*--bg:\s*#f0edea[^}]*--sidebar-surface:\s*#eae6e1[^}]*--editor-surface:\s*#f0edea[^}]*--text:\s*#2c2c2c[^}]*--muted:\s*#6c6c6c[^}]*--border:\s*#d8d3ce[^}]*--accent:\s*#bc4424[^}]*--danger:\s*#c44b2b/s,
+    );
+    expect(elegantCss).toMatch(
+      /:root\[data-theme='elegant'\]\s*\{[^}]*--editor-surface:\s*#f0edea[^}]*--settings-control-surface:\s*#faf8f5/s,
+    );
+    expect(elegantCss).toContain(
+      'https://github.com/marswaveai/ColaMD/blob/main/themes/elegant.css',
+    );
+    expect(elegantCss).not.toMatch(/data-theme='elegant'\] \.editor-host/);
     expect(claudeDarkCss).toMatch(
       /:root\[data-theme='claude-dark'\]\s*\{[^}]*--bg:\s*#141413[^}]*--sidebar-surface:\s*#30302e[^}]*--editor-surface:\s*#262624[^}]*--accent:\s*#d97757[^}]*--brand-accent:\s*#d97757/s,
     );
@@ -541,6 +563,27 @@ describe('renderer shell', () => {
     );
     expect(monokaiLightCss).toMatch(
       /:root\[data-theme='monokai-pro-light'\]\s*\{[^}]*--bg:\s*#faf4f2[^}]*--settings-control-surface:\s*#fefaf9[^}]*--border:\s*#d8d3d1[^}]*--accent:\s*#e14775/s,
+    );
+    expect(nordDarkCss).toMatch(
+      /:root\[data-theme='nord-dark'\]\s*\{[^}]*--bg:\s*#2e3440[^}]*--sidebar-surface:\s*#3b4252[^}]*--editor-surface:\s*#2e3440[^}]*--text:\s*#eceff4[^}]*--muted:\s*#d8dee9[^}]*--disabled-control-color:\s*#4c566a[^}]*--border:\s*#4c566a[^}]*--accent:\s*#88c0d0[^}]*--danger:\s*#bf616a/s,
+    );
+    expect(nordDarkCss).toMatch(
+      /:root\[data-theme='nord-dark'\] \.vditor-toolbar-mount\s*\{[^}]*--second-color:\s*#4c566a[^}]*--toolbar-icon-color:\s*#d8dee9/s,
+    );
+    expect(nordDarkCss).toMatch(
+      /:root\[data-theme='nord-dark'\] \.app-menu-popup button:disabled,[\s\S]*?color:\s*#4c566a/s,
+    );
+    expect(nordDarkCss).toMatch(
+      /:root\[data-theme='nord-dark'\] \.settings-subheading,[\s\S]*?\.muted,[\s\S]*?color:\s*color-mix\(in srgb, #d8dee9 72%, #2e3440\)/s,
+    );
+    expect(nordDarkCss).toContain('--nord-h1: #88c0d0');
+    expect(nordDarkCss).toContain('--nord-h2: #81a1c1');
+    expect(nordDarkCss).toContain('--nord-h3: #5e81ac');
+    expect(nordDarkCss).toContain('--nord-h4: #b48ead');
+    expect(nordDarkCss).toContain('--nord-h5: #a3be8c');
+    expect(nordDarkCss).toContain('--nord-h6: #ebcb8b');
+    expect(nordDarkCss).toMatch(
+      /data-theme='nord-dark'\] \.editor-host[\s\S]*?var\(--nord-h1\)[\s\S]*?var\(--nord-h6\)/,
     );
     expect(monokaiDarkCss).toContain('--monokai-h1: #ff6188');
     expect(monokaiDarkCss).toContain('--monokai-h6: #fc9867');
@@ -606,6 +649,9 @@ describe('renderer shell', () => {
     expect(document.querySelector('.about-panel .about-logo')).not.toBeNull();
     expect(document.querySelector('.about-panel .about-logo')?.getAttribute('src')).toBe(
       'app://app/assets/app-icon/vditor-desktop.svg',
+    );
+    expect(document.querySelector('.about-panel .about-logo')?.getAttribute('draggable')).toBe(
+      'false',
     );
     expect(document.querySelector('.about-panel #resetSettings')).not.toBeNull();
     expect(document.querySelector<HTMLInputElement>('[name="devToolsEnabled"]')?.type).toBe(
@@ -676,7 +722,7 @@ describe('renderer shell', () => {
         (option) => (option as HTMLOptionElement).value,
       ),
     ).toEqual(['always', 'auto', 'hidden']);
-    expect(localesScript).toContain("'settings.scrollbarMode': '滚动条显示状态'");
+    expect(locales.zh_Hans['settings.scrollbarMode']).toBe('滚动条显示状态');
   });
 
   it('offers an opt-in multi-platform layout preview', () => {
@@ -689,7 +735,7 @@ describe('renderer shell', () => {
     expect(document.querySelector('[name="lineNumbers"] + span')?.textContent).toBe(
       'Code block preview line numbers',
     );
-    expect(localesScript).toContain("'settings.lineNumbers': '代码块预览行号'");
+    expect(locales.zh_Hans['settings.lineNumbers']).toBe('代码块预览行号');
   });
 
   it('does not expose the unfinished split-editor heading folding behavior', () => {

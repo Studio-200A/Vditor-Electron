@@ -1,11 +1,45 @@
 # Changelog
 
-## 0.2.6 - TBA
+## 0.2.6 - Editing and Theme Refinements
+
+### New Features
+
+- **feat(theme):** Add Elegant as a selectable light application theme, adapted from ColaMD's elegant theme while retaining Vditor's independent content and code-theme controls.
+- **feat(theme):** Add Nord Dark as a selectable application theme. Its shell colors map to the official Nord palette, while content and code themes continue to use the existing independent theme controls.
+- **feat(theme):** Show up to four theme preview cards per row in Settings, so the dark-theme choices remain balanced as the list grows.
+
+### Bug Fixes
+
+#### Editor
+
+- **fix(editor):** Keep the SV custom caret at a stable source-line size in empty documents and after `# `, and place it at the next line's insertion point after Enter on a table separator.
+- **fix(editor):** Keep the Instant Rendering and WYSIWYG block caret at its original size when Enter turns an empty editor into empty paragraphs.
+- **fix(editor):** Keep the custom caret at the insertion point after inline Markdown formatting in Instant Rendering and WYSIWYG, including bold and inline code markers.
+- **fix(editor):** Make Word wrap work immediately in all three editing modes without rebuilding Vditor. Long lines scroll horizontally when wrapping is off, while paragraph width remains independently adjustable in WYSIWYG and Instant Rendering.
+- **fix(editor):** Keep the chosen paragraph width centered in WYSIWYG and Instant Rendering when word wrap is off, with horizontal scrolling inside that text column.
+- **fix(editor):** Clear the unsaved-changes marker when undo returns a document to its last saved state in all three editing modes. Clean documents now adopt Vditor's serialized editor representation as their dirty-state savepoint when opened, on conflict-free external reloads, and after in-session editing-mode switches (each mode serializes the same document slightly differently). Rapid typing followed by a mode switch keeps unsaved content dirty and retains the close confirmation. Files on disk stay byte-identical until an explicit save, and the disk expectation used for conflict detection is unchanged.
+- **fix(split view):** Preserve each SV tab's source-only, preview-only, or two-pane layout when an initialization-only setting rebuilds its editor.
+- **fix(split view):** Improve SV source-to-preview scrolling for complex Markdown: matching source and rendered headings now align at roughly 20% of each pane, while preview reading remains independent and unmatched heading structures safely retain Vditor's native proportional fallback.
+
+#### Theme
+
+- **fix(theme):** Give Elegant settings inputs and selects a lighter control surface, distinct from the settings background.
+- **fix(theme):** Increase Elegant's shared hover contrast so navigation, menus, and titlebar controls show a clear hover state.
+- **fix(theme):** Keep Elegant's Vditor quote blocks, code blocks, tables, and Mermaid diagrams aligned with the active light content and code themes after a theme-mode switch.
+- **fix(about):** Prevent the About logo from being dragged out as `app://` text while preserving its click-based Easter egg.
+- **fix(outline):** In source-only Split View, the Outline sidebar now explains that rendered preview, WYSIWYG, or Instant Rendering mode is required instead of incorrectly reporting that the document has no headings.
+
+### Refactor
+
+- **refactor(adapter):** Keep Vditor's edit-mode menu markers and initialized-host class checks inside the adapter's semantic API during mode changes and sidebar resizing.
+- **refactor(localization):** Split the three UI dictionaries into typed language modules and generate the startup locale bundle without changing language switching or the existing renderer load order.
+- **refactor(ipc):** Split all 64 renderer-facing IPC handler registrations out of the monolithic `src/main/index.ts` handler block into `src/main/ipc/` domain modules (file dialogs, file operations, file watching, settings, persistent state, recovery, shell/clipboard, resource health, PDF export, window controls, and app shell) behind a single composition entry with explicit dependency injection and a shared trusted-channel registration wrapper. Channel names, request/response shapes, validation, and error semantics are unchanged, and unit tests now cover the trust wrappers plus a frozen map of all 64 channels that locks the registered set and invoke/send directions.
 
 ### Project Maintenance
 
 - **fix(dependencies):** Upgrade Vitest and its mocker package to 4.1.11, and override the `electron-builder` transitive `js-yaml` dependency to 4.3.2, resolving the related Dependabot security alerts.
-
+- **fix(dependencies):** Update the `jsdom` development dependency's locked `undici` version to 8.10.2, resolving seven related Dependabot security alerts.
+- **test(e2e):** Consolidate titlebar menu alignment and native window resizing checks into related scenarios, and verify Split View list toolbar actions by their behavior after mode switches instead of counting private DOM mutations.
 
 ## 0.2.5 - Modularized Refactor
 
@@ -16,7 +50,7 @@ This release is primarily an internal renderer-architecture upgrade. It preserve
 - **feat(resource health):**
    - **Description:** Added **Tools → Resource Health** for saved documents in the active workspace.
    - **Functionality:** Maps the focused document's image references, lists unreferenced and missing images for management, and checks every accessible Markdown/HTML document in the workspace before image resources are moved to the system trash.
-   - **Safety:** Only direct image-directory files become cleanup candidates; nested directories are not scanned and symbolic links make the scan incomplete, disable moving to Trash, and prompt the user to replace the link with the original image. Moving to Trash always re-validates each selected candidate first.
+   - **Safety:** Only direct image-directory files become cleanup candidates; nested directories are not scanned and symbolic links make the scan incomplete, disable moving to Trash, and prompt the user to replace the link with the original image. When the workspace root itself is a symbolic link, Resource Health is unavailable for safety and warns the user to open the link target directory as the workspace instead. Moving to Trash always re-validates each selected candidate first.
 - **feat(custom caret)**: Underline, Bar, Block, and Native caret style options.
 
 ### Improvements

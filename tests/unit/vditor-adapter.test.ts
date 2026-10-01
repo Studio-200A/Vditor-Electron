@@ -9,7 +9,7 @@ describe('Vditor DOM compatibility adapter', () => {
   let adapter: any;
 
   beforeEach(() => {
-    const dom = new JSDOM('', { runScripts: 'outside-only' });
+    const dom = new JSDOM('', { runScripts: 'outside-only', url: 'https://example.test' });
     window = dom.window;
     window.requestAnimationFrame = (callback) => window.setTimeout(callback, 0);
     window.cancelAnimationFrame = (frame) => window.clearTimeout(frame);
@@ -74,6 +74,109 @@ describe('Vditor DOM compatibility adapter', () => {
     expect(adapter.scrollContainers(host).length).toBeGreaterThanOrEqual(4);
   });
 
+  it('recognizes only hosts initialized by Vditor', () => {
+    const host = createHost();
+    expect(adapter.isInitializedEditorHost(null)).toBe(false);
+    expect(adapter.isInitializedEditorHost(host)).toBe(false);
+    host.classList.add('vditor');
+    expect(adapter.isInitializedEditorHost(host)).toBe(true);
+    host.classList.remove('vditor');
+    expect(adapter.isInitializedEditorHost(host)).toBe(false);
+  });
+
+  it('reads edit modes only from Vditor edit-mode toolbar buttons', () => {
+    const host = createHost();
+    const item = host.querySelector<HTMLButtonElement>(
+      'button[data-type="edit-mode"]',
+    )!.parentElement!;
+    item.insertAdjacentHTML(
+      'beforeend',
+      '<div class="vditor-hint"><button data-mode="ir"><span>IR</span></button><button data-mode="other">Other</button></div>',
+    );
+    const modeButton = item.querySelector<HTMLButtonElement>('button[data-mode="ir"]')!;
+    const outsideHint = window.document.createElement('button');
+    outsideHint.dataset.mode = 'sv';
+    item.append(outsideHint);
+    const unrelatedButton = window.document.createElement('button');
+    unrelatedButton.dataset.mode = 'sv';
+    host.append(unrelatedButton);
+
+    expect(adapter.editModeFromToolbarTarget(modeButton.firstElementChild)).toBe('ir');
+    expect(
+      adapter.editModeFromToolbarTarget(item.querySelector('button[data-mode="other"]')),
+    ).toBeNull();
+    expect(adapter.editModeFromToolbarTarget(outsideHint)).toBeNull();
+    expect(
+      adapter.editModeFromToolbarTarget(item.querySelector('button[data-type="edit-mode"]')),
+    ).toBeNull();
+    expect(adapter.editModeFromToolbarTarget(unrelatedButton)).toBeNull();
+    expect(adapter.editModeFromToolbarTarget(null)).toBeNull();
+  });
+
+  it('toggles wrapping only on Vditor editable scroll roots', () => {
+    const host = createHost();
+    const { source, instantRendering, wysiwyg, preview } = adapter.editorParts(host);
+    const irRoot = instantRendering.querySelector('.vditor-reset');
+    const wysiwygRoot = wysiwyg.querySelector('.vditor-reset');
+    const previewRoot = preview.querySelector('.vditor-reset');
+
+    expect(adapter.applyWordWrap(host, false)).toBe(true);
+    expect(
+      [source, irRoot, wysiwygRoot].every((node) =>
+        node.classList.contains('vditor-desktop-no-wrap'),
+      ),
+    ).toBe(true);
+    expect(
+      [irRoot, wysiwygRoot].every((node) =>
+        node.classList.contains('vditor-desktop-narrow-scroll'),
+      ),
+    ).toBe(true);
+    expect(source.classList.contains('vditor-desktop-narrow-scroll')).toBe(false);
+    expect(previewRoot.classList.contains('vditor-desktop-no-wrap')).toBe(false);
+
+    expect(adapter.applyWordWrap(host, true)).toBe(true);
+    expect(
+      [source, irRoot, wysiwygRoot].every(
+        (node) => !node.classList.contains('vditor-desktop-no-wrap'),
+      ),
+    ).toBe(true);
+    expect(
+      [irRoot, wysiwygRoot].every(
+        (node) => !node.classList.contains('vditor-desktop-narrow-scroll'),
+      ),
+    ).toBe(true);
+    wysiwygRoot.remove();
+    expect(adapter.applyWordWrap(host, false)).toBe(false);
+    expect(source.classList.contains('vditor-desktop-no-wrap')).toBe(false);
+  });
+
+  it('re-renders Mermaid from matching Markdown fences when the Vditor tone changes', () => {
+    const host = window.document.createElement('section');
+    host.innerHTML = '<code class="language-mermaid" data-processed="true"><svg></svg></code>';
+    const mermaidRender = vi.fn();
+    (window as any).Vditor = { mermaidRender };
+
+    expect(
+      adapter.refreshMermaidTheme(host, '```mermaid\ngraph TD\n  A --> B\n```', 'classic'),
+    ).toBe(1);
+    const mermaid = host.querySelector('.language-mermaid');
+    expect(mermaid?.textContent).toBe('graph TD\n  A --> B');
+    expect(mermaid?.hasAttribute('data-processed')).toBe(false);
+    expect(mermaidRender).toHaveBeenCalledTimes(1);
+    expect(mermaidRender.mock.calls[0]?.slice(1)).toEqual(['app://app/vditor', 'classic']);
+  });
+
+  it('leaves Mermaid output intact when rendered nodes cannot be paired with source fences', () => {
+    const host = window.document.createElement('section');
+    host.innerHTML = '<code class="language-mermaid" data-processed="true"><svg></svg></code>';
+    const mermaidRender = vi.fn();
+    (window as any).Vditor = { mermaidRender };
+
+    expect(adapter.refreshMermaidTheme(host, 'No Mermaid fence', 'dark')).toBe(0);
+    expect(host.querySelector('.language-mermaid')?.innerHTML).toBe('<svg></svg>');
+    expect(mermaidRender).not.toHaveBeenCalled();
+  });
+
   it('keeps an inert visual snapshot over an active host until the rebuilt editor is ready', () => {
     const host = createHost();
     host.classList.add('active');
@@ -109,6 +212,68 @@ describe('Vditor DOM compatibility adapter', () => {
     expect(adapter.setEditorBottomSpacer(host, Number.NaN)).toBe(false);
   });
 
+  it('aligns the SV preview to source headings instead of total pane height', () => {
+    const host = createHost();
+    const { preview, source } = adapter.editorParts(host);
+    source.innerHTML = [
+      '<span data-type="heading-marker">#</span>',
+      '<span data-type="heading-marker">##</span>',
+    ].join('');
+    const previewContent = preview.querySelector<HTMLElement>('.vditor-reset')!;
+    previewContent.innerHTML = '<h1>First</h1><h2>Second</h2>';
+    preview.style.display = 'block';
+    Object.defineProperties(source, {
+      scrollHeight: { value: 1000 },
+      clientHeight: { value: 200 },
+    });
+    Object.defineProperties(preview, {
+      scrollHeight: { value: 2200 },
+      clientHeight: { value: 200 },
+    });
+    source.scrollTop = 250;
+    Object.defineProperty(source, 'getBoundingClientRect', { value: () => ({ top: 10 }) });
+    Object.defineProperty(preview, 'getBoundingClientRect', { value: () => ({ top: 20 }) });
+    const [firstSourceHeading, secondSourceHeading] = source.querySelectorAll<HTMLElement>(
+      '[data-type="heading-marker"]',
+    );
+    Object.defineProperty(firstSourceHeading, 'getBoundingClientRect', {
+      value: () => ({ top: -40 }),
+    });
+    Object.defineProperty(secondSourceHeading, 'getBoundingClientRect', {
+      value: () => ({ top: 360 }),
+    });
+    const [firstPreviewHeading, secondPreviewHeading] =
+      previewContent.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6');
+    Object.defineProperty(firstPreviewHeading, 'getBoundingClientRect', {
+      value: () => ({ top: 620 }),
+    });
+    Object.defineProperty(secondPreviewHeading, 'getBoundingClientRect', {
+      value: () => ({ top: 1620 }),
+    });
+
+    expect(adapter.syncSplitScroll(host)).toBe(true);
+    // Headings align at 20% of each 200px viewport: source 250 lies 90/400 of the way
+    // from its first heading milestone (160) to its second (560).
+    expect(preview.scrollTop).toBe(785);
+  });
+
+  it('leaves Vditor native scrolling in place when SV headings cannot be paired', () => {
+    const host = createHost();
+    const { preview, source } = adapter.editorParts(host);
+    source.innerHTML = '<span data-type="heading-marker">#</span>';
+    preview.querySelector<HTMLElement>('.vditor-reset')!.innerHTML = '<h1>One</h1><h2>Two</h2>';
+    preview.style.display = 'block';
+    Object.defineProperties(source, {
+      scrollHeight: { value: 1000 },
+      clientHeight: { value: 200 },
+    });
+    source.scrollTop = 300;
+    preview.scrollTop = 444;
+
+    expect(adapter.syncSplitScroll(host)).toBe(true);
+    expect(preview.scrollTop).toBe(444);
+  });
+
   it('owns a custom-caret proxy and removes it with its listeners', () => {
     const host = createHost();
     window.document.body.append(host);
@@ -134,6 +299,292 @@ describe('Vditor DOM compatibility adapter', () => {
 
     expect(window.document.querySelector('[data-vditor-desktop-caret="true"]')).toBeNull();
     expect(host.dataset.vditorDesktopCustomCaret).toBeUndefined();
+  });
+
+  it('positions an IR or WYSIWYG custom caret after a rendered inline marker', () => {
+    const runFrames = createFrameQueue();
+    const viewport = { bottom: 400, height: 400, left: 0, right: 600, top: 0, width: 600 };
+    Object.defineProperty(window.document, 'hasFocus', { configurable: true, value: () => true });
+    Object.defineProperties(window.Range.prototype, {
+      getClientRects: {
+        configurable: true,
+        value() {
+          return this.collapsed
+            ? []
+            : [{ left: 80, right: 120, top: 30, bottom: 50, width: 40, height: 20 }];
+        },
+      },
+      getBoundingClientRect: {
+        configurable: true,
+        value: () => ({ left: 0, right: 0, top: 0, bottom: 0, width: 0, height: 0 }),
+      },
+    });
+
+    for (const mode of ['ir', 'wysiwyg'] as const) {
+      const host = createHost();
+      window.document.body.append(host);
+      const parts = adapter.editorParts(host);
+      const editor =
+        parts[mode === 'ir' ? 'instantRendering' : 'wysiwyg'].querySelector<HTMLElement>(
+          '.vditor-reset',
+        )!;
+      editor.innerHTML = '<p data-block="0"><em>formatted</em></p>';
+      const paragraph = editor.firstElementChild!;
+      Object.defineProperty(host, 'getBoundingClientRect', { value: () => viewport });
+      Object.defineProperty(editor, 'getBoundingClientRect', { value: () => viewport });
+      editor.setAttribute('tabindex', '0');
+      editor.focus();
+      const range = window.document.createRange();
+      range.setStart(paragraph, paragraph.childNodes.length);
+      range.collapse(true);
+      window.getSelection()!.removeAllRanges();
+      window.getSelection()!.addRange(range);
+      const cleanup = adapter.installCustomCaret(
+        host,
+        () => mode,
+        () => 'bar',
+      );
+
+      host.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+      runFrames();
+      const caret = window.document.querySelector<HTMLElement>(
+        '[data-vditor-desktop-caret="true"]',
+      )!;
+      expect(caret.style.left).toBe('120px');
+      expect(paragraph.innerHTML).toBe('<em>formatted</em>');
+      cleanup();
+      host.remove();
+    }
+  });
+
+  it('uses the SV source line height for an empty heading caret', () => {
+    const runFrames = createFrameQueue();
+    const host = createHost();
+    window.document.body.append(host);
+    const source = adapter.editorParts(host).source as HTMLElement;
+    source.innerHTML =
+      '<div data-block="0"><span data-type="heading-marker"># </span><span data-type="text"></span></div>';
+    source.style.lineHeight = '24px';
+    const text = source.querySelector<HTMLElement>('[data-type="text"]')!;
+    const viewport = { bottom: 400, height: 400, left: 0, right: 600, top: 0, width: 600 };
+    Object.defineProperty(window.document, 'hasFocus', { configurable: true, value: () => true });
+    Object.defineProperty(host, 'getBoundingClientRect', { value: () => viewport });
+    Object.defineProperty(source, 'getBoundingClientRect', { value: () => viewport });
+    Object.defineProperty(text, 'getBoundingClientRect', {
+      value: () => ({ bottom: 74, height: 44, left: 80, right: 80, top: 30, width: 0 }),
+    });
+    Object.defineProperties(window.Range.prototype, {
+      getClientRects: { configurable: true, value: () => [] },
+      getBoundingClientRect: {
+        configurable: true,
+        value: () => ({ bottom: 0, height: 0, left: 0, right: 0, top: 0, width: 0 }),
+      },
+    });
+    source.setAttribute('tabindex', '0');
+    source.focus();
+    const range = window.document.createRange();
+    range.setStart(text, 0);
+    range.collapse(true);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    const cleanup = adapter.installCustomCaret(
+      host,
+      () => 'sv',
+      () => 'block',
+    );
+    host.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+    runFrames();
+
+    const caret = window.document.querySelector<HTMLElement>('[data-vditor-desktop-caret="true"]')!;
+    expect(caret.style.left).toBe('80px');
+    expect(caret.style.height).toBe('24px');
+    cleanup();
+  });
+
+  it('keeps the SV block caret size when an empty editor becomes an empty source line', () => {
+    const runFrames = createFrameQueue();
+    const host = createHost();
+    window.document.body.append(host);
+    const source = adapter.editorParts(host).source as HTMLElement;
+    source.innerHTML = '';
+    source.style.lineHeight = '24px';
+    const viewport = { bottom: 400, height: 400, left: 0, right: 600, top: 0, width: 600 };
+    Object.defineProperty(window.document, 'hasFocus', { configurable: true, value: () => true });
+    Object.defineProperty(host, 'getBoundingClientRect', { value: () => viewport });
+    Object.defineProperty(source, 'getBoundingClientRect', { value: () => viewport });
+    Object.defineProperty(window.HTMLElement.prototype, 'getBoundingClientRect', {
+      configurable: true,
+      value() {
+        return this.textContent === '\u200b'
+          ? { bottom: 50.67, height: 20.67, left: 52, right: 52, top: 30, width: 0 }
+          : viewport;
+      },
+    });
+    Object.defineProperties(window.Range.prototype, {
+      getClientRects: { configurable: true, value: () => [] },
+      getBoundingClientRect: {
+        configurable: true,
+        value: () => ({ bottom: 0, height: 0, left: 0, right: 0, top: 0, width: 0 }),
+      },
+    });
+    source.setAttribute('tabindex', '0');
+    source.focus();
+    const select = (node: Node) => {
+      const range = window.document.createRange();
+      range.setStart(node, 0);
+      range.collapse(true);
+      window.getSelection()!.removeAllRanges();
+      window.getSelection()!.addRange(range);
+    };
+    select(source);
+    const cleanup = adapter.installCustomCaret(
+      host,
+      () => 'sv',
+      () => 'block',
+    );
+    host.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+    runFrames();
+    const caret = window.document.querySelector<HTMLElement>('[data-vditor-desktop-caret="true"]')!;
+    expect(Number.parseFloat(caret.style.width)).toBeCloseTo(13.2);
+    expect(caret.style.height).toBe('24px');
+
+    source.innerHTML = '<div data-block="0"><span data-type="text"></span></div>';
+    select(source.querySelector('[data-type="text"]')!);
+    window.document.dispatchEvent(new window.Event('selectionchange'));
+    runFrames();
+    expect(Number.parseFloat(caret.style.width)).toBeCloseTo(13.2);
+    expect(caret.style.height).toBe('24px');
+    cleanup();
+  });
+
+  it('keeps the IR and WYSIWYG block caret size in empty paragraphs', () => {
+    const runFrames = createFrameQueue();
+    const viewport = { bottom: 400, height: 400, left: 0, right: 600, top: 0, width: 600 };
+    Object.defineProperty(window.document, 'hasFocus', { configurable: true, value: () => true });
+    Object.defineProperty(window.HTMLElement.prototype, 'animate', {
+      configurable: true,
+      value: () => ({ cancel: () => {} }),
+    });
+    Object.defineProperties(window.Range.prototype, {
+      getClientRects: { configurable: true, value: () => [] },
+      getBoundingClientRect: {
+        configurable: true,
+        value: () => ({ bottom: 0, height: 0, left: 0, right: 0, top: 0, width: 0 }),
+      },
+    });
+    Object.defineProperty(window.HTMLElement.prototype, 'getBoundingClientRect', {
+      configurable: true,
+      value() {
+        if (this.textContent === '\u200b')
+          return { bottom: 52.33, height: 21.33, left: 47, right: 47, top: 31, width: 0 };
+        if (this.tagName === 'P') {
+          const top = this.previousElementSibling ? 54 : 30;
+          return { bottom: top + 24, height: 24, left: 47, right: 47, top, width: 0 };
+        }
+        return viewport;
+      },
+    });
+
+    for (const mode of ['ir', 'wysiwyg'] as const) {
+      const host = createHost();
+      window.document.body.append(host);
+      const parts = adapter.editorParts(host);
+      const editor =
+        parts[mode === 'ir' ? 'instantRendering' : 'wysiwyg'].querySelector<HTMLElement>(
+          '.vditor-reset',
+        )!;
+      editor.innerHTML = '';
+      Object.defineProperty(host, 'getBoundingClientRect', { value: () => viewport });
+      Object.defineProperty(editor, 'getBoundingClientRect', { value: () => viewport });
+      editor.setAttribute('tabindex', '0');
+      editor.focus();
+      const select = (node: Node, offset: number) => {
+        const range = window.document.createRange();
+        range.setStart(node, offset);
+        range.collapse(true);
+        window.getSelection()!.removeAllRanges();
+        window.getSelection()!.addRange(range);
+      };
+      select(editor, 0);
+      const cleanup = adapter.installCustomCaret(
+        host,
+        () => mode,
+        () => 'block',
+      );
+      host.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+      runFrames();
+      const caret = window.document.querySelector<HTMLElement>(
+        '[data-vditor-desktop-caret="true"]',
+      )!;
+      expect(Number.parseFloat(caret.style.height)).toBeCloseTo(21.33);
+      expect(Number.parseFloat(caret.style.width)).toBeCloseTo(21.33 * 0.55);
+
+      editor.innerHTML =
+        mode === 'ir'
+          ? '<p data-block="0"></p>'
+          : '<p data-block="0"></p><p data-block="0"><br></p>';
+      const lastParagraph = editor.lastElementChild!;
+      select(lastParagraph, lastParagraph.childNodes.length);
+      window.document.dispatchEvent(new window.Event('selectionchange'));
+      runFrames();
+      expect(Number.parseFloat(caret.style.height)).toBeCloseTo(21.33);
+      expect(Number.parseFloat(caret.style.width)).toBeCloseTo(21.33 * 0.55);
+      cleanup();
+      host.remove();
+    }
+  });
+
+  it('places an SV table-source caret after a trailing newline on the next line', () => {
+    const runFrames = createFrameQueue();
+    const host = createHost();
+    window.document.body.append(host);
+    const source = adapter.editorParts(host).source as HTMLElement;
+    source.innerHTML = '<div data-block="0"><span data-type="table"></span></div>';
+    source.style.lineHeight = '24px';
+    const table = source.querySelector<HTMLElement>('[data-type="table"]')!;
+    table.textContent = '| head1 | head2 | head3 |\n|:-|:-|:-|\n';
+    const text = table.firstChild!;
+    const viewport = { bottom: 400, height: 400, left: 0, right: 600, top: 0, width: 600 };
+    Object.defineProperty(window.document, 'hasFocus', { configurable: true, value: () => true });
+    Object.defineProperty(host, 'getBoundingClientRect', { value: () => viewport });
+    Object.defineProperty(source, 'getBoundingClientRect', { value: () => viewport });
+    Object.defineProperty(table, 'getBoundingClientRect', {
+      value: () => ({ bottom: 203, height: 48, left: 52, right: 210, top: 155, width: 158 }),
+    });
+    Object.defineProperties(window.Range.prototype, {
+      getClientRects: {
+        configurable: true,
+        value() {
+          return this.collapsed
+            ? []
+            : [{ bottom: 199, height: 20, left: 148, right: 148, top: 179, width: 0 }];
+        },
+      },
+      getBoundingClientRect: {
+        configurable: true,
+        value: () => ({ bottom: 0, height: 0, left: 0, right: 0, top: 0, width: 0 }),
+      },
+    });
+    source.setAttribute('tabindex', '0');
+    source.focus();
+    const range = window.document.createRange();
+    range.setStart(text, text.textContent!.length);
+    range.collapse(true);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    const cleanup = adapter.installCustomCaret(
+      host,
+      () => 'sv',
+      () => 'block',
+    );
+    host.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+    runFrames();
+
+    const caret = window.document.querySelector<HTMLElement>('[data-vditor-desktop-caret="true"]')!;
+    expect(caret.style.left).toBe('52px');
+    expect(caret.style.top).toBe('203px');
+    expect(caret.style.height).toBe('24px');
+    cleanup();
   });
 
   it('hides the custom caret at a restored IR heading marker boundary', () => {
@@ -547,6 +998,17 @@ describe('Vditor DOM compatibility adapter', () => {
     expect(adapter.hideNativeOutlineControl(toolbar)).toBe(true);
     const item = adapter.toolbarButton(toolbar, 'outline')?.closest('.vditor-toolbar__item');
     expect(item?.dataset.vditorDesktopHiddenOutline).toBe('true');
+  });
+
+  it('restores the Vditor-native preview-only transition through its toolbar action', () => {
+    const host = createHost();
+    const preview = adapter.toolbarButton(adapter.editorParts(host).toolbar, 'preview')!;
+    const onPreview = vi.fn();
+    preview.addEventListener('click', onPreview);
+
+    expect(adapter.restorePreviewOnly(host)).toBe(true);
+    expect(onPreview).toHaveBeenCalledOnce();
+    expect(adapter.restorePreviewOnly(null)).toBe(false);
   });
 
   it('keeps Desktop split-view list actions in a stable toolbar slot', () => {

@@ -399,6 +399,8 @@
   const editorController = new PURE.EditorController({
     adapter: {
       editorScrollContainer: (host, mode) => VDITOR.editorScrollContainer(host, mode),
+      splitViewVisibility: (host, mode) => VDITOR.splitViewVisibility(host, mode),
+      restorePreviewOnly: (host) => VDITOR.restorePreviewOnly(host),
       createRebuildSnapshot: (host) => VDITOR.createRebuildSnapshot(host),
       setBottomSpacer: (host, height) => VDITOR.setEditorBottomSpacer(host, height),
       observeOutlineChanges: (host, callback) => VDITOR.observeOutlineChanges(host, callback),
@@ -412,7 +414,8 @@
       scrollContainers: (host) => VDITOR.scrollContainers(host),
       installScrollEnhancement: setupAutoHideScrollbar,
     },
-    createOptions: (tab, generation) => editorOptions(tab, generation),
+    createOptions: (tab, generation, previewModeOverride) =>
+      editorOptions(tab, generation, previewModeOverride),
     getActiveDocumentId: () => state.activeId,
     onAvailabilityChanged: (tab) => {
       if (tab.id === state.activeId || tab.toolbarPreview) syncToolbarAvailability();
@@ -430,6 +433,7 @@
     },
     onModeChanged: (tab) => {
       if (tab.id === state.activeId) updateActiveUI();
+      VDITOR.applyWordWrap(tab.host, state.settings.wordWrap);
       scheduleSplitLineNumbers(tab);
       if (!tab.toolbarPreview) syncCaretStyle(tab);
     },
@@ -537,6 +541,10 @@
     view: $('#outlineView'),
     tree: $('#outlineTree'),
     getActiveTab: () => activeTab(),
+    isUnavailable: (tab) => {
+      const visibility = VDITOR.splitViewVisibility(tab.host, tab.mode);
+      return Boolean(visibility?.sourceVisible && !visibility.previewVisible);
+    },
     getSnapshot: (tab) => VDITOR.outlineSnapshot(tab.host, tab.mode),
     scrollToHeading: (tab, index) => scrollToOutlineHeading(tab, index),
     translate: (key) => t(key),
@@ -752,7 +760,7 @@
     canScheduleLineNumbers: (tab, generation) =>
       tab.ready && (generation === undefined || tab.editorRuntimeGeneration === generation),
     shouldDeferLineNumberResize: () => $('#app').classList.contains('sidebar-transitioning'),
-    syncScroll: (tab) => VDITOR.syncSplitDecorationScroll(tab.host),
+    syncScroll: (tab) => VDITOR.syncSplitScroll(tab.host),
     installScrollEnhancement: (tab) => setupAutoHideScrollbar(VDITOR.editorParts(tab.host).source),
     installAutoIndent: (tab) =>
       VDITOR.installSplitAutoIndent(tab.host, () => state.settings.autoIndent),
@@ -1042,6 +1050,8 @@
       statusMenuController.syncTheme({ mode, labelKey, label: t(labelKey) });
     },
     classifyCodeThemeButtons: (toolbar) => VDITOR.classifyCodeThemeButtons(toolbar),
+    refreshMermaidTheme: (host, markdown, theme) =>
+      VDITOR.refreshMermaidTheme(host, markdown, theme),
   });
   const sidebarLayoutController = new PURE.SidebarLayoutController({
     app: $('#app'),
@@ -1476,13 +1486,23 @@
   }
 
   function applyLiveVditorSettings(changedSettings) {
-    if (!changedSettings.includes('previewMode') && !changedSettings.includes('caretStyle')) return;
+    if (
+      !changedSettings.includes('previewMode') &&
+      !changedSettings.includes('caretStyle') &&
+      !changedSettings.includes('wordWrap')
+    )
+      return;
     state.tabs.forEach((tab) => {
       if (!tab.vditor || !tab.ready || tab.toolbarPreview) return;
       if (changedSettings.includes('previewMode'))
         tab.vditor.setPreviewMode(state.settings.previewMode);
       if (changedSettings.includes('caretStyle')) syncCaretStyle(tab);
+      if (changedSettings.includes('wordWrap')) {
+        VDITOR.applyWordWrap(tab.host, state.settings.wordWrap);
+        scheduleSplitLineNumbers(tab);
+      }
     });
+    if (changedSettings.includes('previewMode')) renderOutline();
   }
 
   function syncCaretStyle(tab) {
@@ -1573,13 +1593,13 @@
     return () => tabBar.removeEventListener('wheel', onWheel);
   }
 
-  function editorOptions(tab, runtimeGeneration) {
+  function editorOptions(tab, runtimeGeneration, previewModeOverride) {
     const s = state.settings;
     const wasModified = tab.modified;
     // Resolve Markdown-relative resources before Vditor inserts their DOM nodes.
     // Doing this in the adapter observer is too late to prevent an initial app:// request.
     return PURE.createEditorOptions(tab, {
-      settings: s,
+      settings: previewModeOverride ? { ...s, previewMode: previewModeOverride } : s,
       locale: state.locale,
       appTheme: document.documentElement.dataset.theme || s.theme,
       defaultToolbar: DEFAULT_TOOLBAR,
@@ -1600,6 +1620,7 @@
             return;
           }
           tab.host.dataset.contentTheme = state.settings.contentTheme;
+          VDITOR.applyWordWrap(tab.host, state.settings.wordWrap);
           imageRuntimeController.attach(tab);
           editorController.observeOutlineChanges(tab, () => {
             if (tab.id === state.activeId) scheduleOutline();
@@ -1620,6 +1641,7 @@
             onClick: (event) => handleVditorToolbarClick(tab, event),
             onMouseDown: (event) => preserveSplitToolbarSelection(tab, event),
           });
+          const restoredSplitViewLayout = editorController.restoreRebuildSplitViewLayout(tab);
           // Vditor initialization may finish after the user changes the application theme.
           // Read the current theme here so the late callback cannot restore stale menu filters.
           const currentAppTheme = document.documentElement.dataset.theme || state.settings.theme;
@@ -1641,6 +1663,7 @@
           ensureSplitResizer(tab);
           setupSplitEditorEnhancements(tab);
           scheduleSplitLineNumbers(tab);
+          if (restoredSplitViewLayout) renderOutline();
           editorController.scheduleFocus(tab);
           restoreEditorScroll(tab, () => editorController.releaseRebuildSnapshot(tab));
           requestAnimationFrame(() => scrollToPendingAnchor(tab));
@@ -1698,8 +1721,10 @@
       }
       return;
     }
-    if (type === 'edit-mode' && ['wysiwyg', 'ir', 'sv'].includes(button.dataset.mode)) {
-      prepareVditorModeTransition(tab, button.dataset.mode);
+    const selectedMode =
+      type === 'edit-mode' ? VDITOR.editModeFromToolbarTarget(event.target) : null;
+    if (selectedMode) {
+      prepareVditorModeTransition(tab, selectedMode);
     } else if (type === 'code-theme') {
       const codeTheme = button.textContent.trim();
       if (!codeTheme) return;
@@ -1872,8 +1897,7 @@
     tab.host.addEventListener(
       'click',
       (event) => {
-        const modeButton = event.target.closest && event.target.closest('[data-mode]');
-        if (!modeButton || !['wysiwyg', 'ir', 'sv'].includes(modeButton.dataset.mode)) return;
+        if (!VDITOR.editModeFromToolbarTarget(event.target)) return;
         const generation = tab.editorRuntimeGeneration;
         setTimeout(() => {
           synchronizeVditorMode(tab, generation);
@@ -2947,7 +2971,7 @@
       // moved by the resize. A long document therefore reflows once on mouseup
       // instead of for every pointer update.
       frozenEditorHost = activeTab()?.host || null;
-      if (frozenEditorHost?.classList.contains('vditor')) {
+      if (VDITOR.isInitializedEditorHost(frozenEditorHost)) {
         const editorWidth = frozenEditorHost.getBoundingClientRect().width;
         frozenEditorHostStyle = Object.fromEntries(
           ['inset', 'left', 'width', 'transform'].map((property) => [

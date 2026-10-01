@@ -1,0 +1,78 @@
+/* Nord palette source: https://github.com/nordtheme/nord/blob/develop/src/nord.css (MIT).
+   This shell theme deliberately leaves Vditor content and code themes to Vditor. */
+:root[data-theme='nord-dark'] {
+  --bg: #2e3440; /* nord0 */
+  --panel: #3b4252; /* nord1 */
+  --sidebar-surface: #3b4252; /* nord1 */
+  --editor-surface: #2e3440; /* nord0 */
+  --settings-control-surface: #3b4252; /* nord1 */
+  --panel-2: #434c5e; /* nord2 */
+  --hover: #434c5e; /* nord2 */
+  --text: #eceff4; /* nord6 */
+  --muted: #d8dee9; /* nord4 */
+  --disabled-control-color: #4c566a; /* nord3 */
+  --border: #4c566a; /* nord3 */
+  --accent: #88c0d0; /* nord8 */
+  --on-accent: #2e3440; /* nord0 */
+  --brand-accent: #88c0d0; /* nord8 */
+  --danger: #bf616a; /* nord11 */
+  --nord-h1: #88c0d0; /* nord8 */
+  --nord-h2: #81a1c1; /* nord9 */
+  --nord-h3: #5e81ac; /* nord10 */
+  --nord-h4: #b48ead; /* nord15 */
+  --nord-h5: #a3be8c; /* nord14 */
+  --nord-h6: #ebcb8b; /* nord13 */
+  --top-surface-shadow: 0 5px 13px -7px rgb(46 52 64 / 0.82), 0 2px 6px -4px rgb(46 52 64 / 0.5);
+  color-scheme: dark;
+}
+
+/* Vditor's unavailable controls and disabled menu entries use Nord's UI disabled token.
+   Settings headings and explanatory copy mix Nord Snow Storm into Polar Night to remain muted without becoming an accent color. */
+:root[data-theme='nord-dark'] .vditor-toolbar-mount {
+  --second-color: #4c566a; /* nord3 */
+  --toolbar-icon-color: #d8dee9; /* nord4 */
+}
+:root[data-theme='nord-dark'] .app-menu-popup button:disabled,
+:root[data-theme='nord-dark'] .app-menu-popup button:disabled:hover,
+:root[data-theme='nord-dark'] .app-menu-popup button:disabled:focus-visible {
+  color: #4c566a; /* nord3 */
+}
+:root[data-theme='nord-dark'] .settings-subheading,
+:root[data-theme='nord-dark'] .muted,
+:root[data-theme='nord-dark'] .version-info {
+  color: color-mix(in srgb, #d8dee9 72%, #2e3440); /* nord4 over nord0 */
+}
+
+/* Match MarkText's Nord heading palette while preserving Vditor's content and code-theme ownership. */
+:root[data-theme='nord-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h1, .h1),
+:root[data-theme='nord-dark'] .editor-host .vditor-preview h1 {
+  color: var(--nord-h1) !important;
+}
+:root[data-theme='nord-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h2, .h2),
+:root[data-theme='nord-dark'] .editor-host .vditor-preview h2 {
+  color: var(--nord-h2) !important;
+}
+:root[data-theme='nord-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h3, .h3),
+:root[data-theme='nord-dark'] .editor-host .vditor-preview h3 {
+  color: var(--nord-h3) !important;
+}
+:root[data-theme='nord-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h4, .h4),
+:root[data-theme='nord-dark'] .editor-host .vditor-preview h4 {
+  color: var(--nord-h4) !important;
+}
+:root[data-theme='nord-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h5, .h5),
+:root[data-theme='nord-dark'] .editor-host .vditor-preview h5 {
+  color: var(--nord-h5) !important;
+}
+:root[data-theme='nord-dark'] .editor-host :is(.vditor-ir, .vditor-wysiwyg) :is(h6, .h6),
+:root[data-theme='nord-dark'] .editor-host .vditor-preview h6 {
+  color: var(--nord-h6) !important;
+}
+:root[data-theme='nord-dark']
+  .editor-host
+  :is(.vditor-ir, .vditor-wysiwyg)
+  :is(h1, .h1, h2, .h2, h3, .h3, h4, .h4, h5, .h5, h6, .h6)
+  *,
+:root[data-theme='nord-dark'] .editor-host .vditor-preview :is(h1, h2, h3, h4, h5, h6) * {
+  color: inherit !important;
+}

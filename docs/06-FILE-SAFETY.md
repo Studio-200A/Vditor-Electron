@@ -21,7 +21,7 @@
 - 同一个物理文件在标签、保存队列、冲突状态、不可用状态和 watcher 生命周期中必须使用同一个 canonical identity。展示路径可以变化，不能代替 identity 做所有权判断。
 - 文件删除或暂时不可读时，不得因为磁盘状态变化而丢弃仍在内存中的正文；需要保留正文并暂停可能造成覆盖的自动保存。
 - 关闭标签、Save As、工作区切换、重命名和重建 editor 后到达的旧异步结果不得写入新的路径或新的标签状态。
-- watcher 的绑定必须经历“创建 → `ready` → 读取一次当前磁盘事实 → 接收实时事件”；`ignoreInitial` 不能替代 ready 后的 reconciliation。
+- watcher 的绑定必须经历“创建 → `ready` → 接收实时事件”，且 `ignoreInitial` 不能替代重绑与显式 reconcile 场景下 ready 后的一次磁盘事实读取；首次绑定的磁盘事实由打开流程的显式读取提供（`watchDocument(filePath, reconcile)` 只在重绑或调用方显式请求时在 ready 后读取）。
 - 用于展示的解码正文和用于安全写入比较的 `expectedBytes` 必须来自同一次原始磁盘读取，不能让两次读取之间的变化被误认为同一版本。
 
 ## 3. 文件身份
@@ -100,12 +100,17 @@ rename(临时文件, 目标文件)
 
 ### 7.4 资源健康回收站：路径化 `shell.trashItem` 的符号链接窗口
 
-资源健康页面的“移至系统回收站”在逐项复核候选仍位于工作区内、不是符号链接、仍未被最新磁盘扫描引用且文件身份/修改时间未变化之后，通过 Electron `shell.trashItem(path)` 按路径移入系统回收站。复核和 `trashItem` 之间仍存在与第 7.1 节同类的竞争窗口：外部进程可在最后一次路径复核后、调用回收站前，把候选或其父目录替换为符号链接，从而使按路径的删除作用于链接目标。Node/Electron 未提供跨平台的无跟随目录句柄 Trash 原语；现有 npm `trash` 等封装同样基于路径，无法消除该窗口。
+资源健康页面的“移至系统回收站”在逐项复核候选仍位于工作区内、不是符号链接、仍未被最新磁盘扫描引用且文件身份、修改时间与大小未变化之后，通过 Electron `shell.trashItem(path)` 按路径移入系统回收站。复核和 `trashItem` 之间仍存在与第 7.1 节同类的竞争窗口：外部进程可在最后一次路径复核后、调用回收站前，把候选或其父目录替换为符号链接，从而使按路径的删除作用于链接目标。Node/Electron 未提供跨平台的无跟随目录句柄 Trash 原语；现有 npm `trash` 等封装同样基于路径，无法消除该窗口。
 
 为此，资源健康将删除范围保守收束并保持“只读优先”：
 
 - 候选只枚举当前文档图片目录的直接常规图片文件，不递归进入二级目录，二级目录内容不能成为回收站目标；
 - 不跟随符号链接；图片目录直接子项中发现符号链接即把扫描标记为不完整，该链接不进入候选列表，并禁止本次 revision 的回收站操作，页面提示用户将链接替换为原始图片后重新扫描。
+
+在上述候选规则之前还有两条更早的输入边界；两者都不产生带 `limitations` 的部分扫描结果，也不生成 revision 或候选：
+
+- 用户请求的工作区根目录本身就是符号链接时，扫描不启动、资源健康整体不可用。服务在对工作区执行 `realpath()` 之前先 `lstat()` 该请求路径，若最终路径项为符号链接则直接返回 `workspace-symbolic-link` 不可用原因，不把 canonical 目标当作工作区展示；页面以专属不可用覆盖层警告用户，并提示改为打开该符号链接的目标目录作为工作区后重试（`src/main/services/resource-health-service.ts` 的 `scan()` 与 `isRequestedWorkspaceSymbolicLink()`）。
+- 由当前 `pasteImagesDir` 解析出的图片目录，其既有路径段本身为符号链接时，输入规范化阶段即失败，扫描直接不可用并显示扫描失败提示；这不进入“不完整扫描”语义（同文件 `normalizeInput()` 调用的 `assertImageDirectoryHasNoSymbolicLinks()`）。
 
 这些措施缩小了可攻击面和误跟随链接的风险，但属于产品边界而非目录句柄级原子文件操作；在引入跨平台原生组件（Linux `openat2` 的 beneath/no-symlink 解析、macOS `openat`/`renameat` 与原生废纸篓、Windows reparse-point 安全 handle 与 `IFileOperation`）之前，本窗口保持开放。相关设计和处理办法见 [`docs/ARCHIVED/18-0.2.5-RESOURCE-HEALTH.md` §6.3.1](ARCHIVED/18-0.2.5-RESOURCE-HEALTH.md#631-符号链接与二级目录)。
 
@@ -116,13 +121,19 @@ rename(临时文件, 目标文件)
 - `src/main/services/file-manager.ts` 与 `src/main/services/safe-file-writer.ts`：基线、临时文件、替换和错误结果；
 - `src/main/services/file-identity.ts`：已存在、缺失祖先、大小写和符号链接 identity；
 - `src/main/services/file-watch-service.ts`：ready/reconciliation、generation、read revision 和 cleanup；
+- `src/main/services/recovery-store.ts`：私有恢复快照的目录/文件权限、schema 版本与上限、原子写入与显式清理；
+- `src/main/services/persistent-state-store.ts`：版本化 `state.json` 的白名单、一次性旧 TOML 状态迁移与串行原子写入（仅保存会话/窗口投影，不保存 recovery 正文）；
+- `src/main/services/resource-health-service.ts`：扫描输入边界、候选 revision、回收站前逐项复核与符号链接只读限制；
+- `src/main/save-dialog-path.ts`：`resolveSaveDialogDefaultPath()` 决定 `file:saveDialog` 的默认路径——Save As 传入的绝对 `defaultPath` 原样保留并优先于注入的工作区目录，只有裸文件名才与该目录拼接，否则回退到 `<目录>/untitled.md`；导出对话框仍保持各自的“目录 + basename”语义；
+- `src/main/ipc/`：`file-operations.ts`（`file:write` / `writeDocument` / `delete` / `rename` 等文件通道）、`file-watching.ts`（`file:setWorkspaceWatch` / `watchDocument` / `unwatchDocument`）、`file-dialogs.ts`（`file:saveDialog` / `exportDialog`）与 `trusted-channel.ts`（信任校验与错误规范化）是这些通道的注册入口；0.2.6 IPC 模块化后它们经 `index.ts` 注入的服务与窄回调工作，文件安全语义仍由上列服务与 renderer 控制器所有；
 - `src/renderer/app/app-composition.js`：content revision 与保存/外部变化交易组合；
 - `src/renderer/documents/document-save-controller.ts`：按 document ID 与 canonical identity 持有两级保存串行队列；
 - `src/renderer/documents/document-controller.ts`：打开、canonical identity 去重与 `transitionBindings()` 路径重绑定；
 - `src/renderer/state/store.ts`：`setExternalConflict` / `setExternalFileState` / `setRecoveryState` 等命名状态命令；
 - `src/renderer/documents/external-change-controller.ts`：watcher 正文的纯分类；
+- `src/renderer/documents/document-watch-controller.ts` 与 `src/renderer/documents/external-file-change-controller.ts`：按 identity 的 watch/rebind/unwatch 生命周期，以及上述纯分类结果的有状态消费与事件路由；
 - `src/renderer/documents/document-close-controller.ts` 与 `src/renderer/editor/recovery-runtime-controller.ts`：关闭去重、recovery timer/队列与失败后的 snapshot ID 保留；
-- `tests/unit/` 中对应的文件管理、identity、watcher、recovery 测试，以及 `tests/e2e/document-lifecycle.spec.ts` 中的文件生命周期回归。
+- `tests/unit/` 中对应的文件管理、identity、watcher、recovery 测试，`tests/unit/save-dialog-path.test.ts` 的跨平台 Save As 默认路径规则，以及 `tests/e2e/document-lifecycle.spec.ts` 中的文件生命周期与 Save As 默认路径回归。
 
 截至 2026-08-27，用户在 Linux 手动运行的 `npm run check:all` 已通过；该次运行的精确结果记录在 [`docs/ARCHIVED/13-0.2.0-EXECUTION-TRACKER.md` 的批次 7](ARCHIVED/13-0.2.0-EXECUTION-TRACKER.md#批次-7阶段-b-独立复核)。该证据证明当前本地回归闭环，不关闭第 7 节的已有目标 TOCTOU 边界，也不替代 [`docs/04-CROSS-PLATFORM.md` §9](04-CROSS-PLATFORM.md#9-020-批次-7-推迟的平台验证) 的 Windows/macOS 实机证据。
 

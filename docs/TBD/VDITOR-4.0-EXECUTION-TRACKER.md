@@ -1,24 +1,24 @@
-# Vditor-Electron 0.3.0 执行路线图与进度账本
+# Vditor 4.0 升级候选执行路线图与进度账本（暂缓）
 
-> 原始目标：[`docs/19-0.3.0-VDITOR-4.0-MIGRATION-PLAN.md`](19-0.3.0-VDITOR-4.0-MIGRATION-PLAN.md)
+> 原始目标：[升级候选方案](VDITOR-4.0-MIGRATION-PLAN.md)
 > 建立日期：2026-09-09
-> 目标版本：`0.3.0`
-> 当前基线：`dev-0.2.5`，Vditor `3.11.3`；启动批次时必须记录实际 HEAD、工作区和测试结果
-> 目标上游版本：`vditor@4.0.0`；只读参考源码：`/home/shawnzhang/Projects/vditor` 的 `v4.0.0`
+> 状态：暂缓；不属于任何已确定的 Vditor Desktop 版本计划，未批准启动批次 0
+> 撰写时基线：`dev-0.2.6`（`0.2.5` 已发布），Vditor `3.11.3`；启动批次时必须记录实际 HEAD、工作区和测试结果
+> 候选上游版本：`vditor@4.0.0`；只读参考源码：`/home/shawnzhang/Projects/vditor` 的 `v4.0.0`；启动前须复核目标版本
 
 ## 1. 使用方式
 
-计划定义迁移边界和完成标准；本账本只记录批次状态、提交、验证、手测、失败证据和递延项。每个 Session 默认只处理一个批次，开工前检查当前 HEAD、工作区和实际源码，不覆盖用户已有改动。
+本账本为暂缓的候选路线；只有重新确认产品决策和目标版本后才开始记录批次状态、提交、验证、手测、失败证据和递延项。届时每个 Session 默认只处理一个批次，开工前检查当前 HEAD、工作区和实际源码，不覆盖用户已有改动。
 
 批次状态只能使用：`未开始`、`规划中`、`实施中`、`待手测`、`已完成`、`阻塞`。代码、约定自动化检查和约定手测都完成后才能标记为 `已完成`。E2E 若因环境无法启动，记录为环境限制，不得记为应用测试通过或失败。
 
-0.3.0 只做 Vditor 4.0 升级。发现无关问题先记录到 [`docs/00-ISSUES.md`](00-ISSUES.md)，不扩展版本范围。
+若决定实施，应将 Vditor 升级作为单独任务；发现无关问题先记录到 [`docs/00-ISSUES.md`](../00-ISSUES.md)，不扩展升级范围。
 
 ## 2. 共同约束
 
 - Vditor 4.0 的 SV 是 textarea，不是可以继续套用 3.11.3 selector 的兼容变更。任何 SVG、DOM、Range、caret、selection 或工具栏假设必须以目标源码和真实 Electron 为准。
 - 私有 Vditor 结构只在 adapter；业务层不得新增版本判断或直接访问 Vditor 内部节点。
-- 保存、恢复、外部变化、文件 identity、资源协议和 Electron 安全边界必须保持；见 [`docs/06-FILE-SAFETY.md`](06-FILE-SAFETY.md)。
+- 保存、恢复、外部变化、文件 identity、资源协议和 Electron 安全边界必须保持；见 [`docs/06-FILE-SAFETY.md`](../06-FILE-SAFETY.md)。
 - 保存点 dirty-state 必须比较真实 Markdown 字符串。toolbar undo/redo 是否可用不是保存状态证据。
 - 不恢复 4.0 已移除的 SV 高亮/自动完成，也不以 DOM shim 模拟 textarea；产品是否接受该变化是批次 0 的阻塞性决策。
 - 任何阶段完成后都必须可构建、可启动，且不保留同一功能的新旧 SV 双轨实现。
@@ -30,11 +30,11 @@
 | ID | 决策 | 对应批次 | 推荐方向 | 状态与记录要求 |
 | --- | --- | --- | --- | --- |
 | D1 | 是否接受 Vditor 4.0 将 SV 改为 textarea，且上游不再提供 SV 语法高亮、自动完成等能力 | 0，阻塞 1 | 接受上游 textarea SV；不引入第二编辑器或 DOM shim 恢复已移除能力 | 待确认。记录用户接受的能力变化；未确认则批次 0 阻塞。 |
-| D2 | 哪些既有 SV Desktop 增强必须保留，哪些可降级或移除 | 0 建立清单，3 决定 | 优先保留行号、缩进、查找/替换、粘贴、滚动和尾部留白；空白符仅在稳定实现成本不合理时允许显式降级 | 待确认。批次 0 列出清单，批次 3 为每项记录保留、textarea 重写、原生降级或移除的结论。 |
+| D2 | 哪些既有 SV Desktop 增强必须保留，哪些可降级或移除 | 0 建立清单，3 决定 | 优先保留行号、缩进、查找/替换、粘贴、滚动（含 0.2.6 的标题锚点同步）、尾部留白、按 tab 保留的 SV pane 布局与 source-only 大纲空态；空白符仅在稳定实现成本不合理时允许显式降级 | 待确认。批次 0 列出清单，批次 3 为每项记录保留、textarea 重写、原生降级或移除的结论。 |
 | D3 | SV 是否继续支持 underline/bar/block 自绘 caret | 3 | SV 使用 Chromium textarea 原生 caret；IR/WYSIWYG 保持现有原生/自绘设置 | 待确认。若决定保留自绘，必须提供无需伪 Range 的可验证坐标策略、性能证据和三平台验证计划。 |
 | D4 | SV 查找是否必须保留全部匹配的可视高亮 | 3 | 保留搜索、导航、替换和当前匹配 selection；不默认构建与 textarea 同步的全量高亮 overlay | 待确认。若需要全量高亮，先批准 overlay 的一致性、性能与清理验收，再实现。 |
 | D5 | Vditor 4.0 的 Markdown 规范化是否可接受 | 2 | 以实际字符串、写盘结果和文件保真约束决定；不以视觉相同判断 | 待确认。至少记录末尾 LF/CRLF 与 U+00A0 转普通空格的接受或阻塞结论。 |
-| D6 | SV undo 回到保存内容时的 dirty-state 规则 | 2 | 仅当 Vditor `input(value)` 与批准的保存基线规则一致时清除 dirty；不依据 toolbar、延迟或 UI 状态 | 待确认。记录 4.0 复现矩阵、首个字符串差异和 `docs/00-ISSUES.md` 的关闭或递延结论。 |
+| D6 | SV undo 回到保存内容时的 dirty-state 规则 | 2 | 仅当 Vditor `input(value)` 与批准的保存基线规则一致时清除 dirty；不依据 toolbar、延迟或 UI 状态 | 待确认。记录 4.0 复现矩阵、首个字符串差异及本批次的迁移结论。前提更新：0.2.6 已在 3.11.3 修复该问题（三模式），保存基线规则为“确认干净的文档在初始化/干净重载/原生模式切换/显式保存时采用当前模式编辑器序列化表示作为 `savedContent`，`expectedSavedContent` 保持磁盘原文”；模式切换还须防止 blur 先于防抖 input 更新 `content`，并在采用候选保存点前复核正文与 revision。4.0 需复验同一规则而非重新调研 3.11.3 差异。 |
 
 ## 4. 验证命令
 
@@ -54,7 +54,7 @@
 
 | 批次 | 名称 | 依赖 | 核心验收 | 状态 | Commit |
 | --- | --- | --- | --- | --- | --- |
-| 0 | 0.2.5 基线、产品决策与 4.0 影响清单 | 无 | 只读基线、SV 矩阵、textarea 变更接受决定 | 未开始 | - |
+| 0 | 执行时 HEAD 基线、产品决策与 4.0 影响清单 | 无 | 只读基线、SV 矩阵、textarea 变更接受决定 | 未开始 | - |
 | 1 | Vditor 4.0 依赖、离线资产与最小启动 | 0 | 版本/资产/CSP、三模式创建与切换 | 未开始 | - |
 | 2 | SV textarea 核心与保存点保真 | 1 | 编辑、保存、undo/redo、dirty-state 字符串矩阵 | 未开始 | - |
 | 3 | SV Desktop 增强迁移 | 2 | 行号/空白符/缩进/查找/粘贴/scroll/caret 的批准结论与测试 | 未开始 | - |
@@ -62,14 +62,15 @@
 
 ## 6. 批次施工卡
 
-### 批次 0：0.2.5 基线、产品决策与 4.0 影响清单
+### 批次 0：执行时 HEAD 基线、产品决策与 4.0 影响清单
 
 **必须完成：**
 
 1. 记录分支、HEAD、工作区、package 版本、Vditor 3.11.3、`npm run check:all` 结果和可用平台。
 2. 用真实 Electron 建立 SV 行为矩阵，至少覆盖计划第 5 阶段 0 所列的保存、undo/redo、换行、空文档、长行、列表、查找、粘贴、右键、滚动和 caret 路径；同时记录 WYSIWYG/IR 不换行空格的 Markdown 输出与保存基线。
-3. 用户确认接受 Vditor 4.0 textarea SV 及上游放弃高亮/自动完成的行为变化。
-4. 列出每个 SV adapter API、CSS 规则和 E2E 的 4.0 结论：保留、重写、移除或降级。
+3. SV 行为矩阵必须包含 0.2.6（`fe363d9`）的 source → preview 标题锚点滚动同步基线：adapter `syncSplitScroll()` 按等量标题顺序配对、以两侧 viewport 约 20% 处为标题对齐里程碑插值；标题缺失、数量不等或私有 heading marker DOM 变化时必须回退 Vditor 原生比例滚动，且 preview 独立阅读不回写 source。
+4. 用户确认接受 Vditor 4.0 textarea SV 及上游放弃高亮/自动完成的行为变化。
+5. 列出每个 SV adapter API、CSS 规则和 E2E 的 4.0 结论：保留、重写、移除或降级。
 
 **退出条件：** 决策与影响清单写入本文件第 7 节；未确认产品变化则标记 `阻塞`，不开始批次 1。
 
@@ -81,9 +82,9 @@
 
 ### 批次 2：SV textarea 核心与保存点保真
 
-**必须完成：** 迁移 SV 内容、焦点、textarea offset selection、undo/redo、模式切换和保存基线；针对 LF、CRLF、无末尾换行、空文档、空行及复杂 Markdown 比较 input、savedContent 和写盘结果。WYSIWYG/IR 必须验证 Vditor 4.0 对不换行空格的序列化、切换模式、保存重开和 dirty-state 结论。
+**必须完成：** 迁移 SV 内容、焦点、textarea offset selection、undo/redo、模式切换和保存基线；针对 LF、CRLF、无末尾换行、空文档、空行及复杂 Markdown 比较 input、savedContent 和写盘结果。WYSIWYG/IR 必须验证 Vditor 4.0 对不换行空格的序列化、切换模式、保存重开和 dirty-state 结论。保真矩阵还必须包含 0.2.5（`0ded7ed`）的 GitHub alerts 序列化还原兼容层（`src/renderer/editor/github-alerts.ts` 的 `restoreGitHubAlertHeaders()`）：Vditor/Lute 3.11.3 为无标题 alert 补入的展示性默认图标/标题不得写回 WYSIWYG/IR 的 Markdown 输出；4.0 下必须以实际字符串和写盘结果重新确认该兼容层仍需保留，还是随上游序列化行为删除，不保留无差异证据的补偿逻辑。
 
-**退出条件：** [`docs/00-ISSUES.md`](00-ISSUES.md) 的 SV undo dirty-state 问题有 4.0 复现证据和结论，不以视觉相同或 toolbar 状态作为通过标准。
+**退出条件：** 0.2.6 在 3.11.3 修复的三模式撤销脏标记规则有 4.0 复现证据和迁移结论，不以视觉相同或 toolbar 状态作为通过标准。
 
 ### 批次 3：SV Desktop 增强迁移
 
@@ -91,15 +92,16 @@
 
 1. 以 offset selection 替换 Range-only 的 SV capture/restore、缩进和右键状态；右键、粘贴、删除和编辑命令进入 Vditor 4.0 textarea 的 input/undo 路径。
 2. 为 SV 查找/替换建立 offset、selection 和滚动契约，决定 textarea 下的高亮视觉策略；覆盖 selection 预填搜索、导航、单项/全部替换、undo 与保存。
-3. 对行号、空白符、自动缩进、列表缩进、split 滚动/留白和 caret 做经批准的 textarea 适配、原生降级或移除；SV 尾部留白使用 textarea `paddingBottom`，不产生额外逻辑行号。
-4. 迁移 SV 资源健康的单引用删除，覆盖 undo、保存和重复引用保守拒绝。
-5. 清理旧 DOM/Range 资源和测试。
+3. 对行号、空白符、自动缩进、列表缩进、split 滚动/留白和 caret 做经批准的 textarea 适配、原生降级或移除；SV 尾部留白使用 textarea `paddingBottom`，不产生额外逻辑行号。split 滚动包含 0.2.6（`fe363d9`）的 source → preview 标题锚点同步（adapter `syncSplitScroll()`，依赖 3.11.3 私有 source heading marker DOM）：4.0 的 textarea 源码面没有该结构，必须按 textarea/preview 映射重建，或显式降级回上游比例同步并记录为用户可见行为，不保留静默失效路径。
+4. 为 0.2.6（`94bedfb`）的 SV 增强给出同一格式的保留、重写或降级结论：仅初始化设置触发 rebuild 时按 tab 保留 source-only/preview-only/both 布局（`src/renderer/editor/editor-controller.ts` 的 `rebuildSplitViewLayouts`，依赖 adapter `splitViewVisibility()` 与经 Vditor 私有 Preview toolbar action 的 `restorePreviewOnly()`），以及 source-only SV 下大纲显示 `sidebar.outlineUnavailableInSourceOnly` 空态而不是“无标题”。
+5. 迁移 SV 资源健康的单引用删除，覆盖 undo、保存和重复引用保守拒绝。
+6. 清理旧 DOM/Range 资源和测试。
 
 **退出条件：** 所有保留能力有 focused unit/DOM/E2E 覆盖；SV 查找、selection、命令、尾部留白和资源健康均不再走 DOM Range/contenteditable fallback；移除或降级的上游限制已记录为用户可见行为，不保留隐藏失效路径。
 
 ### 批次 4：三模式集成、独立审查与发布准备
 
-**必须完成：** 三模式和文件安全回归、adapter/CSS 审查、升级文档/结构图/CHANGELOG 更新、完整检查、Linux 打包和人工验收。
+**必须完成：** 三模式和文件安全回归、adapter/CSS 审查、升级文档/结构图/CHANGELOG 更新、完整检查、Linux 打包和人工验收。adapter 审查除 SV 外必须逐项给出非 SV 私有契约的保留/重写/移除结论，至少包含 0.2.6（`30de87d`）的 `refreshMermaidTheme()`（`window.Vditor.mermaidRender` 静态入口、`.language-mermaid` 与 `data-processed` 标记），并把结论写入本文件第 7 节与 [`docs/00-ISSUES.md`](../00-ISSUES.md) 的对应条目。
 
 **退出条件：** `npm run check:all` 通过，打包验证完成或环境限制明确记录，所有文档与 4.0.0 版本一致。
 

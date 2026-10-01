@@ -2,7 +2,14 @@ import { expect, test } from '@playwright/test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { closeApp, createNewTab, launchApp, projectRoot, readSetting } from './support/app-harness';
+import {
+  closeApp,
+  createNewTab,
+  launchApp,
+  projectRoot,
+  readSetting,
+  replaceFileAtomically,
+} from './support/app-harness';
 
 test('finds, navigates, and replaces text in the active document', async () => {
   const running = await launchApp({}, { 'find.md': 'alpha beta alpha\nalpha' });
@@ -159,6 +166,28 @@ test('keeps one custom caret proxy across all editor modes and releases it on ta
   }
 });
 
+test('keeps rapid input dirty when switching modes and asks before closing', async () => {
+  const running = await launchApp({ editMode: 'ir' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    await page.locator('.editor-host.active .vditor-ir .vditor-reset').fill('caret target');
+    await page.locator('#vditorToolbarMount button[data-type="edit-mode"]').click();
+    await page.locator('#vditorToolbarMount button[data-mode="wysiwyg"]').click();
+
+    await expect(page.locator('.editor-host.active .vditor-wysiwyg .vditor-reset')).toContainText(
+      'caret target',
+    );
+    await expect(page.locator('.document-tab.active .dirty')).toHaveText('●');
+    await page.locator('.document-tab.active b').click();
+    const discard = page.locator('#confirmActions [data-action="discard"]');
+    await expect(discard).toBeVisible();
+    await discard.click();
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('keeps the custom caret visible at the new line after Enter', async () => {
   const running = await launchApp({ editMode: 'ir', caretStyle: 'bar' });
   try {
@@ -175,6 +204,191 @@ test('keeps the custom caret visible at the new line after Enter', async () => {
     await closeApp(running);
   }
 });
+
+test('keeps the SV block caret to source line height after an empty heading marker', async () => {
+  const running = await launchApp({ editMode: 'sv', caretStyle: 'block', previewMode: 'editor' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    const source = page.locator('.editor-host.active .vditor-sv');
+    await source.click();
+    await page.keyboard.type('# ', { delay: 120 });
+    await expect(source.locator('[data-type="heading-marker"]')).toHaveText('# ');
+    const caret = page.locator('[data-vditor-desktop-caret="true"]');
+    await expect(caret).toBeVisible();
+    const { caretHeight, sourceLineHeight } = await page.evaluate(() => ({
+      caretHeight: document
+        .querySelector('[data-vditor-desktop-caret="true"]')!
+        .getBoundingClientRect().height,
+      sourceLineHeight: Number.parseFloat(
+        getComputedStyle(document.querySelector('.editor-host.active .vditor-sv')!).lineHeight,
+      ),
+    }));
+    expect(caretHeight).toBeLessThanOrEqual(sourceLineHeight * 1.2);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps the SV block caret size stable after Enter in an empty document', async () => {
+  const running = await launchApp({ editMode: 'sv', caretStyle: 'block', previewMode: 'editor' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    const source = page.locator('.editor-host.active .vditor-sv');
+    await source.click();
+    const caret = page.locator('[data-vditor-desktop-caret="true"]');
+    await expect(caret).toBeVisible();
+    const initial = await caret.evaluate((node) => ({
+      width: Number.parseFloat((node as HTMLElement).style.width),
+      height: Number.parseFloat((node as HTMLElement).style.height),
+    }));
+    await page.keyboard.press('Enter');
+    await expect(source.locator('[data-type="text"]')).toHaveCount(1);
+    await page.waitForTimeout(200);
+    const afterEnter = await caret.evaluate((node) => ({
+      width: Number.parseFloat((node as HTMLElement).style.width),
+      height: Number.parseFloat((node as HTMLElement).style.height),
+    }));
+    expect(afterEnter).toEqual(initial);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+for (const mode of ['ir', 'wysiwyg'] as const) {
+  test(`keeps the ${mode} block caret size stable after Enter in an empty document`, async () => {
+    const running = await launchApp({ editMode: mode, caretStyle: 'block' });
+    try {
+      const { page } = running;
+      await createNewTab(page);
+      const editor = page.locator(`.editor-host.active .vditor-${mode} .vditor-reset`);
+      await editor.click();
+      const caret = page.locator('[data-vditor-desktop-caret="true"]');
+      await expect(caret).toBeVisible();
+      const initial = await caret.evaluate((node) => ({
+        width: Number.parseFloat((node as HTMLElement).style.width),
+        height: Number.parseFloat((node as HTMLElement).style.height),
+        top: Number.parseFloat((node as HTMLElement).style.top),
+      }));
+      await page.keyboard.press('Enter');
+      await expect(editor.locator('p[data-block="0"]')).toHaveCount(mode === 'ir' ? 1 : 2);
+      await page.waitForTimeout(200);
+      const afterEnter = await caret.evaluate((node) => ({
+        width: Number.parseFloat((node as HTMLElement).style.width),
+        height: Number.parseFloat((node as HTMLElement).style.height),
+        top: Number.parseFloat((node as HTMLElement).style.top),
+      }));
+      expect(afterEnter.width).toBe(initial.width);
+      expect(afterEnter.height).toBe(initial.height);
+      if (mode === 'wysiwyg') expect(afterEnter.top - initial.top).toBeGreaterThan(16);
+    } finally {
+      await closeApp(running);
+    }
+  });
+}
+
+test('keeps the SV custom caret on the new line after a table separator', async () => {
+  const running = await launchApp({ editMode: 'sv', caretStyle: 'block', previewMode: 'editor' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    const source = page.locator('.editor-host.active .vditor-sv');
+    await source.click();
+    await page.keyboard.type('# chart test\n\n| head1 | head2 | head3 |\n|:-|:-|:-|', {
+      delay: 60,
+    });
+    await page.keyboard.press('Enter');
+    await expect(source.locator('[data-type="table"]')).toBeVisible();
+    const caret = page.locator('[data-vditor-desktop-caret="true"]');
+    await expect(caret).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const table = document.querySelector(
+            '.editor-host.active .vditor-sv [data-type="table"]',
+          );
+          const caret = document.querySelector<HTMLElement>('[data-vditor-desktop-caret="true"]');
+          const selection = window.getSelection();
+          const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+          if (!table || !caret || !range || range.startContainer !== table.firstChild) return false;
+          if (range.startContainer.textContent?.[range.startOffset - 1] !== '\n') return false;
+          const caretLeft =
+            caret.parentElement!.getBoundingClientRect().left + Number.parseFloat(caret.style.left);
+          return Math.abs(caretLeft - table.getBoundingClientRect().left) < 3;
+        }),
+      )
+      .toBe(true);
+    const before = await caret.evaluate((node) => {
+      const layer = node.parentElement;
+      if (!layer) throw new Error('Expected custom caret layer');
+      const layerRect = layer.getBoundingClientRect();
+      return {
+        x: layerRect.left + Number.parseFloat((node as HTMLElement).style.left),
+        y: layerRect.top + Number.parseFloat((node as HTMLElement).style.top),
+      };
+    });
+    await page.keyboard.type('x');
+    await expect(source.locator('[data-type="table"]')).toContainText('x');
+    const inserted = await source.locator('[data-type="table"]').evaluate((table) => {
+      const text = table.firstChild;
+      if (!text || text.nodeType !== Node.TEXT_NODE || !text.textContent?.endsWith('x')) {
+        throw new Error('Expected inserted text in the table source');
+      }
+      const range = document.createRange();
+      range.setStart(text, text.textContent.length - 1);
+      range.setEnd(text, text.textContent.length);
+      const rect = range.getBoundingClientRect();
+      return { left: rect.left, top: rect.top };
+    });
+    expect(Math.abs(before.x - inserted.left)).toBeLessThan(3);
+    expect(Math.abs(before.y - inserted.top)).toBeLessThan(3);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+for (const mode of ['ir', 'wysiwyg'] as const) {
+  for (const { label, input, inline } of [
+    { label: 'italic marker', input: '**粗体文字*', inline: 'em' },
+    { label: 'bold marker', input: '**粗体文字**', inline: 'strong' },
+    { label: 'code marker', input: '`行内代码`', inline: 'code' },
+  ]) {
+    test(`keeps the ${mode} custom caret after the ${label} at the insertion point`, async () => {
+      const running = await launchApp({ editMode: mode, caretStyle: 'bar' });
+      try {
+        const { page } = running;
+        await createNewTab(page);
+        const editor = page.locator(`.editor-host.active .vditor-${mode} .vditor-reset`);
+        await editor.click();
+        await page.keyboard.type(input, { delay: 120 });
+        await expect(editor.locator(inline)).toBeVisible();
+        const caret = page.locator('[data-vditor-desktop-caret="true"]');
+        await expect(caret).toBeVisible();
+        await expect
+          .poll(() =>
+            page.evaluate(() => {
+              const paragraph = document.querySelector('.editor-host.active .vditor-reset p');
+              const caret = document.querySelector('[data-vditor-desktop-caret="true"]');
+              if (!paragraph || !caret) return null;
+              const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+              let lastText: Text | null = null;
+              while (walker.nextNode()) lastText = walker.currentNode as Text;
+              if (!lastText) return null;
+              const range = document.createRange();
+              range.selectNodeContents(lastText);
+              return Math.abs(
+                caret.getBoundingClientRect().left - range.getBoundingClientRect().right,
+              );
+            }),
+          )
+          .toBeLessThan(8);
+      } finally {
+        await closeApp(running);
+      }
+    });
+  }
+}
 
 test('uses Chromium native caret when selected in editor settings', async () => {
   const running = await launchApp({ editMode: 'ir', caretStyle: 'bar' });
@@ -337,6 +551,91 @@ test('synchronizes status and preserves document position for Vditor mode shortc
     const wysiwygProgress = await progressFor('wysiwyg');
     await scrollToProgress('wysiwyg', wysiwygProgress);
     await switchWithShortcut('9', 'sv', 'SV', wysiwygProgress);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('follows SV source headings in the preview without moving source for preview reading', async () => {
+  const section = (title: string) =>
+    [
+      `## ${title}`,
+      '',
+      '<table><thead><tr><th>Column</th><th>Value</th></tr></thead><tbody>',
+      ...Array.from(
+        { length: 24 },
+        (_, index) => `<tr><td>${index + 1}</td><td>rendered table content</td></tr>`,
+      ),
+      '</tbody></table>',
+      '',
+      ...Array.from({ length: 18 }, () => 'Source text below the rendered HTML block.'),
+    ].join('\n');
+  const running = await launchApp(
+    { editMode: 'sv' },
+    {
+      'split-heading-sync.md': [
+        '# Start',
+        section('Target'),
+        section('After target'),
+        section('End'),
+      ].join('\n\n'),
+    },
+  );
+  try {
+    const { page } = running;
+    const source = page.locator('.editor-host.active .vditor-sv');
+    const preview = page.locator('.editor-host.active .vditor-preview');
+    await expect(source).toBeVisible();
+    await expect(preview).toBeVisible();
+    await expect(source.locator('[data-type="heading-marker"]')).toHaveCount(4);
+    await expect(preview.locator('h2')).toHaveCount(3);
+
+    await source.evaluate((node) => {
+      const headings = node.querySelectorAll<HTMLElement>('[data-type="heading-marker"]');
+      const target = headings[2];
+      if (!target) throw new Error('Missing source target heading');
+      node.scrollTop +=
+        target.getBoundingClientRect().top -
+        node.getBoundingClientRect().top -
+        node.clientHeight * 0.2;
+      node.dispatchEvent(new Event('scroll'));
+    });
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const source = document.querySelector('.editor-host.active .vditor-sv');
+          const sourceTarget = source?.querySelectorAll('[data-type="heading-marker"]')[2];
+          const preview = document.querySelector('.editor-host.active .vditor-preview');
+          const target = preview?.querySelectorAll('h2')[1];
+          if (
+            !(source instanceof HTMLElement) ||
+            !(sourceTarget instanceof HTMLElement) ||
+            !(preview instanceof HTMLElement) ||
+            !(target instanceof HTMLElement)
+          )
+            return Infinity;
+          return Math.max(
+            Math.abs(
+              sourceTarget.getBoundingClientRect().top -
+                source.getBoundingClientRect().top -
+                source.clientHeight * 0.2,
+            ),
+            Math.abs(
+              target.getBoundingClientRect().top -
+                preview.getBoundingClientRect().top -
+                preview.clientHeight * 0.2,
+            ),
+          );
+        }),
+      )
+      .toBeLessThan(12);
+
+    const sourceScrollTop = await source.evaluate((node) => node.scrollTop);
+    await preview.evaluate((node) => {
+      node.scrollTop = Math.max(0, node.scrollHeight - node.clientHeight) * 0.7;
+      node.dispatchEvent(new Event('scroll'));
+    });
+    await expect.poll(() => source.evaluate((node) => node.scrollTop)).toBe(sourceScrollTop);
   } finally {
     await closeApp(running);
   }
@@ -590,6 +889,204 @@ test('switches to split view and renders source line numbers', async () => {
     await page.keyboard.press('Control+Alt+8');
     await expect(page.locator('.editor-host.active .vditor-ir')).toBeVisible();
     await expect(page.locator('.editor-host.active .sv-line-numbers')).toBeHidden();
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('toggles word wrap across editing modes while paragraph width stays independent', async () => {
+  const longLine = 'x'.repeat(300);
+  const running = await launchApp(
+    { editMode: 'ir', wordWrap: false, editorTextWidth: 40, caretStyle: 'bar' },
+    { 'word-wrap.md': `${longLine}\nlast` },
+  );
+  try {
+    const { page, testRoot } = running;
+    const host = page.locator('.editor-host.active');
+    await expect(host).toHaveAttribute('data-editor-ready', 'true');
+    await host.evaluate((node) => {
+      (node as HTMLElement).dataset.wordWrapRuntime = 'original';
+    });
+    const editorFor = (mode: 'ir' | 'wysiwyg' | 'sv') =>
+      page.locator(
+        `.editor-host.active .${mode === 'sv' ? 'vditor-sv' : `vditor-${mode} .vditor-reset`}`,
+      );
+    const switchTo = async (mode: 'ir' | 'wysiwyg' | 'sv') => {
+      await page.locator('#vditorToolbarMount button[data-type="edit-mode"]').click();
+      await page.locator(`#vditorToolbarMount button[data-mode="${mode}"]`).click();
+      await expect(editorFor(mode)).toBeVisible();
+    };
+    const expectWrap = async (mode: 'ir' | 'wysiwyg' | 'sv', isEnabled: boolean) => {
+      const editor = editorFor(mode);
+      await expect(editor).toHaveCSS('white-space', isEnabled ? 'pre-wrap' : 'pre');
+      await expect
+        .poll(() => editor.evaluate((node) => node.scrollWidth - node.clientWidth))
+        .toBeGreaterThan(isEnabled ? -1 : 100);
+      if (isEnabled)
+        expect(await editor.evaluate((node) => node.scrollWidth - node.clientWidth)).toBeLessThan(
+          3,
+        );
+    };
+
+    await expectWrap('ir', false);
+    await switchTo('wysiwyg');
+    await expectWrap('wysiwyg', false);
+    await switchTo('sv');
+    await expectWrap('sv', false);
+    const source = editorFor('sv');
+    await expect(page.locator('.editor-host.active .sv-line-number')).toHaveCount(2);
+    await source.evaluate((node) => {
+      (node as HTMLElement).focus();
+      const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+      let text = walker.nextNode();
+      while (text && !text.textContent?.includes('x'.repeat(20))) text = walker.nextNode();
+      if (!text) throw new Error('SV source has no long line');
+      const range = document.createRange();
+      range.setStart(text, 0);
+      range.collapse(true);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    });
+    await page.keyboard.press('End');
+    await expect.poll(() => source.evaluate((node) => node.scrollLeft)).toBeGreaterThan(100);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const source = document.querySelector('.editor-host.active .vditor-sv');
+          const lastNumber = document.querySelector(
+            '.editor-host.active .sv-line-number:last-child',
+          );
+          if (!(source instanceof HTMLElement) || !lastNumber) return Number.POSITIVE_INFINITY;
+          const walker = document.createTreeWalker(source, NodeFilter.SHOW_TEXT);
+          let text = walker.nextNode();
+          while (text && text.textContent !== 'last') text = walker.nextNode();
+          if (!text) return Number.POSITIVE_INFINITY;
+          const range = document.createRange();
+          range.selectNodeContents(text);
+          return Math.abs(
+            lastNumber.getBoundingClientRect().top - range.getBoundingClientRect().top,
+          );
+        }),
+      )
+      .toBeLessThan(4);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const source = document.querySelector('.editor-host.active .vditor-sv');
+          const caret = document.querySelector('[data-vditor-desktop-caret="true"]');
+          const selection = window.getSelection();
+          if (
+            !(source instanceof HTMLElement) ||
+            !(caret instanceof HTMLElement) ||
+            !selection?.rangeCount
+          )
+            return Number.POSITIVE_INFINITY;
+          const range = selection.getRangeAt(0);
+          if (!range.collapsed || !source.contains(range.startContainer))
+            return Number.POSITIVE_INFINITY;
+          return Math.abs(caret.getBoundingClientRect().left - range.getBoundingClientRect().left);
+        }),
+      )
+      .toBeLessThan(4);
+    await expect(page.locator('.editor-host.active .vditor-preview .vditor-reset')).not.toHaveClass(
+      /vditor-desktop-no-wrap/,
+    );
+
+    await page.locator('#statusSettings').click();
+    await page.locator('.settings-nav [data-panel="editor"]').click();
+    await expect(page.locator('[name="editorTextWidth"]')).toHaveValue('40');
+    await page.locator('[name="wordWrap"]').check();
+    await page.locator('#saveSettings').click();
+    await expect(host).toHaveAttribute('data-word-wrap-runtime', 'original');
+    await expectWrap('sv', true);
+    await switchTo('ir');
+    await expectWrap('ir', true);
+    await switchTo('wysiwyg');
+    await expectWrap('wysiwyg', true);
+    await page.locator('#statusSettings').click();
+    await page.locator('.settings-nav [data-panel="editor"]').click();
+    await page.locator('[name="wordWrap"]').uncheck();
+    await page.locator('#saveSettings').click();
+    await expect(host).toHaveAttribute('data-word-wrap-runtime', 'original');
+    await expectWrap('wysiwyg', false);
+    expect(readSetting(testRoot, 'editor', 'wordWrap')).toBe(false);
+    expect(readSetting(testRoot, 'editor', 'editorTextWidth')).toBe(40);
+    expect(fs.readFileSync(path.join(testRoot, 'word-wrap.md'), 'utf8')).toBe(`${longLine}\nlast`);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps horizontal scrolling inside the chosen paragraph width when wrapping is off', async () => {
+  const running = await launchApp(
+    { editMode: 'ir', wordWrap: false, editorTextWidth: 40 },
+    { 'narrow-scroll.md': 'X'.repeat(250) },
+  );
+  try {
+    const { page, testRoot } = running;
+    const inspectColumn = async (mode: 'ir' | 'wysiwyg', width: number) => {
+      const editor = page.locator(`.editor-host.active .vditor-${mode}`);
+      const reset = editor.locator(':scope > .vditor-reset');
+      await expect(reset).toHaveClass(/vditor-desktop-narrow-scroll/);
+      const geometry = await reset.evaluate((node) => {
+        const outer = node.parentElement;
+        if (!outer) throw new Error('Missing rendered editor');
+        const viewport = node.getBoundingClientRect();
+        const editor = outer.getBoundingClientRect();
+        return {
+          leftGap: viewport.left - editor.left,
+          rightGap: editor.right - viewport.right,
+          widthRatio: viewport.width / editor.width,
+          paddingLeft: Number.parseFloat(getComputedStyle(node).paddingLeft),
+          paddingRight: Number.parseFloat(getComputedStyle(node).paddingRight),
+          overflowX: getComputedStyle(node).overflowX,
+          scrollRange: node.scrollWidth - node.clientWidth,
+        };
+      });
+      expect(Math.abs(geometry.leftGap - geometry.rightGap)).toBeLessThan(2);
+      expect(geometry.widthRatio).toBeCloseTo(width / 100, 1);
+      expect(geometry.paddingLeft).toBe(0);
+      expect(geometry.paddingRight).toBe(0);
+      expect(geometry.overflowX).toBe('auto');
+      expect(geometry.scrollRange).toBeGreaterThan(100);
+      await reset.evaluate((node) => {
+        node.scrollLeft = node.scrollWidth;
+      });
+      await expect.poll(() => reset.evaluate((node) => node.scrollLeft)).toBeGreaterThan(100);
+      const lineEnd = await reset.evaluate((node) => {
+        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+        let text = walker.nextNode();
+        while (text && !text.textContent?.includes('X'.repeat(20))) text = walker.nextNode();
+        if (!text?.textContent) throw new Error('Missing long line');
+        const range = document.createRange();
+        const lineEnd = text.textContent.lastIndexOf('X');
+        range.setStart(text, lineEnd);
+        range.setEnd(text, lineEnd + 1);
+        const viewport = node.getBoundingClientRect();
+        const character = range.getBoundingClientRect();
+        return { left: character.left - viewport.left, right: viewport.right - character.right };
+      });
+      expect(lineEnd.left).toBeGreaterThanOrEqual(-2);
+      expect(lineEnd.right).toBeGreaterThanOrEqual(-2);
+    };
+
+    await inspectColumn('ir', 40);
+    await page.locator('#statusSettings').click();
+    await page.locator('.settings-nav [data-panel="editor"]').click();
+    const width = page.locator('#editorTextWidth');
+    await width.evaluate((node: HTMLInputElement) => {
+      node.value = '60';
+      node.dispatchEvent(new Event('input', { bubbles: true }));
+      node.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await expect(page.locator('#editorTextWidthValue')).toHaveText('60%');
+    await page.locator('#saveSettings').click();
+    await inspectColumn('ir', 60);
+    await page.locator('#vditorToolbarMount button[data-type="edit-mode"]').click();
+    await page.locator('#vditorToolbarMount button[data-mode="wysiwyg"]').click();
+    await inspectColumn('wysiwyg', 60);
+    expect(readSetting(testRoot, 'editor', 'editorTextWidth')).toBe(60);
   } finally {
     await closeApp(running);
   }
@@ -1730,6 +2227,74 @@ test('keeps a dynamic half-height bottom spacer in every editor mode', async () 
   }
 });
 
+test('explains that the outline is unavailable in source-only Split View', async () => {
+  const running = await launchApp(
+    { editMode: 'sv', previewMode: 'editor', sidebarVisible: true },
+    { 'source-only-outline.md': '# Heading\n\nBody' },
+  );
+  try {
+    const { page } = running;
+    await expect(page.locator('.editor-host.active .vditor-sv')).toBeVisible();
+    await expect(page.locator('.editor-host.active .vditor-preview')).toBeHidden();
+    await page.locator('.sidebar-tabs [data-view="outline"]').click();
+    await expect(page.locator('#outlineTree > .empty')).toHaveText(
+      'Outline is unavailable in source-only Split View. Open the preview or switch to WYSIWYG or Instant Rendering mode to view it.',
+    );
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('preserves source-only and preview-only Split View layouts when a setting rebuilds the editor', async () => {
+  const running = await launchApp(
+    { editMode: 'sv', previewMode: 'both', sidebarVisible: true },
+    { 'rebuild-split-layout.md': '# Heading\n\nBody' },
+  );
+  try {
+    const { page } = running;
+    const source = page.locator('.editor-host.active .vditor-sv');
+    const preview = page.locator('.editor-host.active .vditor-preview');
+    const toolbar = page.locator('#vditorToolbarMount');
+    const saveLocale = async (locale: 'en_US' | 'zh_Hans') => {
+      await page
+        .locator('.editor-host.active .vditor-content')
+        .evaluate((node) => node.setAttribute('data-test-rebuilt-runtime', 'true'));
+      await page.locator('#statusSettings').click();
+      await page.locator('.settings-nav [data-panel="appearance"]').click();
+      await page.locator('[name="locale"]').selectOption(locale);
+      await page.locator('#saveSettings').click();
+      await expect(
+        page.locator('.editor-host.active .vditor-content[data-test-rebuilt-runtime="true"]'),
+      ).toHaveCount(0);
+      await expect(page.locator('.editor-host.active')).toHaveAttribute(
+        'data-editor-ready',
+        'true',
+      );
+    };
+
+    await expect(source).toBeVisible();
+    await expect(preview).toBeVisible();
+    await toolbar.locator('button[data-type="both"]').click();
+    await expect(source).toBeVisible();
+    await expect(preview).toBeHidden();
+    await saveLocale('zh_Hans');
+    await expect(source).toBeVisible();
+    await expect(preview).toBeHidden();
+
+    await toolbar.locator('button[data-type="both"]').click();
+    await expect(source).toBeVisible();
+    await expect(preview).toBeVisible();
+    await toolbar.locator('button[data-type="preview"]').click();
+    await expect(source).toBeHidden();
+    await expect(preview).toBeVisible();
+    await saveLocale('en_US');
+    await expect(source).toBeHidden();
+    await expect(preview).toBeVisible();
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('hides Vditor native outline controls while keeping the Desktop outline available', async () => {
   const running = await launchApp({
     editMode: 'ir',
@@ -1933,56 +2498,29 @@ test('keeps split-view list toolbar actions stable while changing modes', async 
         page.locator(`.editor-host.active .vditor-${mode === 'wysiwyg' ? 'wysiwyg' : mode}`),
       ).toBeVisible();
     };
-    const observeSplitActionMutations = () =>
-      page.evaluate(() => {
-        const actions = ['outdent', 'indent'].map((type) => {
-          const button = document.querySelector(`#vditorToolbarMount button[data-type="${type}"]`);
-          const item = button?.closest('.vditor-toolbar__item');
-          if (!item) throw new Error(`Missing ${type} toolbar item`);
-          return item;
-        });
-        (
-          window as typeof window & { splitToolbarActionChanges?: number[] }
-        ).splitToolbarActionChanges = [0, 0];
-        const changes = (window as typeof window & { splitToolbarActionChanges: number[] })
-          .splitToolbarActionChanges;
-        const observer = new MutationObserver((records) => {
-          records.forEach((record) => {
-            const index = actions.indexOf(record.target as HTMLElement);
-            if (index >= 0 && record.attributeName === 'style') changes[index] += 1;
-          });
-        });
-        actions.forEach((item) =>
-          observer.observe(item, { attributes: true, attributeFilter: ['style'] }),
-        );
-        (
-          window as typeof window & { splitToolbarActionObserver?: MutationObserver }
-        ).splitToolbarActionObserver = observer;
-      });
-    const readSplitActionMutations = () =>
-      page.evaluate(() => {
-        (
-          window as typeof window & { splitToolbarActionObserver?: MutationObserver }
-        ).splitToolbarActionObserver?.disconnect();
-        return (window as typeof window & { splitToolbarActionChanges?: number[] })
-          .splitToolbarActionChanges;
-      });
-
     await switchTo('wysiwyg');
-    await observeSplitActionMutations();
     await switchTo('sv');
-    await page.waitForTimeout(75);
-    // Vditor performs its own single mode-transition update. Desktop keeps the
-    // actions visible with CSS, so it must not add the former delayed rewrite.
-    expect(await readSplitActionMutations()).toEqual([1, 1]);
-    await expect(page.locator('#vditorToolbarMount button[data-type="outdent"]')).toBeVisible();
-    await expect(page.locator('#vditorToolbarMount button[data-type="indent"]')).toBeVisible();
+    const source = page.locator('.editor-host.active .vditor-sv');
+    const outdent = page.locator('#vditorToolbarMount button[data-type="outdent"]');
+    const indent = page.locator('#vditorToolbarMount button[data-type="indent"]');
+    await expect(outdent).toBeVisible();
+    await expect(indent).toBeVisible();
+    await source.fill('- item');
+    await source.press('Home');
+    await source.press('ArrowRight');
+    await source.press('ArrowRight');
+    await indent.click();
+    await expect.poll(() => source.textContent()).toMatch(/^\s+- item/);
 
     await switchTo('ir');
-    await observeSplitActionMutations();
     await switchTo('sv');
-    await page.waitForTimeout(75);
-    expect(await readSplitActionMutations()).toEqual([1, 1]);
+    await expect(outdent).toBeVisible();
+    await expect(indent).toBeVisible();
+    await source.press('Home');
+    await source.press('ArrowRight');
+    await source.press('ArrowRight');
+    await outdent.click();
+    await expect.poll(() => source.textContent()).toMatch(/^- item/);
   } finally {
     await closeApp(running);
   }
@@ -2125,6 +2663,235 @@ test('keeps whitespace canvases isolated between tabs', async () => {
       '2',
     );
     await expect(page.locator('.editor-host:not(.active) .sv-whitespace-canvas')).toBeHidden();
+  } finally {
+    await closeApp(running);
+  }
+});
+
+const dirtyUndoFixture = [
+  '# Dirty Undo Fixture',
+  '',
+  'A plain paragraph with **bold** text and `inline code`.',
+  '',
+  '```js',
+  'const answer = 42;',
+  'console.log(answer);',
+  '```',
+  '',
+  '| Column A | Column B |',
+  '| --- | --- |',
+  '| 1 | 2 |',
+  '',
+  '- first item',
+  '- second item',
+  '',
+].join('\n');
+
+const modeEditorSelectors = {
+  sv: '.editor-host.active .vditor-sv',
+  ir: '.editor-host.active .vditor-ir .vditor-reset',
+  wysiwyg: '.editor-host.active .vditor-wysiwyg .vditor-reset',
+} as const;
+
+async function typeAtDocumentEnd(
+  page: import('@playwright/test').Page,
+  editorSelector: string,
+  text: string,
+) {
+  await page.locator(editorSelector).click();
+  await page.keyboard.press('Control+End');
+  await page.keyboard.press('End');
+  await page.keyboard.type(text);
+}
+
+async function undoFromToolbar(page: import('@playwright/test').Page) {
+  // Vditor records undo checkpoints on its `undoDelay` debounce. Let the latest
+  // edit settle first, or a single undo may collapse several edits into one
+  // step and restore an older state than intended.
+  await page.waitForTimeout(700);
+  const undoButton = page.locator('#vditorToolbarMount button[data-type="undo"]');
+  await expect(undoButton).not.toHaveClass(/vditor-menu--disabled/, { timeout: 5000 });
+  await undoButton.click();
+}
+
+async function expectUndoToInitialContentClearsDirtyFlag(
+  page: import('@playwright/test').Page,
+  editorSelector: string,
+  filePath: string,
+  originalContent: string,
+) {
+  await page.waitForSelector('.editor-host.active[data-editor-ready="true"]');
+  // Let Vditor record the initial undo-stack entry before typing; otherwise the
+  // first keystroke's debounce cancels it and undo never reaches two entries.
+  await page.waitForTimeout(700);
+  await typeAtDocumentEnd(page, editorSelector, '111');
+  await expect(page.locator('.document-tab.active .dirty')).toHaveText('●', { timeout: 5000 });
+
+  await undoFromToolbar(page);
+
+  await expect(page.locator('.document-tab.active .dirty')).toBeHidden({ timeout: 5000 });
+  expect(fs.readFileSync(filePath, 'utf8')).toBe(originalContent);
+
+  await typeAtDocumentEnd(page, editorSelector, '222');
+  await expect(page.locator('.document-tab.active .dirty')).toHaveText('●', { timeout: 5000 });
+  expect(fs.readFileSync(filePath, 'utf8')).toBe(originalContent);
+}
+
+for (const editMode of ['sv', 'ir', 'wysiwyg'] as const) {
+  test(`clears the dirty flag when undo returns to the initial ${editMode} document content`, async () => {
+    const running = await launchApp({ editMode }, { 'dirty-undo.md': dirtyUndoFixture });
+    try {
+      const { page, testRoot } = running;
+      await page.waitForSelector(modeEditorSelectors[editMode]);
+      await expectUndoToInitialContentClearsDirtyFlag(
+        page,
+        modeEditorSelectors[editMode],
+        path.join(testRoot, 'dirty-undo.md'),
+        dirtyUndoFixture,
+      );
+    } finally {
+      await closeApp(running);
+    }
+  });
+}
+
+test('clears the dirty flag when undo returns to a simple saved SV document', async () => {
+  const running = await launchApp({ editMode: 'sv' }, { 'simple-undo.md': 'Original draft\n' });
+  try {
+    const { page, testRoot } = running;
+    const filePath = path.join(testRoot, 'simple-undo.md');
+    await page.waitForSelector(modeEditorSelectors.sv);
+    await expectUndoToInitialContentClearsDirtyFlag(
+      page,
+      modeEditorSelectors.sv,
+      filePath,
+      'Original draft\n',
+    );
+
+    // An explicit save writes the editor representation and keeps the disk
+    // expectation in sync: an unchanged second save must not report a conflict.
+    await page.keyboard.press('Control+s');
+    await expect(page.locator('#statusMessage')).toContainText('Saved simple-undo.md');
+    await expect(page.locator('.document-tab.active .dirty')).toBeHidden();
+    await page.keyboard.press('Control+s');
+    await expect(page.locator('#statusMessage')).toContainText('Saved simple-undo.md');
+    const savedContent = fs.readFileSync(filePath, 'utf8');
+
+    // Undo back to the explicit save point also clears the dirty flag.
+    await page.waitForTimeout(700);
+    await typeAtDocumentEnd(page, modeEditorSelectors.sv, '333');
+    await expect(page.locator('.document-tab.active .dirty')).toHaveText('●', { timeout: 5000 });
+    await undoFromToolbar(page);
+    await expect(page.locator('.document-tab.active .dirty')).toBeHidden({ timeout: 5000 });
+    expect(fs.readFileSync(filePath, 'utf8')).toBe(savedContent);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('clears the dirty flag when undo returns to externally reloaded content', async () => {
+  const running = await launchApp({ editMode: 'sv' }, { 'reload-undo.md': 'Original draft\n' });
+  try {
+    const { page, testRoot } = running;
+    const filePath = path.join(testRoot, 'reload-undo.md');
+    await page.waitForSelector(modeEditorSelectors.sv);
+    await expect(page.locator(modeEditorSelectors.sv)).toContainText('Original draft');
+
+    replaceFileAtomically(filePath, 'Externally reloaded draft\n');
+    await expect(page.locator(modeEditorSelectors.sv)).toContainText('Externally reloaded draft', {
+      timeout: 10000,
+    });
+    await expect(page.locator('#statusMessage')).toContainText('Reloaded reload-undo.md from disk');
+
+    await expectUndoToInitialContentClearsDirtyFlag(
+      page,
+      modeEditorSelectors.sv,
+      filePath,
+      'Externally reloaded draft\n',
+    );
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('clears the dirty flag when undo returns to externally reloaded IR content', async () => {
+  const running = await launchApp({ editMode: 'ir' }, { 'reload-undo-ir.md': 'Original draft\n' });
+  try {
+    const { page, testRoot } = running;
+    const filePath = path.join(testRoot, 'reload-undo-ir.md');
+    await page.waitForSelector(modeEditorSelectors.ir);
+    await expect(page.locator(modeEditorSelectors.ir)).toContainText('Original draft');
+
+    replaceFileAtomically(filePath, dirtyUndoFixture);
+    await expect(page.locator(modeEditorSelectors.ir)).toContainText('Dirty Undo Fixture', {
+      timeout: 10000,
+    });
+
+    await expectUndoToInitialContentClearsDirtyFlag(
+      page,
+      modeEditorSelectors.ir,
+      filePath,
+      dirtyUndoFixture,
+    );
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('clears the dirty flag when undo returns to initial SV edge-case documents', async () => {
+  const startupFiles = {
+    'no-eol.md': 'Original draft',
+    'crlf.md': 'Line one\r\nLine two\r\n',
+    'empty.md': '',
+  };
+  const running = await launchApp({ editMode: 'sv' }, startupFiles);
+  try {
+    const { page, testRoot } = running;
+    for (const [name, originalContent] of Object.entries(startupFiles)) {
+      const filePath = path.join(testRoot, name);
+      await page.locator('.document-tab').filter({ hasText: name }).click();
+      await expectUndoToInitialContentClearsDirtyFlag(
+        page,
+        modeEditorSelectors.sv,
+        filePath,
+        originalContent,
+      );
+    }
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('clears the dirty flag when undo follows an in-session mode switch', async () => {
+  const running = await launchApp({ editMode: 'ir' }, { 'dirty-undo.md': dirtyUndoFixture });
+  try {
+    const { page, testRoot } = running;
+    const filePath = path.join(testRoot, 'dirty-undo.md');
+    await page.waitForSelector('.editor-host.active[data-editor-ready="true"]');
+
+    const switchMode = async (mode: 'wysiwyg' | 'sv') => {
+      await page.locator('#vditorToolbarMount button[data-type="edit-mode"]').click();
+      await page.locator(`#vditorToolbarMount button[data-mode="${mode}"]`).click();
+      await page.waitForSelector(modeEditorSelectors[mode]);
+      // Let the mode-transition sync (rAF + 50ms) run and Vditor settle before
+      // asserting the clean savepoint was re-adopted for the new mode.
+      await page.waitForTimeout(700);
+      await expect(page.locator('.document-tab.active .dirty')).toBeHidden();
+    };
+
+    await switchMode('wysiwyg');
+    await typeAtDocumentEnd(page, modeEditorSelectors.wysiwyg, '111');
+    await expect(page.locator('.document-tab.active .dirty')).toHaveText('●', { timeout: 5000 });
+    await undoFromToolbar(page);
+    await expect(page.locator('.document-tab.active .dirty')).toBeHidden({ timeout: 5000 });
+
+    await switchMode('sv');
+    await typeAtDocumentEnd(page, modeEditorSelectors.sv, '222');
+    await expect(page.locator('.document-tab.active .dirty')).toHaveText('●', { timeout: 5000 });
+    await undoFromToolbar(page);
+    await expect(page.locator('.document-tab.active .dirty')).toBeHidden({ timeout: 5000 });
+
+    expect(fs.readFileSync(filePath, 'utf8')).toBe(dirtyUndoFixture);
   } finally {
     await closeApp(running);
   }

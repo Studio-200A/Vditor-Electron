@@ -1197,6 +1197,12 @@ button.primary.danger {
   line-height: 1.5;
   padding-left: 52px;
 }
+/* Adapter marks Vditor 3.11.3's three editable scroll roots only. */
+.editor-host .vditor-desktop-no-wrap {
+  white-space: pre !important;
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+}
 .editor-host[data-vditor-desktop-custom-caret='true'] .vditor-sv,
 .editor-host[data-vditor-desktop-custom-caret='true'] .vditor-ir,
 .editor-host[data-vditor-desktop-custom-caret='true'] .vditor-wysiwyg {
@@ -1340,6 +1346,14 @@ html[data-scrollbar-mode='hidden'] .editor-host .vditor-reset table::-webkit-scr
   padding-left: max(32px, calc((100% - var(--editor-text-width)) / 2)) !important;
   scrollbar-gutter: stable both-edges;
 }
+/* Keep the user-chosen text column centered while its long lines scroll. */
+.editor-host .vditor-desktop-no-wrap.vditor-desktop-narrow-scroll {
+  margin-right: max(32px, calc((100% - var(--editor-text-width)) / 2));
+  margin-left: max(32px, calc((100% - var(--editor-text-width)) / 2));
+  padding-right: 0 !important;
+  padding-left: 0 !important;
+  scrollbar-gutter: auto;
+}
 .editor-host .vditor-sv {
   flex: 0 0 var(--split-source-width, 50%);
   scroll-timeline-name: --sv-source-scroll;
@@ -1446,9 +1460,19 @@ html[data-scrollbar-mode='hidden'] .editor-host .vditor-reset table::-webkit-scr
 
 /* Ant Design and WeChat content themes are authored for light documents.
    Re-map their explicit light colors when the application uses a dark surface. */
-:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
+:root:is(
+    [data-theme='dark'],
+    [data-theme='claude-dark'],
+    [data-theme='monokai-pro-dark'],
+    [data-theme='nord-dark']
+  )
   .editor-host[data-content-theme='ant-design'],
-:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
+:root:is(
+    [data-theme='dark'],
+    [data-theme='claude-dark'],
+    [data-theme='monokai-pro-dark'],
+    [data-theme='nord-dark']
+  )
   .editor-host[data-content-theme='wechat'] {
   --content-dark-text: var(--text);
   --content-dark-muted: var(--muted);
@@ -1456,46 +1480,86 @@ html[data-scrollbar-mode='hidden'] .editor-host .vditor-reset table::-webkit-scr
   --content-dark-surface-alt: var(--panel-2);
   --content-dark-border: var(--border);
 }
-:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
+:root:is(
+    [data-theme='dark'],
+    [data-theme='claude-dark'],
+    [data-theme='monokai-pro-dark'],
+    [data-theme='nord-dark']
+  )
   .editor-host[data-content-theme='ant-design']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset,
-:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
+:root:is(
+    [data-theme='dark'],
+    [data-theme='claude-dark'],
+    [data-theme='monokai-pro-dark'],
+    [data-theme='nord-dark']
+  )
   .editor-host[data-content-theme='wechat']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset {
   color: var(--content-dark-text) !important;
 }
-:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
+:root:is(
+    [data-theme='dark'],
+    [data-theme='claude-dark'],
+    [data-theme='monokai-pro-dark'],
+    [data-theme='nord-dark']
+  )
   .editor-host[data-content-theme='ant-design']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
   :is(a, .vditor-ir__link),
-:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
+:root:is(
+    [data-theme='dark'],
+    [data-theme='claude-dark'],
+    [data-theme='monokai-pro-dark'],
+    [data-theme='nord-dark']
+  )
   .editor-host[data-content-theme='wechat']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
   :is(a, .vditor-ir__link) {
   color: var(--accent) !important;
 }
-:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
+:root:is(
+    [data-theme='dark'],
+    [data-theme='claude-dark'],
+    [data-theme='monokai-pro-dark'],
+    [data-theme='nord-dark']
+  )
   .editor-host[data-content-theme='ant-design']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
   :is(blockquote, .language-abc svg, .language-abc path),
-:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
+:root:is(
+    [data-theme='dark'],
+    [data-theme='claude-dark'],
+    [data-theme='monokai-pro-dark'],
+    [data-theme='nord-dark']
+  )
   .editor-host[data-content-theme='wechat']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
   :is(blockquote, .language-abc svg, .language-abc path) {
   color: var(--content-dark-muted) !important;
 }
-:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
+:root:is(
+    [data-theme='dark'],
+    [data-theme='claude-dark'],
+    [data-theme='monokai-pro-dark'],
+    [data-theme='nord-dark']
+  )
   .editor-host[data-content-theme='ant-design']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
   code:not(.hljs):not(.highlight-chroma),
-:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
+:root:is(
+    [data-theme='dark'],
+    [data-theme='claude-dark'],
+    [data-theme='monokai-pro-dark'],
+    [data-theme='nord-dark']
+  )
   .editor-host[data-content-theme='wechat']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
@@ -1504,12 +1568,22 @@ html[data-scrollbar-mode='hidden'] .editor-host .vditor-reset table::-webkit-scr
   background-color: var(--content-dark-surface-alt) !important;
   border-color: var(--content-dark-border) !important;
 }
-:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
+:root:is(
+    [data-theme='dark'],
+    [data-theme='claude-dark'],
+    [data-theme='monokai-pro-dark'],
+    [data-theme='nord-dark']
+  )
   .editor-host[data-content-theme='ant-design']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
   table,
-:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
+:root:is(
+    [data-theme='dark'],
+    [data-theme='claude-dark'],
+    [data-theme='monokai-pro-dark'],
+    [data-theme='nord-dark']
+  )
   .editor-host[data-content-theme='wechat']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
@@ -1518,13 +1592,23 @@ html[data-scrollbar-mode='hidden'] .editor-host .vditor-reset table::-webkit-scr
   background: var(--content-dark-surface) !important;
   border-color: var(--content-dark-border) !important;
 }
-:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
+:root:is(
+    [data-theme='dark'],
+    [data-theme='claude-dark'],
+    [data-theme='monokai-pro-dark'],
+    [data-theme='nord-dark']
+  )
   .editor-host[data-content-theme='ant-design']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
   table
   tr,
-:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
+:root:is(
+    [data-theme='dark'],
+    [data-theme='claude-dark'],
+    [data-theme='monokai-pro-dark'],
+    [data-theme='nord-dark']
+  )
   .editor-host[data-content-theme='wechat']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
@@ -1534,14 +1618,24 @@ html[data-scrollbar-mode='hidden'] .editor-host .vditor-reset table::-webkit-scr
   background: var(--content-dark-surface-alt) !important;
   border-color: var(--content-dark-border) !important;
 }
-:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
+:root:is(
+    [data-theme='dark'],
+    [data-theme='claude-dark'],
+    [data-theme='monokai-pro-dark'],
+    [data-theme='nord-dark']
+  )
   .editor-host[data-content-theme='ant-design']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
   table
   tbody
   tr:nth-child(2n),
-:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
+:root:is(
+    [data-theme='dark'],
+    [data-theme='claude-dark'],
+    [data-theme='monokai-pro-dark'],
+    [data-theme='nord-dark']
+  )
   .editor-host[data-content-theme='wechat']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
@@ -1550,13 +1644,23 @@ html[data-scrollbar-mode='hidden'] .editor-host .vditor-reset table::-webkit-scr
   tr:nth-child(2n) {
   background: var(--content-dark-surface) !important;
 }
-:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
+:root:is(
+    [data-theme='dark'],
+    [data-theme='claude-dark'],
+    [data-theme='monokai-pro-dark'],
+    [data-theme='nord-dark']
+  )
   .editor-host[data-content-theme='ant-design']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
   table
   :is(th, td),
-:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
+:root:is(
+    [data-theme='dark'],
+    [data-theme='claude-dark'],
+    [data-theme='monokai-pro-dark'],
+    [data-theme='nord-dark']
+  )
   .editor-host[data-content-theme='wechat']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
@@ -1566,12 +1670,22 @@ html[data-scrollbar-mode='hidden'] .editor-host .vditor-reset table::-webkit-scr
   background: inherit !important;
   border-color: var(--content-dark-border) !important;
 }
-:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
+:root:is(
+    [data-theme='dark'],
+    [data-theme='claude-dark'],
+    [data-theme='monokai-pro-dark'],
+    [data-theme='nord-dark']
+  )
   .editor-host[data-content-theme='ant-design']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
   :is(h1, h2, h3, h4, h5, h6),
-:root:is([data-theme='dark'], [data-theme='claude-dark'], [data-theme='monokai-pro-dark'])
+:root:is(
+    [data-theme='dark'],
+    [data-theme='claude-dark'],
+    [data-theme='monokai-pro-dark'],
+    [data-theme='nord-dark']
+  )
   .editor-host[data-content-theme='wechat']
   :is(.vditor-ir, .vditor-wysiwyg, .vditor-preview)
   .vditor-reset
@@ -3046,7 +3160,7 @@ body.confirm-card-dragging {
 }
 .theme-picker {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 .settings-content .theme-picker label.theme-option {
@@ -3185,6 +3299,42 @@ body.confirm-card-dragging {
 }
 .theme-option-claude-dark .theme-preview-text {
   stroke: #faf9f5;
+}
+.theme-option-elegant .theme-preview-window {
+  fill: #f0edea;
+  stroke: #d8d3ce;
+}
+.theme-option-elegant .theme-preview-chrome,
+.theme-option-elegant .theme-preview-sidebar {
+  fill: #eae6e1;
+  stroke: #d8d3ce;
+}
+.theme-option-elegant .theme-preview-muted {
+  stroke: #6c6c6c;
+}
+.theme-option-elegant .theme-preview-heading {
+  stroke: #bc4424;
+}
+.theme-option-elegant .theme-preview-text {
+  stroke: #2c2c2c;
+}
+.theme-option-nord-dark .theme-preview-window {
+  fill: #2e3440;
+  stroke: #434c5e;
+}
+.theme-option-nord-dark .theme-preview-chrome,
+.theme-option-nord-dark .theme-preview-sidebar {
+  fill: #3b4252;
+  stroke: #434c5e;
+}
+.theme-option-nord-dark .theme-preview-muted {
+  stroke: #4c566a;
+}
+.theme-option-nord-dark .theme-preview-heading {
+  stroke: #88c0d0;
+}
+.theme-option-nord-dark .theme-preview-text {
+  stroke: #d8dee9;
 }
 .theme-option-monokai .theme-preview-window {
   fill: #2d2a2e;

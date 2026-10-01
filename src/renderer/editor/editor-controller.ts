@@ -7,6 +7,15 @@ export interface EditorScrollPosition {
   readonly progress: number;
 }
 
+type SplitViewLayout = 'both' | 'source-only' | 'preview-only';
+
+interface ModeSwitchSavepointCandidate {
+  readonly mode: EditMode;
+  readonly savedContent: string;
+  readonly contentRevision: number;
+  readonly runtimeGeneration: number | undefined;
+}
+
 export interface EditorRuntimeTab {
   readonly id: string;
   readonly host: HTMLElement;
@@ -32,6 +41,11 @@ type EditorDocumentUpdates = Pick<
 export interface EditorControllerOptions<TTab extends EditorRuntimeTab> {
   readonly adapter: {
     editorScrollContainer(host: HTMLElement, mode: EditMode): HTMLElement | null;
+    splitViewVisibility(
+      host: HTMLElement,
+      mode: EditMode,
+    ): { sourceVisible: boolean; previewVisible: boolean } | null;
+    restorePreviewOnly(host: HTMLElement): boolean;
     createRebuildSnapshot(host: HTMLElement): () => void;
     setBottomSpacer(host: HTMLElement, height: number): void;
     observeOutlineChanges(host: HTMLElement, callback: () => void): { disconnect(): void };
@@ -53,6 +67,7 @@ export interface EditorControllerOptions<TTab extends EditorRuntimeTab> {
   readonly createOptions: (
     tab: TTab,
     generation: number,
+    previewModeOverride?: 'editor',
   ) => ConstructorParameters<typeof Vditor>[1];
   readonly getActiveDocumentId: () => string | null;
   readonly onAvailabilityChanged: (tab: TTab) => void;
@@ -96,11 +111,13 @@ export class EditorController<TTab extends EditorRuntimeTab> {
   private readonly autoSaveTimers = new Map<TTab, number>();
   private readonly modeTransitionFrames = new Map<TTab, number>();
   private readonly modeTransitionTimers = new Map<TTab, number>();
+  private readonly modeSwitchSavepointCandidates = new Map<TTab, ModeSwitchSavepointCandidate>();
   private readonly modeShortcutCleanups = new Map<TTab, () => void>();
   private readonly outlineObservers = new Map<TTab, { disconnect(): void }>();
   private readonly tableCompositionScrollCleanups = new Map<TTab, () => void>();
   private readonly customCaretCleanups = new Map<TTab, () => void>();
   private readonly rebuildUndoHistories = new Map<TTab, unknown>();
+  private readonly rebuildSplitViewLayouts = new Map<TTab, SplitViewLayout>();
   private readonly rebuildUndoRestoreCleanups = new Map<TTab, () => void>();
   private readonly rebuildSnapshotCleanups = new Map<TTab, () => void>();
   private readonly scrollEnhancementCleanups = new Map<TTab, Array<() => void>>();
@@ -130,10 +147,14 @@ export class EditorController<TTab extends EditorRuntimeTab> {
     const generation = (tab.editorRuntimeGeneration ?? 0) + 1;
     tab.editorRuntimeGeneration = generation;
     try {
-      tab.vditor = new Vditor(tab.host, this.createOptions(tab, generation));
+      tab.vditor = new Vditor(
+        tab.host,
+        this.createOptions(tab, generation, this.rebuildPreviewMode(tab)),
+      );
       return true;
     } catch (error) {
       tab.vditor = null;
+      this.rebuildSplitViewLayouts.delete(tab);
       this.onCreationFailure(tab, error);
       return false;
     }
@@ -215,7 +236,18 @@ export class EditorController<TTab extends EditorRuntimeTab> {
 
   applyExternalContent(tab: TTab, content: string): boolean {
     this.beginExternalChange(tab);
-    return this.injectContent(tab, content, true);
+    const injected = this.injectContent(tab, content, true);
+    if (injected && !tab.modified && !tab.pendingEditorContent) {
+      // A clean reload injects raw disk text, but Vditor re-serializes its own
+      // Markdown representation on the next input/undo (SV trailing newline,
+      // Lute normalization in IR/WYSIWYG). Adopt that representation as the
+      // dirty-state savepoint so undoing to the reloaded content compares
+      // equal. `expectedSavedContent` is owned by the reload callers and keeps
+      // the raw disk bytes for watcher and safe-write comparisons.
+      const representation = this.readRuntimeContent(tab);
+      this.updateDocument(tab, { content: representation, savedContent: representation });
+    }
+    return injected;
   }
 
   applyRecoveryContent(tab: TTab, content: string): boolean {
@@ -309,7 +341,15 @@ export class EditorController<TTab extends EditorRuntimeTab> {
     const savedContent = tab.savedContent;
     const wasPendingModified = tab.modified;
     if (hadPendingContent) this.applyPendingContent(tab);
-    const content = this.currentContent(tab);
+    // Vditor's `after` callback runs before `tab.ready` is set, so `readContent`
+    // would still fall back to the raw disk text. Read the runtime
+    // representation instead: Vditor 3.11.3 serializes the initialized value
+    // into its own Markdown form (SV appends a trailing newline; Lute
+    // normalizes tables, fences, and spacing in IR/WYSIWYG). A clean
+    // document's savepoint must be that editor representation so a later
+    // undo-to-initial `input(value)` compares equal and clears the dirty flag.
+    // Pending recovery content stays authoritative and is not re-serialized.
+    const content = hadPendingContent ? tab.content : this.readRuntimeContent(tab);
     const nextSavedContent =
       wasModified || hadPendingContent || wasPendingModified ? savedContent : content;
     this.updateDocument(tab, {
@@ -381,16 +421,67 @@ export class EditorController<TTab extends EditorRuntimeTab> {
   synchronizeMode(tab: TTab, generation?: number): void {
     if (generation !== undefined && tab.editorRuntimeGeneration !== generation) return;
     const mode = tab.vditor?.getCurrentMode();
-    if (!mode || mode === tab.mode) return;
-    this.updateDocument(tab, { mode });
-    this.onModeChanged(tab);
+    if (!mode) return;
+    const modeChanged = mode !== tab.mode;
+    if (modeChanged) this.updateDocument(tab, { mode });
+    this.reconcileModeSwitchSavepoint(tab, mode);
+    if (modeChanged) this.onModeChanged(tab);
+  }
+
+  // A native mode transition re-serializes the same document through the
+  // target mode's own Markdown representation (for example IR keeps an extra
+  // blank line after a code fence that SV/WYSIWYG drop), so a clean tab must
+  // re-adopt its savepoint after the switch for a later undo-to-initial
+  // `input(value)` to compare equal. Eligibility was recorded synchronously in
+  // prepareModeTransition before Vditor could mutate the DOM; consumption
+  // compares against the recorded pre-switch mode instead of `tab.mode`
+  // because the shell may sync the mode field first. `expectedSavedContent`
+  // stays owned by the watcher/save paths.
+  private reconcileModeSwitchSavepoint(tab: TTab, mode: EditMode): void {
+    const candidate = this.modeSwitchSavepointCandidates.get(tab);
+    if (!candidate || candidate.mode === mode) return;
+    this.modeSwitchSavepointCandidates.delete(tab);
+    if (
+      !tab.ready ||
+      tab.modified ||
+      tab.pendingEditorContent ||
+      tab.content !== candidate.savedContent ||
+      tab.savedContent !== candidate.savedContent ||
+      tab.contentRevision !== candidate.contentRevision ||
+      tab.editorRuntimeGeneration !== candidate.runtimeGeneration
+    )
+      return;
+    const representation = this.readRuntimeContent(tab);
+    if (representation !== tab.savedContent) {
+      this.updateDocument(tab, { content: representation, savedContent: representation });
+    }
   }
 
   prepareModeTransition(tab: TTab, targetMode: EditMode, afterRestore: () => void): boolean {
-    if (!tab.vditor || !tab.ready || targetMode === tab.vditor.getCurrentMode()) return false;
+    if (!tab.vditor || !tab.ready) return false;
+    const currentMode = tab.vditor.getCurrentMode();
+    if (!currentMode || targetMode === currentMode) return false;
     this.suspendCustomCaret(tab);
     tab.pendingScroll = this.captureScroll(tab);
     this.cancelModeTransition(tab);
+    // Record savepoint-reconcile eligibility before the switch mutates the
+    // DOM. Vditor delivers `input` on its undoDelay debounce, so `modified`
+    // alone can still be stale-false while the editor already holds
+    // undelivered edits. Blur may copy those edits into `content` without
+    // updating `modified`, so both content and runtime must match the savepoint.
+    if (
+      !tab.modified &&
+      !tab.pendingEditorContent &&
+      tab.content === tab.savedContent &&
+      this.readRuntimeContent(tab) === tab.content
+    ) {
+      this.modeSwitchSavepointCandidates.set(tab, {
+        mode: currentMode,
+        savedContent: tab.savedContent,
+        contentRevision: tab.contentRevision,
+        runtimeGeneration: tab.editorRuntimeGeneration,
+      });
+    }
     // Vditor 3.11.3 updates its mode synchronously. Sync on the next frame, then
     // once more after toolbar-driven DOM work settles.
     const frame = requestAnimationFrame(() => {
@@ -457,6 +548,7 @@ export class EditorController<TTab extends EditorRuntimeTab> {
     if (tab.vditor && !this.rebuildUndoHistories.has(tab))
       this.rebuildUndoHistories.set(tab, this.adapter.captureUndoHistory(tab.vditor));
     if (tab.vditor) this.updateDocument(tab, { content: this.readRuntimeContent(tab) });
+    this.captureRebuildSplitViewLayout(tab, mode ?? tab.mode);
     this.releaseRebuildSnapshot(tab);
     if (tab.host.classList.contains('active'))
       this.rebuildSnapshotCleanups.set(tab, this.adapter.createRebuildSnapshot(tab.host));
@@ -472,6 +564,15 @@ export class EditorController<TTab extends EditorRuntimeTab> {
       return new Error('The editor could not be initialized after the document changed.');
     }
     return rebuildError;
+  }
+
+  /** Applies the sole Vditor-native transition needed after a preview-only SV rebuild. */
+  restoreRebuildSplitViewLayout(tab: TTab): boolean {
+    const layout = this.rebuildSplitViewLayouts.get(tab);
+    this.rebuildSplitViewLayouts.delete(tab);
+    if (!layout) return false;
+    if (layout === 'preview-only') this.adapter.restorePreviewOnly(tab.host);
+    return true;
   }
 
   restoreRebuildUndoHistory(tab: TTab): void {
@@ -530,12 +631,30 @@ export class EditorController<TTab extends EditorRuntimeTab> {
     }
     tab.vditor = null;
     if (disposeTabResources) this.rebuildUndoHistories.delete(tab);
+    if (disposeTabResources) this.rebuildSplitViewLayouts.delete(tab);
     tab.toolbar = null;
     tab.ready = false;
     return destroyError;
   }
 
+  private captureRebuildSplitViewLayout(tab: TTab, nextMode: EditMode): void {
+    this.rebuildSplitViewLayouts.delete(tab);
+    const currentMode = tab.vditor?.getCurrentMode() ?? tab.mode;
+    if (currentMode !== 'sv' || nextMode !== 'sv') return;
+    const visibility = this.adapter.splitViewVisibility(tab.host, currentMode);
+    if (!visibility) return;
+    if (visibility.sourceVisible && visibility.previewVisible)
+      this.rebuildSplitViewLayouts.set(tab, 'both');
+    else if (visibility.sourceVisible) this.rebuildSplitViewLayouts.set(tab, 'source-only');
+    else if (visibility.previewVisible) this.rebuildSplitViewLayouts.set(tab, 'preview-only');
+  }
+
+  private rebuildPreviewMode(tab: TTab): 'editor' | undefined {
+    return this.rebuildSplitViewLayouts.get(tab) === 'source-only' ? 'editor' : undefined;
+  }
+
   private cancelModeTransition(tab: TTab): void {
+    this.modeSwitchSavepointCandidates.delete(tab);
     const frame = this.modeTransitionFrames.get(tab);
     if (frame !== undefined) {
       cancelAnimationFrame(frame);

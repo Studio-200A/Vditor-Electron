@@ -20,6 +20,7 @@
     reset: '.vditor-reset',
     sourceNewline: 'span[data-type="newline"]',
     sourceHeading: '[data-type="heading-marker"]',
+    sourceTable: 'span[data-type="table"]',
     sourceBlock: '[data-block="0"]',
     table: 'table',
     tableCell: 'td,th',
@@ -31,8 +32,10 @@
     instantLinkText: '.vditor-ir__link',
     instantLinkDestination: '.vditor-ir__marker--link',
     tocTarget: '.vditor-toc [data-target-id]',
+    mermaid: '.language-mermaid',
   });
   const documentLinkPresentation = new WeakMap();
+  const splitHeadingAlignmentRatio = 0.2;
 
   function editorParts(host) {
     return {
@@ -47,6 +50,11 @@
 
   function mountedToolbar(mount) {
     return mount?.querySelector(selectors.toolbar) || null;
+  }
+
+  function isInitializedEditorHost(host) {
+    // Vditor 3.11.3 marks the application-owned host after initUI builds its editor.
+    return !!host?.classList.contains('vditor');
   }
 
   function createRebuildSnapshot(host) {
@@ -98,11 +106,86 @@
     };
   }
 
+  function restorePreviewOnly(host) {
+    const preview = toolbarButton(editorParts(host).toolbar, 'preview');
+    if (!preview) return false;
+    // Vditor 3.11.3 has no public preview-only setter. Its own Preview toolbar
+    // action is the supported transition that hides SV source without changing
+    // the configured source/both layout for when the user exits preview.
+    preview.click();
+    return true;
+  }
+
+  function mermaidSources(markdown) {
+    const lines = markdown.split(/\r?\n/);
+    const sources = [];
+    let fence = null;
+    let source = [];
+    for (const line of lines) {
+      if (!fence) {
+        const opening = line.match(/^ {0,3}(`{3,}|~{3,})[ \t]*mermaid(?:[ \t].*)?$/i);
+        if (!opening) continue;
+        fence = opening[1];
+        source = [];
+        continue;
+      }
+      const closing = new RegExp(`^ {0,3}${fence[0]}{${fence.length},}[ \\t]*$`);
+      if (closing.test(line)) {
+        sources.push(source.join('\n'));
+        fence = null;
+        continue;
+      }
+      source.push(line);
+    }
+    return sources;
+  }
+
+  function refreshMermaidTheme(host, markdown, theme) {
+    if (!host || typeof markdown !== 'string' || !['classic', 'dark'].includes(theme)) return 0;
+    const render = window.Vditor?.mermaidRender;
+    if (typeof render !== 'function') return 0;
+    const sources = mermaidSources(markdown);
+    const elements = Array.from(host.querySelectorAll(selectors.mermaid)).filter(
+      (element) => element.getAttribute('data-processed') === 'true',
+    );
+    // Vditor 3.11.3 replaces Mermaid source with an SVG and does not re-render it from setTheme().
+    // Only restore source when every rendered node has a corresponding Markdown fence; a mismatch
+    // leaves the editor untouched rather than risking a diagram being paired with another block.
+    if (!sources.length || sources.length !== elements.length) return 0;
+    elements.forEach((element, index) => {
+      element.textContent = sources[index];
+      element.removeAttribute('data-processed');
+      const parent = element.parentNode;
+      if (!parent) return;
+      const placeholder = document.createComment('vditor-mermaid-theme-refresh');
+      parent.replaceChild(placeholder, element);
+      const staging = document.createDocumentFragment();
+      staging.append(element);
+      render(staging, 'app://app/vditor', theme);
+      placeholder.replaceWith(element);
+    });
+    return elements.length;
+  }
+
   function toolbarContext(target) {
     const button = target?.closest?.('button') || null;
     const item = button?.closest(selectors.toolbarItem) || null;
     const trigger = item?.querySelector(selectors.toolbarTrigger) || null;
     return { button, item, trigger, type: trigger?.dataset.type || '' };
+  }
+
+  function editModeFromToolbarTarget(target) {
+    const { button, item, trigger, type } = toolbarContext(target);
+    if (
+      type !== 'edit-mode' ||
+      !button ||
+      button === trigger ||
+      !toolbarHint(item)?.contains(button)
+    )
+      return null;
+    // Vditor 3.11.3 binds mode changes to buttons in its private edit-mode hint.
+    const mode = button.dataset.mode;
+    return ['wysiwyg', 'ir', 'sv'].includes(mode) ? mode : null;
   }
 
   function toolbarButton(toolbar, type) {
@@ -171,6 +254,8 @@
   }
 
   function clearToolbarHoverTooltips(root = document) {
+    // Vditor 3.11.3 styles this hover class but its bundled JS does not add it.
+    // Keep cleanup defensive when an integration applies it to toolbar controls.
     hoverTooltips(root).forEach((tooltip) => tooltip.classList.remove('vditor-tooltipped--hover'));
   }
 
@@ -385,6 +470,70 @@
       whitespaceCanvas.style.transform = `translateY(${renderedScrollTop - source.scrollTop}px)`;
     }
     return true;
+  }
+
+  function scrollTopForElement(scroller, element) {
+    const scrollerTop = scroller.getBoundingClientRect().top;
+    return element.getBoundingClientRect().top - scrollerTop + scroller.scrollTop;
+  }
+
+  function clampScrollTop(value, maxScrollTop) {
+    return Math.min(maxScrollTop, Math.max(0, value));
+  }
+
+  function syncSplitPreviewScroll(host) {
+    const { preview, source } = editorParts(host);
+    if (!source || !preview || preview.style.display !== 'block') return false;
+    const sourceMaxScrollTop = Math.max(0, source.scrollHeight - source.clientHeight);
+    const previewMaxScrollTop = Math.max(0, preview.scrollHeight - preview.clientHeight);
+    if (sourceMaxScrollTop <= 0) return false;
+
+    // Vditor 3.11.3 exposes source heading markers and rendered preview headings, but its
+    // native SV listener maps the two panes by total height. Pairing only equal collections
+    // lets Desktop keep headings aligned without guessing when Vditor's private DOM differs.
+    const sourceHeadings = Array.from(source.querySelectorAll(selectors.sourceHeading));
+    const previewHeadings = directOutlineHeadings(preview.querySelector(selectors.reset)).map(
+      ({ element }) => element,
+    );
+    if (!sourceHeadings.length || sourceHeadings.length !== previewHeadings.length) return false;
+
+    const anchors = [{ sourceTop: 0, previewTop: 0 }];
+    sourceHeadings.forEach((sourceHeading, index) => {
+      const sourceTop = clampScrollTop(
+        scrollTopForElement(source, sourceHeading) -
+          source.clientHeight * splitHeadingAlignmentRatio,
+        sourceMaxScrollTop,
+      );
+      if (sourceTop <= anchors.at(-1).sourceTop) return;
+      anchors.push({
+        sourceTop,
+        previewTop: clampScrollTop(
+          scrollTopForElement(preview, previewHeadings[index]) -
+            preview.clientHeight * splitHeadingAlignmentRatio,
+          previewMaxScrollTop,
+        ),
+      });
+    });
+    if (anchors.at(-1).sourceTop < sourceMaxScrollTop)
+      anchors.push({ sourceTop: sourceMaxScrollTop, previewTop: previewMaxScrollTop });
+
+    const sourceTop = clampScrollTop(source.scrollTop, sourceMaxScrollTop);
+    const endIndex = anchors.findIndex((anchor) => anchor.sourceTop > sourceTop);
+    const end = endIndex === -1 ? anchors.at(-1) : anchors[endIndex];
+    const start = endIndex <= 0 ? anchors[0] : anchors[endIndex - 1];
+    const span = end.sourceTop - start.sourceTop;
+    const progress = span > 0 ? (sourceTop - start.sourceTop) / span : 0;
+    const previewTop = clampScrollTop(
+      start.previewTop + (end.previewTop - start.previewTop) * progress,
+      previewMaxScrollTop,
+    );
+    if (Math.abs(preview.scrollTop - previewTop) > 1) preview.scrollTop = previewTop;
+    return true;
+  }
+
+  function syncSplitScroll(host) {
+    syncSplitPreviewScroll(host);
+    return syncSplitDecorationScroll(host);
   }
 
   function captureSplitIndentSelection(host) {
@@ -614,6 +763,24 @@
     return mode === 'sv' ? editor : editor.querySelector(selectors.reset) || editor;
   }
 
+  function applyWordWrap(host, isEnabled) {
+    if (!host || typeof isEnabled !== 'boolean') return false;
+    const parts = editorParts(host);
+    // Vditor 3.11.3 scrolls SV itself and the rendered editors' private reset roots.
+    // Mark only editable surfaces; the SV preview and nested code blocks keep their layout.
+    const renderedEditors = [
+      parts.instantRendering?.querySelector(selectors.reset),
+      parts.wysiwyg?.querySelector(selectors.reset),
+    ];
+    if (!parts.source || renderedEditors.some((editor) => !editor)) return false;
+    parts.source.classList.toggle('vditor-desktop-no-wrap', !isEnabled);
+    renderedEditors.forEach((editor) => {
+      editor.classList.toggle('vditor-desktop-no-wrap', !isEnabled);
+      editor.classList.toggle('vditor-desktop-narrow-scroll', !isEnabled);
+    });
+    return true;
+  }
+
   function installCustomCaret(host, getMode, getStyle) {
     if (!host || typeof getMode !== 'function' || typeof getStyle !== 'function') return () => {};
     const caret = document.createElement('div');
@@ -631,6 +798,7 @@
     let hasUserInteraction = host.dataset.vditorDesktopCaretInteracted === 'true';
     let pendingScrollOffsetX = 0;
     let pendingScrollOffsetY = 0;
+    let emptyRenderedCaret = null;
     const scrollPositions = new WeakMap();
 
     const reducedMotion = () =>
@@ -663,7 +831,7 @@
         previousNode.classList.contains('vditor-ir__marker--heading')
       );
     };
-    const caretRect = (range, editor) => {
+    const caretRect = (range, editor, mode) => {
       const lineHeightFor = (target) => {
         const style = getComputedStyle(target);
         const lineHeight = Number.parseFloat(style.lineHeight);
@@ -684,11 +852,12 @@
         (rect.width > 0 || rect.height > 0)
       ) {
         const container = elementForNode(range.startContainer);
-        const styleTarget = closestWithin(range.startContainer, selectors.table, editor)
-          ? editor
-          : container && editor.contains(container)
-            ? container
-            : editor;
+        const styleTarget =
+          mode === 'sv' || closestWithin(range.startContainer, selectors.table, editor)
+            ? editor
+            : container && editor.contains(container)
+              ? container
+              : editor;
         const expectedHeight = lineHeightFor(styleTarget);
         // A collapsed Range at a Vditor block boundary can report its whole
         // replaced block after delete or history restore. Keep its insertion
@@ -704,10 +873,65 @@
           height,
         };
       }
+      if (
+        mode === 'sv' &&
+        range.startContainer.nodeType === Node.TEXT_NODE &&
+        range.startOffset > 0 &&
+        range.startContainer.textContent?.[range.startOffset - 1] === '\n' &&
+        elementForNode(range.startContainer)?.matches(selectors.sourceTable)
+      ) {
+        // Vditor 3.11.3 keeps a table-source Enter selection after a text newline.
+        // Chromium gives that collapsed Range no rect, while the newline's rect
+        // still identifies the preceding line. Advance one source line visually.
+        const newlineRange = range.cloneRange();
+        newlineRange.setStart(range.startContainer, range.startOffset - 1);
+        const newlineRect = Array.from(newlineRange.getClientRects()).at(-1);
+        const sourceSpan = elementForNode(range.startContainer);
+        const sourceRect = sourceSpan?.getBoundingClientRect();
+        if (newlineRect?.height && sourceRect && Number.isFinite(sourceRect.left)) {
+          const height = lineHeightFor(editor);
+          const top = newlineRect.top + height;
+          return {
+            left: sourceRect.left,
+            top,
+            right: sourceRect.left,
+            bottom: top + height,
+            width: 0,
+            height,
+          };
+        }
+      }
       const nextNode =
         range.startContainer.nodeType === Node.ELEMENT_NODE
           ? range.startContainer.childNodes[range.startOffset] || null
           : null;
+      const previousNode =
+        range.startContainer.nodeType === Node.ELEMENT_NODE && range.startOffset > 0
+          ? range.startContainer.childNodes[range.startOffset - 1]
+          : null;
+      const isPreviousInline =
+        previousNode?.nodeType === Node.TEXT_NODE ||
+        (previousNode?.nodeType === Node.ELEMENT_NODE &&
+          getComputedStyle(previousNode).display.startsWith('inline'));
+      if (isPreviousInline && range.startContainer !== editor) {
+        // Vditor 3.11.3 can restore a collapsed Range after an inline marker
+        // without geometry. The preceding inline node locates the insertion
+        // point; the block's left edge would draw the proxy at the line start.
+        const previousRange = range.cloneRange();
+        previousRange.selectNodeContents(previousNode);
+        const previousRects = Array.from(previousRange.getClientRects());
+        const previousRect = previousRects.at(-1);
+        if (previousRect?.height && Number.isFinite(previousRect.right)) {
+          return {
+            left: previousRect.right,
+            top: previousRect.top,
+            right: previousRect.right,
+            bottom: previousRect.bottom,
+            width: 0,
+            height: previousRect.height,
+          };
+        }
+      }
       const container = elementForNode(nextNode) || elementForNode(range.startContainer);
       const fallback =
         container && container !== editor && editor.contains(container)
@@ -715,7 +939,9 @@
           : null;
       if (fallback?.height) {
         const expectedHeight = lineHeightFor(
-          closestWithin(range.startContainer, selectors.table, editor) ? editor : container,
+          mode === 'sv' || closestWithin(range.startContainer, selectors.table, editor)
+            ? editor
+            : container,
         );
         return {
           left: fallback.left,
@@ -810,7 +1036,7 @@
         hide();
         return;
       }
-      const rect = caretRect(range, editor);
+      const rect = caretRect(range, editor, mode);
       if (!rect) {
         hide();
         return;
@@ -823,7 +1049,37 @@
         hide();
         return;
       }
-      const height = Math.max(1, rect.height);
+      // Vditor 3.11.3 alternates between a glyph-sized Range and an empty
+      // source span after Enter. Both occupy the same SV source line.
+      const sourceLineHeight =
+        mode === 'sv' ? Number.parseFloat(getComputedStyle(editor).lineHeight) : NaN;
+      const editorStyle = getComputedStyle(editor);
+      const fontSignature = `${editorStyle.fontFamily}|${editorStyle.fontSize}|${editorStyle.fontWeight}|${editorStyle.lineHeight}`;
+      if (mode !== 'sv' && editor.childNodes.length === 0) {
+        emptyRenderedCaret = { mode, fontSignature, height: rect.height };
+      }
+      const isEmptyRenderedParagraph =
+        mode !== 'sv' &&
+        editor.children.length > 0 &&
+        Array.from(editor.children).every(
+          (child) =>
+            child.tagName === 'P' &&
+            (child.childNodes.length === 0 ||
+              (child.childNodes.length === 1 && child.firstChild.nodeName === 'BR')),
+        );
+      // An empty IR/WYSIWYG paragraph reports its 24px box rather than the
+      // glyph-sized insertion caret. Preserve the empty editor's measured size.
+      const renderedEmptyHeight =
+        isEmptyRenderedParagraph &&
+        emptyRenderedCaret?.mode === mode &&
+        emptyRenderedCaret.fontSignature === fontSignature
+          ? emptyRenderedCaret.height
+          : null;
+      const height = Math.max(
+        1,
+        Number.isFinite(sourceLineHeight) ? sourceLineHeight : renderedEmptyHeight || rect.height,
+      );
+      const top = rect.top + (renderedEmptyHeight ? (rect.height - height) / 2 : 0);
       const width =
         style === 'underline'
           ? 8
@@ -836,7 +1092,7 @@
       caret.style.width = `${width}px`;
       caret.style.height = `${style === 'underline' ? 2 : height}px`;
       caret.style.left = `${rect.left - layerOffset.left}px`;
-      caret.style.top = `${(style === 'underline' ? rect.bottom - 2 : rect.top) - layerOffset.top}px`;
+      caret.style.top = `${(style === 'underline' ? top + height - 2 : top) - layerOffset.top}px`;
       pendingScrollOffsetX = 0;
       pendingScrollOffsetY = 0;
       caret.style.translate = '';
@@ -844,7 +1100,7 @@
       host.dataset.vditorDesktopCustomCaret = 'true';
       if (animate && previousRect && !reducedMotion()) {
         const dx = previousRect.left - rect.left;
-        const dy = previousRect.top - rect.top;
+        const dy = previousRect.top - top;
         if (dx || dy) {
           animation?.cancel();
           animation = caret.animate(
@@ -855,7 +1111,7 @@
       }
       if (shouldRestartBlink && isWindowFocused) restartBlink();
       else if (!shouldRestartBlink) caret.classList.remove('is-blinking');
-      previousRect = { left: rect.left, top: rect.top };
+      previousRect = { left: rect.left, top };
     };
     const schedule = (animate = true, afterVditorFrame = true, shouldRestartBlink = animate) => {
       if (frame !== null) window.cancelAnimationFrame(frame);
@@ -2066,10 +2322,14 @@
   window.VditorDesktopAdapter = Object.freeze({
     editorParts,
     mountedToolbar,
+    isInitializedEditorHost,
     createRebuildSnapshot,
     ensureSplitResizer,
     splitViewVisibility,
+    restorePreviewOnly,
+    refreshMermaidTheme,
     toolbarContext,
+    editModeFromToolbarTarget,
     toolbarButton,
     hideNativeOutlineControl,
     keepSplitToolbarActionsAvailable,
@@ -2085,6 +2345,7 @@
     sourceNewlines,
     sourceLineRanges,
     renderSplitDecorations,
+    syncSplitScroll,
     syncSplitDecorationScroll,
     captureSplitIndentSelection,
     applySplitListIndent,
@@ -2101,6 +2362,7 @@
     scrollContainers,
     activeEditor,
     editorScrollContainer,
+    applyWordWrap,
     installCustomCaret,
     captureUndoHistory,
     scheduleUndoHistoryRestore,

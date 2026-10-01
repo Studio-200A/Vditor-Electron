@@ -19,8 +19,13 @@ if (locked !== declared) failures.push(`package-lock resolves ${locked}, expecte
 if (installedMetadata.version !== declared)
   failures.push(`node_modules contains ${installedMetadata.version}, expected ${declared}`);
 
-const mainSource = fs.readFileSync(path.join(root, 'src', 'main', 'index.ts'), 'utf8');
-if (!mainSource.includes(`vditor: '${declared}'`))
+// app:getInfo moved to the app-shell IPC domain module during the 0.2.6
+// IPC modularization; the Vditor version literal lives there now.
+const appInfoSource = fs.readFileSync(
+  path.join(root, 'src', 'main', 'ipc', 'app-shell.ts'),
+  'utf8',
+);
+if (!appInfoSource.includes(`vditor: '${declared}'`))
   failures.push('app:getInfo Vditor version does not match package.json');
 
 if (failures.length) {

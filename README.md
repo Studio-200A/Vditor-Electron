@@ -11,14 +11,15 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Studio-200A/Vditor-Electron/releases"><img src="https://img.shields.io/badge/version-0.2.5-blue" alt="Version 0.2.5" /></a>
+  <a href="https://github.com/Studio-200A/Vditor-Electron/releases"><img src="https://img.shields.io/badge/version-0.2.6-blue" alt="Version 0.2.6" /></a>
+  <a href="https://github.com/Vanessa219/vditor"><img src="https://img.shields.io/badge/vditor%20version-3.11.3-blue" alt="Vditor version 3.11.3" /></a>
   <a href="https://github.com/Studio-200A/Vditor-Electron/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License" /></a>
-  <a href="https://github.com/Studio-200A/Vditor-Electron"><img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey" alt="Linux, Windows and macOS" /></a>
+  <a href="https://github.com/Studio-200A/Vditor-Electron/releases"><img src="https://img.shields.io/badge/builds-Linux%20x86__64-lightgrey" alt="Linux x86_64 builds" /></a>
   <a href="https://github.com/prettier/prettier"><img src="https://img.shields.io/badge/code_style-prettier-ff69b4.svg" alt="code style: prettier" /></a>
 
 </p>
 
-Vditor Desktop takes the writing experience of [Vditor](https://github.com/Vanessa219/vditor) — **one of the most capable Markdown editors around** — and gives it the desktop app it deserves. There's no proprietary format and no lock-in: what you write is exactly what sits on disk, an ordinary `.md` file, at all times. Around that, the app fills in everything a real desktop tool needs but a browser-based editor can't offer on its own: tabs, workspaces, a file explorer, Vditor's built-in outline, themes, session recovery, and native file associations.
+Vditor Desktop takes the writing experience of [Vditor](https://github.com/Vanessa219/vditor) — **one of the most capable Markdown editors around** — and gives it the desktop app it deserves. There's no proprietary format and no lock-in: saved documents are ordinary Markdown files, such as `.md`, that you can open with another editor. Changes still waiting to be saved are marked in the app. Around that, the app fills in everything a real desktop tool needs but a browser-based editor can't offer on its own: tabs, workspaces, a file explorer, Vditor's built-in outline, themes, session recovery, and native file associations.
 
 ![Vditor Desktop light theme](assets/screenshot-light.webp)
 
@@ -40,7 +41,7 @@ Vditor Desktop takes the writing experience of [Vditor](https://github.com/Vanes
 
 ## Why Vditor Desktop
 
-- **Your files stay yours.** No account, no cloud sync, no proprietary format. What you write is a plain `.md` file on your disk, readable and portable with any other editor, forever.
+- **Your files stay yours.** No account, no cloud sync, no proprietary format. Your saved documents are ordinary Markdown files, readable and portable with other editors.
 - **Write however your brain works that day.** WYSIWYG when you want to see the finished page, instant rendering when you want syntax and style at once, split preview when you want source and output side by side — switch anytime, mid-document.
 - **A real desktop citizen, not a wrapped webpage.** Open files straight from the terminal or your file manager, treat any folder as a project, and pick up right where you left off — tabs, layout, and all — the next time you launch it.
 - **The file tree is part of the editor, not an afterthought.** Create, rename, and organize files without leaving your document; open new workspaces or send files to the trash straight from the explorer's right-click menu.
@@ -58,7 +59,9 @@ Vditor Desktop takes the writing experience of [Vditor](https://github.com/Vanes
 | **Instant Rendering** | Keeping Markdown syntax near the cursor while the rest of the document renders cleanly. |
 | **Split Preview**     | Editing Markdown source on the left and reviewing the rendered document on the right.   |
 
-Switch modes from the unified toolbar or **View → Editing Mode**. Split Preview includes source line numbers, configurable tab spacing, optional whitespace markers, a resizable divider, and an auto-hiding preview scrollbar.
+Switch modes from the unified toolbar or **View → Editing Mode**. Split Preview includes source line numbers, configurable tab spacing, optional whitespace markers, a resizable divider, and an auto-hiding preview scrollbar. A **Caret style** setting under **Settings → Editor** offers Native, Underline, Bar, and Block options, covering both the system's native text cursor and the custom-drawn caret.
+
+**Word wrap** works in all three modes. Turn it off to scroll horizontally through long lines; in WYSIWYG and Instant Rendering, you can adjust the text column width separately.
 
 ## A workspace that stays out of the way
 
@@ -66,14 +69,12 @@ Most days you're not managing an editor — you're just writing. Vditor Desktop 
 
 - Point it at a folder and it becomes your project: browse its Markdown files right in the explorer, no separate import step.
 - Navigate the way you would in any file manager — expand, collapse, filter by extension, rename, trash, or jump straight to the system file manager — all without leaving the editor.
-- Never lose your place in a long document: jump to any H1–H6 heading from a live outline, in any editing mode.
+- Never lose your place in a long document: jump to any H1–H6 heading from a live outline — in WYSIWYG, Instant Rendering, or Split View with its preview open.
 - Work on several documents at once, each with its own undo history and unsaved-changes indicator, and drag tabs into whatever order makes sense to you.
 - Need more screen for writing? Collapse the explorer and it steps aside — the shortcuts and menu still work exactly the same.
 - Save, Save As, export portable HTML or self-contained-image PDF files, and pick up your last session automatically the next time you open the app.
 - Find and replace without a heavyweight dialog — a compact `Ctrl/Cmd + F` panel does the job.
 - Drop images straight into your document; they land in a configurable assets folder and preview correctly in all three editing modes, whether they're local or online. SVG previews are available when you need them, with an extra confirmation first.
-
-Directory renames/deletes and workspace-level resource limits remain planned work; keep backups of important documents.
 
 ## Protecting You and Your Content, Thoughtfully
 
@@ -88,10 +89,10 @@ Vditor Desktop treats your writing as something to protect, not something to ove
 ### Other Safety Guards
 
 - **Safer links, by design.** Links in your Markdown only hand clearly supported `http:`, `https:`, and `mailto:` destinations to the system. Scripts, dangerous schemes, and untrusted in-app pages are stopped at the boundary, so one stray link cannot take your editor somewhere it should not go.
-- **Scoped local previews.** Local images are served only from the active workspace or the parent directories of documents you have open. Missing, outside, active, and unknown resources fail uniformly; the Markdown source keeps its ordinary relative paths.
+- **Local image previews have boundaries.** The app limits which local paths a Markdown image can preview, while your document keeps its ordinary relative paths.
 - **SVGs when you need them.** SVG previews start turned off, so opening an unfamiliar document stays calm and predictable. When a document needs them, enable SVG rendering from **Settings → Editor → Security** and confirm the prompt. For an SVG you do not recognize—especially one from the web—check its source before you preview it.
-- **Defensive rendering.** The editor keeps context isolation on and Node integration off. Its policy allows only bundled scripts plus the exact Vditor MathJax loader it needs, and Markdown XSS sanitization is on by default. You can disable sanitization only after an explicit warning for a document you trust; the remaining layers reduce risk but do not make untrusted HTML safe.
-- **Careful saves.** Documents are written through a temporary file in the same directory. Unchanged files are not rewritten, and a failed save leaves both the original file and your unsaved editor content intact.
+- **Careful rendering.** Potentially unsafe HTML in Markdown is filtered by default. Turning that filter off requires an explicit warning and should be reserved for documents you trust; it does not make unfamiliar HTML safe.
+- **Careful saves.** The app prepares the new content before replacing a file. Unchanged files are not rewritten, and a failed save leaves both the original file and your unsaved editor content intact.
 - **Recovery after an unexpected exit.** Unsaved work is captured in a private recovery snapshot. When you return, the app checks whether the original file is still the same before offering to save the recovered version; if it is not safe, you can save the recovered content elsewhere.
 - **Awareness of outside changes.** Every open file is monitored, including files opened outside the active workspace. Clean documents can reload automatically, while documents with local edits pause autosave and keep a persistent notice until you decide what should happen.
 - **Guided conflict resolution.** You can reload the stable disk version, save your current writing elsewhere, keep it as an untitled document, ignore the external change, or explicitly confirm an overwrite. If the disk changes again, the old overwrite confirmation is discarded.
@@ -106,8 +107,10 @@ Built-in application themes:
 - **Dark**
 - **Claude Light**
 - **Claude Dark**
+- **Elegant**, adapted from [ColaMD's elegant theme](https://github.com/marswaveai/ColaMD/blob/main/themes/elegant.css)
 - **Monokai Pro Light**, including a dedicated H1–H6 heading palette
 - **Monokai Pro Dark**, including a dedicated H1–H6 heading palette
+- **Nord Dark**, mapped to the [official Nord color palette](https://github.com/nordtheme/nord/blob/develop/src/nord.css) and including a dedicated H1–H6 heading palette
 
 > [!NOTE]
 >
@@ -148,11 +151,13 @@ Application configuration and Chromium user data are kept separate:
 >
 > The TOML file is human-readable and grouped by application, appearance, fonts, editor, preview, files, workspace, window, and session settings.
 >
-> The appearance section stores the independently selected `lightTheme` and `darkTheme` values. The status-bar theme-mode menu offers fixed light, fixed dark, and follow-system modes; `systemTheme` records the third choice and resolves the active theme from those two preferences. Claude application themes only define application colors and do not replace Vditor's content or code-block theme settings.
+> Your light and dark theme choices are saved separately. You can switch between them or follow the system from the status bar; content and code-block themes keep their own settings.
 >
 > Crash-recovery snapshots are stored separately in the private application data directory shown above. They are removed after saving or discarding the recovered document and are never served as local document resources.
 
 ## Install and run
+
+Download a Linux x86_64 [AppImage or portable archive from Releases](https://github.com/Studio-200A/Vditor-Electron/releases). Make the AppImage executable to run it, or extract the portable archive and launch `vditor-desktop`. Windows and macOS builds and native validation are still pending.
 
 <details>
 <summary>From source</summary>
@@ -166,9 +171,7 @@ npm ci
 npm start
 ```
 
-Electron binary downloads for `npm ci` and electron-builder use the npmmirror registry (`https://registry.npmmirror.com/-/binary/electron/`). On Linux, `npm run test:e2e` reuses an already unpacked `node_modules/electron/dist` runtime before requesting a download. The pinned Electron 44.1.0 runtime is cached locally and does not change the lockfile. The runtime requires macOS 13 or later, and Electron 44 does not provide prebuilt Windows 32-bit or Linux ARMv7 binaries. This repository's Linux release script currently targets x86_64; Windows/macOS packaging and native validation remain separate platform work.
-
-The build copies Vditor's bundled assets locally; runtime use does not depend on a Vditor CDN.
+The editor's core assets are bundled locally, so editing does not rely on a Vditor CDN. For platform support and validation details, see the [cross-platform notes](docs/04-CROSS-PLATFORM.md).
 
 </details>
 
@@ -191,9 +194,7 @@ release/vditor-desktop-x86_64-<version>-portable.AppImage
 
 The portable desktop entry uses `/path/to/vditor-desktop` as an installation-path placeholder. Replace it with the actual extraction path before installing the entry into your desktop environment. The AppImage can be run after making it executable.
 
-The release script verifies the project metadata and the pinned AppImage tool/runtime checksums before packaging. It passes `--no-appstream` to appimagetool because its bundled advisory validator rejects this project's stable hyphenated reverse-domain ID; the project's own metadata check still requires the exact ID in the AppStream and desktop references.
-
-Linux is the primary development and validation platform at present. Windows and macOS-specific window and data-directory adaptations are included, but physical-device watcher, permission, path-case, packaging, and release validation are still pending.
+Linux is the primary development and validation platform at present. See the [cross-platform notes](docs/04-CROSS-PLATFORM.md) for the remaining Windows and macOS work.
 
 </details>
 

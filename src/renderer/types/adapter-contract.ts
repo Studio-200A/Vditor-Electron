@@ -4,10 +4,14 @@ import type { VditorDesktopAdapter } from './adapter.js';
 export const ADAPTER_PUBLIC_KEYS = [
   'editorParts',
   'mountedToolbar',
+  'isInitializedEditorHost',
   'createRebuildSnapshot',
   'ensureSplitResizer',
   'splitViewVisibility',
+  'restorePreviewOnly',
+  'refreshMermaidTheme',
   'toolbarContext',
+  'editModeFromToolbarTarget',
   'toolbarButton',
   'hideNativeOutlineControl',
   'keepSplitToolbarActionsAvailable',
@@ -23,6 +27,7 @@ export const ADAPTER_PUBLIC_KEYS = [
   'sourceNewlines',
   'sourceLineRanges',
   'renderSplitDecorations',
+  'syncSplitScroll',
   'syncSplitDecorationScroll',
   'captureSplitIndentSelection',
   'applySplitListIndent',
@@ -39,6 +44,7 @@ export const ADAPTER_PUBLIC_KEYS = [
   'scrollContainers',
   'activeEditor',
   'editorScrollContainer',
+  'applyWordWrap',
   'installCustomCaret',
   'captureUndoHistory',
   'scheduleUndoHistoryRestore',
@@ -89,9 +95,13 @@ export function verifyAdapterCallContract(adapter: VditorDesktopAdapter, host: H
 
   adapter.ensureSplitResizer(host);
   adapter.mountedToolbar(host);
+  adapter.isInitializedEditorHost(host);
   adapter.createRebuildSnapshot(host);
   adapter.splitViewVisibility(host, 'sv');
+  adapter.restorePreviewOnly(host);
+  adapter.refreshMermaidTheme(host, '```mermaid\ngraph TD\n```', 'classic');
   adapter.toolbarContext(host);
+  adapter.editModeFromToolbarTarget(host);
   adapter.toolbarButton(toolbar, 'edit-mode');
   adapter.hideNativeOutlineControl(toolbar);
   adapter.keepSplitToolbarActionsAvailable(toolbar);
@@ -107,6 +117,7 @@ export function verifyAdapterCallContract(adapter: VditorDesktopAdapter, host: H
   adapter.sourceNewlines(parts.source);
   adapter.sourceLineRanges(parts.source);
   adapter.renderSplitDecorations(host, 'sv', true, 4);
+  adapter.syncSplitScroll(host);
   adapter.syncSplitDecorationScroll(host);
   adapter.applySplitListIndent(host, 'indent', selection);
   adapter.installSplitAutoIndent(host, () => true);
@@ -122,6 +133,7 @@ export function verifyAdapterCallContract(adapter: VditorDesktopAdapter, host: H
   adapter.scrollContainers(host);
   adapter.activeEditor(host, 'ir');
   adapter.editorScrollContainer(host, 'ir');
+  adapter.applyWordWrap(host, false);
   adapter.installCustomCaret(
     host,
     () => 'ir',

@@ -1,9 +1,10 @@
 # Vditor-Electron Code Structure World Map
 
-- **最后同步：** 2026-09-10
-- **基于的工作区：** `dev-0.2.5` 当前工作区实现（批次 0–11 全部完成，0.2.5 开发收口）
-- **基于的提交：** `0ded7ed`（本文档描述该提交的代码状态；后续同步时更新此锚点，不维护递增的文档版本号）
-- **对应 package.json 版本号：** 0.2.5
+- **最后同步：** 2026-09-29
+- **基于的工作区：** `dev-0.2.6` 当前工作区实现（0.2.5 已收口发布；0.2.6 修复批次进行中）
+- **基于的提交：** `89cb63a`（本文档描述该提交的代码状态，后续同步时更新此锚点，不维护递增的文档版本号）
+- **对应 package.json 版本号：** 0.2.6
+- **技术债与改进建议：** 已迁至 [`docs/00-ISSUES.md`](00-ISSUES.md)，本地图不再维护
 
 ---
 
@@ -15,7 +16,7 @@
 
 **核心功能：** 多标签页 Markdown 编辑、三种编辑模式（IR/SV/WYSIWYG）、分栏预览、文件树侧栏、文档大纲、查找替换、图片插入与压缩、资源健康检查（未引用/缺失图片引用）、HTML/PDF 导出、TOML 偏好与版本化 JSON 状态持久化、三语国际化（英/简/繁）。
 
-**开发阶段：** 0.2.5 渲染层架构重构全部完成（批次 0–11 收口，0.2.5 开发收口）。批次 8 完成工作区、设置、菜单、窗口和导出域迁移；批次 8.1 校正 Vditor adapter 的完整类型 facade 与防漂移证据并完成复审；批次 9 已删除 legacy `app.js` 入口、收口组合层职责和行为测试，用户全量测试与手测通过；批次 10 完成文档同步、`.github/workflows/quality.yml` CI gate、性能与包体对比、Linux 候选包（portable/AppImage）与实机冒烟，并修复候选手测暴露的自绘光标与“设置触发编辑器重建后撤销失效”问题（提交 `5f34490`）；批次 11 最终独立审查收口三个阻塞项修复与最终人工验收。`AppController` 负责启动顺序、窗口级命令、拖放和 IPC 订阅；`app/app-composition.js` 是迁移后的组合层，仅承担保存交易、标签命令、设置/session 组合和部分全局事件的协调，各领域 runtime、自动保存 timer、recovery、共享 toolbar、Split View、outline、find、图片 runtime、文档链接、激活协调、应用 shell 资源和主题协调均已有明确 controller；DocumentController 与组合层仍保留文件 identity、保存交易、外部变化和 recovery 安全动作的语义所有权。0.2.0 的文件安全、恢复、watcher、冲突与跨平台边界继续作为不可改变的行为基线。精确的批次状态、手测、首轮失败及重跑证据只记录在 [`docs/ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md`](ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md)，本地图不维护实时测试总数。主题架构和六套内置主题见 [`docs/05-THEMES.md`](05-THEMES.md)，renderer 的模块边界见 [`docs/02-RENDERER-ARCHITECTURE.md`](02-RENDERER-ARCHITECTURE.md)。
+**开发阶段：** 0.2.5 渲染层架构重构全部完成（批次 0–11 收口，0.2.5 开发收口）。批次 8 完成工作区、设置、菜单、窗口和导出域迁移；批次 8.1 校正 Vditor adapter 的完整类型 facade 与防漂移证据并完成复审；批次 9 已删除 legacy `app.js` 入口、收口组合层职责和行为测试，用户全量测试与手测通过；批次 10 完成文档同步、`.github/workflows/quality.yml` CI gate、性能与包体对比、Linux 候选包（portable/AppImage）与实机冒烟，并修复候选手测暴露的自绘光标与“设置触发编辑器重建后撤销失效”问题（提交 `5f34490`）；批次 11 最终独立审查收口三个阻塞项修复与最终人工验收。`AppController` 负责启动顺序、窗口级命令、拖放和 IPC 订阅；`app/app-composition.js` 是迁移后的组合层，仅承担保存交易、标签命令、设置/session 组合和部分全局事件的协调，各领域 runtime、自动保存 timer、recovery、共享 toolbar、Split View、outline、find、图片 runtime、文档链接、激活协调、应用 shell 资源和主题协调均已有明确 controller；DocumentController 与组合层仍保留文件 identity、保存交易、外部变化和 recovery 安全动作的语义所有权。0.2.0 的文件安全、恢复、watcher、冲突与跨平台边界继续作为不可改变的行为基线。精确的批次状态、手测、首轮失败及重跑证据只记录在 [`docs/ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md`](ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md)，本地图不维护实时测试总数。主题架构和内置主题见 [`docs/05-THEMES.md`](05-THEMES.md)，renderer 的模块边界见 [`docs/02-RENDERER-ARCHITECTURE.md`](02-RENDERER-ARCHITECTURE.md)。GitHub alert 序列化还原兼容层（`editor/github-alerts.ts`，提交 `0ded7ed`）在 0.2.5 收口阶段交付，已随 v0.2.5 发布。0.2.6 修复批次（进行中）在上述架构内交付：source-only SV 的大纲不可用空态、编辑器重建时按 tab 保留 SV pane 布局（`EditorController.rebuildSplitViewLayouts`）、基于标题锚点配对的 SV source → preview 滚动同步（adapter `syncSplitScroll()`）、Nord Dark 与 Elegant 两套内置壳层主题、设置页每行最多四张主题预览卡片、About logo 不可拖出（`draggable="false"`，保留点击彩蛋）、亮暗色调切换后经 adapter `refreshMermaidTheme()` 重绘已渲染的 Mermaid 图表、三模式自动换行实时生效与关闭换行时的居中横向滚动列（adapter `applyWordWrap()`）、Elegant 共享 hover 对比度增强、撤销回退到保存内容时三模式清除脏标记（干净文档以编辑器序列化表示作为 dirty 保存点，`EditorController` 保存点对账）、三模式自绘光标几何稳定性（IR/WYSIWYG 行内 Markdown 格式化后光标保持在插入点并经前一行内节点定位、SV 空文档与空标题标记按源码行高稳定绘制、SV 表格分隔行 Enter 后定位到下一行、IR/WYSIWYG 空文档 Enter 后按空编辑根字体测量高度居中，提交 `4641bf6` 与 `89cb63a`）、renderer locale 字典拆分为 `src/renderer/locale/` 三语模块（esbuild 第三入口生成启动 `locales.js`）、主进程 IPC handler 模块化（64 个渲染器→主进程通道迁入 `src/main/ipc/` 的 11 个领域模块，`ipc/register.ts` 组合入口统一注册，`index.ts` 只构造依赖；见 [`docs/19-0.2.6-IPC-MODULARIZATION-PLAN.md`](19-0.2.6-IPC-MODULARIZATION-PLAN.md)），以及 Vitest 4.1.11 升级与 `js-yaml` 4.3.2 override。
 
 ---
 
@@ -39,7 +40,7 @@
 | 引擎     | Vditor 3.11.3（精确固定）                                                                                      |
 | 模式     | WYSIWYG / IR（默认）/ SV（Split View）                                                                         |
 | 资源加载 | 离线：通过 `app://` 协议加载 `static/dist/`                                                                    |
-| 版本校验 | `scripts/check-vditor-version.js` 验证 package.json、lock 文件、node_modules 与 main/index.ts 的硬编码版本一致 |
+| 版本校验 | `scripts/check-vditor-version.js` 验证 package.json、lock 文件、node_modules 与 `src/main/ipc/app-shell.ts` 中 `app:getInfo` 的硬编码版本一致 |
 
 ### 构建工具
 
@@ -73,8 +74,22 @@
 Vditor-Electron/
 ├── src/                           # 项目源代码（唯一源目录）
 │   ├── main/                      # Electron 主进程（TypeScript）
-│   │   ├── index.ts               # 主入口，应用生命周期、所有 IPC handler 注册
+│   │   ├── index.ts               # 主入口：应用生命周期、启动编排与 IPC 依赖构造
 │   │   ├── preload.ts             # preload 脚本，contextBridge 暴露 API
+│   │   ├── ipc/                   # IPC 领域注册模块（0.2.6 模块化）
+│   │   │   ├── trusted-channel.ts # handleTrusted/onTrusted 信任包装与错误规范化
+│   │   │   ├── register.ts        # 总注册入口：创建共享包装器并组合 11 个领域模块
+│   │   │   ├── file-dialogs.ts    # 打开/保存/导出对话框（导出 createSavePathChooser）
+│   │   │   ├── file-operations.ts # 文件内容与树操作（16 通道）
+│   │   │   ├── file-watching.ts   # 工作区/文档 watcher 与受控资源根
+│   │   │   ├── settings.ts        # 设置读写与菜单更新回调
+│   │   │   ├── persistent-state.ts # state.json 持久状态
+│   │   │   ├── recovery.ts        # 恢复快照
+│   │   │   ├── shell-integration.ts # 外部 URL/目录展示与剪贴板
+│   │   │   ├── resource-health.ts # 资源健康扫描与回收站
+│   │   │   ├── export-pdf.ts      # PDF 导出（导出 isExportWebContents 导航守卫判定）
+│   │   │   ├── window-controls.ts # 窗口控制与缩放
+│   │   │   └── app-shell.ts       # 系统信息、renderer ready 与关闭确认
 │   │   ├── ipc-contract.ts        # renderer-facing IPC channel 常量
 │   │   ├── ipc-guard.ts           # 可信顶层 renderer 来源校验与稳定错误码
 │   │   ├── ipc-validation.ts      # 高风险 IPC 参数的运行时解析与边界校验
@@ -113,7 +128,11 @@ Vditor-Electron/
 │   ├── vditor-adapter.js          # Vditor 私有 DOM 适配层（集中选择器与结构假设）
 │   ├── resource-health/            # 资源健康页面与其扫描、选择、预览和覆盖层生命周期
 │   │   └── resource-health-controller.ts # 只消费窄 bridge 与语义 adapter API 的页面 controller
-│   ├── locales.js                 # 三语字典（en_US / zh_Hans / zh_Hant）
+│   ├── locale/                    # 三语 UI 字典与启动入口
+│   │   ├── en_US.ts               # 英文字典
+│   │   ├── zh_Hans.ts             # 简体中文字典
+│   │   ├── zh_Hant.ts             # 繁体中文字典
+│   │   └── index.ts               # 汇总并发布 window.VditorDesktopLocales
 │   ├── types/                     # renderer TypeScript 类型声明
 │   │   ├── bridges.d.ts           # window.appAPI / window.fileAPI 类型
 │   │   ├── vditor.d.ts            # Vditor 构造器与选项最小类型
@@ -192,8 +211,10 @@ Vditor-Electron/
 │   │       ├── dark.css           # Dark 主题变量与专属覆盖
 │   │       ├── claude-light.css   # Claude Light 主题变量与专属覆盖
 │   │       ├── claude-dark.css    # Claude Dark 主题变量与专属覆盖
+│   │       ├── elegant.css        # Elegant 暖灰纸张壳层变量
 │   │       ├── monokai-pro-light.css # Monokai Pro Light 主题变量与历史专属覆盖
-│   │       └── monokai-pro-dark.css  # Monokai Pro Dark 主题变量与历史专属覆盖
+│   │       ├── monokai-pro-dark.css  # Monokai Pro Dark 主题变量与历史专属覆盖
+│   │       └── nord-dark.css         # Nord Dark palette 壳层变量、禁用状态与标题色覆盖
 │   └── assets/                    # 项目自有静态资源
 │       ├── app-icon/              # 应用标识
 │       └── notification/          # 持久告警与短暂通知图标
@@ -208,7 +229,7 @@ Vditor-Electron/
 │   ├── unit/                      # Vitest 单元测试
 │   └── e2e/                       # Playwright Electron E2E 测试
 ├── scripts/                       # 构建辅助脚本
-│   ├── build-renderer.js          # esbuild renderer bundle（main.ts → dist/renderer/main.js，pure-functions.ts → dist/renderer/pure-functions.js）
+│   ├── build-renderer.js          # esbuild renderer bundle（main.ts → dist/renderer/main.js，pure-functions.ts → dist/renderer/pure-functions.js，locale/index.ts → dist/renderer/locales.js）
 │   ├── copy-vditor-assets.js      # 复制 Vditor、renderer（跳过 .ts），并生成 Lucide 图标到 dist/
 │   ├── check-vditor-version.js    # Vditor 版本一致性校验
 │   ├── check-project-metadata.js  # package.json / lock / 稳定应用 ID / Linux 元数据一致性检查
@@ -240,6 +261,9 @@ Vditor-Electron/
 启动流程（单实例锁定、`app.whenReady()` 和窗口创建均由 `src/main/index.ts` 编排）：
 
 ```
+0. 模块加载期创建的单例：
+   ├── new ResourceHealthService()        // 资源健康扫描 epoch/revision 与受控候选
+   └── new WindowCloseConfirmation()      // 按 BrowserWindow 绑定的关闭确认状态
 1. app.requestSingleInstanceLock()
    ├── 失败 → app.quit()
    └── 成功 → queueOpenFiles(extractOpenFilePaths(process.argv))
@@ -251,7 +275,7 @@ Vditor-Electron/
    ├── new RecoveryStore(recoveryDir)      // 初始化私有恢复快照存储
    ├── new FileManagerService()           // 初始化文件服务
    ├── new FileWatchService(...)          // 初始化工作区和打开文档的文件监听服务
-   ├── registerIpcHandlers()              // 注册所有 IPC 通道
+   ├── registerApplicationIpcHandlers()  // 构造依赖并调用 ipc/register.ts 注册全部 IPC 通道
    ├── Menu.setApplicationMenu(...)       // macOS 设置原生菜单，其他平台置 null
    ├── nativeTheme.on('updated', ...)      // 监听系统主题变更
    └── createWindow()                     // 创建主窗口
@@ -259,7 +283,7 @@ Vditor-Electron/
 4. app.on('open-file', ...)               // macOS 文件关联打开事件
 5. app.on('second-instance', ...)         // 单实例模式下第二个实例传来的文件
 6. app.on('window-all-closed', ...)       // 非 macOS 平台退出应用
-7. app.on('before-quit', ...)             // 释放工作区和打开文档 watcher
+7. app.on('before-quit', ...)             // 清理 ResourceHealthService / LocalResourcePolicy 单例，释放工作区和打开文档 watcher
 ```
 
 ### 4.2 窗口创建逻辑
@@ -296,7 +320,7 @@ const options: BrowserWindowConstructorOptions = {
 | `ready`                | 注册协议、加载配置、注册 IPC、设置菜单、监听主题、创建窗口             |
 | `window-all-closed`    | 非 macOS 时退出应用                                                    |
 | `activate`（macOS）    | 无窗口时重新 `createWindow()`                                          |
-| `before-quit`          | 关闭 chokidar watcher                                                  |
+| `before-quit`          | 清理 ResourceHealthService / LocalResourcePolicy 单例，关闭 chokidar watcher                                                  |
 | `second-instance`      | 解析 CLI 参数中的文件路径，入队 `pendingOpenFiles`，唤醒主窗口         |
 | `open-file`（macOS）   | 阻止默认行为，将文件路径入队并唤醒主窗口                               |
 | `window.close`         | 拦截关闭，向渲染进程发送 `app:requestClose`，等待该 `BrowserWindow` 的 `app:closeConfirmed`；替换窗口必须重新确认 |
@@ -314,7 +338,10 @@ File 菜单:  New File / Open File / Open Folder / Save / Save As /
 View 菜单:  Editing Mode (WYSIWYG / IR / SV) /
             Toggle Sidebar / Settings /
             Toggle Fullscreen
+Tools 菜单: Resource Health（仅当活动文档符合资源健康资格时 enabled）
 ```
+
+`createAppMenu(locale, editMode, resourceHealthEligible)` 每次接收当前 locale、编辑模式和资源健康资格；渲染器经 `app:setResourceHealthEligible` 报告资格变化时主进程重建菜单。
 
 菜单业务项通过 `mainWindow.webContents.send('menu:action', action, value?)` 通知渲染进程处理，不在主进程直接执行业务逻辑。缩放仅通过设置页的 UI、编辑区与预览区缩放字段调整，菜单不注册 Electron zoom role 或其快捷键。Chrome DevTools 不属于原生菜单项；主进程在 `before-input-event` 处理 `F12`，并仅在 `devToolsEnabled` 开启时切换 DevTools。
 
@@ -331,7 +358,8 @@ View 菜单:  Editing Mode (WYSIWYG / IR / SV) /
 | 新建、保存、另存为、关闭标签、设置、查找、退出 | `Ctrl/Cmd+N`、`S`、`Shift+S`、`W`、`,`、`F`、`Q` | renderer `keydown` |
 | 关闭窗口 | `Ctrl/Cmd+Shift+W` | macOS native menu |
 | 打开文件、文件夹、切换侧栏 | `Ctrl/Cmd+Alt+O`、`K`、`B` | native menu（macOS）及 renderer `keydown` |
-| 全屏、DevTools | `F11`、`F12` | renderer、main `before-input-event` |
+| 全屏 | `F11` | renderer `keydown`、macOS native menu（`togglefullscreen`） |
+| DevTools | `F12` | main `before-input-event` |
 
 缩放没有快捷键。应用监听在 Vditor 已 `preventDefault()` 的编辑器按键后退出，避免重入 Vditor 命令；完整应用/Vditor 对照见 [`09-DEV-NOTE.md`](09-DEV-NOTE.md#快捷键归属与冲突边界)。
 
@@ -410,7 +438,10 @@ webPreferences: {
 | `unwatchDocument(filePath, identity?)`             | `file:unwatchDocument`  | invoke     | `string, string?`                     | `void`                                  |
 | `resolveRenamedDocument(filePath)`                 | `file:resolveRenamedDocument` | invoke | `string`                          | 工作区内按 fingerprint 匹配的改名路径或 `null` |
 | `onChanged(callback)`                             | `file:changed`          | on（订阅） | `{ event, path, previousPath?, identity?, scope, content?, encoding?, error? }` | 取消订阅函数                    |
+| `setResourceRoots(rootPaths)`                     | `file:setResourceRoots` | invoke     | `string[]`                            | `void`                                  |
 | `getDroppedPath(file)`                            | _(webUtils)_            | 直接调用   | `File`                                | `string`                                |
+
+`setResourceRoots(rootPaths)` 替换 `local-file://` 的受控根集合；主进程只接受最多 64 个绝对目录，并自行执行 realpath、私有目录排除和边界校验。
 
 `window.fileAPI.rebasePath(oldRoot, newRoot, candidatePath)` 对目录重命名后的路径执行主进程路径 rebase；候选路径不在旧根目录下时返回 `null`。
 
@@ -437,6 +468,13 @@ webPreferences: {
 | `openExternal(url)`              | `app:openExternal`           | invoke       | `string`               | `Promise`                                   |
 | `showItemInFolder(filePath)`     | `app:showItemInFolder`       | invoke       | `string`               | `void`                                      |
 | `openDirectory(dirPath)`         | `app:openDirectory`          | invoke       | `string`               | `void`                                      |
+| `isResourceHealthEligible(documentPath, workspacePath)` | `app:resourceHealthEligible` | invoke | `string, string` | `boolean`                        |
+| `setResourceHealthEligible(eligible)` | `app:setResourceHealthEligible` | invoke | `boolean`    | `void`                                      |
+| `scanResourceHealth(documentPath, workspacePath)` | `app:resourceHealthScan` | invoke | `string, string` | `ResourceHealthScanSummary \| ResourceHealthScanUnavailable` |
+| `revealResourceHealthCandidate(revision, candidateId)` | `app:resourceHealthReveal` | invoke | `string, string` | `void`                     |
+| `previewResourceHealthCandidate(revision, candidateId)` | `app:resourceHealthPreview` | invoke | `string, string` | `string \| null`          |
+| `trashResourceHealthCandidates(revision, candidateIds)` | `app:resourceHealthTrash` | invoke | `string, string[]` | `ResourceHealthActionResult[]` |
+| `discardResourceHealthScans()`   | `app:resourceHealthDiscard`  | send         | 无                     | 无                                          |
 | `exportPDF(html, defaultPath?, defaultDirectory?)` | `app:exportPDF` | invoke       | `string, string?, string?` | `string \| null`                        |
 | `toggleFullscreen()`             | `app:toggleFullscreen`       | send（单向） | 无                     | 无                                          |
 | `rendererReady()`                | `app:rendererReady`          | send         | 无                     | 无                                          |
@@ -474,7 +512,7 @@ webPreferences: {
 
 ```
 1. Vditor 全局构建（通过 <script src="app://app/vditor/dist/index.min.js">）
-2. locales.js（window.VditorDesktopLocales）
+2. locale/index.ts 构建的 locales.js（window.VditorDesktopLocales）
 3. vditor-adapter.js（window.VditorDesktopAdapter）
 4. pure-functions.js（window.__vditorDesktopPureFunctions，包含 AppController 与各 typed controller）
 5. app/app-composition.js（组合 IIFE，实例化并暴露 `window.__vditorDesktopApplication`）
@@ -492,21 +530,26 @@ webPreferences: {
 
 文档域的渐进迁移位于 `src/renderer/documents/`：`TabController` 只负责标签栏表现；`DocumentController` 通过注入的最小 file bridge 串行化 canonical identity 的打开、保存命令、关闭命令和外部变化分类，在读取完成后复核去重，并保留未命名标签的目标路径碰撞回调；资源根准备、标签创建、watch 注册、保存交易和 UI 收敛交回明确的领域回调；其内部组合 `DocumentSaveController` 的文档/identity 两级队列与 `DocumentCloseController` 的确认→runtime 释放→Store 删除顺序。关闭控制器合并同一 document ID 的并发请求，避免确认、runtime 释放和 watcher 清理重复执行。它们都不查询或拼接标签 DOM。
 
-编辑器域的渐进迁移位于 `src/renderer/editor/`：`EditorController` 是每个 tab 的 Vditor 实例、rebuild、销毁、模式同步、滚动恢复、自动保存 debounce timer、mode shortcut/document-anchor listener、outline observer、表格 composition-scroll cleanup、编辑面滚动条增强与底部 spacer `ResizeObserver` 的 lifecycle owner。它在每次创建/销毁递增 runtime generation，`app/app-composition.js` 传给 Vditor 的 `after`、`input` 与 `blur` 回调只在 generation 仍是当前实例时运行；冲突、不可用、关闭和 rebuild 均经其 `cancelAutoSave()` 释放 timer，并在 destroy 时断开 spacer/outline observer、表格补偿和滚动条 listener/timer，取消 mode-transition rAF/timer。outline observer、表格补偿与滚动条增强每次 Vditor rebuild 后重新注册；mode shortcut 和 document-anchor listener 则在 rebuild 时保留，因为 host 未替换，并在 tab close 时才释放。`DocumentLinkNavigationController` 负责链接分类、modifier 导航、危险 scheme 拦截和 hint/tooltip 协作；`EditorController` 仍拥有 anchor listener 生命周期。`prepareModeTransition()` 在 Vditor 同步切换 mode 后安排状态同步与滚动恢复，且旧 runtime 不会再执行延迟回调。`rebuild()` 在 destroy 前经注入的 adapter-backed reader 捕获 Vditor 当前正文，并为活动 tab 创建不可交互、去 ID 的视觉快照（含滚动位置）；`reconcileInitializedContent()` 再在 `after` 阶段保留 rebuild 前的 dirty/pending recovery saved baseline，并以 Vditor 正文更新 runtime 内容与 modified 状态。自绘光标代理与重建快照同样由 `EditorController` 持有每 tab 的 disposer：`installCustomCaret()` / `suspendCustomCaret()` 在模式切换、rebuild 和关闭时释放代理；`caretStyle` 为 `native` 时组合层经 `syncCaretStyle()` 只挂起代理而不安装，沿用 Chromium/Vditor 原生 caret。`releaseRebuildSnapshot()` 在滚动恢复稳定后或失败/关闭路径释放快照，避免初始化设置重建时文档闪回开头。rebuild 还会经 adapter 的 `captureUndoHistory()` 在销毁前冲洗 Vditor 防抖中尚未到期的输入历史，新实例 `after` 后由 `restoreRebuildUndoHistory()` 安排 `scheduleUndoHistoryRestore()`，待 Vditor 完成 `undoDelay` 初始基线后恢复原 undo owner，使设置重建不丢失 Ctrl/Cmd+Z 历史；构造器同步 `after`、连续重建和销毁均取消待恢复任务。外部变化分类和文档状态仍由 DocumentController/组合层所有；它们只能调用 EditorController 的 `beginExternalChange()` 取消保存，或在批准 reload 后调用 `applyExternalContent()` 取消保存并经 Vditor 注入正文。恢复状态、banner 和 DTO 同样仍属 document/组合层；它们通过 `applyRecoveryContent()` 立即注入现有 runtime，或保留 `pendingEditorContent` 并由 `applyPendingContent()` 在 Vditor `after` 阶段消费。`RecoveryRuntimeController` 拥有每个 tab 的 500ms recovery snapshot debounce timer 与 recovery-store 串行队列；它以 snapshot ID 和 revision 拒绝过期保存，在关闭或保存后取消 timer 并按顺序 discard，失败仅报告给组合层，不改变文档 recovery/file-safety 状态。`EditorRuntimeCoordinator` 处理标签激活后的 editor runtime 顺序：归还旧 toolbar、设置 active document/host、ensure editor、仅在活动 ID 未变时执行 spacer/anchor rAF、交接 toolbar、刷新 split/outline/find，再持久化 session；它不修改文档 identity、保存基线或 watcher。`editor-options.ts` 集中 Vditor 3.11.3 的 constructor-only settings、离线资源、locale、relative-resource base 和回调接线，只有 `VDITOR_INITIALIZATION_SETTINGS` 内的设置可请求 rebuild。`ImageController` 通过窄 file bridge 处理图片压缩、写入和相对 Markdown 插入；`ImageRuntimeController` 拥有每个 tab 的 adapter-backed relative-resource observer、host resource base 和 SVG policy reload，不查询私有 DOM。`ToolbarController` 负责共享 mount 的前一 owner 归还、active/preview toolbar 交接、pending skeleton、preview controls 禁用与双 rAF wrap-height 测量，dispose 时取消待执行帧。`SplitViewController` 拥有 SV divider 的 20–80% 比例归一化、拖动时布局通知、source-only / preview-only / both 宿主 class、divider 可见性、行号/空白符 observer 与 rAF runtime、source scroll/自动隐藏滚动条/自动缩进 listener、滚动空闲后延迟重绘行号/空白符 canvas 的 `scrollIdleTimer`、特殊列表缩进 Range，以及 window pointer listener cleanup；`canScheduleLineNumbers(tab, generation)` 在登记 rAF 前拒绝已失效或旧 generation 的 tab，避免关闭/重建后重连 scroll listener；关闭或 rebuild 时会反向释放全部 tab-scoped runtime。divider、pane、行号/空白符 canvas、source/list Range 与 keydown 的 Vditor 私有结构只经 adapter 的语义回调完成。`OutlineController` 仅拥有 Desktop outline 的 DOM 和单个防抖 refresh timer；tab/runtime 切换会取消旧 timer 后立即按新 active tab 渲染。它通过 adapter 的语义 snapshot/scroll 回调工作，不持有文件或 Vditor 私有 DOM。`FindController` 拥有 find widget 的 query/matches/index、120ms reveal timer 和 window capture-phase F3/Enter/Escape listener；tab 切换只调用其 `onRuntimeChanged()`，关闭应用时由 controller dispose 取消 timer、listener 和 CSS highlights。查询变为无匹配或清空时立即经 `clearFindHighlights()` 清除 active 选中与全部高亮，不等待 120ms reveal 防抖，避免残留上一查询的高亮。
+编辑器域的渐进迁移位于 `src/renderer/editor/`：`EditorController` 是每个 tab 的 Vditor 实例、rebuild、销毁、模式同步、滚动恢复、自动保存 debounce timer、mode shortcut/document-anchor listener、outline observer、表格 composition-scroll cleanup、编辑面滚动条增强与底部 spacer `ResizeObserver` 的 lifecycle owner。它在每次创建/销毁递增 runtime generation，`app/app-composition.js` 传给 Vditor 的 `after`、`input` 与 `blur` 回调只在 generation 仍是当前实例时运行；冲突、不可用、关闭和 rebuild 均经其 `cancelAutoSave()` 释放 timer，并在 destroy 时断开 spacer/outline observer、表格补偿和滚动条 listener/timer，取消 mode-transition rAF/timer。outline observer、表格补偿与滚动条增强每次 Vditor rebuild 后重新注册；mode shortcut 和 document-anchor listener 则在 rebuild 时保留，因为 host 未替换，并在 tab close 时才释放。`DocumentLinkNavigationController` 负责链接分类、modifier 导航、危险 scheme 拦截和 hint/tooltip 协作；`EditorController` 仍拥有 anchor listener 生命周期。`prepareModeTransition()` 在 Vditor 同步切换 mode 后安排状态同步与滚动恢复，且旧 runtime 不会再执行延迟回调。`rebuild()` 在 destroy 前经注入的 adapter-backed reader 捕获 Vditor 当前正文，并为活动 tab 创建不可交互、去 ID 的视觉快照（含滚动位置）；`reconcileInitializedContent()` 再在 `after` 阶段保留 rebuild 前的 dirty/pending recovery saved baseline，并以 Vditor 正文更新 runtime 内容与 modified 状态。自绘光标代理与重建快照同样由 `EditorController` 持有每 tab 的 disposer：`installCustomCaret()` / `suspendCustomCaret()` 在模式切换、rebuild 和关闭时释放代理；`caretStyle` 为 `native` 时组合层经 `syncCaretStyle()` 只挂起代理而不安装，沿用 Chromium/Vditor 原生 caret。`releaseRebuildSnapshot()` 在滚动恢复稳定后或失败/关闭路径释放快照，避免初始化设置重建时文档闪回开头。rebuild 还会经 adapter 的 `captureUndoHistory()` 在销毁前冲洗 Vditor 防抖中尚未到期的输入历史，新实例 `after` 后由 `restoreRebuildUndoHistory()` 安排 `scheduleUndoHistoryRestore()`，待 Vditor 完成 `undoDelay` 初始基线后恢复原 undo owner，使设置重建不丢失 Ctrl/Cmd+Z 历史；构造器同步 `after`、连续重建和销毁均取消待恢复任务。rebuild 前还会经 `adapter.splitViewVisibility()` 将当前 tab 的 SV pane 布局（both / source-only / preview-only）捕获进 `rebuildSplitViewLayouts`：source-only 由新实例的 `preview.mode: 'editor'` 初始化恢复，preview-only 由 `restoreRebuildSplitViewLayout()` 经 adapter `restorePreviewOnly()`（Vditor 自身 Preview toolbar action）恢复，避免把 tab 内布局写成全局设置；映射在 tab 关闭或释放资源时清除。外部变化分类和文档状态仍由 DocumentController/组合层所有；它们只能调用 EditorController 的 `beginExternalChange()` 取消保存，或在批准 reload 后调用 `applyExternalContent()` 取消保存并经 Vditor 注入正文。干净文档的 dirty 保存点采用 Vditor 当前模式的序列化表示：`applyExternalContent()`（干净重载）、`reconcileInitializedContent()`（初始化）与原生模式切换（`prepareModeTransition()` 在切换前同步记录候选，`synchronizeMode()` 复核 content/`contentRevision`/runtime generation 后消费）在标签确认干净时把 `content` 与 `savedContent` 一并采纳编辑器表示，使撤销回退到该内容时 `input(value)` 与保存点比较相等并清除脏标记；`expectedSavedContent` 仍由 watcher/save 路径持有磁盘原文，用于外部冲突与安全写入比较。快速输入后立即切换模式时，防抖 input 与 blur 尚未交付的编辑保持 dirty。恢复状态、banner 和 DTO 同样仍属 document/组合层；它们通过 `applyRecoveryContent()` 立即注入现有 runtime，或保留 `pendingEditorContent` 并由 `applyPendingContent()` 在 Vditor `after` 阶段消费。`RecoveryRuntimeController` 拥有每个 tab 的 500ms recovery snapshot debounce timer 与 recovery-store 串行队列；它以 snapshot ID 和 revision 拒绝过期保存，在关闭或保存后取消 timer 并按顺序 discard，失败仅报告给组合层，不改变文档 recovery/file-safety 状态。`EditorRuntimeCoordinator` 处理标签激活后的 editor runtime 顺序：归还旧 toolbar、设置 active document/host、ensure editor、仅在活动 ID 未变时执行 spacer/anchor rAF、交接 toolbar、刷新 split/outline/find，再持久化 session；它不修改文档 identity、保存基线或 watcher。`editor-options.ts` 集中 Vditor 3.11.3 的 constructor-only settings、离线资源、locale、relative-resource base 和回调接线，只有 `VDITOR_INITIALIZATION_SETTINGS` 内的设置可请求 rebuild。`ImageController` 通过窄 file bridge 处理图片压缩、写入和相对 Markdown 插入；`ImageRuntimeController` 拥有每个 tab 的 adapter-backed relative-resource observer、host resource base 和 SVG policy reload，不查询私有 DOM。`ToolbarController` 负责共享 mount 的前一 owner 归还、active/preview toolbar 交接、pending skeleton、preview controls 禁用与双 rAF wrap-height 测量，dispose 时取消待执行帧。`SplitViewController` 拥有 SV divider 的 20–80% 比例归一化、拖动时布局通知、source-only / preview-only / both 宿主 class、divider 可见性、行号/空白符 observer 与 rAF runtime、source scroll（经注入的 `syncScroll` 回调调用 adapter `syncSplitScroll()`，驱动 SV source → preview 标题锚点滚动同步与行号/空白符 canvas）/自动隐藏滚动条/自动缩进 listener、滚动空闲后延迟重绘行号/空白符 canvas 的 `scrollIdleTimer`、特殊列表缩进 Range，以及 window pointer listener cleanup；`canScheduleLineNumbers(tab, generation)` 在登记 rAF 前拒绝已失效或旧 generation 的 tab，避免关闭/重建后重连 scroll listener；关闭或 rebuild 时会反向释放全部 tab-scoped runtime。divider、pane、行号/空白符 canvas、source/list Range 与 keydown 的 Vditor 私有结构只经 adapter 的语义回调完成。`OutlineController` 仅拥有 Desktop outline 的 DOM 和单个防抖 refresh timer；tab/runtime 切换会取消旧 timer 后立即按新 active tab 渲染。它通过 adapter 的语义 snapshot/scroll 回调工作，不持有文件或 Vditor 私有 DOM；组合层按 adapter `splitViewVisibility()` 语义注入 `isUnavailable(tab)`，SV source-only（源码可见而 preview 隐藏）时渲染本地化的 `sidebar.outlineUnavailableInSourceOnly` 空态，而不是误报“文档无标题”。`FindController` 拥有 find widget 的 query/matches/index、120ms reveal timer 和 window capture-phase F3/Enter/Escape listener；tab 切换只调用其 `onRuntimeChanged()`，关闭应用时由 controller dispose 取消 timer、listener 和 CSS highlights。查询变为无匹配或清空时立即经 `clearFindHighlights()` 清除 active 选中与全部高亮，不等待 120ms reveal 防抖，避免残留上一查询的高亮。
 
-`AppController.start()` 触发的组合初始化（`src/renderer/app/app-composition.js`）：
+`AppController.start()` 按注入的 `startup` 回调逐步驱动组合层初始化（`src/renderer/app/app-composition.js`）：
 
-1. 设置 `body.dataset.platform`
-2. 加载 `settings` 和 `defaultSettings`
-3. 应用国际化：`applyLocale(locale)`
-4. 绑定应用壳事件：`setupEvents()`；窗口级快捷键、drag/drop 和 IPC 订阅由 `AppController` 接管
-5. 恢复侧栏宽度和可见性；侧栏在显示时先作为 transform overlay 滑入，结束后才让 Vditor 缩窄，隐藏时同样在滑出结束后再释放编辑区宽度；拖动右缘时仅实时更新侧栏和应用 chrome，活动 Vditor host 宽度冻结到 mouseup 后再统一落位
-6. 应用演示设置（CSS 变量、缩放）
-7. 解析并应用主题
-8. 恢复工作区（`restoreWorkspace`）
-9. 恢复正常标签页（`restoreTabs`）
-10. 读取并直接打开恢复快照；恢复标签显示文档级警示横幅
-11. 发送 `rendererReady()`，触发主进程 `flushPendingOpenFiles()`
+1. `loadSettings` → `loadInitialSettings()`：设置 `body.dataset.platform`，经 `SettingsController.load()` 写入 `settings` 与 `defaultSettings`，再把 `getPersistentState()` 的白名单状态合并进 shell `state`
+2. `applyLocale` → `applyLocale(state.settings.locale)`
+3. `initializeUI` → `initializeAppUI()`：
+   - `ApplicationShellController.init()` 执行 `setupApplicationShellResources(resources)`，绑定应用壳 DOM 属性、listener、observer 与 timer/rAF 并登记清理；窗口级快捷键、drag/drop 和 open-files/menu IPC 订阅由 `AppController` 自己接管
+   - 恢复侧栏宽度和可见性；侧栏在显示时先作为 transform overlay 滑入，结束后才让 Vditor 缩窄，隐藏时同样在滑出结束后再释放编辑区宽度；拖动右缘时仅实时更新侧栏和应用 chrome，活动 Vditor host 宽度冻结到 mouseup 后再统一落位
+   - 同步 fullscreen / maximized 状态，写入设置路径与版本号
+   - `applyPresentationSettings()` 应用展示设置（CSS 变量、缩放、滚动条模式、toolbar 可见性）
+   - `applyTheme(await resolveTheme())` 解析并应用主题
+4. `AppController.connectCommands()`：注册 open-files / menu-action 订阅与窗口级命令
+5. `restoreWorkspace` → `SessionRestoreController.restoreWorkspace()`
+6. `restoreSession` → `SessionRestoreController.restoreDocuments()`：恢复正常标签页
+7. `restoreRecovery` → `restoreRecoverySnapshots()`：读取并直接打开恢复快照，恢复标签显示文档级警示横幅；与 session 标签按 identity 合并
+8. `finishRestoration` → `SessionRestoreController.finishRestoration()`，随后刷新资源健康菜单资格
+9. `AppController` 设置 `body.dataset.appReady = 'true'` 并调用 `bridge.rendererReady()`，触发主进程 `flushPendingOpenFiles()`
+
+组合层向 `AppController` 注入的 `startup` 回调依次为 `loadSettings`、`applyLocale`、`initializeUI`、`restoreWorkspace`、`restoreSession`、`restoreRecovery`、`finishRestoration` 与 `dispose`；任一步失败或中途 dispose 都走同一条逆序清理路径，`startup.dispose` → `disposeAppDomains()` 释放组合层持有的各领域 controller。
 
 ### 6.2 路由结构
 
@@ -549,12 +592,13 @@ const state = {
 
 ### 7.1 初始化配置
 
-每个标签页的 Vditor 实例通过 `editorOptions(tab)` 构建（`src/renderer/app/app-composition.js`，由 `EditorController` 接管 runtime）：
+每个标签页的 Vditor 实例选项由 `src/renderer/editor/editor-options.ts` 的 `createEditorOptions(tab, dependencies)` 构建；`app/app-composition.js` 的 `editorOptions(tab, runtimeGeneration, previewModeOverride)` 只负责注入 settings、locale、当前应用主题、`DEFAULT_TOOLBAR`、`localResourceBase()`、上传 handler 与 `after`/`input`/`blur` 回调，runtime 由 `EditorController` 接管。`previewModeOverride` 仅用于重建时还原某个 SV tab 的 source-only pane 布局，不写回全局设置：
 
 ```javascript
 {
   value: tab.content,
   mode: tab.mode,                    // 'wysiwyg' | 'ir' | 'sv'（仅新建标签时从 settings.editMode 继承）
+                                     // 重建时由 previewModeOverride 覆盖 preview.mode
   theme: isDarkTheme ? 'dark' : 'classic',
   lang: 'en_US' | 'zh_CN' | 'zh_TW',
   icon: settings.iconSet,            // 'ant' | 'material'
@@ -583,6 +627,7 @@ const state = {
       autoSpace, callout, footnotes, imageCaption, mark, sub, sup, toc,
       paragraphBeginningSpace, fixTermTypo, gfmAutoLink, listStyle,
       sanitize,
+      linkBase: localResourceBase(tab.baseDir),  // 相对图片/链接的 local-file:// 基址
       codeBlockPreview: true, mathBlockPreview: true
     },
     theme: { current: contentTheme, path: 'app://app/vditor/dist/css/content-theme' }
@@ -603,7 +648,7 @@ const state = {
 | 销毁标签 | `closeTab(id)`             | 调用 `tab.vditor.destroy()` 并移除 host 节点              |
 | 设置变更 | `saveSettings()`           | 展示设置和默认编辑模式热应用；只有影响初始化契约的设置才重建相关编辑器，重建时保留每个标签自身的模式 |
 
-无文档标签时，`createToolbarPreview()` 创建一个不参与标签和文件状态的 Vditor 实例，仅将其 toolbar 挂载到共享 mount；该预览使用设置中的默认编辑模式。打开文档或设置变更时销毁并重建预览。预览 toolbar 调用 Vditor disabled 接口并由应用 CSS 灰化，不能交互；`View > Layout > Show Toolbar` 仍可控制其显隐。
+无文档标签时，`createToolbarPreview()` 创建一个不参与标签和文件状态的 Vditor 实例，仅将其 toolbar 挂载到共享 mount；该预览使用设置中的默认编辑模式。打开文档或设置变更时销毁并重建预览。预览 toolbar 调用 Vditor disabled 接口并由应用 CSS 灰化，不能交互；布局菜单中的 `Show Toolbar` 仍可控制其显隐。
 
 ### 7.3 工具栏定制
 
@@ -622,18 +667,25 @@ const DEFAULT_TOOLBAR = [
 
 `effectiveToolbarItems()` 会在运行时补回 Vditor 3.11.3 模式切换所需的内部 `outline` 工具项，但不改写持久化设置。`vditor-adapter.js` 为该私有 DOM 入口设置应用专用 data attribute，`app.css` 以 `display: none !important` 隐藏它；该规则不会被 Vditor 的模式切换显示更新覆盖。原生大纲面板保持关闭，应用侧栏的 Desktop 大纲是三种编辑模式共用的唯一大纲入口。adapter 也为 `outdent` / `indent` 设置稳定占位标记：SV 模式下由 CSS 保持可见并覆盖 Vditor 的禁用外观，应用的 source-selection 命令继续处理实际缩进；其既有快捷键保持为 `Ctrl/Cmd+Shift+I` 减少缩进、`Ctrl/Cmd+Shift+O` 增加缩进。不要在模式切换后的延迟回调中再改写这两个按钮的 `display`。
 
-**工具栏迁移机制：** 所有标签共享同一个 mount 点（`#vditorToolbarMount`），切换标签时将旧标签的 toolbar 节点移回原 host，将新标签的 toolbar append 到 mount：
+**工具栏迁移机制：** 所有标签共享同一个 mount 点（`#vditorToolbarMount`）。组合层的 `mountEditorToolbar(tab)` 只是 `ToolbarController.mountRuntime(tab)` 的一行委托；实际逻辑由 `src/renderer/editor/toolbar-controller.ts` 拥有：
 
-```javascript
-function mountEditorToolbar(tab) {
-  const mount = $('#vditorToolbarMount');
-  // 如果有其他标签的工具栏占据了 mount，先归还给它
-  const owner = state.tabs.find((item) => item.toolbar === mounted);
-  if (owner) owner.host.insertBefore(mounted, owner.host.firstChild);
-  // 将当前标签的工具栏挂载
-  if (tab.toolbar && tab.toolbar.parentElement !== mount) mount.appendChild(tab.toolbar);
+```typescript
+// editor/toolbar-controller.ts
+mountRuntime(runtime) {
+  const mounted = this.getMountedToolbar();          // 经 adapter.mountedToolbar(mount) 读取当前占用者
+  if (mounted && mounted !== runtime.toolbar) {
+    const owner = this.findRuntimeByToolbar(mounted);
+    // 归还给原标签 host；owner 已断开时直接移除，避免遗留孤立 toolbar
+    if (owner?.host.isConnected) owner.host.insertBefore(mounted, owner.host.firstChild);
+    else mounted.remove();
+  }
+  if (runtime.toolbar && runtime.toolbar.parentElement !== this.mount) {
+    this.mount.appendChild(runtime.toolbar);
+  }
 }
 ```
+
+`ToolbarController` 同时拥有 pending skeleton（`data-toolbarPending` / `aria-busy`）、preview controls 禁用与双 rAF 的 wrap-height 测量（`--toolbar-wrap-height`），dispose 时取消待执行帧。
 
 无标签时共享 mount 改由 `state.toolbarPreview` 占用。应用菜单中的 `Editing Mode` 子菜单在此状态禁用且不展开；布局菜单中的 `Show Toolbar` 保持可用。预览 toolbar 的按钮和子面板控件全部 disabled，并使用与禁用文件操作按钮一致的灰色视觉。
 
@@ -667,22 +719,25 @@ Vditor 3.11.3 内置的 Lute 会将 GitHub alert 的展示 emoji 和默认标题
 
 ### 7.6 主题适配
 
-六套壳层主题（`app.css`）：
+内置壳层主题（`app.css`）：
 
 - `classic`（浅色）
 - `dark`（深色）
 - `claude-light`（浅色 Anthropic 配色）
 - `claude-dark`（深色 Anthropic 配色）
+- `elegant`（浅色 ColaMD 雅致配色）
 - `monokai-pro-light`（浅色调 + Monokai 配色方案）
 - `monokai-pro-dark`（深色调 + Monokai 配色方案）
+- `nord-dark`（深色 Nord 官方 palette 配色）
 
 主题切换时：
 
 1. 设置 `document.documentElement.dataset.theme`
 2. 调用 `tab.vditor.setTheme(editorTheme, contentTheme, codeTheme, cssPath)` 更新 Vditor 实例
 3. 内容主题联动：若 `contentTheme` 为 `light/dark` 则根据壳层主题自动切换
+4. 经 adapter `refreshMermaidTheme(host, markdown, editorTheme)` 重绘该 tab 已渲染的 Mermaid 图表（Vditor 3.11.3 的 `setTheme()` 不重绘 `data-processed="true"` 的 Mermaid SVG）
 
-主题应用流程由 `ui/theme-coordinator.ts` 的 `ThemeCoordinator` 协调：解析固定/跟随系统主题、映射系统主题偏好、联动 content/code theme、同步设置控件与状态栏、持久化联动补丁，并把 `setTheme` 应用到每个已初始化 tab。`app/app-composition.js` 只注入 store、bridge、DOM、状态栏同步与 adapter 的代码主题按钮分类，不保留主题实现细节。
+主题应用流程由 `ui/theme-coordinator.ts` 的 `ThemeCoordinator` 协调：解析固定/跟随系统主题、映射系统主题偏好、联动 content/code theme、同步设置控件与状态栏、持久化联动补丁，并把 `setTheme` 应用到每个已初始化 tab，随后经注入的 `refreshMermaidTheme(host, markdown, editorTheme)` 回调重绘 Mermaid：adapter 只在当前 Markdown 的 Mermaid 围栏与已渲染节点一一匹配时，逐个隔离节点并调用 Vditor 本地 Mermaid renderer，不重建编辑器也不经 `getValue()`/`setValue()` 回写全文；数量不匹配时保持原图表不变。`app/app-composition.js` 只注入 store、bridge、DOM、状态栏同步与 adapter 的代码主题按钮分类和 Mermaid 重绘回调，不保留主题实现细节。
 
 应用主题只负责应用壳层颜色。字体设置、Vditor 内容主题和 Vditor 原生代码主题保持独立；SV 源码区的编辑表现不由应用主题重新实现。
 
@@ -712,14 +767,16 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | ------------------------------------- | ----------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
 | `editorParts(host)`                   | `host`                        | `{ toolbar, content, source, instantRendering, wysiwyg, preview }` | 返回编辑器各子视图 DOM 节点                                                                                            |
 | `mountedToolbar(mount)`               | `mount`                       | `Element \| null`                                                  | 返回共享挂载点中当前已挂载的 Vditor toolbar 节点，供 `validateHost` 与工具栏交接使用，不暴露 selector 常量               |
+| `isInitializedEditorHost(host)`       | `host`                        | `boolean`                                                          | 通过 Vditor 3.11.3 初始化时设置的主机 class 判断活动编辑器是否已建立，供侧栏拖动时冻结 host 宽度使用 |
 | `ensureSplitResizer(host)` / `splitViewVisibility(host, mode)` | `host, mode` | `divider \| null` / `{ sourceVisible, previewVisible } \| null` | 在私有 SV content/pane 结构中创建或返回 Desktop divider，并按当前 Vditor 模式报告两 pane 的语义可见性 |
 | `validateHost(host, mountedToolbar?)` | `host, toolbar?`              | `{ valid, missing[] }`                                             | 检查编辑子视图、preview content、toolbar 节点与 8 个必需按钮（edit-mode/both/preview/outdent/indent/outline/content-theme/code-theme），返回结构完整性报告 |
 | `activeEditor(host, mode)`            | `host, 'sv'\|'ir'\|'wysiwyg'` | `Element`                                                          | 根据编辑模式返回当前活动编辑器节点                                                                                     |
 | `editorScrollContainer(host, mode)`   | `host, 'sv'\|'ir'\|'wysiwyg'` | `Element \| null`                                                 | 返回当前模式的主滚动容器；SV 为源码区，IR/WYSIWYG 为其 `.vditor-reset` 子节点                                         |
+| `applyWordWrap(host, isEnabled)`      | `host, boolean`                | `boolean`                                                          | 在 SV source 与 IR/WYSIWYG 的 `.vditor-reset` 滚动根上切换 `vditor-desktop-no-wrap` 类（IR/WYSIWYG 另加 `vditor-desktop-narrow-scroll`），由应用 CSS 关闭软换行并保持段落文本列居中；host/参数非法或结构缺失时返回 `false` |
 | `createRebuildSnapshot(host)`         | `host`                        | `() => void`                                                       | 克隆活动 host 的已渲染内容为不可交互、`aria-hidden`、去重复 ID 的视觉快照（同步全部后代 `scrollTop`/`scrollLeft`），供初始化设置重建期间的视觉占位；返回 disposer |
 | `captureUndoHistory(instance)`        | `instance`                    | `history \| null`                                                  | 重建销毁前经 Vditor 私有 `undo.addToUndoStack()` 冲洗防抖中尚未到期的输入历史，返回可移交的私有 undo owner；结构不完整时返回 `null` |
 | `scheduleUndoHistoryRestore(instance, history, onRestored)` | `instance, history, callback` | `() => void`                                 | 在新实例 `after` 后等待 `undoDelay` 初始基线完成，再把捕获的 undo owner 交还 Vditor 并刷新 undo/redo 图标；返回取消 timer 的 disposer |
-| `installCustomCaret(host, getMode, getStyle)` | `host, getMode, getStyle` | `() => void`                                             | 安装 IR/WYSIWYG/SV 的 underline/bar/block 自绘光标代理：读取折叠 Selection/Range 几何、滚动同步、闪烁、视口裁剪与 sidebar 拖动隐藏；IR 中 Vditor 3.11.3 恢复到未展开标题 marker 文本或其后边界时与 Chromium 原生行为一致地不绘制；返回 disposer |
+| `installCustomCaret(host, getMode, getStyle)` | `host, getMode, getStyle` | `() => void`                                             | 安装 IR/WYSIWYG/SV 的 underline/bar/block 自绘光标代理：读取折叠 Selection/Range 几何、滚动同步、闪烁、视口裁剪与 sidebar 拖动隐藏；SV 中无论 Range 属于字形、空行、空标题 span 还是表格换行后的零矩形选区，均按编辑根源码行高稳定绘制，表格分隔行 Enter 后经前一行换行矩形定位到下一行开头；IR/WYSIWYG 行内 Markdown 格式化后落在段落子节点之后的零矩形选区经前一行内节点末端定位插入点，空文档 Enter 后的空段落按空编辑根字体签名测量的行高居中绘制；IR 中 Vditor 3.11.3 恢复到未展开标题 marker 文本或其后边界时与 Chromium 原生行为一致地不绘制；返回 disposer |
 | `setEditorBottomSpacer(host, height)` | `host, pixels`                | `boolean`                                                          | 为 SV、IR、WYSIWYG 与 preview 写入 Vditor 私有 `--editor-bottom`，形成动态尾部留白                                   |
 | `scrollContainers(host)`              | `host`                        | `Element[]`                                                        | 获取所有可滚动容器节点（用于自动隐藏滚动条）                                                                           |
 | `innerScroller(node)`                 | `node`                        | `Element \| null`                                                  | 获取节点最近的 `.vditor-reset` 内层滚动容器                                                                            |
@@ -730,7 +787,9 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | 函数                                | 入参            | 返回值                            | 用途                                                                          |
 | ----------------------------------- | --------------- | --------------------------------- | ----------------------------------------------------------------------------- |
 | `toolbarContext(target)`            | `eventTarget`   | `{ button, item, trigger, type }` | 从点击目标提取工具栏按钮上下文                                                |
+| `editModeFromToolbarTarget(target)` | `eventTarget`   | `'wysiwyg'\|'ir'\|'sv' \| null` | 仅从 Vditor edit-mode 工具栏项的私有 hint 按钮读取有效模式，供切换前后协调使用 |
 | `toolbarButton(toolbar, type)`      | `toolbar, type` | `Element \| null`                 | 按 `data-type` 查找工具栏按钮（含防注入正则校验）                             |
+| `restorePreviewOnly(host)`          | `host`          | `boolean`                          | 重建后恢复 preview-only 布局：Vditor 3.11.3 没有公开的 preview-only setter，经 Vditor 自身 Preview toolbar action 隐藏 SV 源码栏，不改变配置的 source/both 布局 |
 | `hideNativeOutlineControl(toolbar)` | `toolbar`       | `boolean`                          | 为 Vditor 内部 outline 项设置应用标记，交由 CSS 隐藏重复入口                 |
 | `keepSplitToolbarActionsAvailable(toolbar)` | `toolbar` | `boolean`                          | 为 outdent/indent 设置稳定占位标记，防止切入 SV 时发生延迟二次布局变更        |
 | `toolbarHint(item)`                 | `item`          | `Element \| null`                 | 获取工具栏项的 hover 提示面板                                                 |
@@ -750,6 +809,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `sourceNewlines(source)`      | `sv`          | `Element[]`                  | 获取 SV 模式所有换行 span（用于行号渲染）             |
 | `sourceLineRanges(source)`    | `sv`          | `{ node, start, end }[]`     | 遍历 SV source 文本节点并累计字符偏移，供行号/空白符 Range 测量 |
 | `renderSplitDecorations(host, mode, showWhitespace, tabSize)` | `host, mode, setting` | `boolean` | 按私有 source 行与 Range 测量重绘 SV 行号和空白符 canvas |
+| `syncSplitScroll(host)` | `host` | `boolean` | source → preview 滚动同步入口：先按等量顺序配对的 source heading marker 与 preview 直接 H1–H6 做锚点插值（各 viewport 高度 20% 对齐，集合不等时保留 Vditor 原生比例同步），再同步行号/空白符 canvas |
 | `syncSplitDecorationScroll(host)` | `host` | `boolean` | 同步行号/空白符 canvas 到 source 的私有滚动位置 |
 | `captureSplitIndentSelection(host)` / `applySplitListIndent(host, type, range)` | `host, type, range` | `Range \| null` / `boolean` | 保存并恢复 SV 列表缩进所需的私有 source Range |
 | `installSplitAutoIndent(host, isEnabled)` | `host, predicate` | `cleanup \| null` | 在私有 source 树安装自动缩进及 Ctrl/Cmd+Shift+I/O 列表命令 capture listener，并返回精确释放函数 |
@@ -761,6 +821,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `outlineScrollContainer(host, mode)` | `host, mode` | `Element \| null` | 返回大纲 canonical 内容的实际滚动容器：可见 preview 为外层 preview，IR/WYSIWYG 为 reset，SV 为源码区 |
 | `outlineHeadingTargets(host, mode, index)` | `host, mode, index` | `{ scroller, heading }[]` | 直接返回 snapshot 对应标题 DOM 节点及其滚动容器；SV 两侧集合数量一致时同步源码与 preview，否则只返回原生 canonical 目标 |
 | `observeOutlineChanges(host, callback)` | `host, callback` | `MutationObserver \| null` | 监听模式可见性与异步 preview 标题渲染，驱动活动 Outline 视图的防抖刷新；重建和关闭标签时断开 |
+| `refreshMermaidTheme(host, markdown, theme)` | `host, markdown, 'classic'\|'dark'` | `number`（重绘的图表数） | 主题色调切换后重绘已渲染 Mermaid：解析 Markdown 的 Mermaid 围栏，与 `data-processed="true"` 的 `.language-mermaid` 节点按顺序一一配对后逐个隔离并调用 `Vditor.mermaidRender`；围栏缺失、数量不等或 renderer 不可用时返回 `0` 且不改动编辑器 |
 
 #### 编辑器选择与右键菜单
 
@@ -819,6 +880,22 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 
 ## 8. IPC 通信架构
 
+**Handler 注册（0.2.6 模块化）：** 全部 64 个渲染器→主进程通道（56 invoke + 8 send）由 `src/main/ipc/` 的 11 个领域模块实现；`ipc/register.ts` 组合入口创建唯一的 `ipc/trusted-channel.ts` 信任包装器并统一注册，`index.ts` 在 `app.whenReady()` 内构造 `IpcRegistrationDeps`（已初始化服务、懒窗口 getter 与命名窄回调）后调用它。共享可变状态（`rendererReady`、菜单资格、窗口状态机）仍由 `index.ts` 持有，模块仅经回调触发。`tests/unit/ipc-channel-map.test.ts` 与 `tests/unit/ipc-channel-coverage.test.ts` 以冻结映射锁定通道集合与注册方向。
+
+| 领域模块 | 注册通道（invoke / send） |
+| --- | --- |
+| `file-dialogs.ts` | invoke：`file:openDialog`、`file:openFolderDialog`、`file:saveDialog`、`file:exportDialog`（`chooseSavePath` 供 `export-pdf.ts` 复用） |
+| `file-operations.ts` | invoke：`file:read`、`file:write`、`file:writeDocument`、`file:writeBinary`、`file:exists`、`file:identity`、`file:listDir`、`file:create`、`file:rename`、`file:prepareRename`、`file:delete`、`file:basename`、`file:dirname`、`file:relative`、`file:rebasePath`、`file:resolveMarkdownLink` |
+| `file-watching.ts` | invoke：`file:setWorkspaceWatch`、`file:watchDocument`、`file:unwatchDocument`、`file:resolveRenamedDocument`、`file:setResourceRoots` |
+| `settings.ts` | invoke：`app:getSettings`、`app:getDefaultSettings`、`app:saveSettings`、`app:resetSettings`、`app:getSettingsPath`、`app:getSettingsDisplayPath` |
+| `persistent-state.ts` | invoke：`app:getPersistentState`、`app:savePersistentState`、`app:clearPersistentState` |
+| `recovery.ts` | invoke：`app:getRecoveryCandidates`、`app:restoreRecovery`、`app:saveRecovery`、`app:discardRecovery` |
+| `shell-integration.ts` | invoke：`app:openExternal`、`app:showItemInFolder`、`app:openDirectory`、`app:readClipboard`、`app:writeClipboard` |
+| `resource-health.ts` | invoke：`app:resourceHealthEligible`、`app:setResourceHealthEligible`、`app:resourceHealthScan`、`app:resourceHealthReveal`、`app:resourceHealthPreview`、`app:resourceHealthTrash`；send：`app:resourceHealthDiscard` |
+| `export-pdf.ts` | invoke：`app:exportPDF`（`isExportWebContents()` 供 `index.ts` 的 `web-contents-created` 导航守卫使用） |
+| `window-controls.ts` | invoke：`app:isFullscreen`、`app:isMaximized`、`app:setZoomFactor`；send：`app:toggleFullscreen`、`window:minimize`、`window:maximize`、`window:close` |
+| `app-shell.ts` | invoke：`app:getSystemLocale`、`app:getSystemTheme`、`app:getInfo`；send：`app:rendererReady`、`app:toggleDevTools`、`app:closeConfirmed` |
+
 ### 8.1 完整 IPC 通道表
 
 #### invoke 通道（render → main，返回 Promise）
@@ -872,6 +949,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `app:readClipboard`          | 无                                | `{ text: string, html: string }`             | 读取编辑区右键菜单所需的系统剪贴板文本和 HTML 数据 |
 | `app:writeClipboard`         | `text: string`                    | `void`                                        | 在用户确认重建文件后写入冻结的此前正文备份       |
 | `app:resourceHealthEligible` | `documentPath, workspacePath`     | `boolean`                                     | 主进程 canonical 路径资格检查，并刷新 macOS 原生菜单禁用状态 |
+| `app:setResourceHealthEligible` | `eligible: boolean`            | `void`                                        | 渲染端报告资源健康菜单入口当前是否可用，主进程记录该状态并在变化时重建应用菜单 |
 | `app:resourceHealthScan`     | `documentPath, workspacePath`     | `ResourceHealthScanSummary`                   | 扫描已保存版本、工作区 Markdown/HTML 引用和当前图片目录；DTO 不含绝对路径 |
 | `app:resourceHealthReveal`   | `revision, candidateId`           | `void`                                        | 仅显示该 revision 中受控候选所在位置             |
 | `app:resourceHealthPreview`  | `revision, candidateId`           | `string \| null`                              | 为可预览受控候选生成 local-file URL              |
@@ -915,7 +993,8 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 
 ### 8.3 错误处理机制
 
-- `ipcMain.handle` 抛出的异常通过 IPC 框架返回给渲染器为 Promise rejection
+- 所有 handler 经 `ipc/trusted-channel.ts` 包装注册：invoke 通道信任校验在 `try` 外，不可信调用直接收到原始 `IPC_UNTRUSTED_RENDERER` rejection 且 handler 不执行；send 通道校验在 `try` 内，拒绝时上报而不中断主进程
+- 其余错误经 `normalizeIpcError` 规范化后抛给渲染器（Promise rejection），并按通道记录 `console.error`（`IPC_UNTRUSTED_RENDERER`/`IPC_INVALID_ARGUMENT` 类校验错误不记录）
 - `app/app-composition.js` 通过 `try/catch` 捕获组合层 `window.fileAPI` 调用，在状态栏显示 `message.xxx...Failed` 消息；领域 controller 通过注入 bridge 接口返回可恢复结果
 - `app.saveSettings` 不捕获异常；若 `saveSettings` 调用失败，错误冒泡到调用方
 - `app.openExternal` 对非法协议主动 `throw new Error`，渲染器捕获并在 UI 提示
@@ -1103,35 +1182,35 @@ function rememberRecent(filePath) {
 
 ### 10.1 逻辑组件清单
 
-#### 标题栏与窗口控制（`ui/window-controller.ts`，`index.html:15-86`）
+#### 标题栏与窗口控制（`ui/window-controller.ts`，`#windowTitlebar`）
 
 - **职责：** 自定义标题栏（Windows/Linux）、应用菜单挂载点、新建/打开/保存快捷按钮、标签栏、最小化/最大化/关闭按钮、macOS 隐藏式标题栏
 - **实现：** `WindowController` 绑定最小化/最大化/关闭和标题栏双击命令，订阅 fullscreen/maximized 状态并在 `dispose()` 取消 bridge 订阅；`app/app-composition.js` 仅提供显示状态投影回调。
 
-#### 应用菜单（`ui/menu-controller.ts`，`index.html:17-25`）
+#### 应用菜单（`ui/menu-controller.ts`，`#appMenuBar`）
 
-- **职责：** Windows/Linux 平台在标题栏挂载自定义下拉菜单（File 菜单含编辑模式 / 布局 / 设置 / 退出）
+- **职责：** Windows/Linux 平台在标题栏挂载自定义下拉菜单，按文件操作（新建/打开/保存/另存/导出/关闭标签）、工具（资源健康）、编辑模式、布局（工具栏/侧栏/状态栏）、设置和退出分组
 - **实现：** `MenuController` 构建 popup DOM、checked/disabled 状态和 hover/blur cleanup；它只分发命名应用命令，不直接写 Store。`app/app-composition.js` 的组合层提供当前菜单状态和命令实现；旧 `setupLegacyAppMenus()` 已删除。
 - **空状态：** 无文档时编辑模式菜单项 disabled 且不展开；布局中的显示工具栏仍可切换默认模式 toolbar 预览的显隐
 - **macOS：** 使用 `src/main/menu.ts` 的原生 Menu，通过 `menu:action` IPC 与渲染器同步
 
-#### 标签栏（`documents/tab-controller.ts`，`index.html:64-66`）
+#### 标签栏（`documents/tab-controller.ts`，`#tabBar`）
 
 - **职责：** 渲染标签按钮列表、支持拖拽重排序、中键关闭、脏标记显示、外部冲突标记
 - **实现：** `TabController` 只拥有 tab-bar DOM、Pointer Events 与延迟 drag-reset timer；`dispose()` 会取消其 animation frame 和 timer。`app/app-composition.js` 的过渡 `renderTabs()` 仅投影标签视图模型并把 activate/close/reorder 命令转交到文档域。控制器不访问文件 bridge、watcher 或 Vditor。
 
-#### 编辑区（`app/app-composition.js` 的 `ensureEditor()` 及 `EditorController`，`index.html:141-213`）
+#### 编辑区（`app/app-composition.js` 的 `ensureEditor()` 及 `EditorController`，`#editorArea`）
 
 - **职责：** 承载所有标签页的 Vditor 编辑器 host、无标签时的 toolbar 预览 host、空状态引导、外部变更与异常恢复横幅、查找替换组件
 - **实现：** `ensureEditor()`、`switchTab()` 切换 active 类；编辑器重建和三种模式切换均保存主滚动容器的位置，跨模式按文档滚动进度恢复，SV 始终以源码区为准
 
-#### 查找替换（`editor/find-controller.ts`，`index.html:153-206`）
+#### 查找替换（`editor/find-controller.ts`，`#findWidget`）
 
 - **职责：** 全文查找、逐条匹配、CSS Highlights API 高亮、替换单个/全部
 - **实现：** `FindController` 拥有 find widget DOM、打开/关闭/切换快捷键、匹配计数、reveal timer 与 dispose；查找高亮和替换经 adapter 的 `textMatches` / `revealTextMatch` / `replaceTextMatch` 完成。`app/app-composition.js` 仅在组合层注入活动 tab、模式与 adapter 依赖。
 - **替换路径：** `replaceTextMatch()` 经 Vditor 原生编辑/input 路径替换单个匹配，保留选区、undo 历史和模式状态（不再使用 `setValue()` 全文回写）。
 
-#### 侧栏（`ui/sidebar-layout-controller.ts`、`ui/sidebar-view-controller.ts` + `app/app-composition.js` 的 `toggleSidebar()`，`index.html:115-139`）
+#### 侧栏（`ui/sidebar-layout-controller.ts`、`ui/sidebar-view-controller.ts` + `app/app-composition.js` 的 `toggleSidebar()`，`#sidebar`）
 
 - **职责：** 左侧可折叠面板，包含 Files / Outline 导航、文件树和大纲视图。`SidebarLayoutController` 拥有侧栏过渡；`SidebarViewController` 拥有 application-owned `tablist` 的委托点击、视图 active class、`aria-selected` 同步及 dispose。组合层只注入大纲刷新回调。
 - **工具栏归属：** Files / Outline 始终位于 `#sidebar`。编辑器工具栏可见时，`.toolbar-sidebar-tabs` 以侧栏顶部上方的绝对定位导航呈现，并绘制 sidebar-to-toolbar 的边界；工具栏隐藏时，该导航回到 sidebar 内容首项，不再在顶部留下占位。sidebar 收起时它随侧栏不可见；当前选中的 Files / Outline 视图不因布局切换而改变。
@@ -1140,24 +1219,25 @@ function rememberRecent(filePath) {
 - **状态与清理：** 稳定态根据 `.collapsed` 判断可见性，过渡中以 `state.settings.sidebarVisible` 作为目标状态，重复操作可反向而不会重启动画。`transitionend` 仅接受 sidebar 自身的 `transform`，timeout 为事件缺失回退；完成后清理过渡类、取消 Web Animations、同步顶部宽度，并只调度一次 SV 行号/空白标记更新。`prefers-reduced-motion` 直接缩短相关过渡。
 - **提示：** `ui/app-tooltip-controller.ts` 通过事件委托读取 sidebar 内的 `data-tooltip`，与 Markdown 链接共用独立的 `#appTooltip`；它拥有 mouseover/mousemove/mouseout listener，并在应用关闭时移除。文件名、工作区路径和图标操作不再依赖浏览器原生 `title` 提示。
 
-#### 文件树（`workspace/explorer-controller.ts` + `app/app-composition.js` 命令回调，`index.html:127-131`）
+#### 文件树（`workspace/explorer-controller.ts`、`workspace/explorer-file-transaction-controller.ts` + `app/app-composition.js` 命令回调，`#filesView` / `#fileTree`）
 
 - **职责：** 懒加载工作区目录树、文件展开状态持久化、文件名原生末尾省略；文件/目录条目右键菜单提供重命名、回收站和在管理器中显示，空白树区域菜单提供切换工作区、新建与打开工作区。
-- **实现：** `ExplorerController` 拥有 application-owned 文件树 DOM（私有 `appendDirectory()` 懒加载）、展开状态和条目/空白区菜单意图，不直接写 document 状态或操作 Vditor；`app/app-composition.js` 注入 `createExplorerItem()`、`nextUntitledNumber()`、`renameExplorerItem()` 等命令回调并实现 `showWorkspaceTreeMenu()` 的文件桥接操作。`.tree-name` 使用 `overflow: hidden`、`text-overflow: ellipsis` 和 `white-space: nowrap`，保持完整名称作为 DOM 文本及 `data-tooltip`，不在 resize 或树刷新时执行脚本测宽。新建文件自动创建并打开 `Untitled x.md`，新建目录自动创建 `Untitled x`。文件和目录分别编号；文件还避开当前目录已有 Markdown 文件和已打开标签，目录只避开当前目录已有目录。首次保存或另存为后直接调用 `refreshTree()`，避免自身保存事件被抑制时遗漏新文件。
+- **实现：** `ExplorerController` 拥有 application-owned 文件树 DOM（私有 `appendDirectory()` 懒加载）、展开状态和条目/空白区菜单意图，不直接写 document 状态或操作 Vditor；`app/app-composition.js` 向它注入 `openPath`、`chooseWorkspace`、`showContextMenu`、`revealEntry`、`openWorkspaceInFolder`、`saveExpansion`、`updateActiveSelection` 等回调，并把文件系统交易转发给 `ExplorerFileTransactionController`（`createEntry` → `create()`、`renameEntry` → `rename()`、`deleteEntry` → `delete()`）；未命名编号由组合层的 `nextUntitledNumber()` 提供，工作区空白区菜单经 `explorerController.showWorkspaceContextMenu(event, parent)` 弹出。`.tree-name` 使用 `overflow: hidden`、`text-overflow: ellipsis` 和 `white-space: nowrap`，保持完整名称作为 DOM 文本及 `data-tooltip`，不在 resize 或树刷新时执行脚本测宽。新建文件自动创建并打开 `Untitled x.md`，新建目录自动创建 `Untitled x`。文件和目录分别编号；文件还避开当前目录已有 Markdown 文件和已打开标签，目录只避开当前目录已有目录。首次保存或另存为后直接调用 `refreshTree()`，避免自身保存事件被抑制时遗漏新文件。
 - **过滤：** 仅显示 `fileExplorer.visibleExtensions` 中的扩展名，隐藏以 `.` 开头的文件
 - **资源边界：** `workspaceReadDepth` 在 Files & Session 中以 7–12 滑块持久化（默认 7）。根目录深度为 0，`appendDirectory()` 不读取超过该边界的后代，恢复展开状态同样受限；边界目录显示不可选中的本地化提示，语言切换时文件树会重建。可由 `realpath` 解析的目录链接会携带目标、相对工作区深度与工作区内外状态：内部目标可展开、外部目标灰色不可展开、循环目标被阻止；链接名称使用斜体和下划线，目录图标切换为 Lucide `folder-symlink`。工作区 watcher 使用相同深度且不跟随链接，资源错误只发送一次降级事件并关闭失效 watcher，手动浏览和刷新仍可用。`FileManagerService.listDir()` 会跳过读取过程中消失、失效或无权限的单个条目，不让一个损坏链接阻断整棵树。
 
-#### 文档大纲（`editor/outline-controller.ts` + `app/app-composition.js` 回调，`index.html:133-136`）
+#### 文档大纲（`editor/outline-controller.ts` + `app/app-composition.js` 回调，`#outlineView`）
 
 - **职责：** 以 Vditor 原生语义收集当前可见编辑/预览内容的直接标题，构建可折叠层次树，点击跳转并平滑滚动到对应位置
 - **实现：** `OutlineController` 拥有大纲 DOM、折叠状态渲染与 300ms 防抖 `schedule()` 刷新；`app/app-composition.js` 的 `renderOutline()` 委托其 `render()`，并注入 adapter `outlineSnapshot()` 的 snapshot 与 `scrollToOutlineHeading()` 滚动回调。`scrollToOutlineHeading()` 使用同一 snapshot 对应的标题节点和实际滚动容器，SV 两侧标题数量一致时同步滚动源码与预览。
+- **SV pane 布局：** Vditor 3.11.3 原生大纲只能从当前可见的渲染编辑面或 preview HTML 收集直接标题；SV 源码 DOM 不是渲染标题结构。因此当 SV 源码可见而 preview 隐藏时，组合层通过 adapter 的 pane 可见性语义通知 `OutlineController` 显示本地化的不可用说明，不将该状态误报为“文档无标题”，也不缓存隐藏 preview 或重建其他编辑模式。编辑器重建交易也会用同一语义捕获双栏、仅源码或仅预览状态；仅源码经新实例的 `preview.mode: 'editor'` 初始化，只有仅预览通过 Vditor 自身 Preview toolbar action 恢复，避免将 tab 内布局写成全局设置。
 
-#### 状态栏（`app/app-composition.js`，`index.html:217-266`）
+#### 状态栏（`ui/status-menu-controller.ts` + `app/app-composition.js`，`footer.statusbar`）
 
 - **职责：** 显示当前文件路径、状态消息、编辑模式（IR/SV/WYSIWYG）、词字符行数、编码、行结尾、三态主题模式、设置快捷入口、版本号；编辑模式文本和主题图标可展开快捷菜单
-- **实现：** `updateActiveUI()` 汇总状态，`toggleStatusModeMenu()` / `selectStatusMode()` 通过适配器复用 Vditor 的原生模式切换；`toggleStatusThemeMenu()` / `selectStatusThemeMode()` 管理太阳、月亮、显示器三种主题模式
+- **实现：** `updateActiveUI()` 汇总状态并经 `statusMenuController.syncMode()` / `syncTheme()` 投影到两个触发器；`StatusMenuController` 拥有 `#statusModeMenu` / `#statusThemeMenu` 的弹出、互斥、dismiss 与 dispose，并回调组合层的 `selectStatusMode()`（经适配器复用 Vditor 原生模式切换）与 `selectStatusThemeMode()`（太阳/月亮/显示器三态）；打开主题菜单前先经 `syncThemeModeControl()` 同步当前选中态
 
-#### 设置对话框（`settings/settings-window.ts` + `settings/settings-controller.ts` + `settings/settings-dialog-layout-controller.ts` + `app/app-composition.js` 面板逻辑，`index.html:249-end`）
+#### 设置对话框（`settings/settings-window.ts` + `settings/settings-controller.ts` + `settings/settings-dialog-layout-controller.ts` + `app/app-composition.js` 面板逻辑，`#settingsModal`）
 
 - **职责：** 模态对话框，包含 6 个面板（Appearance/Fonts/Editor/Preview/Files & Session/About），支持拖拽移动和 8 方向拖拽调整大小，保存后按设置类型热应用或重建编辑器
 - **实现：** `SettingsWindow` 拥有 modal enter/exit rAF、close timer 和 `dispose()`；`SettingsDialogLayoutController` 拥有尺寸边界、拖动、resize listener 和 cleanup；`SettingsController` 是 `AppStore.settings` / `defaultSettings` 的唯一写入入口，串行化 `savePatch()` / `reset()` 经窄 `saveSettings` bridge 的保存；`app/app-composition.js` 的 `openSettings()`、`saveSettings()` 负责面板渲染和 `classifySettingsChange()` 结果的热应用/重建分发。
@@ -1167,8 +1247,9 @@ function rememberRecent(filePath) {
 
 - `locale`（语言：`system` / `en_US` / `zh_Hans` / `zh_Hant`）
 - `systemTheme`（状态栏选择显示器模式时持久化为 `true`；不作为设置页控件展示）
-- `lightTheme`（浅色壳层主题：`classic` / `claude-light` / `monokai-pro-light`，带预览图的独立 radio 组）
-- `darkTheme`（深色壳层主题：`dark` / `claude-dark` / `monokai-pro-dark`，带预览图的独立 radio 组）
+- `lightTheme`（浅色壳层主题：`classic` / `elegant` / `claude-light` / `monokai-pro-light`，带预览图的独立 radio 组）
+- `darkTheme`（深色壳层主题：`dark` / `claude-dark` / `monokai-pro-dark` / `nord-dark`，带预览图的独立 radio 组）
+- 两组预览卡片共用 `.theme-picker` 的 `repeat(4, minmax(0, 1fr))` 网格：每行最多四张卡片，两组数量不同不改变单卡片宽度，空间不足时整体缩小
 - `contentTheme`（内容主题：`light` / `ant-design` / `wechat` / `dark`）
 - `codeTheme`（代码主题：亮/暗色调分别过滤，根据当前壳层主题仅显示对应色调的选项）
 - `scrollbarMode`（滚动条可见性：`always` / `auto` / `hidden`）
@@ -1189,10 +1270,14 @@ function rememberRecent(filePath) {
 - `showWhitespace`（SV 模式以点显示空格，checkbox）
 - `autoIndent`（自动缩进，checkbox）
 - `typewriterMode`（打字机模式，checkbox）
-- `wordWrap`（自动换行，checkbox）
+- `wordWrap`（自动换行，checkbox）。保存后实时生效且不重建 Vditor：adapter 的 `applyWordWrap()` 标记三种模式的可编辑滚动根，应用 CSS 以 `white-space: pre` 关闭软换行并保持水平滚动；关闭换行时 WYSIWYG/IR 的段落文本列以对称 margin 居中（`vditor-desktop-narrow-scroll`），`editorTextWidth` 独立生效，SV preview 与嵌套代码块保持自身布局。模式切换、标签激活与编辑器重建后重新应用
 - `rtl`（从右到左布局，checkbox）
-- **Editor layout 子组：** `editorTextWidth`（段落宽度滑块 40–100%，仅 WYSIWYG/IR 模式生效）
-- **Security 子组：** `sanitize`（过滤不受信任的 HTML，默认开启）。它使用独立卡片，只有右侧开关可改变状态；关闭前复用通用确认卡片，展示三语风险说明、可从标题栏受限拖拽。
+- **Editor layout 子组：** `editorTextWidth`（段落宽度滑块 40–100%，仅 WYSIWYG/IR 模式生效；关闭 `wordWrap` 时该文本列以对称 margin 居中并在列内水平滚动）
+- **Security 子组（两张独立卡片）：**
+  - `sanitize`（过滤不受信任的 HTML，默认开启）
+  - `allowSvgImages`（允许渲染 SVG 图片，默认关闭；卡片 hint 提示 SVG 可包含活动内容，仅为可信文件开启）
+
+  两张卡片都只有右侧开关可改变状态；开启 `allowSvgImages` 或关闭 `sanitize` 前复用通用确认卡片，展示三语风险说明、可从标题栏受限拖拽。开关同时约束受控本地资源与主窗口 HTTP(S) 图片（见 §12.7）。
 
 ##### Preview 面板
 
@@ -1212,14 +1297,22 @@ function rememberRecent(filePath) {
 - `pasteImagesDir`（图片目录，相对路径）
 - `imageMaxWidth`（图片最大宽度，0–10000）
 - `imageQuality`（图片质量，0.1–1，步进 0.05）
+- `resourceHealthTrashScopeWarningEnabled`（删除前显示资源健康扫描范围提醒，checkbox）
 
 ##### About 面板
 
-- 应用 logo + `Vditor Desktop` 标题 + 版本号（`Version x.x.x · Electron xx.x`）
+- 应用 logo（`draggable="false"`，避免被拖出为 `app://` 文本；2s 内累计点击 10 次触发打开 Vditor 作者主页的彩蛋，timer 经 shell resources 登记清理）+ `Vditor Desktop` 标题 + 版本号（`Version x.x.x · Electron xx.x`）
 - 项目来源链接（Vditor 仓库 / Studio 200A）
 - 开源项目致谢（Electron / Vditor / Playwright / Vitest）
 - "查看源码" 按钮（GitHub 链接）
-- 底部 "Restore defaults" 按钮（重置所有设置，仅此面板显示）
+- 底部 "Restore defaults" 按钮（重置所有设置，仅此面板显示），与其并列的 `devToolsEnabled` 开关（Chrome DevTools (F12)）；开启后主进程才会在 `before-input-event` 中响应 `F12`
+
+#### 资源健康页面（`resource-health/resource-health-controller.ts`，运行时创建的 `.resource-health-modal`）
+
+- **职责：** Tools → Resource Health 打开的独立页面：扫描已保存文档所在工作区的图片引用，列出未引用候选与缺失引用，支持预览、复制相对路径、在文件管理器中显示、经 adapter 删除缺失引用，以及逐项复核后移入系统回收站
+- **实现：** 页面 DOM 不在 `index.html` 中，而是由 `ResourceHealthController` 构造后 `document.body.append(this.modal)`；它只消费窄 bridge（`scanResourceHealth` / `reveal…` / `preview…` / `trash…` / `discard…` / `writeClipboard`）与语义 adapter API（`removeImageReference`），不查询 Vditor 私有 DOM
+- **生命周期：** 拥有扫描 generation / 页面身份校验、不可用覆盖层（`.resource-health-overlay`）、选择态、确认弹窗交接与 8 方向拖拽尺寸（持久化为 `resourceHealthDialogSize`）；关闭或应用退出时 `dispose()` 释放 listener、observer 与尺寸把手，并经 `app:resourceHealthDiscard` 撤销已获得的候选能力
+- **安全边界：** 扫描基于已保存磁盘快照而非未保存编辑；工作区根本身为符号链接时整体不可用，图片目录直接子项含符号链接时扫描不完整并禁用回收站；长期边界见 [`docs/06-FILE-SAFETY.md` §7.4](06-FILE-SAFETY.md#74-资源健康回收站路径化-shelltrashitem-的符号链接窗口)
 
 #### 确认对话框（`app/app-composition.js` 的 `showConfirmDialog()`，`index.html` 中的 `#confirmModal`）
 
@@ -1260,6 +1353,7 @@ function rememberRecent(filePath) {
 └── footer.statusbar（状态栏）
 
 #settingsModal（独立模态层，不在 #app 内）
+.resource-health-modal（独立模态层；不在 index.html 中，由 ResourceHealthController 运行时 append 到 document.body）
 #confirmModal（独立确认对话框层；覆盖确认可启用窗口内受限拖动）
 #contextMenu（独立右键菜单层）
 #appTooltip（独立应用 tooltip 层；文档链接与 sidebar 共用）
@@ -1271,9 +1365,11 @@ function rememberRecent(filePath) {
 
 ### 11.1 CSS 预处理器
 
-**无预处理器，使用纯 CSS。** 样式集中在单一文件 `src/renderer/styles/app.css`。
+**无预处理器，使用纯 CSS。** 样式分为两层：`src/renderer/styles/app.css` 承载布局、通用组件、共享语义变量与 `:root` 默认（classic）主题变量；`src/renderer/styles/themes/*.css`（`dark`、`claude-light`、`claude-dark`、`elegant`、`monokai-pro-light`、`monokai-pro-dark`、`nord-dark`）各自承载一套主题变量与主题专属覆盖，由 `index.html` 的 `<link … disabled>` 标签控制启用。跨主题的共享覆盖（例如深色壳层下的 Ant Design / WeChat 内容主题可读性重映射）保留在 `app.css` 末尾。主题分层详见 [`docs/05-THEMES.md`](05-THEMES.md)。
 
 ### 11.2 CSS 变量体系（设计 Token）
+
+`app.css` 的 `:root`（即 classic 默认主题）：
 
 ```css
 :root {
@@ -1283,46 +1379,58 @@ function rememberRecent(filePath) {
   --rendered-font: system-ui, sans-serif;
   --code-font: ui-monospace, monospace;
 
-  /* 字号 */
+  /* 字号与缩放 */
   --ui-scale: 1;
+  --editor-font-size: 16px;
   --source-size: 16px;
   --rendered-size: 16px;
   --preview-size: 16px;
   --code-size: 14px;
+  --preview-code-size: 14px;
 
   /* 布局 */
   --editor-text-width: 100%;
   --window-radius: 8px;
-  --sidebar-current: ...;
 
   /* 颜色 */
   --bg: #f7f7f8;
   --panel: #fff;
   --sidebar-surface: #f0f1f3;
   --editor-surface: #fff;
+  --settings-control-surface: #f7f7f8;
   --panel-2: #f0f1f3;
   --hover: #e7e9ec;
+  --tree-active: color-mix(in srgb, var(--accent) 16%, transparent);
   --text: #25272b;
   --muted: #6e737b;
+  --disabled-control-color: color-mix(in srgb, var(--muted) 42%, transparent);
   --border: #d9dce1;
   --accent: #3578e5;
+  --on-accent: #fff;
+  --brand-accent: #3578e5;
   --danger: #c73b3b;
+  --top-surface-shadow: 0 5px 12px -8px rgb(0 0 0 / 0.52), 0 2px 5px -4px rgb(0 0 0 / 0.28);
+  color-scheme: light;
 }
 ```
 
+字体、字号、`--editor-text-width`、`--ui-scale` 和 `color-scheme` 由 `applyPresentationSettings()` 与 `ThemeCoordinator` 在运行时改写。`--sidebar-current`、`--sidebar-min-width`、`--sidebar-max-width` 和 `--toolbar-wrap-height` **不是** `:root` token：它们只写在消费它们的 chrome 子树（如 `#sidebar`、toolbar mount）上，以避免侧栏拖动和工具栏折行触发全文档重排。
+
 ### 11.3 主题切换机制
 
-**CSS 变量覆盖方案：** 通过 `:root[data-theme='...']` 选择器切换整组 CSS 变量：
+**CSS 变量覆盖方案：** 每套非默认主题在 `src/renderer/styles/themes/<theme>.css` 中以 `:root[data-theme='…']` 覆盖整组变量，并携带自己的主题专属组件规则：
 
 ```css
 :root[data-theme='dark']       { --bg: #17181a; --sidebar-surface: #202124; --editor-surface: #18191c; ... color-scheme: dark; }
 :root[data-theme='claude-light'] { --sidebar-surface: #f5f4ed; --editor-surface: #faf9f5; --accent: #d97757; ... }
 :root[data-theme='claude-dark'] { --sidebar-surface: #30302e; --editor-surface: #262624; --accent: #d97757; ... color-scheme: dark; }
+:root[data-theme='elegant'] { --bg: #f0edea; --sidebar-surface: #eae6e1; --editor-surface: #f0edea; --accent: #bc4424; ... color-scheme: light; }
 :root[data-theme='monokai-pro-dark'] { --bg: #2d2a2e; --sidebar-surface: #2d2a2e; --editor-surface: #272428; ... color-scheme: dark; }
+:root[data-theme='nord-dark'] { --bg: #2e3440; --sidebar-surface: #3b4252; --editor-surface: #2e3440; --accent: #88c0d0; ... color-scheme: dark; }
 :root[data-theme='monokai-pro-light'] { --bg: #faf4f2; --sidebar-surface: #ede7e5; --editor-surface: #faf4f2; ... color-scheme: light; }
 ```
 
-应用自有可交互控件的 `:focus-visible` 统一使用 `--accent` 的 2px outline；因此 Light、Dark 与 Monokai Pro Dark 均保持键盘焦点可见且与当前主题一致。
+应用自有可交互控件的 `:focus-visible` 统一使用 `--accent` 的 2px outline；因此 Light、Dark、Elegant、Monokai Pro Dark 与 Nord Dark 均保持键盘焦点可见且与当前主题一致。主题切换靠 `index.html` 中对应 `<link id="theme-…">` 的 `disabled` 属性，而不是重写 `app.css`；classic 没有单独的主题文件，其变量就是 `app.css` 的 `:root` 默认值。
 
 `--sidebar-surface` 是导航壳层：sidebar、Windows/Linux 自定义主菜单、titlebar、共享 Vditor toolbar、Files/Outline tabs、无标签的 `.editor-area` 及其新建/打开操作，以及设置页的 titlebar、导航、footer 和右侧边缘共享它。`--panel-2` 仍服务状态栏等其他次级表面。`--editor-surface` 用于已打开文档的 Vditor host 及其 SV 行号栏，也用于设置页具体内容区域；行号栏仅由右侧边框与源编辑区分隔。浅色主题的文档画布较导航壳层明亮，深色主题则较暗。`.document-tab:hover` 始终使用当前主题的 `--hover`，不使用跨主题的固定浅色。
 
@@ -1335,6 +1443,7 @@ function rememberRecent(filePath) {
   → themeCoordinator.applyTheme(theme)
     → document.documentElement.dataset.theme = theme
     → tab.vditor.setTheme(editorTheme, contentTheme, codeTheme, cssPath)
+    → adapter.refreshMermaidTheme(host, markdown, editorTheme)  // 重绘已渲染 Mermaid
     → syncCodeThemeControls(dark, codeTheme)  // 过滤代码主题下拉选项
 ```
 
@@ -1343,7 +1452,7 @@ function rememberRecent(filePath) {
 - `systemTheme: true` 时跟随系统主题（`nativeTheme.on('updated')`），状态栏常驻图标保持显示器图标
 - `systemTheme: false` 时，状态栏太阳模式使用 `lightTheme`，月亮模式使用 `darkTheme`
 - 亮色与深色偏好分别存储在 `settings.lightTheme` 和 `settings.darkTheme`；设置页只编辑这两项偏好，系统匹配模式只从状态栏菜单选择
-- 亮色组为 `classic` / `claude-light` / `monokai-pro-light`，深色组为 `dark` / `claude-dark` / `monokai-pro-dark`；未发布配置迁移不兼容 `lastLightTheme` / `lastDarkTheme`
+- 亮色组为 `classic` / `claude-light` / `elegant` / `monokai-pro-light`，深色组为 `dark` / `claude-dark` / `monokai-pro-dark` / `nord-dark`；未发布配置迁移不兼容 `lastLightTheme` / `lastDarkTheme`
 - 内容主题与壳层主题联动：当 `contentTheme` 为 `light/dark` 时，随壳层深浅自动切换
 - 代码主题独立管理：`lightCodeTheme` / `darkCodeTheme`，工具栏下拉过滤当前色调
 - `--sidebar-surface` 与 `--editor-surface` 分别表达侧栏和编辑区表面；Dark 主题两者 RGB 各通道相差 8，其他主题按视觉层级独立定义
@@ -1367,24 +1476,28 @@ function rememberRecent(filePath) {
 
 ```json
 {
+  "desktopName": "com.github.studio-200a.vditor-electron",
   "build": {
     "appId": "com.github.studio-200a.vditor-electron",
     "productName": "Vditor Desktop",
     "directories": { "output": "release" },
-    "files": ["dist/**/*", "static/**/*", "package.json"],
+    "files": ["dist/**/*", "static/**/*", "package.json", "!node_modules/vditor/src/**"],
+    "electronDownload": {
+      "mirrorOptions": { "mirror": "https://registry.npmmirror.com/-/binary/electron/" }
+    },
     "linux": {
       "syncDesktopName": true,
       "executableName": "vditor-desktop",
       "target": ["AppImage", "deb", "rpm"],
       "category": "Office"
-    }
-  },
-  "fileAssociations": [{
-    "ext": ["md", "markdown", "mdown", "mkd", "mkdn"],
-    "name": "Markdown Document",
-    "mimeType": "text/markdown",
-    "role": "Editor"
-  }]
+    },
+    "fileAssociations": [{
+      "ext": ["md", "markdown", "mdown", "mkd", "mkdn"],
+      "name": "Markdown Document",
+      "mimeType": "text/markdown",
+      "role": "Editor"
+    }]
+  }
 }
 ```
 
@@ -1415,12 +1528,14 @@ npm run build
 build:main:
   tsc -p tsconfig.main.json      → dist/main/index.js
                                   → dist/main/preload.js
+                                  → dist/main/ipc/*.js
                                   → dist/main/services/*.js
 
 build:renderer:
   node scripts/build-renderer.js
   ├── src/renderer/main.ts        → dist/renderer/main.js（esbuild bundle）
-  └── src/renderer/pure-functions.ts → dist/renderer/pure-functions.js（esbuild bundle）
+  ├── src/renderer/pure-functions.ts → dist/renderer/pure-functions.js（esbuild bundle）
+  └── src/renderer/locale/index.ts → dist/renderer/locales.js（esbuild bundle，三语字典启动入口）
 
 build:assets:
   node scripts/copy-vditor-assets.js
@@ -1477,11 +1592,11 @@ build:assets:
 }
 ```
 
-**渲染进程类型检查：** `tsconfig.renderer.json`（`module: ES2022`、`moduleResolution: bundler`、`strict: true`、`noEmit: true`）覆盖 `src/renderer/**/*.ts` 与 `src/shared/**/*.ts`，包含 adapter 调用契约（`types/adapter-contract.ts`）；由 `npm run typecheck:renderer` 执行。组合 JavaScript（`app/app-composition.js`、`vditor-adapter.js`、`locales.js`）不参与 TypeScript 编译，esbuild 打包 `main.ts` 与 `pure-functions.ts`。
+**渲染进程类型检查：** `tsconfig.renderer.json`（`module: ES2022`、`moduleResolution: bundler`、`strict: true`、`noEmit: true`）覆盖 `src/renderer/**/*.ts` 与 `src/shared/**/*.ts`，包含 adapter 调用契约（`types/adapter-contract.ts`）和三语字典；由 `npm run typecheck:renderer` 执行。组合 JavaScript（`app/app-composition.js`、`vditor-adapter.js`）不参与 TypeScript 编译；esbuild 打包 `main.ts`、`pure-functions.ts` 与 `locale/index.ts`，后者生成 `dist/renderer/locales.js`。
 
 ### 13.2 构建工具配置
 
-**无 Vite / Webpack。** 主进程使用 `tsc`；渲染进程使用 Node 脚本复制静态文件。
+**无 Vite / Webpack。** 主进程使用 `tsc`（`tsconfig.main.json`）；渲染进程使用 **esbuild** 打包（`scripts/build-renderer.js`：`main.ts` → `dist/renderer/main.js`，`pure-functions.ts` → `dist/renderer/pure-functions.js`，`locale/index.ts` → `dist/renderer/locales.js`），其余 HTML/CSS/项目自有 JS 与静态资源由 `scripts/copy-vditor-assets.js` 复制（跳过 `.ts`）。
 
 ### 13.3 ESLint 配置（`eslint.config.mjs`）
 
@@ -1543,7 +1658,7 @@ build:assets:
 | 命令 | 作用 |
 |---|---|
 | `npm run build:main` | `tsc -p tsconfig.main.json` 编译主进程 → `dist/main/` |
-| `npm run build:renderer` | `scripts/build-renderer.js` esbuild 打包 `main.ts` → `dist/renderer/main.js`，`pure-functions.ts` → `dist/renderer/pure-functions.js` |
+| `npm run build:renderer` | `scripts/build-renderer.js` esbuild 打包 `main.ts` → `dist/renderer/main.js`，`pure-functions.ts` → `dist/renderer/pure-functions.js`，`locale/index.ts` → `dist/renderer/locales.js` |
 | `npm run build:assets` | `scripts/copy-vditor-assets.js` 复制 Vditor 离线资源、渲染器文件，并从 `lucide-static` 生成选定 SVG |
 | `npm run build` | = `build:main` + `build:renderer` + `build:assets` 的组合 |
 | `npm run start` | `build` + `electron .` 启动应用 |
@@ -1559,7 +1674,7 @@ build:assets:
 | `npm run typecheck` | `tsc -p tsconfig.main.json --noEmit` 主进程类型检查 |
 | `npm run typecheck:renderer` | `tsc -p tsconfig.renderer.json --noEmit`；strict renderer 类型检查，包含 adapter 调用契约 |
 | `npm run check:project` | `scripts/check-project-metadata.js` 校验 package.json / lock / 稳定应用 ID / Linux 元数据一致 |
-| `npm run check:vditor` | `scripts/check-vditor-version.js` 校验 package.json / lock / node_modules / 主源码版本一致 |
+| `npm run check:vditor` | `scripts/check-vditor-version.js` 校验 package.json / lock / node_modules 与 `src/main/ipc/app-shell.ts` 中 `app:getInfo` 的版本一致 |
 | `npm test` | `vitest run` 运行全部单元测试 |
 | `npm run test:watch` | `vitest` 监听模式运行单元测试 |
 | `npm run test:e2e` | `build` + `run-electron-e2e.js` 运行 E2E；Linux 优先复用本地 Electron `dist` |
@@ -1609,33 +1724,39 @@ resolveApplicationPaths()          # app-paths.ts：确定配置/数据目录
 app.requestSingleInstanceLock()
   ↓
 app.whenReady():
-  registerAppProtocol(localResourcePolicy) # protocol.ts：注册 app:// 和受控 local-file://
-  new SettingsStore()              # settings-store.ts：加载 TOML 到内存
+  registerAppProtocol(localResourcePolicy, allowSvgImages) # protocol.ts：注册 app:// 和受控 local-file://
+  new SettingsStore()              # settings-store.ts：加载 preference-only TOML
+  new PersistentStateStore()       # persistent-state-store.ts：加载 state.json，首次迁移旧 TOML 状态
+  registerRemoteSvgImagePolicy()   # remote-svg-policy.ts：主窗口 HTTP(S) SVG 图片请求策略
   new RecoveryStore()              # recovery-store.ts：加载/保存私有恢复快照
   new FileManagerService()         # file-manager.ts：注册文件服务
   new FileWatchService()           # file-watch-service.ts：工作区与文档 watcher 所有权
-  registerIpcHandlers()            # index.ts：注册所有 ipcMain.handle / ipcMain.on
+  registerApplicationIpcHandlers()  # ipc/register.ts：组合入口注册所有 ipcMain.handle / ipcMain.on
   new Menu (macOS)                 # menu.ts：设置原生菜单（其他平台 null）
   createWindow()                   # 创建 BrowserWindow → loadURL('app://app/index.html')
+  （模块加载期已创建 ResourceHealthService 与 WindowCloseConfirmation 单例）
   ↓
 BrowserWindow 加载 dist/renderer/index.html
   ↓
 app://app/vditor/dist/index.min.js  →  Vditor 全局
-app://app/locales.js               →  window.VditorDesktopLocales
+app://app/locales.js               →  locale/index.ts 构建产物 → window.VditorDesktopLocales
 app://app/vditor-adapter.js        →  window.VditorDesktopAdapter
 app://app/pure-functions.js        →  window.__vditorDesktopPureFunctions
 app://app/app/app-composition.js   →  IIFE 暴露 window.__vditorDesktopApplication
 app://app/main.js                  →  esbuild bundle：校验全局 API 并启动 application controller
   ↓
-AppController.start() / composition callbacks:
-  getSettings() / getPersistentState() / getDefaultSettings() # IPC invoke
-  applyLocale() → setupEvents() → applyTheme()
-  restoreWorkspace() → setWorkspace(folder)  # fileAPI.watch + listDir
-  restoreTabs() → openPaths(session.openFiles)
+AppController.start() / composition startup callbacks:
+  loadSettings()                     # getSettings() / getDefaultSettings() / getPersistentState() → SettingsController.load()
+  applyLocale()                      # 三语字典刷新 application-owned DOM
+  initializeUI()                     # ApplicationShellController.init() → setupApplicationShellResources()
+                                     # 侧栏宽度/可见性 → applyPresentationSettings() → applyTheme(resolveTheme())
+  connectCommands()                  # AppController 订阅 open-files / menu-action 并绑定窗口级命令
+  restoreWorkspace()                 # SessionRestoreController → setWorkspace(folder)  # fileAPI.watch + listDir
+  restoreSession()                   # SessionRestoreController.restoreDocuments() → openPaths(session.openFiles)
     └── fileAPI.readFile(path) + fileIdentity(path) → createTab({ content, fileIdentity }) → ensureEditor(tab) → new Vditor()
-  restoreRecoverySnapshots()                 # 与 session 标签按 identity 合并
-  persistSession()                            # 初始恢复写入完成后持久化最新投影
-  rendererReady()                            # IPC send，触发主进程推送文件队列
+  restoreRecovery()                  # 与 session 标签按 identity 合并
+  finishRestoration()                # persistSession() + 刷新资源健康菜单资格
+  body.dataset.appReady = 'true' → rendererReady()   # IPC send，触发主进程推送文件队列
 ```
 
 ### 14.2 核心数据流
@@ -1686,7 +1807,7 @@ flowchart TB
         IPCContract[ipc-contract.ts\nIPC_CHANNELS]
         IPCGuard[ipc-guard.ts\ntrusted main frame + errors]
         IPCValidation[ipc-validation.ts\nruntime argument validation]
-        IPC[index.ts\nregisterIpcHandlers]
+        IPC[ipc/register.ts\nregisterIpcHandlers]
     end
 
     subgraph preload[BrowserWindow / preload.ts]
@@ -1698,7 +1819,7 @@ flowchart TB
         Controller["AppController + composition\n\(startup / commands / domain wiring\)"]
         Domains["Typed domain controllers\n\(documents / editor / workspace / settings / UI\)"]
         Adapter[vditor-adapter.js\nVditorDesktopAdapter]
-        Locales[locales.js\nVditorDesktopLocales]
+        Locales[locale/index.ts → locales.js\nVditorDesktopLocales]
         HTML["index.html\n\(DOM 壳层\)"]
     end
 
@@ -1767,8 +1888,13 @@ flowchart TB
 | `tests/unit/resolve-markdown-link.test.ts` | `src/main/resolve-markdown-link.ts` | 相对 Markdown 路径、`../`、百分号编码、片段、Windows 路径、缺失/绝对/协议/非 Markdown/非法编码目标拒绝 |
 | `tests/unit/ipc-guard.test.ts`      | `src/main/ipc-guard.ts`              | 当前主窗口 `webContents`、顶层 sender frame、可信 `app://app` 页面与稳定 `IPC_UNTRUSTED_RENDERER` 错误边界 |
 | `tests/unit/ipc-validation.test.ts` | `src/main/ipc-validation.ts`         | 参数数量、绝对路径、跨平台文件名、枚举、数值、文本/二进制大小、设置对象和 `IPC_INVALID_ARGUMENT` 边界 |
+| `tests/unit/ipc-trusted-channel.test.ts` | `src/main/ipc/trusted-channel.ts` | invoke 信任校验在 handler 执行前完成、framed/非 app 页面拒绝、受信调用返回值透传、send 拒绝只上报不抛出、handler 失败的错误规范化与日志、每次调用读取当前窗口而非缓存 |
+| `tests/unit/ipc-channel-map.test.ts`、`ipc-channel-map.fixture.ts` | `src/main/ipc-contract.ts` 与冻结通道映射 | `IPC_CHANNELS` 每个值恰好出现一次；冻结 56 invoke + 8 send 注册与 7 个 main→renderer 事件通道；事件通道不进入注册映射 |
+| `tests/unit/ipc-channel-coverage.test.ts` | `src/main/ipc/register.ts` 与全部领域注册模块 | 以受控依赖和捕获式 `ipcMain` 断言 56 invoke、8 send 各注册一次、无重复或方向互换、不注册 main→renderer 事件通道、只注册 contract 声明的通道 |
+| `tests/unit/ipc-file-watching.test.ts` | `src/main/ipc/file-watching.ts` | `file:setWorkspaceWatch` 的绝对路径与范围内深度转发、缺省深度为 undefined、无参数时 unwatch、越界深度和非数值深度拒绝且不触碰服务、相对工作区路径拒绝 |
 | `tests/unit/local-resource.test.ts` | `src/main/local-resource.ts`         | 固定 authority 的 POSIX/Windows drive/UNC URL、词法拒绝、路径边界、私有根、canonical 越界、根撤销、MIME allowlist 与安全拒绝分类 |
 | `tests/unit/remote-svg-policy.test.ts` | `src/main/remote-svg-policy.ts` | HTTP(S) 图片 URL 的 `.svg` 路径识别、无扩展名 SVG MIME 响应识别、默认阻止与开启后放行边界 |
+| `tests/unit/save-dialog-path.test.ts` | `src/main/save-dialog-path.ts` | POSIX/Windows drive/UNC 绝对默认路径原样保留且忽略注入目录（Save As 转发当前绝对路径时不重复拼接工作区）、相对文件名与默认目录拼接（POSIX/Windows）及无目录时原样返回、无默认路径时在默认目录下预填 `untitled.md` 或回退裸文件名、自定义回退名、空默认路径视为缺失 |
 | `tests/unit/file-manager.test.ts`   | `src/main/services/file-manager.ts` 与 `safe-file-writer.ts` | UTF-8 读取、UTF-8 BOM 检测与剥离、GB18030 回退、同目录安全替换、权限保持、无变化跳过、expected content/absence 基线、临时创建/替换失败保留原文件及清理、权限错误映射、文件/目录创建、路径逃逸拒绝（`../`）、目录优先自然排序、目录链接工作区内外分类与深度、普通文件/目录重命名冲突与失败回滚、二进制图片写入 |
 | `tests/unit/file-identity.test.ts` | `src/main/services/file-identity.ts` | 已存在路径 realpath、大小写敏感规则、符号链接别名、缺失文件和缺失祖先路径拼接、跨平台 path 模型 |
 | `tests/unit/file-watch-service.test.ts` | `src/main/services/file-watch-service.ts` | 工作区结构与文档内容 watcher 分工、7–12 读取深度规范化及重建、资源错误一次降级、同路径去重、ready 后 reconciliation、稳定等待、read revision 乱序保护、瞬态 `unlink` 重核、权限不可读事件、工作区内文件重新出现的双 scope 事件、符号链接规范路径、释放后的迟到读取、workspace revision，以及 Linux raw rename 重绑 |
@@ -1777,18 +1903,19 @@ flowchart TB
 | `tests/unit/recovery-store.test.ts` | `src/main/services/recovery-store.ts` | 私有目录/文件权限、候选元数据不含正文、原子写入与显式清理、损坏/未知 schema/超限快照移除，以及 `unchanged` / `changed` / `unavailable` 三种磁盘状态 |
 | `tests/unit/persistent-state-store.test.ts` | `src/main/services/persistent-state-store.ts` | 旧 TOML 状态仅迁移一次且保持 config.toml 偏好化、损坏/未知 schema 安全默认值不阻塞启动、串行原子更新、清空状态时保留用户偏好 |
 | `tests/unit/resource-health-service.test.ts` | `src/main/services/resource-health-service.ts` | Markdown/HTML 本地引用提取（数字实体、未支持命名实体保守阻断、引号属性中的 `>`、代码围栏遮蔽、远程/`data:`/工作区外排除）、候选仅枚举图片目录直接常规文件、直接符号链接阻断与二级目录排除、工作区根为符号链接时返回 `workspace-symbolic-link` 不可用、`pasteImagesDir` 路径段符号链接拒绝、隐藏用户文档保护与 VCS/缓存目录排除、scan epoch/revision 生命周期、回收站前复核、读取/数量/目录项/时长上限只读结果 |
-| `tests/unit/vditor-adapter.test.ts` | `src/renderer/vditor-adapter.js` 与 adapter 类型 manifest | 运行时全部导出键与声明 manifest（`ADAPTER_PUBLIC_KEYS`）的精确一致性、`validateHost` 成功（toolbar 通过 `mountedToolbar` 参数提供）、代码主题亮/暗分界点（`ant-design` 前为 dark 组）、DOM 漂移检测（缺少 source 节点时 `valid: false`）、SV divider 创建与 pane 语义可见性、列表 `marker`/`padding` 解析、动态尾部留白写入全部 Vditor 表面、SVG 开关热更新的图片原始来源与缓存隔离、WYSIWYG 替换期间恢复原始 SVG URL、hash anchor 到标题索引（IR 内部链接 + 元素 id + slug）、原生大纲 snapshot、标题间普通块时的准确目标节点及 SV preview 外层滚动容器、跨多 span 文本节点的匹配与选区、自绘光标代理的滚动同步/越界隐藏/闪烁重启与快照滚动偏移复制 |
-| `tests/unit/renderer-shell.test.ts` | 渲染器壳（HTML/CSS/JS/preload）静态结构 | 标题栏 / 菜单 / 窗口控件 DOM；en/zh_Hans/zh_Hant 键完整性对等；Linux 发布脚本；自动隐藏滚动条样式；第二实例文件转发；确认对话框（未保存变更可拖动、无调整尺寸手柄）；设置对话框 8 方向调整手柄；空标签恢复；查找替换控件带 SVG；文件树无 draggable；折叠/展开/中间省略；链接目录斜体下划线与 SVG 资产；设置面板分类；关于面板；UI/编辑器/预览缩放；状态栏三态主题控件与无旧 checkbox；CSP img-src/connect-src；大纲无标题态；Monokai Pro Light / Dark 主题；亮/暗代码主题分离；字体子分组；工作区头部；编辑文本宽度范围；无过时占位符/工具栏设置项；适配器脚本加载顺序；设置路径页脚/重置当前页 |
-| `tests/unit/renderer/editor-controller.test.ts`、`editor-options.test.ts`、`editor-runtime-coordinator.test.ts` | 编辑器实例、构造选项与 tab 激活协调 | generation、幂等 destroy、rebuild 正文/滚动恢复、auto-save cleanup、pending content、constructor-only 设置、快速切换的 stale rAF 拒绝与 toolbar hand-off |
+| `tests/unit/vditor-adapter.test.ts` | `src/renderer/vditor-adapter.js` 与 adapter 类型 manifest | 运行时全部导出键与声明 manifest（`ADAPTER_PUBLIC_KEYS`）的精确一致性、`validateHost` 成功（toolbar 通过 `mountedToolbar` 参数提供）、代码主题亮/暗分界点（`ant-design` 前为 dark 组）、DOM 漂移检测（缺少 source 节点时 `valid: false`）、SV divider 创建与 pane 语义可见性、列表 `marker`/`padding` 解析、动态尾部留白写入全部 Vditor 表面、SVG 开关热更新的图片原始来源与缓存隔离、WYSIWYG 替换期间恢复原始 SVG URL、hash anchor 到标题索引（IR 内部链接 + 元素 id + slug）、原生大纲 snapshot、标题间普通块时的准确目标节点及 SV preview 外层滚动容器、SV source → preview 标题锚点滚动同步（等量配对插值、20% viewport 对齐、集合不等时保留原生比例同步）、`restorePreviewOnly` 经 Preview toolbar action 恢复 preview-only、`refreshMermaidTheme` 在围栏与渲染节点配对时重绘 Mermaid 并在不配对时保持原图表、跨多 span 文本节点的匹配与选区、自绘光标代理的滚动同步/越界隐藏/闪烁重启与快照滚动偏移复制、自绘光标几何稳定性（SV 空标题与空行按源码行高、IR/WYSIWYG 空段落按字体测量高度、SV 表格分隔行换行后的下一行定位、IR/WYSIWYG 行内 marker 后的插入点定位）、`applyWordWrap` 对三模式可编辑滚动根的换行标记与居中滚动类切换 |
+| `tests/unit/renderer-shell.test.ts` | 渲染器壳（HTML/CSS/JS/preload）静态结构 | 标题栏 / 菜单 / 窗口控件 DOM；en/zh_Hans/zh_Hant 键完整性对等；Linux 发布脚本；自动隐藏滚动条样式；第二实例文件转发；确认对话框（未保存变更可拖动、无调整尺寸手柄）；设置对话框 8 方向调整手柄；空标签恢复；查找替换控件带 SVG；文件树无 draggable；折叠/展开/中间省略；链接目录斜体下划线与 SVG 资产；设置面板分类；关于面板；UI/编辑器/预览缩放；状态栏三态主题控件与无旧 checkbox；CSP img-src/connect-src；大纲无标题态；Monokai Pro Light / Dark、Nord Dark 与 Elegant 主题；主题预览卡片每行最多四张的网格约束；About logo `draggable="false"`；亮/暗代码主题分离；字体子分组；工作区头部；编辑文本宽度范围；无过时占位符/工具栏设置项；适配器脚本加载顺序；设置路径页脚/重置当前页 |
+| `tests/unit/renderer/editor-controller.test.ts`、`editor-options.test.ts`、`editor-runtime-coordinator.test.ts` | 编辑器实例、构造选项与 tab 激活协调 | generation、幂等 destroy、rebuild 正文/滚动恢复、rebuild 时按 tab 捕获并恢复 SV pane 布局（source-only 经 `preview.mode: 'editor'`、preview-only 经 `restorePreviewOnly()`）、auto-save cleanup、pending content、constructor-only 设置、快速切换的 stale rAF 拒绝与 toolbar hand-off、干净文档保存点对账（初始化/干净重载/模式切换采用编辑器序列化表示、快速输入后切换模式保持 dirty） |
 | `tests/unit/renderer/github-alerts.test.ts` | `src/renderer/editor/github-alerts.ts` | 五种 GitHub alert 的默认 emoji/标题还原、自定义标题的展示 emoji 还原、源文件显式 emoji 保留及无关文本不变 |
-| `tests/unit/renderer/split-view-controller.test.ts`、`toolbar-controller.test.ts`、`outline-controller.test.ts`、`find-controller.test.ts` | Split View、共享工具栏、大纲与查找 UI | divider/行号/缩进、observer/listener/timer cleanup、toolbar owner 交接、outline stale refresh、find reveal 与窗口快捷键 |
+| `tests/unit/renderer/split-view-controller.test.ts`、`toolbar-controller.test.ts`、`outline-controller.test.ts`、`find-controller.test.ts` | Split View、共享工具栏、大纲与查找 UI | divider/行号/缩进、observer/listener/timer cleanup、toolbar owner 交接、outline stale refresh 与 SV source-only 不可用空态（`isUnavailable` 优先于“文档无标题”）、find reveal 与窗口快捷键 |
 | `tests/unit/renderer/image-controller.test.ts`、`recovery-runtime-controller.test.ts`、`recovery-banner-controller.test.ts` | 图片与 recovery editor runtime | 图片文件名/写入边界、资源 observer、recovery debounce 替换、串行 save/discard、不可用文件保存、非致命 I/O 失败、三种 recovery banner 状态与动作路由 |
 | `tests/unit/renderer/document-controller.test.ts`、`document-controller.integration.test.ts`、`document-save-controller.test.ts`、`document-close-controller.test.ts`、`external-change-controller.test.ts` | 文档生命周期命令 | canonical identity、保存队列、关闭顺序、外部变化分类，以及与 editor runtime 的安全组合边界 |
 | `tests/unit/renderer/document-tab-workflow-controller.test.ts`、`document-watch-controller.test.ts`、`document-save-external-workflow-controller.test.ts`、`external-file-change-controller.test.ts` | 文档工作流与外部变化安全 | 多文件打开最终激活/新建 untitled/打开失败、watcher stale-result release 与 rebind、safe-write 交易与冲突/重载/重建动作、watcher 事件路由与外部状态协作 |
 | `tests/unit/renderer/state/store.test.ts`、`state/snapshots.test.ts`、`session-snapshot.test.ts`、`recovery-snapshot.test.ts` | AppStore 与版本化快照 DTO | 文档/活动标签受控状态、session/recovery 白名单投影、恢复输入验证和运行时句柄隔离 |
 | `tests/unit/renderer/disposables.test.ts`、`dom.test.ts`、`lifecycle.test.ts` | renderer core 基础设施 | DisposableBag 逆序/幂等清理、清理失败容忍及 listener/timer/observer 封装；requiredElement/optionalElement；LifecycleManager 注册顺序 init、逆序 dispose、init 失败回收已初始化控制器 |
 | `tests/unit/renderer/strings.test.ts`、`line-ending.test.ts` | renderer 纯函数工具 | escapeHTML / fileName / stripExtension；detectLineEnding 的 CRLF / LF 判定 |
-| `tests/unit/renderer/theme.test.ts`、`theme-controller.test.ts`、`theme-coordinator.test.ts`、`localization.test.ts` | 主题与本地化纯函数与主题协调器 | isDarkTheme 与主题常量；resolveEffectiveTheme / resolveThemeMode / 亮暗主题校验 / code / content theme 解析；ThemeCoordinator 联动 content/code theme、状态栏同步与 Vditor setTheme 应用；resolveLocale / translate / formatIpcErrorMessage 与稳定错误码 |
+| `tests/unit/renderer/theme.test.ts`、`theme-controller.test.ts`、`theme-coordinator.test.ts`、`localization.test.ts` | 主题与本地化纯函数与主题协调器 | isDarkTheme 与主题常量；resolveEffectiveTheme / resolveThemeMode / 亮暗主题校验 / code / content theme 解析；ThemeCoordinator 联动 content/code theme、状态栏同步、Vditor setTheme 应用与色调切换后的 Mermaid 重绘回调；resolveLocale / translate / formatIpcErrorMessage 与稳定错误码 |
+| `tests/unit/renderer/locale.test.ts` | `src/renderer/locale/` 三语字典 | 三语键与占位符对等；启动 bundle（`locale/index.ts` 经 esbuild）发布 `window.VditorDesktopLocales` 全局字典 |
 | `tests/unit/renderer/notifications.test.ts`、`window-and-menu-controller.test.ts` | 通知与窗口/菜单控制器 | 状态消息、临时通知与确认对话框的计时、locale 切换与清理；窗口控件绑定与 dispose、菜单 checked 状态与命名命令分发、右键菜单互斥交接 |
 | `tests/unit/renderer/app-controller.test.ts` | `src/renderer/app/app-controller.ts` | 启动顺序、部分初始化失败回收、beforeunload、窗口快捷键、Markdown drop、open-files/menu 订阅和迟到回调清理 |
 | `tests/unit/renderer/application-shell-controller.test.ts`、`session-restore-controller.test.ts`、`recovery-restore-controller.test.ts` | 应用 shell 资源与会话恢复 | 重复 init/dispose、property handler/listener/observer/timer 清理；session DTO 捕获/恢复/激活与 unavailable 投影；recovery 候选加载、磁盘分类、identity 合并与不可用标签 |
@@ -1796,7 +1923,7 @@ flowchart TB
 | `tests/unit/renderer/document-link-navigation-controller.test.ts` | `src/renderer/editor/document-link-navigation-controller.ts` | 相对 Markdown/片段导航、危险 scheme 拦截、modifier hint、tooltip 清理和注入 bridge 协作 |
 | `tests/unit/renderer/sidebar-layout-controller.test.ts`、`sidebar-view-controller.test.ts` | `src/renderer/ui/sidebar-layout-controller.ts`、`ui/sidebar-view-controller.ts` | 侧栏过渡、反向切换、FLIP/fallback timer、布局同步和 dispose；Files/Outline 的点击切换、ARIA 状态与大纲刷新 |
 | `tests/unit/renderer/tab-controller.test.ts` | 标签栏控制器 | 从 view model 渲染标题/脏标记/attention/active 态、primary/close/中键点击路由、替换旧标签 DOM、dispose 取消 drag-reset timer |
-| `tests/unit/renderer/settings-controller.test.ts`、`settings-window.test.ts`、`settings-persistence.test.ts`、`settings-runtime-controller.test.ts`、`settings-dialog-layout-controller.test.ts` | 设置保存分类、持久化与设置窗口 | classifySettingsChange 将展示/constructor-only 设置分开；SettingsController 加载保存后保持 Store；SettingsPersistence 分离 TOML 偏好与 state.json 队列；SettingsRuntimeController 表单同步/风险确认/live save 分发；SettingsWindow/SettingsDialogLayoutController 负责动画、尺寸拖动和 cleanup |
+| `tests/unit/renderer/settings-controller.test.ts`、`settings-window.test.ts`、`settings-persistence.test.ts`、`settings-runtime-controller.test.ts`、`settings-dialog-layout-controller.test.ts` | 设置保存分类、持久化与设置窗口 | classifySettingsChange 将展示、live Vditor setter（含 `wordWrap`）与 constructor-only 设置分开；SettingsController 加载保存后保持 Store；SettingsPersistence 分离 TOML 偏好与 state.json 队列；SettingsRuntimeController 表单同步/风险确认/live save 分发；SettingsWindow/SettingsDialogLayoutController 负责动画、尺寸拖动和 cleanup |
 | `tests/unit/renderer/workspace-controller.test.ts`、`external-file-change-controller.test.ts` | 工作区、文件树与 watcher 事件路由 | 根路径/revision/watch 刷新与持久化、不可用工作区路径路由到 document-binding owner、未信任名称按 text 渲染与展开回调、绑定提交失败恢复、ExplorerController 懒加载，以及外部删除/重出现/冲突/干净重载路由 |
 | `tests/unit/renderer/export-controller.test.ts` | 导出事务 | 对话框前快照 HTML、确认路径后写可移植输出、PDF 资源规范化与嵌入、无活动文档时不导出 |
 | `tests/unit/renderer/resource-health-controller.test.ts` | `src/renderer/resource-health/resource-health-controller.ts` | 页面状态/覆盖层生命周期、候选与缺失引用选择、HTML 派生缺失引用不可删除、Trash 后强制刷新扫描、确认弹窗与异步返回的 scan generation / 页面身份校验、符号链接不完整提示与 Trash 禁用、过期 revision 失效 |
@@ -1808,7 +1935,7 @@ flowchart TB
 | 测试文件 | 主要责任 |
 | --- | --- |
 | `app-shell.spec.ts` | 应用启动与单实例、标题栏/菜单/标签、主题、设置、窗口与本地化壳层（含三语言运行时切换的菜单/dialog/空态/通知），以及侧栏过渡期间的编辑器几何与反向切换 |
-| `editor-modes.spec.ts` | 查找替换、WYSIWYG / IR / SV、工具栏、选择、表格、分栏、滚动与 Vditor DOM 契约 |
+| `editor-modes.spec.ts` | 查找替换、WYSIWYG / IR / SV、工具栏、选择、表格、分栏、滚动、自绘光标与 Vditor DOM 契约 |
 | `document-lifecycle.spec.ts` | 保存、恢复、工作区、文件树、原生打开对话框、导出资源、watcher、外部冲突、删除、重命名与 Save As 路径一致性 |
 | `navigation-and-resources.spec.ts` | Markdown/大纲导航、外部 URL 边界，受控根下的本地/HTTPS/上传图片资源与统一 SVG 渲染开关，以及资源健康扫描、缺失引用删除、回收站确认和已保存快照 |
 
@@ -1834,8 +1961,12 @@ flowchart TB
 - SV 源编辑器 + 预览 + 行号（对齐到 heading 垂直中线）
 - 分割比例拖拽（含吸附 50% 标记）+ 持久化 `splitRatio`
 - SV `both` / `preview` 切换后行号 / 分割条可见性
+- SV source → preview 标题锚点滚动同步：滚动 source 时匹配的源/渲染标题在两个面板各约 20% 视口高度对齐（含 HTML 表格块时仍准确），且 preview 独立阅读滚动不带动 source
+- 自动换行开关在三模式实时切换且不重建编辑器：`editorTextWidth` 滑块效果独立保持，关闭换行时 WYSIWYG/IR 在选定文本列内水平滚动且列保持居中
+- 撤销回退到保存/初始/干净重载内容时清除脏标记（三模式，含会话内模式切换后）；快速输入后立即切换模式保持 dirty 并保留关闭确认
 - `Ctrl+Alt+8` 模式切换
 - 设置重建后保留当前编辑模式（WYSIWYG 不被覆盖回 IR）
+- 编辑器设置将 `caretStyle` 切换为 `native` 后移除自绘光标代理、恢复 Chromium 原生光标并持久化设置
 
 #### Vditor DOM 契约
 
@@ -1848,7 +1979,9 @@ flowchart TB
 - 工具栏不出现 `fullscreen` 按钮，WYSIWYG 代码块使用 `previewCodeFontFamily`
 - 编辑区右键菜单仅接管三种模式的真实可编辑表面；覆盖 Range 恢复、SV preview / 查找框排除、剪贴板命令与 WYSIWYG / IR 表格行列操作；SV `Ctrl/Cmd+Shift+I/O` 反/增加列表缩进，以及原生/右键 Markdown、rich-text Paste 均复用 Vditor 的粘贴与 undo 路径
 - 三种模式下的两段式 Ctrl/Cmd+A：普通 block、非空/空表格单元格、SV 源码行，以及非编辑控件原生全选边界
-- WYSIWYG 选区完全落在 `strong` 等祖先格式节点内部时，上游 copy 不保留该语义；这是 Vditor 3.11.3 的已确认限制，不作为 Desktop 回归修复，详见 [`docs/09-DEV-NOTE.md`](09-DEV-NOTE.md#vditor-wysiwyg-部分格式选区复制不保留语义)
+- IR 折叠标题 marker（`.vditor-ir__marker--heading`，节点未展开）内的选区不绘制自绘光标；undo 恢复该折叠 marker 选区后自绘光标保持隐藏
+- 自绘光标几何稳定性：SV 空文档与空标题标记 `# ` 在 Enter 前后保持源码行高，表格分隔行 Enter 后光标位于新行开头；IR/WYSIWYG 空文档 Enter 后保持字体测量尺寸并按空段落行高居中；IR/WYSIWYG 完成粗体、斜体与行内代码标记后光标保持在行内节点之后的插入点
+- WYSIWYG 选区完全落在 `strong` 等祖先格式节点内部时，上游 copy 不保留该语义；这是 Vditor 3.11.3 的已确认限制，不作为 Desktop 回归修复，详见 [`docs/09-DEV-NOTE.md`](09-DEV-NOTE.md#wysiwyg-部分格式选区复制)
 
 #### 链接跳转与外部协议
 
@@ -1910,13 +2043,14 @@ flowchart TB
 
 - 统一 workbench 栏（标题栏 + 标签栏一体，无主区域独立标签栏）
 - 应用菜单仅在主标题栏出现，无 `File` / `View` 顶级菜单项
-- `View > Layout > Show Toolbar` 隐藏 `#vditorToolbarMount`，编辑器区域上移
+- 布局菜单中的 `Show Toolbar` 隐藏 `#vditorToolbarMount`，编辑器区域上移
 - F11 全屏 + Alt 临时显示菜单 + 再按 Alt / Escape 隐藏
 - 分割编辑器 / 大纲 / 文件树滚动条自动隐藏（边缘 14px + 滚动事件 + 1s 超时）
 - 三档 `scrollbarMode`（always/auto/hidden）持久化并反映在 `html[data-scrollbar-mode]` + 计算滚动条宽度
 - 亮/暗内容主题与壳层主题联动（`contentTheme: 'light'` → 深色壳层自动切换为 `'dark'`）
 - 深色壳层 + `ant-design` / `wechat` 内容主题下内联代码 / 表格 / 标题颜色可读
-- Monokai Pro Dark H1–H6 调色板（粉/黄/绿/青/紫/橙）与 Monokai Pro Light H1–H6 调色板（红/橙/绿/蓝/紫/黑）在三模式下均正确
+- Monokai Pro Dark H1–H6 调色板（粉/黄/绿/青/紫/橙）、Monokai Pro Light H1–H6 调色板（红/橙/绿/蓝/紫/黑）与 Nord Dark H1–H6 调色板（Frost/Aurora 映射）在三模式下均正确；Nord 的禁用控件与弱化文字颜色契约正确
+- 深色壳层切换到 Elegant（及反向）后，文档中已渲染的 Mermaid 图表按当前色调重绘且不产生重复 SVG
 - `lightTheme` / `darkTheme` 偏好持久化，状态栏三态菜单使用用户分别选择的亮色与深色主题
 - 空标签 toolbar skeleton 与 Vditor toolbar mount 一起交接；窗口启动和编辑器重建时不显示脱离位置的空 toolbar，窄窗口换行/隐藏状态下 Files/Outline 边界稳定
 - 编辑 / 焦点 / 失焦状态下背景颜色稳定
@@ -1947,7 +2081,8 @@ flowchart TB
 
 | 模块                                | 当前状态                                   | 待补充                                                                                                                                                                        |
 | ----------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/main/index.ts`                 | E2E + URL/导航策略单测                     | 缺乏 `resolveSystemLocale` / `isMaximizedLikeBounds` / `initialWindowBackground` 主题映射 / watcher `on('all')` 事件流的单元测试                |
+| `src/main/index.ts`                 | E2E + URL/导航策略单测                     | IPC handler 已迁至 `src/main/ipc/`（见下行）；仍缺乏 `resolveSystemLocale` / `isMaximizedLikeBounds` / `initialWindowBackground` 主题映射 / watcher `on('all')` 事件流的单元测试                |
+| `src/main/ipc/`                     | 通道注册/信任包装/参数转发单测 + Electron E2E | 通道集合与注册方向已由 `ipc-channel-map` / `ipc-channel-coverage` 锁定，`trusted-channel` 与 `file-watching` 有聚焦单测；各领域 handler 的业务行为仍主要依赖真实 Electron E2E，尚无逐模块的 direct 单测 |
 | `src/main/preload.ts`               | 仅 E2E 覆盖                                | 无 Bridge API surface 类型契约测试                                                                                                                                            |
 | `src/main/protocol.ts`              | app URL 单测 + local-resource 策略单测 + 资源 E2E | 仍无 protocol handler 直接单测；响应头和 neutral 404 目前由真实 Electron E2E 覆盖                                                                              |
 | `src/main/menu.ts`                  | 仅 E2E 覆盖                                | 无三语言菜单标签生成的独立测试                                                                                                                                                |
@@ -1956,59 +2091,12 @@ flowchart TB
 | `src/main/services/file-watch-service.ts` | 单元测试已覆盖 revision、ready/reconciliation 和 cleanup | 真实 Windows/macOS watcher 事件来源、合并时序、权限/占用反馈仍待实体机验证 |
 | `src/renderer/vditor-adapter.js`    | 单元测试与 E2E 均有                        | 覆盖 DOM 结构、链接交互、IR 展开切换、相对图片（含 Vditor 提前转换的 `app://app/` 路径）、`withOriginalImageSources` 替换恢复、`setDocumentLinkCursor` 不抑制标题、导出键 manifest（`ADAPTER_PUBLIC_KEYS`）与运行时冻结对象的一致性；仍缺少 `observeRelativeImageSources` 观察者回调直接单测与 `toolbarButton` 选择器注入防御 |
 | `src/renderer/app/app-composition.js` | 组合层通过各 domain controller 与 E2E 间接覆盖 | 剩余保存交易、标签命令、设置/session 组合和部分壳事件属过渡期组合协调；不再存在 `src/renderer/app.js` 旧入口源码字符串断言 |
-| `src/renderer/locales.js`           | `renderer-shell` 键完整性对等测试          | 无占位符参数替换 / 三语言字典完整性的独立单元测试                                                                                                                             |
+| `src/renderer/locale/`             | `renderer-shell` 与 `locale` 单测、运行时语言切换 E2E | 三语键和占位符对等、启动 bundle 发布全局字典；用户界面的实际语言切换由 Electron E2E 覆盖 |
 
 ---
 
 ## 16. 待完善 / 已知技术债
 
-### 16.1 当前仍存在的显式技术债
+本章内容已整体迁至 [`docs/00-ISSUES.md`](00-ISSUES.md) 的「长期技术债与架构风险」，包含显式技术债、架构风险点、按优先级的改进建议，以及已收口结论与不得回退的约束。
 
-以下项目是当前代码中的维护事项，不把易变的源码行号当作长期契约：
-
-| 文件 | 现状 |
-| ---- | ---- |
-| `src/main/index.ts` | Linux `unmaximize` 后的多次延迟 bounds 复核是平台兼容 workaround，需在真实平台环境持续确认。 |
-| `src/main/preload.ts` | 主窗口尚未启用 Electron sandbox：当前 CommonJS preload 依赖本地 `ipc-contract`；需要单独 bundled-preload 迁移与完整桥接回归。 |
-
-### 16.2 架构风险点
-
-1. **`app/app-composition.js` 集中度仍然偏高**：批次 4–8 及批次 9 已把文档生命周期命令、编辑器 runtime、工作区、设置、菜单、窗口、导出、侧栏、文档链接、查找替换、大纲 DOM、应用 shell 资源、session 恢复和主题协调迁入独立 controller；组合层仍承担保存交易、标签命令、设置/session 组合、状态栏、对话框和部分全局事件的协调，批次 9 已收口、剩余组合交易属于过渡期遗留而非未完成迁移。
-
-2. **IPC handler 仍集中在 `src/main/index.ts`**：当前仓库没有 `src/main/ipc/` 实现目录，所有 handler 由 `registerIpcHandlers()` 注册；这仍是 0.2.5 的拆分候选，但不应为此预先创建空模块。
-
-3. **preload API surface 缺乏独立类型契约测试**：真实 Electron E2E 会覆盖当前桥接调用，但新增能力仍需同时更新 channel、preload、main handler 和行为测试。
-
-4. **跨平台替换语义尚未实机验证**：文档安全写入已在 Linux 通过故障和 Electron 测试；Windows/macOS 对锁定目标、替换和大小写路径的真实语义按 [`docs/04-CROSS-PLATFORM.md`](04-CROSS-PLATFORM.md) 待实体机验证。
-
-5. **`local-file://` 直接 handler 单测仍缺失**：受控根、URL/native-path、realpath 和 MIME 策略已有纯单测与 Electron E2E；协议层的直接 `Response` 单测仍可在后续测试维护中补充。
-
-6. **非展示设置仍会触发全标签重建**：`saveSettings()` 已将主题、内容/代码主题、缩放和滚动条等展示设置分类为热应用；仍会对影响 Vditor 初始化契约的设置重建标签，分类边界和编辑状态保护属于 0.2.5 范围。
-
-7. **部分 Vditor 私有 DOM 知识需继续审计**：`app/app-composition.js` 仍包含 editor 组合回调和少量 adapter 语义调用；新的 controller 不得重新引入 `VDITOR.selectors` 或未通过 adapter 暴露的 DOM 查询。
-
-8. **Windows/Linux 无原生菜单**：仅 macOS 使用 `Menu.buildFromTemplate`，其他平台完全依赖渲染器自定义菜单，原生集成度不对称。
-
-9. **无近期文件 UI**：`recentFiles` 数据已写入 `state.json`，但无 UI 入口展示。
-
-10. **已有目标仍存在最终替换 TOCTOU 边界**：安全写入器会携带 expected bytes 并在临近替换处复核，但当前 Node/Electron 文件 API 没有跨平台的通用原子 CAS；长期边界和关闭条件见 [`docs/06-FILE-SAFETY.md` §7](06-FILE-SAFETY.md#7-已知原子性边界已有目标的-toctou)。
-
-11. **资源健康回收站仍存在路径化符号链接 TOCTOU 窗口**：`shell.trashItem(path)` 只接受路径字符串，复核与调用之间父目录仍可能被替换为符号链接。已通过“仅枚举直接图片文件 + 发现符号链接即只读禁用回收站”收束范围，但未消除该窗口；见 [`docs/06-FILE-SAFETY.md` §7.4](06-FILE-SAFETY.md#74-资源健康回收站路径化-shelltrashitem-的符号链接窗口) 与 [`docs/ARCHIVED/18-0.2.5-RESOURCE-HEALTH.md` §6.3.1](ARCHIVED/18-0.2.5-RESOURCE-HEALTH.md#631-符号链接与二级目录)。
-
-### 16.3 改进建议（按优先级）
-
-**P1（功能/安全）：**
-
-1. 为 `local-file://` 补充直接 protocol handler 的纯 `Response` 单测，并完成 Windows/macOS 实体机资源根、大小写、权限和 link 行为验证
-2. 在 `file:write` / `file:delete` handler 中增加路径授权校验
-
-**P2（架构）：**
-3. 将 `index.ts` 中的 IPC handler 分拆到职责明确的模块，保持 `src/main/ipc/` 只在确有边界时建立，不创建空壳目录
-4. 批次 9 已收口 `app/app-composition.js`；剩余保存交易、标签命令、设置/session 组合、状态栏、对话框和应用壳事件的进一步迁入既有领域 controller 属于后续迭代的架构演进，保持无框架的原生 DOM 架构；`src/renderer/app.js` 已删除，不得恢复。
-5. 设置分类已收口：仅影响展示的设置走现有 `applyPresentationSettings()` 热应用；影响 Vditor 初始化契约的设置重建时已保护 undo（`captureUndoHistory()` / `scheduleUndoHistoryRestore()` 移交）、滚动位置（`createRebuildSnapshot()` 与滚动恢复）与模式状态，选区保护仍受 Vditor 3.11.3 上游限制（见 `docs/09-DEV-NOTE.md` 的 undo/光标恢复记录）
-6. 已完成：toolbar mount 兼容逻辑已收回 `vditor-adapter.js`（`mountedToolbar()` / `hasListMarker()`），adapter 不再对外导出 `selectors` 常量集合；业务代码不得重新引入私有 selector 查询
-
-**P3（功能完善）：**
-7. 实现近期文件列表 UI
-8. 为 `app:openExternal` 增加 URL 长度和格式验证
-9. 补充缺失的 Windows/Linux 发布配置
+本地图只描述当前代码结构，不维护技术债、风险和改进清单；需要这些信息时直接查阅 `00-ISSUES.md`。

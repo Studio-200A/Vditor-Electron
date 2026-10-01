@@ -59,12 +59,14 @@ describe('resolveThemeMode', () => {
     expect(resolveThemeMode(settings)).toBe('dark');
     expect(resolveThemeMode({ ...settings, theme: 'claude-dark' })).toBe('dark');
     expect(resolveThemeMode({ ...settings, theme: 'monokai-pro-dark' })).toBe('dark');
+    expect(resolveThemeMode({ ...settings, theme: 'nord-dark' })).toBe('dark');
   });
 
   it('returns light for light themes', () => {
     const settings = createSettings({ systemTheme: false, theme: 'classic' });
     expect(resolveThemeMode(settings)).toBe('light');
     expect(resolveThemeMode({ ...settings, theme: 'claude-light' })).toBe('light');
+    expect(resolveThemeMode({ ...settings, theme: 'elegant' })).toBe('light');
     expect(resolveThemeMode({ ...settings, theme: 'monokai-pro-light' })).toBe('light');
   });
 });
@@ -74,6 +76,7 @@ describe('validateDarkTheme', () => {
     expect(validateDarkTheme('dark')).toBe('dark');
     expect(validateDarkTheme('claude-dark')).toBe('claude-dark');
     expect(validateDarkTheme('monokai-pro-dark')).toBe('monokai-pro-dark');
+    expect(validateDarkTheme('nord-dark')).toBe('nord-dark');
   });
 
   it('returns dark as fallback for invalid themes', () => {
@@ -87,6 +90,7 @@ describe('validateLightTheme', () => {
   it('returns the theme if it is a valid light theme', () => {
     expect(validateLightTheme('classic')).toBe('classic');
     expect(validateLightTheme('claude-light')).toBe('claude-light');
+    expect(validateLightTheme('elegant')).toBe('elegant');
     expect(validateLightTheme('monokai-pro-light')).toBe('monokai-pro-light');
   });
 
