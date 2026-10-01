@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.7 -TBA
+
+### Project Maintenance
+
+- Updated transitive development dependencies (`undici`, `brace-expansion`, and `fast-uri`) to resolve security advisories reported by Dependabot and npm audit.
+
 ## 0.2.6 - Editing and Theme Refinements
 
 ### New Features
