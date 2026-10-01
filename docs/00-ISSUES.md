@@ -20,7 +20,7 @@
 
 **状态：** 未决的 Vditor 4.0 升级风险；升级暂缓，未指定 Desktop 版本。若重新评估，按 [候选方案](TBD/VDITOR-4.0-MIGRATION-PLAN.md) 的阶段 3 和 [执行账本](TBD/VDITOR-4.0-EXECUTION-TRACKER.md) 的 SV 行为矩阵与增强结论验证。
 
-0.2.6 的 `fe363d9` 为 SV 增加了 source → preview 标题锚点滚动同步：adapter 的 `syncSplitScroll()`（`src/renderer/vditor-adapter.js`，约 460 行）读取 Vditor 3.11.3 私有的 source heading marker（`[data-type="heading-marker"]`）与 preview `.vditor-reset` 的直接 H1–H6，仅在两侧标题数量相等时按顺序配对，并以各自 viewport 高度约 20% 处作为标题对齐里程碑在相邻锚点间插值；标题缺失、数量不等或私有 DOM 结构变化时不猜测映射，回退保留 Vditor 原生比例滚动，preview 滚动也不回写 source。
+0.2.6 的 `fe363d9` 为 SV 增加了 source → preview 标题锚点滚动同步：adapter 的 `syncSplitScroll()`（`src/renderer/vditor-adapter.js`）读取 Vditor 3.11.3 私有的 source heading marker（`[data-type="heading-marker"]`）与 preview `.vditor-reset` 的直接 H1–H6，仅在两侧标题数量相等时按顺序配对，并以各自 viewport 高度约 20% 处作为标题对齐里程碑在相邻锚点间插值；标题缺失、数量不等或私有 DOM 结构变化时不猜测映射，回退保留 Vditor 原生比例滚动，preview 滚动也不回写 source。
 
 Vditor 4.0 的 SV 是 `<textarea>`，源码面不再提供可读取的 heading marker DOM，该私有依赖在升级后必然失效。风险不是崩溃而是能力丢失：回退路径会让 SV 退回上游按总高度的比例滚动，复杂 Markdown（原始 HTML、表格、图片、长代码块）中源码与预览的章节将重新错位。决定升级时必须给出明确结论——按 textarea/preview 映射重建标题锚点同步，或显式降级回比例同步并记录为用户可见行为变化；两者都不得保留依赖 3.11.3 marker 的隐藏失效路径，也不得以 DOM shim 在 textarea 上模拟 marker 结构。
 

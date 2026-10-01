@@ -1,8 +1,8 @@
 # Vditor-Electron Code Structure World Map
 
-- **最后同步：** 2026-09-29
-- **基于的工作区：** `dev-0.2.6` 当前工作区实现（0.2.5 已收口发布；0.2.6 修复批次进行中）
-- **基于的提交：** `89cb63a`（本文档描述该提交的代码状态，后续同步时更新此锚点，不维护递增的文档版本号）
+- **最后同步：** 2026-10-01
+- **基于的工作区：** `main`（v0.2.6 已发布收口，`dev-0.2.6` 经 PR #9 合入 `main`）
+- **基于的提交：** `afdeb63`（tag `v0.2.6`；本文档描述该提交的代码状态，后续同步时更新此锚点，不维护递增的文档版本号）
 - **对应 package.json 版本号：** 0.2.6
 - **技术债与改进建议：** 已迁至 [`docs/00-ISSUES.md`](00-ISSUES.md)，本地图不再维护
 
@@ -16,7 +16,7 @@
 
 **核心功能：** 多标签页 Markdown 编辑、三种编辑模式（IR/SV/WYSIWYG）、分栏预览、文件树侧栏、文档大纲、查找替换、图片插入与压缩、资源健康检查（未引用/缺失图片引用）、HTML/PDF 导出、TOML 偏好与版本化 JSON 状态持久化、三语国际化（英/简/繁）。
 
-**开发阶段：** 0.2.5 渲染层架构重构全部完成（批次 0–11 收口，0.2.5 开发收口）。批次 8 完成工作区、设置、菜单、窗口和导出域迁移；批次 8.1 校正 Vditor adapter 的完整类型 facade 与防漂移证据并完成复审；批次 9 已删除 legacy `app.js` 入口、收口组合层职责和行为测试，用户全量测试与手测通过；批次 10 完成文档同步、`.github/workflows/quality.yml` CI gate、性能与包体对比、Linux 候选包（portable/AppImage）与实机冒烟，并修复候选手测暴露的自绘光标与“设置触发编辑器重建后撤销失效”问题（提交 `5f34490`）；批次 11 最终独立审查收口三个阻塞项修复与最终人工验收。`AppController` 负责启动顺序、窗口级命令、拖放和 IPC 订阅；`app/app-composition.js` 是迁移后的组合层，仅承担保存交易、标签命令、设置/session 组合和部分全局事件的协调，各领域 runtime、自动保存 timer、recovery、共享 toolbar、Split View、outline、find、图片 runtime、文档链接、激活协调、应用 shell 资源和主题协调均已有明确 controller；DocumentController 与组合层仍保留文件 identity、保存交易、外部变化和 recovery 安全动作的语义所有权。0.2.0 的文件安全、恢复、watcher、冲突与跨平台边界继续作为不可改变的行为基线。精确的批次状态、手测、首轮失败及重跑证据只记录在 [`docs/ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md`](ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md)，本地图不维护实时测试总数。主题架构和内置主题见 [`docs/05-THEMES.md`](05-THEMES.md)，renderer 的模块边界见 [`docs/02-RENDERER-ARCHITECTURE.md`](02-RENDERER-ARCHITECTURE.md)。GitHub alert 序列化还原兼容层（`editor/github-alerts.ts`，提交 `0ded7ed`）在 0.2.5 收口阶段交付，已随 v0.2.5 发布。0.2.6 修复批次（进行中）在上述架构内交付：source-only SV 的大纲不可用空态、编辑器重建时按 tab 保留 SV pane 布局（`EditorController.rebuildSplitViewLayouts`）、基于标题锚点配对的 SV source → preview 滚动同步（adapter `syncSplitScroll()`）、Nord Dark 与 Elegant 两套内置壳层主题、设置页每行最多四张主题预览卡片、About logo 不可拖出（`draggable="false"`，保留点击彩蛋）、亮暗色调切换后经 adapter `refreshMermaidTheme()` 重绘已渲染的 Mermaid 图表、三模式自动换行实时生效与关闭换行时的居中横向滚动列（adapter `applyWordWrap()`）、Elegant 共享 hover 对比度增强、撤销回退到保存内容时三模式清除脏标记（干净文档以编辑器序列化表示作为 dirty 保存点，`EditorController` 保存点对账）、三模式自绘光标几何稳定性（IR/WYSIWYG 行内 Markdown 格式化后光标保持在插入点并经前一行内节点定位、SV 空文档与空标题标记按源码行高稳定绘制、SV 表格分隔行 Enter 后定位到下一行、IR/WYSIWYG 空文档 Enter 后按空编辑根字体测量高度居中，提交 `4641bf6` 与 `89cb63a`）、renderer locale 字典拆分为 `src/renderer/locale/` 三语模块（esbuild 第三入口生成启动 `locales.js`）、主进程 IPC handler 模块化（64 个渲染器→主进程通道迁入 `src/main/ipc/` 的 11 个领域模块，`ipc/register.ts` 组合入口统一注册，`index.ts` 只构造依赖；见 [`docs/19-0.2.6-IPC-MODULARIZATION-PLAN.md`](19-0.2.6-IPC-MODULARIZATION-PLAN.md)），以及 Vitest 4.1.11 升级与 `js-yaml` 4.3.2 override。
+**开发阶段：** 0.2.5 渲染层架构重构全部完成（批次 0–11 收口，0.2.5 开发收口）。批次 8 完成工作区、设置、菜单、窗口和导出域迁移；批次 8.1 校正 Vditor adapter 的完整类型 facade 与防漂移证据并完成复审；批次 9 已删除 legacy `app.js` 入口、收口组合层职责和行为测试，用户全量测试与手测通过；批次 10 完成文档同步、`.github/workflows/quality.yml` CI gate、性能与包体对比、Linux 候选包（portable/AppImage）与实机冒烟，并修复候选手测暴露的自绘光标与“设置触发编辑器重建后撤销失效”问题（提交 `5f34490`）；批次 11 最终独立审查收口三个阻塞项修复与最终人工验收。`AppController` 负责启动顺序、窗口级命令、拖放和 IPC 订阅；`app/app-composition.js` 是迁移后的组合层，仅承担保存交易、标签命令、设置/session 组合和部分全局事件的协调，各领域 runtime、自动保存 timer、recovery、共享 toolbar、Split View、outline、find、图片 runtime、文档链接、激活协调、应用 shell 资源和主题协调均已有明确 controller；DocumentController 与组合层仍保留文件 identity、保存交易、外部变化和 recovery 安全动作的语义所有权。0.2.0 的文件安全、恢复、watcher、冲突与跨平台边界继续作为不可改变的行为基线。精确的批次状态、手测、首轮失败及重跑证据只记录在 [`docs/ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md`](ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md)，本地图不维护实时测试总数。主题架构和内置主题见 [`docs/05-THEMES.md`](05-THEMES.md)，renderer 的模块边界见 [`docs/02-RENDERER-ARCHITECTURE.md`](02-RENDERER-ARCHITECTURE.md)。GitHub alert 序列化还原兼容层（`editor/github-alerts.ts`，提交 `0ded7ed`）在 0.2.5 收口阶段交付，已随 v0.2.5 发布。0.2.6 修复批次（已随 v0.2.6 发布收口）在上述架构内交付：source-only SV 的大纲不可用空态、编辑器重建时按 tab 保留 SV pane 布局（`EditorController.rebuildSplitViewLayouts`）、基于标题锚点配对的 SV source → preview 滚动同步（adapter `syncSplitScroll()`）、Nord Dark 与 Elegant 两套内置壳层主题、设置页每行最多四张主题预览卡片、About logo 不可拖出（`draggable="false"`，保留点击彩蛋）、亮暗色调切换后经 adapter `refreshMermaidTheme()` 重绘已渲染的 Mermaid 图表、三模式自动换行实时生效与关闭换行时的居中横向滚动列（adapter `applyWordWrap()`）、Elegant 共享 hover 对比度增强、撤销回退到保存内容时三模式清除脏标记（干净文档以编辑器序列化表示作为 dirty 保存点，`EditorController` 保存点对账）、三模式自绘光标几何稳定性（IR/WYSIWYG 行内 Markdown 格式化后光标保持在插入点并经前一行内节点定位、SV 空文档与空标题标记按源码行高稳定绘制、SV 表格分隔行 Enter 后定位到下一行、IR/WYSIWYG 空文档 Enter 后按空编辑根字体测量高度居中，提交 `4641bf6` 与 `89cb63a`）、renderer locale 字典拆分为 `src/renderer/locale/` 三语模块（esbuild 第三入口生成启动 `locales.js`）、主进程 IPC handler 模块化（64 个渲染器→主进程通道迁入 `src/main/ipc/` 的 11 个领域模块，`ipc/register.ts` 组合入口统一注册，`index.ts` 只构造依赖；见 [`docs/ARCHIVED/19-0.2.6-IPC-MODULARIZATION-PLAN.md`](ARCHIVED/19-0.2.6-IPC-MODULARIZATION-PLAN.md)），以及 Vitest 4.1.11 升级、`js-yaml` 4.3.2 override 与 jsdom 传递依赖 undici 锁定 8.10.2。
 
 ---
 
@@ -1470,7 +1470,7 @@ function rememberRecent(filePath) {
 
 ### 12.1 打包工具
 
-**electron-builder v26.15.3**（devDependency）。配置内联于 `package.json#build`。
+**electron-builder ^26.15.3**（devDependency）。配置内联于 `package.json#build`。
 
 ### 12.2 目标平台与输出格式
 

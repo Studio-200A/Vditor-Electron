@@ -19,6 +19,10 @@
 
 </p>
 
+<p align="center">
+  <a href="https://github.com/Studio-200A/Vditor-Electron/releases/latest"><img src="https://img.shields.io/badge/Go_To_Release-0969da?style=for-the-badge&amp;logo=github&amp;logoColor=white" alt="Go To Release" /></a>
+</p>
+
 Vditor Desktop takes the writing experience of [Vditor](https://github.com/Vanessa219/vditor) — **one of the most capable Markdown editors around** — and gives it the desktop app it deserves. There's no proprietary format and no lock-in: saved documents are ordinary Markdown files, such as `.md`, that you can open with another editor. Changes still waiting to be saved are marked in the app. Around that, the app fills in everything a real desktop tool needs but a browser-based editor can't offer on its own: tabs, workspaces, a file explorer, Vditor's built-in outline, themes, session recovery, and native file associations.
 
 ![Vditor Desktop light theme](assets/screenshot-light.webp)

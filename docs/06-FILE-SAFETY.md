@@ -23,6 +23,7 @@
 - 关闭标签、Save As、工作区切换、重命名和重建 editor 后到达的旧异步结果不得写入新的路径或新的标签状态。
 - watcher 的绑定必须经历“创建 → `ready` → 接收实时事件”，且 `ignoreInitial` 不能替代重绑与显式 reconcile 场景下 ready 后的一次磁盘事实读取；首次绑定的磁盘事实由打开流程的显式读取提供（`watchDocument(filePath, reconcile)` 只在重绑或调用方显式请求时在 ready 后读取）。
 - 用于展示的解码正文和用于安全写入比较的 `expectedBytes` 必须来自同一次原始磁盘读取，不能让两次读取之间的变化被误认为同一版本。
+- 脏判定基线与磁盘字节基线是两层不同的基线，不得混用：清洁文档的脏判定保存点（`tab.savedContent`）采用编辑器当前模式的序列化表示（SV 尾随换行、IR/WYSIWYG 的 Lute 规范化，与磁盘字节可能不同），在清洁打开、无冲突外部重载与模式切换后由 `src/renderer/editor/editor-controller.ts` 重新采纳，使“撤销回退到已保存内容”比较相等并清除脏标记；而用于 watcher 比较与安全写入基线的 `expectedSavedContent` 始终保持原始磁盘字节语义（同一次原始读取的解码结果），由保存/重载调用方持有。
 
 ## 3. 文件身份
 
@@ -43,6 +44,8 @@
 2. 目标的 `fileIdentity`；
 3. 当前保存基线正文，或目标应当不存在的声明；
 4. 保存过程中用于判断结果是否仍属于当前标签的 revision/identity。
+
+快照中的保存基线正文来自上述磁盘字节基线（`expectedSavedContent`）；它与脏判定保存点（`savedContent`，见第 2 节）是两层不同的基线，前者参与基线确认与安全写入，后者只决定脏标记与撤销对账。
 
 主进程的 `FileManagerService.writeDocument()` 负责把基线正文读取为原始字节，使用这同一份字节完成解码后的基线确认，并把它传给 `SafeFileWriter`。写入器在目标同目录创建唯一临时文件，以排他方式写入、同步、关闭，尽可能保留原文件权限，再执行最终替换；失败时清理临时文件但不主动删除原目标。
 
@@ -125,7 +128,8 @@ rename(临时文件, 目标文件)
 - `src/main/services/persistent-state-store.ts`：版本化 `state.json` 的白名单、一次性旧 TOML 状态迁移与串行原子写入（仅保存会话/窗口投影，不保存 recovery 正文）；
 - `src/main/services/resource-health-service.ts`：扫描输入边界、候选 revision、回收站前逐项复核与符号链接只读限制；
 - `src/main/save-dialog-path.ts`：`resolveSaveDialogDefaultPath()` 决定 `file:saveDialog` 的默认路径——Save As 传入的绝对 `defaultPath` 原样保留并优先于注入的工作区目录，只有裸文件名才与该目录拼接，否则回退到 `<目录>/untitled.md`；导出对话框仍保持各自的“目录 + basename”语义；
-- `src/main/ipc/`：`file-operations.ts`（`file:write` / `writeDocument` / `delete` / `rename` 等文件通道）、`file-watching.ts`（`file:setWorkspaceWatch` / `watchDocument` / `unwatchDocument`）、`file-dialogs.ts`（`file:saveDialog` / `exportDialog`）与 `trusted-channel.ts`（信任校验与错误规范化）是这些通道的注册入口；0.2.6 IPC 模块化后它们经 `index.ts` 注入的服务与窄回调工作，文件安全语义仍由上列服务与 renderer 控制器所有；
+- `src/main/ipc/`：`file-operations.ts`（`file:write` / `writeDocument` / `delete` / `rename` 等文件通道）、`file-watching.ts`（`file:setWorkspaceWatch` / `watchDocument` / `unwatchDocument`）、`file-dialogs.ts`（`file:saveDialog` / `exportDialog`）与 `trusted-channel.ts`（信任校验与错误规范化）是这些通道的注册入口；0.2.6 IPC 模块化后它们经 `src/main/ipc/register.ts` 的 `registerIpcHandlers()` 聚合注册、由 `src/main/index.ts` 注入服务与窄回调工作，文件安全语义仍由上列服务与 renderer 控制器所有；
+- `src/renderer/editor/editor-controller.ts`：脏判定保存点的采纳与对账——清洁打开、无冲突外部重载（`applyExternalContent()`）与模式切换（`reconcileModeSwitchSavepoint()`）后以编辑器序列化表示重设 `savedContent`，使撤销回退到已保存内容时清除脏标记；磁盘字节基线 `expectedSavedContent` 仍由保存/重载调用方持有；
 - `src/renderer/app/app-composition.js`：content revision 与保存/外部变化交易组合；
 - `src/renderer/documents/document-save-controller.ts`：按 document ID 与 canonical identity 持有两级保存串行队列；
 - `src/renderer/documents/document-controller.ts`：打开、canonical identity 去重与 `transitionBindings()` 路径重绑定；

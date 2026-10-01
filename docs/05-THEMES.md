@@ -152,7 +152,7 @@ Elegant 采用 [ColaMD elegant.css](https://github.com/marswaveai/ColaMD/blob/ma
 
 ### 5.6 Nord Dark
 
-Nord Dark 使用 [Nord 官方 palette](https://github.com/nordtheme/nord/blob/develop/src/nord.css) 的 Polar Night、Snow Storm、Frost 和 Aurora 色组，不引入 palette 外颜色。`nord0` `#2e3440` 作为应用与编辑器表面，`nord1` `#3b4252` 作为导航和控件表面，`nord3` `#4c566a` 用于禁用控件与分割线，`nord4` `#d8dee9` 为常规文字，`nord8` `#88c0d0` 为交互强调色，`nord11` `#bf616a` 为危险操作色。设置 H4、`.muted` 与 `.version-info` 使用 `nord4` 与 `nord0` 的混合色，保持弱化层级而不成为强调色。其 H1–H6 内容覆盖是受限例外：依次使用 `nord8`、`nord9`、`nord10`、`nord15`、`nord14`、`nord13`，仅作用于 Vditor 的 IR、WYSIWYG 与预览标题。Vditor 内容和代码主题仍通过既有 `setTheme()` 链路独立管理。
+Nord Dark 使用 [Nord 官方 palette](https://github.com/nordtheme/nord/blob/develop/src/nord.css) 的 Polar Night、Snow Storm、Frost 和 Aurora 色组，不引入 palette 外颜色。`nord0` `#2e3440` 作为应用与编辑器表面，`nord1` `#3b4252` 作为导航和控件表面，`nord3` `#4c566a` 用于禁用控件与分割线，`nord6` `#eceff4` 为常规文字（`nord4` `#d8dee9` 为弱化文字），`nord8` `#88c0d0` 为交互强调色，`nord11` `#bf616a` 为危险操作色。设置 H4、`.muted` 与 `.version-info` 使用 `nord4` 与 `nord0` 的混合色，保持弱化层级而不成为强调色。其 H1–H6 内容覆盖是受限例外：依次使用 `nord8`、`nord9`、`nord10`、`nord15`、`nord14`、`nord13`，仅作用于 Vditor 的 IR、WYSIWYG 与预览标题。Vditor 内容和代码主题仍通过既有 `setTheme()` 链路独立管理。
 
 ### 5.7 Monokai Pro Dark
 

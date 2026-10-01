@@ -19,6 +19,10 @@
 
 </p>
 
+<p align="center">
+  <a href="https://github.com/Studio-200A/Vditor-Electron/releases/latest"><img src="https://img.shields.io/badge/Go_To_Release-0969da?style=for-the-badge&amp;logo=github&amp;logoColor=white" alt="前往最新发布版本（Go To Release）" /></a>
+</p>
+
 Vditor Desktop 把 [Vditor](https://github.com/Vanessa219/vditor)——**最好用的 Markdown 编辑内核之一**——装进了它本该拥有的桌面外壳。没有专有格式，也没有任何锁定：保存后的文档是普通的 Markdown 文件，例如 `.md`，可以用其他编辑器打开；尚未保存的修改会在应用中标明。在此基础上，软件补全了一款真正的桌面工具该有、而网页版编辑器给不了的部分：多标签、工作区、资源管理器、Vditor 自带大纲、主题、会话恢复和桌面文件关联。
 
 ![Vditor Desktop 浅色主题](assets/screenshot-light.webp)

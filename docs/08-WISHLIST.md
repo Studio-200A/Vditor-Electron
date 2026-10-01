@@ -312,4 +312,4 @@ toolbarMode: ToolbarMode;
 
 ## Edge Case专项测试
 
-- 以`0.2.5`版本为基准，组织edge case专项测试，扫清收敛不同情况下的UI交互和逻辑问题；
+- 以`0.2.6`版本为基准，组织edge case专项测试，扫清收敛不同情况下的UI交互和逻辑问题；
