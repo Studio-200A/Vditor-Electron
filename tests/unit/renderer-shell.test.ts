@@ -190,7 +190,7 @@ describe('renderer shell', () => {
     );
   });
 
-  it('defines reproducible Linux portable and AppImage release entry points', () => {
+  it('defines reproducible Linux archive and AppImage release entry points', () => {
     const scripts = packageMetadata.scripts;
     const build = packageMetadata.build;
     const releaseScript = fs.readFileSync(path.resolve('scripts/release-linux.js'), 'utf8');
@@ -201,13 +201,15 @@ describe('renderer shell', () => {
     const appRun = fs.readFileSync(path.resolve('resources/linux/AppRun'), 'utf8');
     expect(scripts).toMatchObject({
       'release:linux': 'npm run build && node scripts/release-linux.js all',
-      'release:linux:portable': 'npm run build && node scripts/release-linux.js portable',
+      'release:linux:archive': 'npm run build && node scripts/release-linux.js archive',
       'release:linux:appimage': 'npm run build && node scripts/release-linux.js appimage',
     });
     expect(build.linux.executableName).toBe('vditor-desktop');
     expect(build.fileAssociations[0].mimeType).toBe('text/markdown');
-    expect(releaseScript).toContain('vditor-desktop-x86_64-${version}-portable.tar.gz');
-    expect(releaseScript).toContain('vditor-desktop-x86_64-${version}-portable.AppImage');
+    expect(releaseScript).toContain('vditor-desktop-${version}-linux-x86_64');
+    expect(releaseScript).toContain('${artifactStem}.tar.gz');
+    expect(releaseScript).toContain('${artifactStem}.AppImage');
+    expect(releaseScript).not.toContain('-portable');
     expect(releaseScript).toContain('appImageToolChecksum');
     expect(releaseScript).toContain('appImageRuntimeChecksum');
     expect(releaseScript).toContain("'--no-appstream'");

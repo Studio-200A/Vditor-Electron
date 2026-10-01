@@ -7,6 +7,8 @@ const { spawnSync } = require('node:child_process');
 const projectRoot = path.resolve(__dirname, '..');
 const packageMetadata = require(path.join(projectRoot, 'package.json'));
 const version = packageMetadata.version;
+// Linux release artifacts are named vditor-desktop-<version>-linux-<arch>.
+const artifactStem = `vditor-desktop-${version}-linux-x86_64`;
 const mode = process.argv[2] || 'all';
 const releaseDir = path.join(projectRoot, 'release');
 const unpackedDir = path.join(releaseDir, 'linux-unpacked');
@@ -147,19 +149,19 @@ function buildUnpackedApplication() {
   if (!fs.existsSync(executable)) fail(`Linux executable was not generated: ${executable}`);
 }
 
-function buildPortable() {
+function buildArchive() {
   const rootName = `vditor-desktop-${version}`;
-  const portableStage = path.join(stagingDir, 'portable');
-  const applicationDir = path.join(portableStage, rootName);
-  const artifact = path.join(releaseDir, `vditor-desktop-x86_64-${version}-portable.tar.gz`);
-  remove(portableStage);
+  const archiveStage = path.join(stagingDir, 'archive');
+  const applicationDir = path.join(archiveStage, rootName);
+  const artifact = path.join(releaseDir, `${artifactStem}.tar.gz`);
+  remove(archiveStage);
   remove(artifact);
-  fs.mkdirSync(portableStage, { recursive: true });
+  fs.mkdirSync(archiveStage, { recursive: true });
   copyDirectory(unpackedDir, applicationDir);
-  fs.symlinkSync(rootName, path.join(portableStage, 'current'));
-  fs.copyFileSync(iconSource, path.join(portableStage, 'vditor-desktop-icon.svg'));
+  fs.symlinkSync(rootName, path.join(archiveStage, 'current'));
+  fs.copyFileSync(iconSource, path.join(archiveStage, 'vditor-desktop-icon.svg'));
   fs.writeFileSync(
-    path.join(portableStage, 'vditor-desktop.desktop'),
+    path.join(archiveStage, 'vditor-desktop.desktop'),
     renderDesktop(
       '/path/to/vditor-desktop/current/vditor-desktop',
       '/path/to/vditor-desktop/vditor-desktop-icon.svg',
@@ -170,13 +172,13 @@ function buildPortable() {
     '-czf',
     artifact,
     '-C',
-    portableStage,
+    archiveStage,
     rootName,
     'current',
     'vditor-desktop-icon.svg',
     'vditor-desktop.desktop',
   ]);
-  console.log(`Portable artifact: ${artifact}`);
+  console.log(`Archive artifact: ${artifact}`);
 }
 
 function prepareAppDir() {
@@ -218,7 +220,7 @@ function prepareAppDir() {
 
 async function buildAppImage() {
   const appDir = prepareAppDir();
-  const artifact = path.join(releaseDir, `vditor-desktop-x86_64-${version}-portable.AppImage`);
+  const artifact = path.join(releaseDir, `${artifactStem}.AppImage`);
   const [tool, runtime] = await Promise.all([ensureAppImageTool(), ensureAppImageRuntime()]);
   remove(artifact);
   // appimagetool's bundled AppStream policy rejects the stable reverse-domain ID because it
@@ -239,13 +241,13 @@ async function main() {
   if (process.platform !== 'linux' || process.arch !== 'x64') {
     fail('Linux x86_64 releases must be built on a Linux x86_64 host');
   }
-  if (!['portable', 'appimage', 'all'].includes(mode)) {
-    fail('usage: node scripts/release-linux.js [portable|appimage|all]');
+  if (!['archive', 'appimage', 'all'].includes(mode)) {
+    fail('usage: node scripts/release-linux.js [archive|appimage|all]');
   }
   run(process.execPath, [path.join(projectRoot, 'scripts', 'check-project-metadata.js')]);
   fs.mkdirSync(stagingDir, { recursive: true });
   buildUnpackedApplication();
-  if (mode === 'portable' || mode === 'all') buildPortable();
+  if (mode === 'archive' || mode === 'all') buildArchive();
   if (mode === 'appimage' || mode === 'all') await buildAppImage();
 }
 

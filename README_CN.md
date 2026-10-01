@@ -186,8 +186,8 @@ npm run release:linux       # 全部 Linux 产物
 发行命令会生成：
 
 ```text
-release/vditor-desktop-x86_64-<版本号>-portable.tar.gz
-release/vditor-desktop-x86_64-<版本号>-portable.AppImage
+release/vditor-desktop-<版本号>-linux-x86_64.tar.gz
+release/vditor-desktop-<版本号>-linux-x86_64.AppImage
 ```
 
 Portable 压缩包中的 desktop 文件使用 `/path/to/vditor-desktop` 作为安装路径占位符。安装到桌面环境前，请将其替换为实际解压路径。AppImage 添加可执行权限后即可运行。

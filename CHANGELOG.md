@@ -40,6 +40,7 @@
 - **fix(dependencies):** Upgrade Vitest and its mocker package to 4.1.11, and override the `electron-builder` transitive `js-yaml` dependency to 4.3.2, resolving the related Dependabot security alerts.
 - **fix(dependencies):** Update the `jsdom` development dependency's locked `undici` version to 8.10.2, resolving seven related Dependabot security alerts.
 - **test(e2e):** Consolidate titlebar menu alignment and native window resizing checks into related scenarios, and verify Split View list toolbar actions by their behavior after mode switches instead of counting private DOM mutations.
+- **chore(release):** Name the Linux release artifacts `vditor-desktop-<version>-linux-x86_64.tar.gz` and `vditor-desktop-<version>-linux-x86_64.AppImage`, replacing the previous architecture-first `-portable` file names. The archive-only release entry point is now `npm run release:linux:archive` instead of `npm run release:linux:portable`.
 
 ## 0.2.5 - Modularized Refactor
 

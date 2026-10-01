@@ -188,8 +188,8 @@ npm run release:linux       # all Linux artifacts
 The release command produces:
 
 ```text
-release/vditor-desktop-x86_64-<version>-portable.tar.gz
-release/vditor-desktop-x86_64-<version>-portable.AppImage
+release/vditor-desktop-<version>-linux-x86_64.tar.gz
+release/vditor-desktop-<version>-linux-x86_64.AppImage
 ```
 
 The portable desktop entry uses `/path/to/vditor-desktop` as an installation-path placeholder. Replace it with the actual extraction path before installing the entry into your desktop environment. The AppImage can be run after making it executable.

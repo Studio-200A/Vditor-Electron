@@ -234,7 +234,7 @@ Vditor-Electron/
 │   ├── check-vditor-version.js    # Vditor 版本一致性校验
 │   ├── check-project-metadata.js  # package.json / lock / 稳定应用 ID / Linux 元数据一致性检查
 │   ├── run-electron-e2e.js        # Playwright Electron E2E 启动器（Linux 复用本地 Electron dist）
-│   └── release-linux.js           # Linux x64 portable / AppImage 发布脚本
+│   └── release-linux.js           # Linux x64 archive / AppImage 发布脚本
 ├── resources/
 │   └── linux/                     # Linux 打包资源（.desktop、AppRun、metainfo）
 ├── docs/                          # 项目规划与文档
@@ -1503,7 +1503,7 @@ function rememberRecent(filePath) {
 
 **当前状态：**
 
-- **Linux：** `electron-builder --linux` 支持 AppImage/deb/rpm，另有自定义 `release-linux.js` 生成 x86_64 portable tar.gz 和独立 AppImage；发布脚本先运行项目 metadata 检查，并对固定 appimagetool 传入 `--no-appstream`，以保留含连字符的统一应用 ID
+- **Linux：** `electron-builder --linux` 支持 AppImage/deb/rpm，另有自定义 `release-linux.js` 生成名为 `vditor-desktop-<版本>-linux-x86_64` 的便携 tar.gz 与独立 AppImage；发布脚本先运行项目 metadata 检查，并对固定 appimagetool 传入 `--no-appstream`，以保留含连字符的统一应用 ID
 - **macOS：** 配置缺失（`build.mac` 字段不存在），构建命令 `npm run dist` 使用 electron-builder 默认行为
 - **Windows：** 未配置签名；无 NSIS/MSI 安装程序配置（允许 `electron-winstaller` 脚本）
 
@@ -1688,8 +1688,8 @@ build:assets:
 | `npm run pack` | `build` + `electron-builder --dir`（生成未打包的调试目录） |
 | `npm run dist` | `build` + `electron-builder`（按默认目标打包） |
 | `npm run dist:linux` | 调用 `release:linux`（默认 Linux 发布入口） |
-| `npm run release:linux` | `build` + `scripts/release-linux.js all`（同时生成 portable tar.gz + AppImage） |
-| `npm run release:linux:portable` | 仅生成 x86_64 portable `.tar.gz`（含 `.desktop` 文件与图标） |
+| `npm run release:linux` | `build` + `scripts/release-linux.js all`（同时生成归档 tar.gz + AppImage） |
+| `npm run release:linux:archive` | 仅生成 x86_64 `.tar.gz` 归档（含 `.desktop` 文件与图标） |
 | `npm run release:linux:appimage` | 仅生成 x86_64 AppImage（使用 appimagetool 1.9.1 + type2 runtime；先做项目 metadata 检查并跳过其不兼容的 AppStream advisory 校验） |
 
 ### 13.8 Git Hooks

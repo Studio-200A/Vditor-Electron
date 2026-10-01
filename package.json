@@ -32,7 +32,7 @@
     "dist": "npm run build && electron-builder",
     "dist:linux": "npm run release:linux",
     "release:linux": "npm run build && node scripts/release-linux.js all",
-    "release:linux:portable": "npm run build && node scripts/release-linux.js portable",
+    "release:linux:archive": "npm run build && node scripts/release-linux.js archive",
     "release:linux:appimage": "npm run build && node scripts/release-linux.js appimage"
   },
   "dependencies": {
