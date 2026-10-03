@@ -4,6 +4,7 @@
 
 ### Project Maintenance
 
+- **chore(runtime):** Upgrade the pinned Electron desktop runtime from 44.1.0 to 44.5.1, bringing upstream fixes for Linux clipboard responsiveness, KDE trash handling, file-manager reveal, and Chromium graphics.
 - Updated transitive development dependencies (`undici`, `brace-expansion`, and `fast-uri`) to resolve security advisories reported by Dependabot and npm audit.
 
 ## 0.2.6 - Editing and Theme Refinements
