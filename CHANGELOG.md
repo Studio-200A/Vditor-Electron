@@ -4,6 +4,7 @@
 
 ### Bug Fixes
 
+- **fix(settings):** Disable Electron's built-in spellchecker in the main window so font names and other configuration text do not receive unwanted spelling underlines.
 - **fix(tabs):** Keep the new-tab button visible when document tabs overflow. Add subtle, theme-aware shadows only at edges with hidden tabs, while preserving horizontal wheel scrolling and the existing tab-width behavior.
 - **fix(drop):** Reject unsupported files dropped into the editor before Vditor routes them to image upload, so an untitled document reports the unsupported file type instead of asking to save before inserting an image. Markdown drops open documents, and image drops retain the existing upload workflow.
 - **fix(notifications):** Show brief, themed banners for document link, open/save, image insertion, unsupported file drop, and tab-limit failures so they are easier to notice. Routine success feedback remains in the status bar, and temporary notices stack newest first below persistent file-state warnings without taking focus or blocking editor input. Each notice has its own five-second lifetime; a fourth notice fades out the oldest early, keeping up to three active notices. All document banners fade in and out consistently, with immediate visibility changes when reduced motion is enabled.

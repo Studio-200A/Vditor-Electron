@@ -289,6 +289,8 @@ function createWindow(): void {
   options.x = normalBounds.x;
   options.y = normalBounds.y;
   mainWindow = new BrowserWindow(options);
+  // The application does not provide spellchecking; font names and paths are not prose.
+  mainWindow.webContents.session.setSpellCheckerEnabled(false);
   const createdWindow = mainWindow;
   rendererReady = false;
   mainWindow.webContents.on('did-start-loading', () => {

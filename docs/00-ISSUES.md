@@ -83,6 +83,8 @@ Vditor 4.0 的 SV 是 `<textarea>`，源码面不再提供可读取的 heading m
 5. 补充缺失的 Windows/macOS 发布配置。
 6. 主题切换时避免为没有 Mermaid 的文档读取全文：`ThemeCoordinator.applyTheme()` 目前对每个已初始化 tab 无条件调用 `vditor.getValue()` 再交给 adapter 解析围栏，而 adapter 在无围栏时直接返回 `0`；大文档或多标签时这是一次无收益的全文序列化。关闭条件：经 adapter 语义接口（例如 `hasRenderedMermaid(host)`）先判定再读取正文，或缓存围栏来源，并补充大文档/多标签的耗时证据与对应单测；不得为此把私有 selector 上提到业务层。
 
+7. 编辑区拼写检查候选功能：目前尚未提供用户开关、建议词菜单及词典管理；主窗口关闭内置检查，Vditor 3.11.3 的三个编辑模式也明确禁用 `spellcheck`。设计见 [`08-WISHLIST.md`「编辑区拼写检查」](08-WISHLIST.md#编辑区拼写检查)，尚未排期。涉及 `src/main/index.ts`、后续主进程拼写服务/IPC、`src/renderer/settings/`、`src/renderer/editor/`、`src/renderer/vditor-adapter.js` 及 shared/preload 契约。当前上游没有公开的 Vditor 拼写开关或经本项目验证的纠错交易接口，Electron 默认词典下载也不能直接满足离线使用。关闭条件：明确交付范围，以真实 Electron 验证支持模式中的区域排除、纠错序列化与撤销/重做、过期请求拒绝、设置输入排除、词典离线供应及用户词典持久化，并完成所声明平台的实机和打包验收；未经原型验证不得作为已批准版本计划。
+
 ### 已收口结论与不得回退的约束
 
 以下事项已经实施完成，保留在此处作为约束，不作为待办：

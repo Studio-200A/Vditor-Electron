@@ -779,6 +779,38 @@ test('hides the custom titlebar while Electron is fullscreen', async () => {
   }
 });
 
+test('disables built-in spellchecking while font settings remain editable', async () => {
+  const running = await launchApp();
+  try {
+    const { app, page, testRoot } = running;
+    expect(
+      await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].webContents.session.isSpellCheckerEnabled(),
+      ),
+    ).toBe(false);
+    await page.locator('#statusSettings').click();
+    await page.locator('.settings-nav button[data-panel="fonts"]').click();
+    const fonts = {
+      uiFontFamily: 'system-ui, sans-serif',
+      editorFontFamily: 'Consolas, monospace',
+      previewFontFamily: 'Georgia, serif',
+      previewCodeFontFamily: 'Fira Code, monospace',
+    };
+    for (const [name, value] of Object.entries(fonts)) {
+      const input = page.locator(`[name="${name}"]`);
+      await input.click();
+      await input.fill(value);
+      await expect(input).toHaveValue(value);
+    }
+    await page.locator('#saveSettings').click();
+    for (const [name, value] of Object.entries(fonts)) {
+      await expect.poll(() => readSetting(testRoot, 'fonts', name)).toBe(value);
+    }
+  } finally {
+    await closeApp(running);
+  }
+});
+
 test('keeps the active edit mode after saving settings', async () => {
   const running = await launchApp();
   try {
