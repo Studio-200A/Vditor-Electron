@@ -2,7 +2,7 @@
 
 - **最后同步：** 2026-10-04
 - **基于的工作区：** `dev-0.2.7` 当前工作区实现（以已发布的 v0.2.6 为基线）
-- **基于的提交：** `afdeb63`（tag `v0.2.6`，为当前开发分支的发布基线；本文档同步了工作区内的 Electron 44.5.1 升级）
+- **基于的提交：** `0e1495e`（当前分支已提交基线；本文档另同步本次 0.2.7 工作区的文档反馈、通知队列、拖入分类和标签溢出布局）
 - **对应 package.json 版本号：** 0.2.6
 - **技术债与改进建议：** 已迁至 [`docs/00-ISSUES.md`](00-ISSUES.md)，本地图不再维护
 
@@ -121,8 +121,8 @@ Vditor-Electron/
 │   ├── pure-functions.ts          # 纯函数入口（esbuild bundle → dist/renderer/pure-functions.js）
 │   ├── index.html                 # 应用壳 HTML（标题栏、侧栏、编辑区、对话框）
 │   ├── app/                        # 应用壳与跨域组合（批次 9 收口后剩余组合交易）
-│   │   ├── app-controller.ts      # 启动阶段、窗口级快捷键、Markdown drop、open-files/menu IPC 与 cleanup
-│   │   ├── application-shell-controller.ts # application-owned DOM 属性/listener、observer、timer/rAF、bridge subscription 与 tab-wheel cleanup
+│   │   ├── app-controller.ts      # 启动阶段、窗口级快捷键、文件 drop 捕获分类、open-files/menu IPC 与 cleanup
+│   │   ├── application-shell-controller.ts # application-owned DOM 属性/listener、observer、timer/rAF 与 bridge subscription cleanup
 │   │   ├── session-restore-controller.ts # session DTO 投影、workspace/document 恢复交易与恢复收尾
 │   │   └── app-composition.js     # controller 实例装配、跨域 callback 和剩余组合交易
 │   ├── vditor-adapter.js          # Vditor 私有 DOM 适配层（集中选择器与结构假设）
@@ -152,7 +152,7 @@ Vditor-Electron/
 │   │   ├── localization.ts        # 本地化纯函数（resolveLocale、translate、formatIpcErrorMessage）
 │   │   ├── theme-controller.ts    # 主题控制器纯函数层（resolveEffectiveTheme、resolveThemeMode 等）
 │   │   ├── theme-coordinator.ts   # 主题协调器（解析/映射系统主题、联动 content/code theme、状态栏同步、持久化与 Vditor setTheme）
-│   │   ├── notifications.ts       # NotificationsController 类（消息提示、临时通知、确认对话框、未保存对话框）
+│   │   ├── notifications.ts       # NotificationsController 类（状态栏、短暂横幅、确认对话框、未保存对话框）
 │   │   ├── window-controller.ts   # WindowController（标题栏窗口控制按钮与状态订阅）
 │   │   ├── menu-controller.ts     # MenuController（Windows/Linux 自定义主菜单 popup DOM）
 │   │   ├── context-menu-controller.ts # ContextMenuController（共享右键菜单 popup 与互斥交接）
@@ -171,6 +171,7 @@ Vditor-Electron/
 │   │   ├── document-binding-transition.ts # 文档路径绑定迁移的命令/结果类型契约
 │   │   ├── document-save-controller.ts # 文档/identity 两级保存队列
 │   │   ├── document-save-external-workflow-controller.ts # 普通/自动/另存的 safe-write 交易与冲突/重载/重建动作
+│   │   ├── document-feedback.ts    # 文档结果的三语文案与状态栏/短暂通知呈现映射
 │   │   ├── document-close-controller.ts # 确认、runtime 释放、Store 删除顺序
 │   │   ├── document-tab-workflow-controller.ts # 多文件打开最终激活、新建 untitled 与 activation 分发
 │   │   ├── document-watch-controller.ts # watcher ready/reconciliation 的 stale-result release 与 rebind
@@ -221,6 +222,7 @@ Vditor-Electron/
 ├── src/shared/                    # 主进程、preload、renderer 共享类型
 │   └── contracts/                 # 可序列化 DTO（无运行时依赖）
 │       ├── index.ts               # ResultCode、WriteResult、DocumentIdentity 等骨架类型
+│       ├── markdown-link.d.ts     # main/renderer 共用的 MarkdownLinkResolution 结果契约
 │       └── session.ts             # SessionSnapshot schema v1 共享接口与版本常量
 ├── static/
 │   └── dist/                      # [自动生成] 离线 Vditor 构建产物（由 build:assets 复制）
@@ -373,7 +375,7 @@ if (!ownsSingleInstanceLock) {
 }
 ```
 
-第二个实例的参数通过 `extractOpenFilePaths(argv, workingDirectory)` 解析，入队后通过 `app:openFiles` 通道发送给已激活的主窗口。
+第二个实例的参数通过 `extractOpenFilePaths(argv, workingDirectory)` 解析，入队后通过 `app:openFiles` 通道发送给已激活的主窗口。解析器接收绝对路径、相对路径和 `file:` URL 的 Markdown 目标并去重；现有目录、非 Markdown 参数与其他 URL scheme 被忽略，缺失或不可访问的 Markdown 路径继续转发，由文档打开流程报告错误横幅。初次启动和 macOS `open-file` 也使用此解析器。
 
 ### 4.8 原生对话框
 
@@ -525,7 +527,7 @@ webPreferences: {
 
 1. 校验 `Vditor`、`VditorDesktopAdapter`、`fileAPI`、`appAPI` 均可用
 2. 取得 `window.__vditorDesktopApplication` 并调用其 `init()`
-3. `AppController` 按设置 → locale → UI → workspace → session → recovery → 收尾 → ready 顺序启动，拥有窗口级快捷键、Markdown drop、open-files/menu IPC 订阅和 cleanup
+3. `AppController` 按设置 → locale → UI → workspace → session → recovery → 收尾 → ready 顺序启动，拥有窗口级快捷键、文件 drop 捕获分类、open-files/menu IPC 订阅和 cleanup；Markdown 交给文档打开，编辑区图片留给 Vditor 上传，不支持的文件在上传前拒绝
 4. 初始化失败或 `beforeunload` 时由 `AppController` 按资源逆序 dispose；组合层的领域 controller 由其注入的 `dispose` 回调释放
 
 文档域的渐进迁移位于 `src/renderer/documents/`：`TabController` 只负责标签栏表现；`DocumentController` 通过注入的最小 file bridge 串行化 canonical identity 的打开、保存命令、关闭命令和外部变化分类，在读取完成后复核去重，并保留未命名标签的目标路径碰撞回调；资源根准备、标签创建、watch 注册、保存交易和 UI 收敛交回明确的领域回调；其内部组合 `DocumentSaveController` 的文档/identity 两级队列与 `DocumentCloseController` 的确认→runtime 释放→Store 删除顺序。关闭控制器合并同一 document ID 的并发请求，避免确认、runtime 释放和 watcher 清理重复执行。它们都不查询或拼接标签 DOM。
@@ -550,6 +552,10 @@ webPreferences: {
 9. `AppController` 设置 `body.dataset.appReady = 'true'` 并调用 `bridge.rendererReady()`，触发主进程 `flushPendingOpenFiles()`
 
 组合层向 `AppController` 注入的 `startup` 回调依次为 `loadSettings`、`applyLocale`、`initializeUI`、`restoreWorkspace`、`restoreSession`、`restoreRecovery`、`finishRestoration` 与 `dispose`；任一步失败或中途 dispose 都走同一条逆序清理路径，`startup.dispose` → `disposeAppDomains()` 释放组合层持有的各领域 controller。
+
+文档反馈由 `documents/document-feedback.ts` 的 `DocumentFeedback` 负责：把打开失败、保存/外部文件结果映射为三语文案，并选择状态栏或短暂横幅；组合层仅注入翻译、错误格式化和通知回调。`ui/notifications.ts` 的 `NotificationsController.showMessage()` 显示状态栏消息，`showNotice()` 创建独立短暂通知，错误使用 warning 图标、主题 danger 配色和 `role="alert"`。顶部 `.document-banner-stack` 将可见常驻警示与短暂通知按实际高度排列，间距 8px；短暂通知在常驻警示下方，最新在上，每条独立计时 5 秒，最多 3 条活动通知，第 4 条出现时最旧条目提前渐隐。四类横幅统一 180ms 透明度过渡，减少动态效果时立即切换；退出通知经 transitionend 或 250ms fallback 清理。`#temporaryDocumentNotice` / `#temporaryDocumentNoticeMessage` 指向最新条目，旧条目不保留重复 ID。`disposeAppDomains()` 释放通知计时器、过渡监听与对话框资源。主进程与 renderer 共用 `shared/contracts/markdown-link.d.ts` 的解析结果声明；缺失路径是 typed domain result，权限/I/O 异常仍经主进程安全 IPC 错误分类呈现。
+
+`editor/document-link-navigation-controller.ts` 对相对 Markdown、文件类型不支持、绝对路径和 `file:` 文档链接进行统一分类；后三类在悬停与 Ctrl/Cmd+点击时使用同一条具体原因文案，并保持文本光标。支持的链接仍通过 adapter 设置 modifier 跳转 hint 与手型光标。tooltip 的展示和位置归 `AppTooltipController`，Vditor DOM 和原有 title/cursor 的恢复归 adapter；移出链接或窗口失去焦点时沿用现有 hover 清理路径。
 
 ### 6.2 路由结构
 
@@ -1029,7 +1035,7 @@ openPath(filePath)
 
 `src/renderer/export/export-controller.ts` 拥有导出事务顺序：先读取当前文档/Vditor 的 HTML 快照，再打开原生对话框；HTML 写入前将 `local-file:` 重写为相对资源并移除内部 `app:` 来源，PDF 则先将可读取的本地图片嵌入为 `data:` URL，最后仅通过 `app:exportPDF` 进入主进程的 sandboxed 隐藏窗口。路径转换、图片嵌入和完整 HTML 模板以显式依赖注入，导出 controller 不访问 Vditor 私有 DOM 或改变文件安全写入语义。
 
-Ctrl/Cmd+单击相对 Markdown 链接时，渲染器先调用 `file:resolveMarkdownLink(sourceFile, href)`；主进程拒绝协议、绝对路径、非 Markdown 和不存在目标，仅返回规范化的普通文件路径及可选片段。`openPath()` 复用已有标签或创建新标签，待 Vditor 就绪后将 `#片段` 定位到目标标题。
+Ctrl/Cmd+单击相对 Markdown 链接时，渲染器先调用 `file:resolveMarkdownLink(sourceFile, href)`；主进程拒绝协议、绝对路径、非 Markdown 和不存在目标，仅返回规范化的普通文件路径及可选片段。renderer 将源文件不可用、目标缺失与文件类型限制映射为具体三语通知，权限/I/O 异常经安全 IPC 分类，不能一概解释为目标不存在。`openPath()` 复用已有标签或创建新标签，待 Vditor 就绪后将 `#片段` 定位到目标标题。外部启动参数由 `main/open-files.ts` 保留缺失或不可访问的 Markdown 路径，以便既有文档打开流程报告错误；现有目录、非 Markdown 和不支持的 URL scheme 仍被忽略。真实第二实例调用由 `tests/e2e/support/app-harness.ts` 的 `openFromSecondInstance()` 覆盖。
 
 相对图片由 Vditor 的 `preview.markdown.linkBase` 和 `vditor-adapter.js` 共同处理：前者在初始渲染前提供 `local-file://` 基址，避免短暂的 `app://` 请求；后者负责异步插入图片、保存前恢复原始相对来源以及观察后续 DOM。资源协议只响应已由 renderer 生命周期同步的受控根。
 
@@ -1196,8 +1202,8 @@ function rememberRecent(filePath) {
 
 #### 标签栏（`documents/tab-controller.ts`，`#tabBar`）
 
-- **职责：** 渲染标签按钮列表、支持拖拽重排序、中键关闭、脏标记显示、外部冲突标记
-- **实现：** `TabController` 只拥有 tab-bar DOM、Pointer Events 与延迟 drag-reset timer；`dispose()` 会取消其 animation frame 和 timer。`app/app-composition.js` 的过渡 `renderTabs()` 仅投影标签视图模型并把 activate/close/reorder 命令转交到文档域。控制器不访问文件 bridge、watcher 或 Vditor。
+- **职责：** 渲染标签按钮列表、支持拖拽重排序、中键关闭、脏标记显示、外部冲突标记、横向滚轮和溢出阴影
+- **实现：** `#tabBar` 内的 `.tab-scroll-region` 包含独立滚动的 `#tabStrip`，`#addTab` 和可拖动空白位于滚动区域之外。`TabController` 拥有 tab-bar DOM、Pointer Events、scroll/wheel listener、溢出状态的 `ResizeObserver` 与延迟 drag-reset timer；`dispose()` 会清理 listener、observer、animation frame 和 timer。`has-tabs-before` / `has-tabs-after` 驱动两端仅在仍有隐藏标签时显示的 14px 阴影，阴影基于主题 `--sidebar-surface` 混合暗部且允许鼠标穿透。`app/app-composition.js` 的过渡 `renderTabs()` 仅投影标签视图模型并把 activate/close/reorder 命令转交到文档域。控制器不访问文件 bridge、watcher 或 Vditor。
 
 #### 编辑区（`app/app-composition.js` 的 `ensureEditor()` 及 `EditorController`，`#editorArea`）
 
@@ -1333,6 +1339,9 @@ function rememberRecent(filePath) {
 │   ├── #appMenuBar（自定义菜单，Windows/Linux）
 │   ├── .titlebar-file-actions（新建/侧栏切换/打开/保存按钮）
 │   ├── #tabBar（标签栏）
+│   │   ├── .tab-scroll-region → #tabStrip（横向滚动标签与溢出边缘阴影）
+│   │   ├── #addTab（新建按钮，滚动区域外）
+│   │   └── .tabbar-drag-fill（可拖动空白）
 │   └── .window-controls（最小化/最大化/关闭）
 ├── header.titlebar（工具栏 mount）
 │   └── #vditorToolbarMount（Vditor 工具栏共享 mount 点）
@@ -1344,10 +1353,11 @@ function rememberRecent(filePath) {
 │   └── main.main-area
 │       └── #editorArea（编辑区）
 │           ├── .editor-host（每个 tab 一个，由 JS 动态创建）
-│           ├── #recoveryBanner（异常恢复横幅；与外部冲突共用 persistent-banner 结构和 assets/notification/warning.svg）
-│           ├── #externalChangeBanner（外部变更横幅；重载/另存/忽略/明确覆盖）
-│           ├── #externalFileStateBanner（删除/重新出现/不可读状态；按状态提供独立动作）
-│           ├── #temporaryDocumentNotice（重建成功后的 5 秒非驻留通知；assets/notification/notification.svg）
+│           ├── .document-banner-stack（顶部纵向排列，间距 8px；子横幅统一 180ms 透明度过渡，渐隐结束后移出布局，减少动态效果时立即切换）
+│           │   ├── #recoveryBanner（异常恢复横幅；与外部冲突共用 persistent-banner 结构和 assets/notification/warning.svg）
+│           │   ├── #externalChangeBanner（外部变更横幅；重载/另存/忽略/明确覆盖）
+│           │   ├── #externalFileStateBanner（删除/重新出现/不可读状态；按状态提供独立动作）
+│           │   └── .temporary-document-notice（最多 3 条活动通知，新消息在上，每条独立 5 秒；#temporaryDocumentNotice / #temporaryDocumentNoticeMessage 指向最新条目；错误使用 warning.svg，普通通知使用 notification.svg）
 │           ├── #findWidget（查找替换）
 │           └── #noTabs（空状态）
 └── footer.statusbar（状态栏）
@@ -1922,7 +1932,9 @@ flowchart TB
 | `tests/unit/renderer/export-html.test.ts`、`status-menu-controller.test.ts`、`app-tooltip-controller.test.ts`、`explorer-file-transaction-controller.test.ts` | 导出、状态栏菜单、tooltip 与文件树交易 | HTML snapshot/资源可移植化；status popup 命令/dismiss/dispose；tooltip 委托与清理；创建/改名/删除交易与 binding 迁移 |
 | `tests/unit/renderer/document-link-navigation-controller.test.ts` | `src/renderer/editor/document-link-navigation-controller.ts` | 相对 Markdown/片段导航、危险 scheme 拦截、modifier hint、tooltip 清理和注入 bridge 协作 |
 | `tests/unit/renderer/sidebar-layout-controller.test.ts`、`sidebar-view-controller.test.ts` | `src/renderer/ui/sidebar-layout-controller.ts`、`ui/sidebar-view-controller.ts` | 侧栏过渡、反向切换、FLIP/fallback timer、布局同步和 dispose；Files/Outline 的点击切换、ARIA 状态与大纲刷新 |
-| `tests/unit/renderer/tab-controller.test.ts` | 标签栏控制器 | 从 view model 渲染标题/脏标记/attention/active 态、primary/close/中键点击路由、替换旧标签 DOM、dispose 取消 drag-reset timer |
+| `tests/unit/renderer/tab-controller.test.ts` | 标签栏控制器 | view model、primary/close/中键路由、替换旧 DOM、两端溢出阴影与尺寸变化、独立滚轮、dispose 清理 listener/ResizeObserver/drag-reset |
+| `tests/unit/renderer/document-feedback.test.ts` | 文档结果呈现 | 打开失败、状态栏/通知映射、保存错误 fallback、重建/剪贴板结果与翻译参数 |
+| `tests/unit/open-files.test.ts` | 外部打开参数 | 缺失/不可访问 Markdown argv 保留、目录/scheme 拒绝、file URL 与去重 |
 | `tests/unit/renderer/settings-controller.test.ts`、`settings-window.test.ts`、`settings-persistence.test.ts`、`settings-runtime-controller.test.ts`、`settings-dialog-layout-controller.test.ts` | 设置保存分类、持久化与设置窗口 | classifySettingsChange 将展示、live Vditor setter（含 `wordWrap`）与 constructor-only 设置分开；SettingsController 加载保存后保持 Store；SettingsPersistence 分离 TOML 偏好与 state.json 队列；SettingsRuntimeController 表单同步/风险确认/live save 分发；SettingsWindow/SettingsDialogLayoutController 负责动画、尺寸拖动和 cleanup |
 | `tests/unit/renderer/workspace-controller.test.ts`、`external-file-change-controller.test.ts` | 工作区、文件树与 watcher 事件路由 | 根路径/revision/watch 刷新与持久化、不可用工作区路径路由到 document-binding owner、未信任名称按 text 渲染与展开回调、绑定提交失败恢复、ExplorerController 懒加载，以及外部删除/重出现/冲突/干净重载路由 |
 | `tests/unit/renderer/export-controller.test.ts` | 导出事务 | 对话框前快照 HTML、确认路径后写可移植输出、PDF 资源规范化与嵌入、无活动文档时不导出 |

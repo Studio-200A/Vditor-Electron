@@ -76,12 +76,12 @@ function press(key: string, options: KeyboardEventInit = {}) {
   return event;
 }
 
-function drop(names: string[]) {
+function drop(names: string[], target: HTMLElement = document.body) {
   const event = new Event('drop', { bubbles: true, cancelable: true });
   Object.defineProperty(event, 'dataTransfer', {
     value: { files: names.map((name) => new File([''], name)) },
   });
-  document.body.dispatchEvent(event);
+  target.dispatchEvent(event);
   return event;
 }
 
@@ -208,6 +208,31 @@ describe('AppController', () => {
     expect(f.commands.rejectDrop).toHaveBeenCalledTimes(1);
     drop([]);
     expect(f.commands.rejectDrop).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects non-image editor drops before upload and lets images reach the editor', async () => {
+    const f = fixture();
+    await f.controller.init();
+    const host = document.createElement('section');
+    host.className = 'editor-host';
+    const editor = document.createElement('div');
+    host.append(editor);
+    document.body.append(host);
+    const upload = vi.fn((event: Event) => event.stopPropagation());
+    editor.addEventListener('drop', upload);
+    try {
+      drop(['unsupported.txt'], editor);
+      expect(f.commands.rejectDrop).toHaveBeenCalledTimes(1);
+      expect(upload).not.toHaveBeenCalled();
+      drop(['image.png'], editor);
+      expect(upload).toHaveBeenCalledTimes(1);
+      expect(f.commands.rejectDrop).toHaveBeenCalledTimes(1);
+      drop(['note.md', 'image.png'], editor);
+      expect(f.commands.openPaths).toHaveBeenCalledWith(['note.md']);
+      expect(upload).toHaveBeenCalledTimes(1);
+    } finally {
+      host.remove();
+    }
   });
 
   it('reports asynchronous open failure and ignores callbacks retained after dispose', async () => {

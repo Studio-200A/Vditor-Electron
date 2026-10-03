@@ -28,10 +28,32 @@ describe('external Markdown file arguments', () => {
     ).toEqual([first, second]);
   });
 
-  it('ignores missing paths, directories, flags, and unsupported file types', () => {
+  it('retains missing absolute, relative and file URL Markdown targets without duplicates', () => {
+    const missing = path.join(directory, 'missing note.md');
+    const other = path.join(directory, 'other.markdown');
     expect(
       extractOpenFilePaths(
-        ['--ozone-platform=wayland', '.', directory, 'missing.md', 'ignored.txt'],
+        [missing, 'missing note.md', pathToFileURL(missing).href, 'other.markdown'],
+        directory,
+      ),
+    ).toEqual([missing, other]);
+  });
+
+  it('ignores directories, flags, unsupported file types and non-file URL schemes', () => {
+    const markdownDirectory = path.join(directory, 'folder.md');
+    fs.mkdirSync(markdownDirectory);
+    expect(
+      extractOpenFilePaths(
+        [
+          '--ozone-platform=wayland',
+          '.',
+          directory,
+          markdownDirectory,
+          'ignored.txt',
+          'https://example.com/target.md',
+          'app://app/target.md',
+          'file:///%ZZ.md',
+        ],
         directory,
       ),
     ).toEqual([]);

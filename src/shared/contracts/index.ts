@@ -20,3 +20,4 @@ export interface FileListItem {
 
 export { SESSION_SNAPSHOT_VERSION } from './session.js';
 export type { SessionSnapshot } from './session.js';
+export type { MarkdownLinkResolution } from './markdown-link.js';

@@ -26,6 +26,15 @@ export interface ConfirmDialogOptions {
 
 const MESSAGE_DURATION_MS = 4500;
 const NOTICE_DURATION_MS = 5000;
+const NOTICE_LIMIT = 3;
+const NOTICE_EXIT_FALLBACK_MS = 250;
+
+interface NoticeEntry {
+  element: HTMLElement;
+  timer: ReturnType<typeof setTimeout> | null;
+  exitTimer: ReturnType<typeof setTimeout> | null;
+  onTransitionEnd: ((event: TransitionEvent) => void) | null;
+}
 
 export class NotificationsController {
   private readonly _translate: (
@@ -37,7 +46,7 @@ export class NotificationsController {
   private readonly _locales: VditorDesktopLocales;
   private _locale: SupportedLocale;
   private _messageTimer: ReturnType<typeof setTimeout> | null = null;
-  private _noticeTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly _notices = new Set<NoticeEntry>();
   private _confirmResolver: ((action: string) => void) | null = null;
   private _confirmAction: ((action: string, checkboxChecked: boolean) => void) | null = null;
   private _confirmCheckbox: HTMLInputElement | null = null;
@@ -63,6 +72,7 @@ export class NotificationsController {
   }
 
   init(): void {
+    this._dragCleanup?.();
     this._dragCleanup = this._setupConfirmDialogDrag();
   }
 
@@ -71,10 +81,7 @@ export class NotificationsController {
       clearTimeout(this._messageTimer);
       this._messageTimer = null;
     }
-    if (this._noticeTimer !== null) {
-      clearTimeout(this._noticeTimer);
-      this._noticeTimer = null;
-    }
+    for (const entry of this._notices) this._removeNotice(entry);
     if (this._confirmResolver) {
       this._confirmResolver('cancel');
       this._confirmResolver = null;
@@ -83,6 +90,12 @@ export class NotificationsController {
       this._dragCleanup();
       this._dragCleanup = null;
     }
+    const status = document.getElementById('statusMessage');
+    if (status) {
+      status.textContent = '';
+      status.classList.remove('error');
+    }
+    document.getElementById('temporaryDocumentNotice')?.classList.add('hidden');
   }
 
   showMessage(message: string, error = false): void {
@@ -98,19 +111,68 @@ export class NotificationsController {
     }, MESSAGE_DURATION_MS);
   }
 
-  showTemporaryDocumentNotice(message: string, error = false): void {
-    const notice = document.getElementById('temporaryDocumentNotice');
-    const msgEl = document.getElementById('temporaryDocumentNoticeMessage');
-    if (!notice || !msgEl) return;
-    if (this._noticeTimer !== null) clearTimeout(this._noticeTimer);
+  showNotice(message: string, error = false): void {
+    const previous = document.getElementById('temporaryDocumentNotice');
+    if (!previous?.parentElement) return;
+    const notice = document.createElement('section');
+    notice.id = 'temporaryDocumentNotice';
+    notice.className = 'temporary-document-notice';
+    const icon = document.createElement('img');
+    icon.className = 'temporary-document-notice-icon';
+    icon.alt = '';
+    const msgEl = document.createElement('span');
+    msgEl.id = 'temporaryDocumentNoticeMessage';
     msgEl.textContent = message;
     notice.classList.toggle('error', error);
-    notice.classList.remove('hidden');
-    this._noticeTimer = setTimeout(() => {
-      notice.classList.add('hidden');
-      notice.classList.remove('error');
-      this._noticeTimer = null;
-    }, NOTICE_DURATION_MS);
+    notice.setAttribute('role', error ? 'alert' : 'status');
+    icon.setAttribute(
+      'src',
+      error ? 'assets/notification/warning.svg' : 'assets/notification/notification.svg',
+    );
+    notice.append(icon, msgEl);
+    previous.removeAttribute('id');
+    previous.querySelector('#temporaryDocumentNoticeMessage')?.removeAttribute('id');
+    previous.before(notice);
+    if (![...this._notices].some((entry) => entry.element === previous)) previous.remove();
+    const entry: NoticeEntry = {
+      element: notice,
+      timer: setTimeout(() => this._hideNotice(entry), NOTICE_DURATION_MS),
+      exitTimer: null,
+      onTransitionEnd: null,
+    };
+    this._notices.add(entry);
+    const active = [...this._notices].filter((item) => !item.element.classList.contains('hidden'));
+    if (active.length > NOTICE_LIMIT) this._hideNotice(active[0]);
+  }
+
+  private _hideNotice(entry: NoticeEntry): void {
+    if (entry.timer !== null) clearTimeout(entry.timer);
+    entry.timer = null;
+    entry.element.classList.add('hidden');
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      this._removeNotice(entry);
+      return;
+    }
+    entry.onTransitionEnd = (event) => {
+      if (event.target === entry.element && event.propertyName === 'opacity') {
+        this._removeNotice(entry);
+      }
+    };
+    entry.element.addEventListener('transitionend', entry.onTransitionEnd);
+    // A notice hidden before its first paint may never start a CSS transition.
+    entry.exitTimer = setTimeout(() => this._removeNotice(entry), NOTICE_EXIT_FALLBACK_MS);
+  }
+
+  private _removeNotice(entry: NoticeEntry): void {
+    if (entry.timer !== null) clearTimeout(entry.timer);
+    if (entry.exitTimer !== null) clearTimeout(entry.exitTimer);
+    if (entry.onTransitionEnd) {
+      entry.element.removeEventListener('transitionend', entry.onTransitionEnd);
+    }
+    entry.element.classList.add('hidden');
+    // Retain the newest hidden element as the insertion point for the next notice.
+    if (entry.element.id !== 'temporaryDocumentNotice') entry.element.remove();
+    this._notices.delete(entry);
   }
 
   async showConfirmDialog(options: ConfirmDialogOptions): Promise<string> {

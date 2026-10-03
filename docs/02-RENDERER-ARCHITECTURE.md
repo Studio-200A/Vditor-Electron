@@ -1,6 +1,6 @@
 # 渲染进程架构
 
-本文档描述了当前已实现的渲染进程（0.2.5 架构收口，0.2.6 修复批次延续同一架构）。它是一份职责地图，不能替代文件安全契约或执行追踪器。
+本文档描述了当前已实现的渲染进程（0.2.5 架构收口，0.2.6–0.2.7 延续同一架构）。它是一份职责地图，不能替代文件安全契约或执行追踪器。
 
 ## 启动与依赖方向
 
@@ -32,6 +32,14 @@
 - `locale/` 下的 `en_US.ts`、`zh_Hans.ts`、`zh_Hant.ts` 分别保存三语 UI 文案；`locale/index.ts` 汇总字典，经 esbuild 生成 `dist/renderer/locales.js`，由 `index.html` 在 `app/app-composition.js` 之前加载并发布 `window.VditorDesktopLocales`。`pure-functions.ts` 是共享模块包的另一入口，组合层以 `PURE.*` 消费；它还导出控制器类与选项类型，名字仅反映历史起点。
 
 ## 生命周期规则
+
+### 文档反馈与标签栏
+
+`documents/document-feedback.ts` 仅把文档打开、保存和重建结果映射为本地化文案及呈现方式，不决定保存交易或文件状态。`ui/NotificationsController` 拥有状态栏计时、短暂通知队列和确认对话框资源：短暂通知最新在上、每条独立 5 秒，最多 3 条活动提示，超限条目提前渐隐；transitionend 与 fallback 负责退出清理。常驻文件警示保持在通知队列上方，CSS 负责实际高度排列和统一渐显/渐隐，不新增组合层位置计算。
+
+`documents/TabController` 拥有独立 `#tabStrip` 的滚轮、scroll listener、ResizeObserver 和活动标签滚入视野；`#addTab` 位于滚动区外。左右溢出状态驱动允许鼠标穿透的主题阴影；应用关闭时清理所有监听与观察器。`app/AppController` 在 body 捕获阶段分类文件拖入，Markdown 交给文档命令，编辑区图片留给 Vditor 上传，其他文件提前拒绝，防止被误当成图片上传。以上职责均不访问 Vditor 私有 DOM。
+
+### 资源清理与组合边界
 
 每个注册了监听器、定时器、观察器、动画帧或订阅的控制器都要暴露幂等的清理方法。编辑器重建或标签页关闭会在清理之前先使旧的运行时代次失效；迟到的回调无法改动替换后的运行时。应用初始化失败与 `beforeunload` 走同一条逆依赖清理路径。
 

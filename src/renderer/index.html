@@ -82,6 +82,9 @@
           ></button>
         </div>
         <div id="tabBar" class="tabbar">
+          <div class="tab-scroll-region">
+            <div id="tabStrip" class="tab-strip"></div>
+          </div>
           <button id="addTab" class="add-tab" data-i18n-title="tab.new" title="New Tab">＋</button>
           <div class="tabbar-drag-fill" aria-hidden="true"></div>
         </div>
@@ -191,126 +194,136 @@
         </aside>
         <main class="main-area">
           <div id="editorArea" class="editor-area">
-            <section
-              id="recoveryBanner"
-              class="external-change-banner persistent-banner hidden"
-              role="status"
-            >
-              <div class="persistent-banner-content">
+            <div class="document-banner-stack">
+              <section
+                id="recoveryBanner"
+                class="external-change-banner persistent-banner hidden"
+                role="status"
+              >
+                <div class="persistent-banner-content">
+                  <img
+                    class="persistent-banner-icon recovery-banner-icon"
+                    src="assets/notification/warning.svg"
+                    alt=""
+                  />
+                  <div class="persistent-banner-copy">
+                    <strong id="recoveryMessage"></strong>
+                    <span id="recoveryDetail"></span>
+                  </div>
+                </div>
+                <div class="persistent-banner-actions">
+                  <button id="recoverySave" type="button" data-i18n="recovery.save">
+                    Save This Version
+                  </button>
+                  <button id="recoverySaveAs" type="button" data-i18n="recovery.saveAs">
+                    Save As
+                  </button>
+                  <button id="recoveryDiscard" type="button" data-i18n="recovery.discard">
+                    Discard Recovery
+                  </button>
+                </div>
+              </section>
+              <section
+                id="externalChangeBanner"
+                class="external-change-banner persistent-banner hidden"
+                role="status"
+              >
+                <div class="persistent-banner-content">
+                  <img
+                    class="persistent-banner-icon"
+                    src="assets/notification/warning.svg"
+                    alt=""
+                  />
+                  <div class="persistent-banner-copy">
+                    <strong id="externalChangeMessage"></strong>
+                  </div>
+                </div>
+                <div class="persistent-banner-actions">
+                  <button id="externalReload" type="button" data-i18n="external.reload">
+                    Discard Tab Changes and Reload
+                  </button>
+                  <button id="externalSaveAs" type="button" data-i18n="external.saveAs">
+                    Save Current Content As
+                  </button>
+                  <button id="externalIgnore" type="button" data-i18n="external.ignore">
+                    Ignore External Change
+                  </button>
+                  <button
+                    id="externalOverwrite"
+                    class="danger"
+                    type="button"
+                    data-i18n="external.overwrite"
+                  >
+                    Overwrite Disk Version
+                  </button>
+                </div>
+              </section>
+              <section
+                id="externalFileStateBanner"
+                class="external-change-banner persistent-banner hidden"
+                role="status"
+              >
+                <div class="persistent-banner-content">
+                  <img
+                    class="persistent-banner-icon"
+                    src="assets/notification/warning.svg"
+                    alt=""
+                  />
+                  <div class="persistent-banner-copy">
+                    <strong id="externalFileStateMessage"></strong>
+                    <span id="externalFileStateDetail"></span>
+                  </div>
+                </div>
+                <div class="persistent-banner-actions">
+                  <button
+                    id="externalFileReload"
+                    type="button"
+                    class="hidden"
+                    data-i18n="external.reload"
+                  >
+                    Discard Tab Changes and Reload
+                  </button>
+                  <button id="externalFileSaveAs" type="button" data-i18n="external.saveAs">
+                    Save Current Content As
+                  </button>
+                  <button
+                    id="externalFileKeepUntitled"
+                    type="button"
+                    data-i18n="external.keepUntitled"
+                  >
+                    Keep as Untitled
+                  </button>
+                  <button
+                    id="externalFileRecreate"
+                    class="danger"
+                    type="button"
+                    data-i18n="external.recreate"
+                  >
+                    Recreate File
+                  </button>
+                  <button
+                    id="externalFileClose"
+                    class="danger"
+                    type="button"
+                    data-i18n="external.close"
+                  >
+                    Close Without Saving
+                  </button>
+                </div>
+              </section>
+              <section
+                id="temporaryDocumentNotice"
+                class="temporary-document-notice hidden"
+                role="status"
+              >
                 <img
-                  class="persistent-banner-icon recovery-banner-icon"
-                  src="assets/notification/warning.svg"
+                  class="temporary-document-notice-icon"
+                  src="assets/notification/notification.svg"
                   alt=""
                 />
-                <div class="persistent-banner-copy">
-                  <strong id="recoveryMessage"></strong>
-                  <span id="recoveryDetail"></span>
-                </div>
-              </div>
-              <div class="persistent-banner-actions">
-                <button id="recoverySave" type="button" data-i18n="recovery.save">
-                  Save This Version
-                </button>
-                <button id="recoverySaveAs" type="button" data-i18n="recovery.saveAs">
-                  Save As
-                </button>
-                <button id="recoveryDiscard" type="button" data-i18n="recovery.discard">
-                  Discard Recovery
-                </button>
-              </div>
-            </section>
-            <section
-              id="externalChangeBanner"
-              class="external-change-banner persistent-banner hidden"
-              role="status"
-            >
-              <div class="persistent-banner-content">
-                <img class="persistent-banner-icon" src="assets/notification/warning.svg" alt="" />
-                <div class="persistent-banner-copy">
-                  <strong id="externalChangeMessage"></strong>
-                </div>
-              </div>
-              <div class="persistent-banner-actions">
-                <button id="externalReload" type="button" data-i18n="external.reload">
-                  Discard Tab Changes and Reload
-                </button>
-                <button id="externalSaveAs" type="button" data-i18n="external.saveAs">
-                  Save Current Content As
-                </button>
-                <button id="externalIgnore" type="button" data-i18n="external.ignore">
-                  Ignore External Change
-                </button>
-                <button
-                  id="externalOverwrite"
-                  class="danger"
-                  type="button"
-                  data-i18n="external.overwrite"
-                >
-                  Overwrite Disk Version
-                </button>
-              </div>
-            </section>
-            <section
-              id="externalFileStateBanner"
-              class="external-change-banner persistent-banner hidden"
-              role="status"
-            >
-              <div class="persistent-banner-content">
-                <img class="persistent-banner-icon" src="assets/notification/warning.svg" alt="" />
-                <div class="persistent-banner-copy">
-                  <strong id="externalFileStateMessage"></strong>
-                  <span id="externalFileStateDetail"></span>
-                </div>
-              </div>
-              <div class="persistent-banner-actions">
-                <button
-                  id="externalFileReload"
-                  type="button"
-                  class="hidden"
-                  data-i18n="external.reload"
-                >
-                  Discard Tab Changes and Reload
-                </button>
-                <button id="externalFileSaveAs" type="button" data-i18n="external.saveAs">
-                  Save Current Content As
-                </button>
-                <button
-                  id="externalFileKeepUntitled"
-                  type="button"
-                  data-i18n="external.keepUntitled"
-                >
-                  Keep as Untitled
-                </button>
-                <button
-                  id="externalFileRecreate"
-                  class="danger"
-                  type="button"
-                  data-i18n="external.recreate"
-                >
-                  Recreate File
-                </button>
-                <button
-                  id="externalFileClose"
-                  class="danger"
-                  type="button"
-                  data-i18n="external.close"
-                >
-                  Close Without Saving
-                </button>
-              </div>
-            </section>
-            <section
-              id="temporaryDocumentNotice"
-              class="temporary-document-notice hidden"
-              role="status"
-            >
-              <img
-                class="temporary-document-notice-icon"
-                src="assets/notification/notification.svg"
-                alt=""
-              />
-              <span id="temporaryDocumentNoticeMessage"></span>
-            </section>
+                <span id="temporaryDocumentNoticeMessage"></span>
+              </section>
+            </div>
             <section id="findWidget" class="find-widget hidden" aria-label="Find and replace">
               <div class="find-row">
                 <button

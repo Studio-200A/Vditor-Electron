@@ -1,3 +1,5 @@
+import type { MarkdownLinkResolution } from '../../shared/contracts/markdown-link.js';
+
 declare global {
   interface Window {
     appAPI: AppAPI;
@@ -113,7 +115,7 @@ export interface FileAPI {
   dirname(filePath: string): Promise<string>;
   relative(from: string, to: string): Promise<string>;
   rebasePath(oldRoot: string, newRoot: string, candidatePath: string): Promise<string>;
-  resolveMarkdownLink(sourceFile: string, href: string): Promise<string | null>;
+  resolveMarkdownLink(sourceFile: string, href: string): Promise<MarkdownLinkResolution>;
   setWorkspaceWatch(rootPath?: string, depth?: number): Promise<void>;
   watchDocument(filePath: string, reconcile?: boolean): Promise<void>;
   unwatchDocument(filePath: string, identity?: string): Promise<void>;

@@ -57,6 +57,8 @@ document watcher 读取稳定磁盘正文后，renderer 以保存基线、本地
 
 文档变为 `deleted`、`unreadable` 或 recovery 状态时，正文和状态必须保持可解释：用户可以重新加载、另存或放弃；不能因为一次 watcher 事件、读取失败或应用重启而把唯一的本地正文丢掉。recovery 数据仍属于应用数据边界，不应通过文件协议、日志或候选列表暴露正文。
 
+主动打开、保存或链接跳转失败通过短暂通知呈现；文件不可用、恢复和外部冲突仍由常驻横幅表达并提供安全动作。短暂通知到期或被队列淘汰只改变呈现，不能解除文件状态、恢复自动保存或覆盖磁盘基线。`DocumentFeedback` 仅持有文案与呈现映射；保存 workflow 继续拥有安全交易。权限与 I/O 异常通过安全 IPC 错误分类，不能降格为“目标不存在”。
+
 ## 6. watcher 生命周期与过期结果
 
 每个 document binding 需要同时受 binding generation 和读取 revision 保护：

@@ -31,6 +31,7 @@ export {
 export { ThemeCoordinator } from './ui/theme-coordinator.js';
 export type { ThemeCoordinatorOptions, ThemeCoordinatorTab } from './ui/theme-coordinator.js';
 export { NotificationsController } from './ui/notifications.js';
+export { DocumentFeedback } from './documents/document-feedback.js';
 export type {
   ConfirmDialogCheckbox,
   ConfirmDialogOptions,

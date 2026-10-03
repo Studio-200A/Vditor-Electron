@@ -172,6 +172,10 @@ Monokai Pro Dark 的同族浅色主题，调色取自官方 Monokai Pro Light VS
 
 ## 7. 测试契约
 
+文档短暂通知与常驻警示共用 `app.css` 的横幅布局和过渡规则。错误文字取主题 `--danger`，表面与边框分别从 `--panel`、`--border` 和 `--danger` 派生；普通通知使用 `--accent`。四类横幅使用 180ms 渐显/渐隐，系统减少动态效果时立即切换。标签溢出阴影由主题 `--sidebar-surface` 与黑色混合得到，保持在实际滚动区两端，宽 14px，不覆盖新建标签按钮，也不拦截鼠标。
+
+`tests/e2e/navigation-and-resources.spec.ts` 覆盖通知文案、亮暗配色、队列和四类横幅的真实过渡；`tests/e2e/app-shell.spec.ts` 覆盖窄窗口下的新建按钮、左右溢出状态与多套主题 CSS 的阴影。最新 Linux 全量与手测证据统一记录在 [`10-0.2.7-EXECUTION-TRACKER.md`](10-0.2.7-EXECUTION-TRACKER.md)，不在本文件维护测试总数。
+
 当前测试覆盖配置字段、旧字段忽略、亮暗独立主题组及其 radio 顺序、主题预览卡片、每行最多四张卡片的网格约束与预览宽度、Claude surface/accent/按钮文字/hover/分割线、Elegant 壳层调色、导航与菜单 hover 以及 Mermaid 色调重绘、Nord palette 语义变量与 H1–H6 标题色、状态栏三态主题菜单、系统主题解析，以及编辑器在失焦、聚焦和 IR/WYSIWYG/SV 切换时的编辑区表面。
 
 截至 2026-08-27，用户手动运行的 Linux `npm run check:all` 已包含主题、状态栏菜单、工具栏边界和当时内置主题相关回归；Windows/macOS 的窗口系统主题和原生集成仍按 [`docs/04-CROSS-PLATFORM.md` §9](04-CROSS-PLATFORM.md#9-020-批次-7-推迟的平台验证) 单独验证。其后 0.2.5 批次 11（2026-09-10）为 Claude Dark 参与 Ant Design/WeChat 内容主题深色可读性重映射再次调整了 `app.css` 并同步更新 app-shell E2E 断言；该改动已随 v0.2.5 发布，上述时间戳不涵盖这一轮变化。0.2.6 新增的 Nord Dark、Elegant、四张预览卡片网格与 Mermaid 色调重绘由 `tests/unit/renderer/theme*.test.ts`、`tests/unit/vditor-adapter.test.ts`、`tests/unit/renderer-shell.test.ts` 与 `tests/e2e/app-shell.spec.ts` 的自动断言覆盖；用户已于 2026-09-17（Elegant 主题与其设置控件表面修复提交当日）在 Linux 手动运行 `npm run check:all` 并通过，该次运行是 0.2.6 主题批次（Nord Dark、Elegant、预览卡片网格与 Mermaid 色调重绘）的全量验收证据。精确测试总数与重跑细节属于版本执行记录，本文只保留日期、平台与范围；Windows/macOS 的窗口系统主题和原生集成仍按上述 §9 单独验证。

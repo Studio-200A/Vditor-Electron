@@ -1,5 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import type { MarkdownLinkResolution } from '../shared/contracts/markdown-link';
+
+export type { MarkdownLinkResolution } from '../shared/contracts/markdown-link';
 
 const MARKDOWN_EXTENSION = /\.(?:md|markdown|mdown|mkd|mkdn)$/i;
 const URL_SCHEME = /^[a-z][a-z\d+.-]*:/i;
@@ -10,10 +13,6 @@ interface FileSystem {
   statSync(filePath: string): { isFile(): boolean };
 }
 
-export type MarkdownLinkResolution =
-  | { kind: 'resolved'; filePath: string; fragment: string }
-  | { kind: 'error'; code: 'invalid-source' | 'invalid-link' | 'unsupported-target' | 'not-found' };
-
 interface ResolveOptions {
   fsApi?: FileSystem;
   pathApi?: PathApi;
@@ -22,8 +21,15 @@ interface ResolveOptions {
 function isRegularFile(filePath: string, fsApi: FileSystem): boolean {
   try {
     return fsApi.statSync(filePath).isFile();
-  } catch {
-    return false;
+  } catch (error) {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error.code === 'ENOENT' || error.code === 'ENOTDIR')
+    )
+      return false;
+    throw error;
   }
 }
 

@@ -4,7 +4,7 @@ import * as http from 'node:http';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { formatLocalResourceBase } from '../../src/main/local-resource';
-import { closeApp, createNewTab, launchApp } from './support/app-harness';
+import { closeApp, createNewTab, launchApp, openFromSecondInstance } from './support/app-harness';
 
 function localResourceBase(directory: string, platform: 'posix' | 'win32'): string {
   return formatLocalResourceBase(directory, platform);
@@ -86,6 +86,407 @@ test('opens relative Markdown links from every editor mode and follows their fra
     await modeTrigger.click();
     await page.locator('#vditorToolbarMount button[data-mode="sv"]').click();
     await follow(page.locator('.editor-host.active .vditor-preview a[href="target.md#target"]'));
+  } finally {
+    await closeApp(running);
+  }
+});
+
+for (const mode of ['ir', 'wysiwyg', 'sv'] as const) {
+  test(`shows visible failure notices for missing and unsupported document links in ${mode}`, async () => {
+    const content =
+      '[Missing](missing.md)\n\n[Unsupported](target.txt)\n\n[Absolute](/tmp/target.md)\n\n[File URL](file:///tmp/target.md)';
+    const running = await launchApp({ editMode: mode }, { 'source.md': content });
+    try {
+      const { page } = running;
+      const modifier =
+        (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+      const links =
+        mode === 'ir'
+          ? page.locator('.editor-host.active .vditor-ir .vditor-ir__link')
+          : page.locator(
+              `.editor-host.active ${mode === 'sv' ? '.vditor-preview' : '.vditor-wysiwyg'} a`,
+            );
+      const notice = page.locator('#temporaryDocumentNotice');
+      await links.nth(0).click({ modifiers: [modifier] });
+      await expect(notice).toBeVisible();
+      await expect(notice).toHaveClass(/error/);
+      await expect(notice).toHaveAttribute('role', 'alert');
+      await expect(page.locator('#temporaryDocumentNoticeMessage')).toHaveText(
+        'Unable to open: the target Markdown file does not exist.',
+      );
+      await expect(notice.locator('img')).toHaveAttribute('src', 'assets/notification/warning.svg');
+      await page.keyboard.down(modifier);
+      try {
+        for (const [index, message] of [
+          [1, 'Cannot open this link: unsupported file type. Only Markdown files are supported.'],
+          [2, 'Cannot open an absolute-path link. Use a relative path.'],
+          [3, 'Cannot open a file:// link. Use a relative path.'],
+        ] as const) {
+          await links.nth(index).hover();
+          await expect(links.nth(index)).toHaveCSS('cursor', 'text');
+          await expect(page.locator('#appTooltip')).toBeVisible();
+          await expect(page.locator('#appTooltip')).toHaveText(message);
+          await links.nth(index).click();
+          await expect(page.locator('#temporaryDocumentNoticeMessage')).toHaveText(message);
+        }
+        await links.nth(0).hover();
+        await expect(links.nth(0)).toHaveCSS('cursor', 'pointer');
+        await expect(page.locator('#appTooltip')).toHaveText(
+          `${modifier === 'Meta' ? 'Cmd' : 'Ctrl'}+Click to follow link`,
+        );
+      } finally {
+        await page.keyboard.up(modifier);
+      }
+      await page.mouse.move(0, 0);
+      await expect(page.locator('#appTooltip')).toBeHidden();
+      await expect(page.locator('#confirmModal')).toBeHidden();
+      await expect(page.locator('.document-tab')).toHaveCount(1);
+      await expect(page.locator('.document-tab.active')).toContainText('source.md');
+      expect(fs.readFileSync(path.join(running.testRoot, 'source.md'), 'utf8')).toBe(content);
+      await expect(notice).toBeHidden({ timeout: 7000 });
+    } finally {
+      await closeApp(running);
+    }
+  });
+}
+
+test('localizes link notices in both Chinese locales and adapts their colors to light and dark themes', async () => {
+  const running = await launchApp(
+    { editMode: 'wysiwyg', locale: 'zh_Hans' },
+    {
+      'source.md':
+        '[Missing](missing.md)\n\n[Unsupported](target.txt)\n\n[Absolute](/tmp/target.md)\n\n[File URL](file:///tmp/target.md)',
+    },
+  );
+  try {
+    const { page } = running;
+    const modifier =
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+    for (const [locale, message, theme, reasons] of [
+      [
+        'zh_Hans',
+        '打开失败，目标 Markdown 文件不存在。',
+        'light',
+        [
+          '无法打开链接，不支持此文件类型；仅支持 Markdown 文件。',
+          '无法打开绝对路径链接，请使用相对路径。',
+          '无法打开 file:// 链接，请使用相对路径。',
+        ],
+      ],
+      [
+        'zh_Hant',
+        '開啟失敗，目標 Markdown 檔案不存在。',
+        'dark',
+        [
+          '無法開啟連結，不支援此檔案類型；僅支援 Markdown 檔案。',
+          '無法開啟絕對路徑連結，請使用相對路徑。',
+          '無法開啟 file:// 連結，請使用相對路徑。',
+        ],
+      ],
+    ] as const) {
+      await page.locator('#statusSettings').click();
+      await page.locator('[name="locale"]').selectOption(locale);
+      await page.locator('#saveSettings').click();
+      await expect(page.locator('#settingsModal')).toBeHidden();
+      await page.locator('#statusThemeMode').click();
+      await page.locator(`#statusThemeMenu [data-theme-mode="${theme}"]`).click();
+      const links = page.locator('.editor-host.active .vditor-wysiwyg a');
+      await links.nth(0).click({ modifiers: [modifier] });
+      await expect(page.locator('#temporaryDocumentNotice')).toBeVisible();
+      await expect(page.locator('#temporaryDocumentNoticeMessage')).toHaveText(message);
+      for (const [index, reason] of reasons.entries()) {
+        await links.nth(index + 1).hover();
+        await expect(page.locator('#appTooltip')).toHaveText(reason);
+        await expect(links.nth(index + 1)).toHaveCSS('cursor', 'text');
+        await links.nth(index + 1).click({ modifiers: [modifier] });
+        await expect(page.locator('#temporaryDocumentNoticeMessage')).toHaveText(reason);
+      }
+      const colors = await page.locator('#temporaryDocumentNotice').evaluate((notice) => {
+        const probe = document.createElement('span');
+        probe.style.color = 'var(--danger)';
+        notice.append(probe);
+        const expectedColor = getComputedStyle(probe).color;
+        probe.remove();
+        return { color: getComputedStyle(notice).color, expectedColor };
+      });
+      expect(colors.color).toBe(colors.expectedColor);
+    }
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('stacks the three newest link notices and fades the oldest out when a fourth arrives', async () => {
+  const running = await launchApp(
+    { editMode: 'sv' },
+    {
+      'source.md':
+        '[Type](target.txt)\n\n[Absolute](/tmp/target.md)\n\n[File](file:///tmp/target.md)',
+    },
+  );
+  try {
+    const { page } = running;
+    const modifier =
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+    const links = page.locator('.editor-host.active .vditor-preview a');
+    const active = page.locator('.temporary-document-notice:not(.hidden)');
+    const typeMessage =
+      'Cannot open this link: unsupported file type. Only Markdown files are supported.';
+    const absoluteMessage = 'Cannot open an absolute-path link. Use a relative path.';
+    const fileMessage = 'Cannot open a file:// link. Use a relative path.';
+    for (const index of [0, 1, 2]) await links.nth(index).click({ modifiers: [modifier] });
+    await expect(active).toHaveText([fileMessage, absoluteMessage, typeMessage]);
+    const bounds = await active.evaluateAll((notices) =>
+      notices.map((notice) => {
+        const box = notice.getBoundingClientRect();
+        return { top: box.top, bottom: box.bottom };
+      }),
+    );
+    expect(Math.round(bounds[1].top - bounds[0].bottom)).toBe(8);
+    expect(Math.round(bounds[2].top - bounds[1].bottom)).toBe(8);
+    await links.nth(0).click({ modifiers: [modifier] });
+    await expect(active).toHaveText([typeMessage, fileMessage, absoluteMessage]);
+    await expect(page.locator('.temporary-document-notice')).toHaveCount(3);
+    await expect(active).toHaveCount(0, { timeout: 7000 });
+    await expect(page.locator('.temporary-document-notice')).toHaveCount(1);
+    await expect(page.locator('.document-tab')).toHaveCount(1);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('fades every document banner in and out and honors reduced motion', async () => {
+  const running = await launchApp();
+  try {
+    const { page } = running;
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    const bannerIds = [
+      'recoveryBanner',
+      'externalChangeBanner',
+      'externalFileStateBanner',
+      'temporaryDocumentNotice',
+    ];
+    for (const id of bannerIds) {
+      const result = await page.evaluate(async (bannerId) => {
+        const banner = document.getElementById(bannerId)!;
+        const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        const midpoint = async () => {
+          await frame();
+          const animations = banner.getAnimations();
+          const opacity = animations.find(
+            (animation) =>
+              animation instanceof CSSTransition && animation.transitionProperty === 'opacity',
+          );
+          if (!opacity) throw new Error(`No opacity transition for ${bannerId}`);
+          opacity.pause();
+          opacity.currentTime = 90;
+          const sample = {
+            opacity: Number(getComputedStyle(banner).opacity),
+            display: getComputedStyle(banner).display,
+            pointerEvents: getComputedStyle(banner).pointerEvents,
+          };
+          animations.forEach((animation) => animation.finish());
+          return sample;
+        };
+        banner.classList.remove('hidden');
+        const entering = await midpoint();
+        banner.classList.add('hidden');
+        const leaving = await midpoint();
+        const hiddenDisplay = getComputedStyle(banner).display;
+        banner.classList.remove('hidden');
+        await midpoint();
+        banner.classList.add('hidden');
+        await frame();
+        banner.classList.remove('hidden');
+        await frame();
+        banner.getAnimations().forEach((animation) => animation.finish());
+        const reversedOpacity = Number(getComputedStyle(banner).opacity);
+        banner.classList.add('hidden');
+        await frame();
+        banner.getAnimations().forEach((animation) => animation.finish());
+        return { entering, leaving, hiddenDisplay, reversedOpacity };
+      }, id);
+      for (const sample of [result.entering, result.leaving]) {
+        expect(sample.opacity).toBeGreaterThan(0);
+        expect(sample.opacity).toBeLessThan(1);
+        expect(sample.display).toBe('flex');
+      }
+      expect(result.leaving.pointerEvents).toBe('none');
+      expect(result.hiddenDisplay).toBe('none');
+      expect(result.reversedOpacity).toBe(1);
+    }
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    for (const id of bannerIds) {
+      const result = await page.evaluate((bannerId) => {
+        const banner = document.getElementById(bannerId)!;
+        banner.classList.remove('hidden');
+        const opacity = getComputedStyle(banner).opacity;
+        const animations = banner.getAnimations().length;
+        banner.classList.add('hidden');
+        return { opacity, animations, display: getComputedStyle(banner).display };
+      }, id);
+      expect(result).toEqual({ opacity: '1', animations: 0, display: 'none' });
+    }
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('shows an open failure notice when a second application invocation points to a missing document', async () => {
+  const running = await launchApp({ editMode: 'sv' }, { 'source.md': 'Keep current content' });
+  try {
+    const missing = path.join(running.testRoot, 'missing.md');
+    await openFromSecondInstance(running, [missing]);
+    await expect(running.page.locator('#temporaryDocumentNotice')).toBeVisible();
+    await expect(running.page.locator('#temporaryDocumentNoticeMessage')).toHaveText(
+      'Could not open: The file or directory is no longer available.',
+    );
+    const noticeBounds = await running.page.locator('#temporaryDocumentNotice').boundingBox();
+    const editorBounds = await running.page.locator('#editorArea').boundingBox();
+    expect(noticeBounds).not.toBeNull();
+    expect(editorBounds).not.toBeNull();
+    expect(Math.round(noticeBounds!.y - editorBounds!.y)).toBe(8);
+    await expect(running.page.locator('.document-tab')).toHaveCount(1);
+    await expect(running.page.locator('.editor-host.active .vditor-sv')).toContainText(
+      'Keep current content',
+    );
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('shows a save permission notice and preserves unsaved content when the directory is read-only', async () => {
+  test.skip(
+    process.platform === 'win32',
+    'POSIX directory permissions are unavailable on Windows.',
+  );
+  const running = await launchApp({ editMode: 'sv' }, { 'source.md': 'Original content' });
+  try {
+    const { page } = running;
+    const modifier =
+      (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+    await page.locator('.editor-host.active .vditor-sv').fill('Unsaved content');
+    fs.chmodSync(running.testRoot, 0o555);
+    await page.keyboard.press(`${modifier}+s`);
+    await expect(page.locator('#temporaryDocumentNotice')).toBeVisible();
+    await expect(page.locator('#temporaryDocumentNoticeMessage')).toHaveText(
+      'Save failed. Check that you can write to the file and its directory.',
+    );
+    await expect(page.locator('.editor-host.active .vditor-sv')).toContainText('Unsaved content');
+    expect(fs.readFileSync(path.join(running.testRoot, 'source.md'), 'utf8')).toBe(
+      'Original content',
+    );
+    fs.chmodSync(running.testRoot, 0o755);
+    await page.keyboard.press(`${modifier}+s`);
+    await expect(page.locator('#statusMessage')).toHaveText('Saved source.md');
+    await expect(page.locator('#temporaryDocumentNotice')).toBeVisible();
+    await expect
+      .poll(() => fs.readFileSync(path.join(running.testRoot, 'source.md'), 'utf8'))
+      .toContain('Unsaved content');
+  } finally {
+    fs.chmodSync(running.testRoot, 0o755);
+    await closeApp(running);
+  }
+});
+
+for (const mode of ['ir', 'wysiwyg', 'sv'] as const) {
+  test(`rejects unsupported editor drops before image upload in ${mode}`, async () => {
+    const running = await launchApp({ editMode: mode }, { 'source.md': 'Original content' });
+    try {
+      const { page } = running;
+      const unsupported = path.join(running.testRoot, 'unsupported.txt');
+      const image = path.join(running.testRoot, 'pixel.png');
+      fs.writeFileSync(unsupported, 'Unsupported content');
+      fs.writeFileSync(
+        image,
+        Buffer.from(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+          'base64',
+        ),
+      );
+      await page.evaluate(() => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.id = 'dropTestInput';
+        input.hidden = true;
+        document.body.append(input);
+      });
+      const editor = page.locator(
+        `.editor-host.active ${mode === 'ir' ? '.vditor-ir' : mode === 'sv' ? '.vditor-sv' : '.vditor-wysiwyg'}`,
+      );
+      const dropFile = async (filePath: string) => {
+        await page.locator('#dropTestInput').setInputFiles(filePath);
+        await editor.evaluate((target) => {
+          const input = document.getElementById('dropTestInput') as HTMLInputElement;
+          const transfer = new DataTransfer();
+          transfer.items.add(input.files![0]);
+          const surface = target.matches('[contenteditable="true"]')
+            ? target
+            : target.querySelector('[contenteditable="true"]');
+          if (!surface) throw new Error('The editable drop surface is unavailable.');
+          surface.dispatchEvent(
+            new DragEvent('drop', {
+              bubbles: true,
+              cancelable: true,
+              dataTransfer: transfer,
+            }),
+          );
+        });
+      };
+      await createNewTab(page);
+      await dropFile(unsupported);
+      await expect(page.locator('#temporaryDocumentNoticeMessage')).toHaveText(
+        'Only Markdown files can be dropped here.',
+      );
+      await expect(editor).toHaveText('');
+      await dropFile(image);
+      await expect(page.locator('#temporaryDocumentNoticeMessage')).toHaveText(
+        'Save the document before inserting local images.',
+      );
+      await expect(editor).toHaveText('');
+      await page.locator('.document-tab', { hasText: 'source.md' }).click();
+      await dropFile(unsupported);
+      await expect(page.locator('#temporaryDocumentNoticeMessage')).toHaveText(
+        'Only Markdown files can be dropped here.',
+      );
+      await expect(editor).toContainText('Original content');
+      expect(fs.existsSync(path.join(running.testRoot, 'assets'))).toBe(false);
+      await expect(page.locator('.document-tab')).toHaveCount(2);
+      const markdown = path.join(running.testRoot, 'target.md');
+      fs.writeFileSync(markdown, 'Dropped Markdown content');
+      await dropFile(markdown);
+      await expect(page.locator('.document-tab', { hasText: 'target.md' })).toHaveCount(1);
+      await expect(editor).toContainText('Dropped Markdown content');
+      await expect(page.locator('.document-tab')).toHaveCount(3);
+    } finally {
+      await closeApp(running);
+    }
+  });
+}
+
+test('shows an image insertion notice before an untitled document is saved', async () => {
+  const running = await launchApp({ editMode: 'sv' });
+  try {
+    const { page } = running;
+    await createNewTab(page);
+    const uploadInput = page.locator(
+      '.vditor-toolbar__item [data-type="upload"] input[type="file"]',
+    );
+    await uploadInput.setInputFiles({
+      name: 'pixel.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        'base64',
+      ),
+    });
+    await expect(page.locator('#temporaryDocumentNotice')).toBeVisible();
+    await expect(page.locator('#temporaryDocumentNoticeMessage')).toHaveText(
+      'Save the document before inserting local images.',
+    );
+    await expect(page.locator('#temporaryDocumentNotice')).toHaveClass(/error/);
+    await expect(page.locator('.editor-host.active .vditor-sv')).toHaveText('');
+    expect(fs.existsSync(path.join(running.testRoot, 'assets'))).toBe(false);
   } finally {
     await closeApp(running);
   }

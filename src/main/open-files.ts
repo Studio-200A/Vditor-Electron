@@ -11,6 +11,12 @@ export function extractOpenFilePaths(
   const files = new Set<string>();
   for (const argument of argv) {
     if (!argument || argument.startsWith('-')) continue;
+    if (
+      !argument.startsWith('file:') &&
+      /^[a-z][a-z\d+.-]*:/i.test(argument) &&
+      !path.isAbsolute(argument)
+    )
+      continue;
     let candidate: string;
     try {
       candidate = argument.startsWith('file:')
@@ -21,10 +27,12 @@ export function extractOpenFilePaths(
     }
     if (!MARKDOWN_EXTENSION.test(candidate)) continue;
     try {
-      if (fs.statSync(candidate).isFile()) files.add(path.normalize(candidate));
+      if (!fs.statSync(candidate).isFile()) continue;
     } catch {
-      // Ignore stale desktop entries and unrelated command-line arguments.
+      // Forward missing or inaccessible Markdown paths so the document open flow
+      // reports a safe error instead of silently discarding the user's request.
     }
+    files.add(path.normalize(candidate));
   }
   return [...files];
 }

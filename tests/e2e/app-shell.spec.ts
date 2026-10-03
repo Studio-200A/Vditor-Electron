@@ -5,6 +5,7 @@ import {
   closeApp,
   createNewTab,
   launchApp,
+  openFromSecondInstance,
   readSetting,
   selectThemeMode,
 } from './support/app-harness';
@@ -12,21 +13,10 @@ import {
 test('forwards Markdown files from a second application invocation', async () => {
   const running = await launchApp();
   try {
-    const { app, page, testRoot } = running;
+    const { page, testRoot } = running;
     const filePath = path.join(testRoot, 'second invocation.md');
     fs.writeFileSync(filePath, '# Opened by second instance');
-    await app.evaluate(
-      ({ app: electronApp }, payload) => {
-        electronApp.emit(
-          'second-instance',
-          {} as Electron.Event,
-          [process.execPath, payload.filePath],
-          payload.workingDirectory,
-          {},
-        );
-      },
-      { filePath, workingDirectory: testRoot },
-    );
+    await openFromSecondInstance(running, [filePath]);
     await expect(page.locator('.document-tab.active > span')).toHaveText('second invocation.md');
     await expect(page.locator('.editor-host.active')).toContainText('Opened by second instance');
   } finally {
@@ -445,7 +435,11 @@ test('scrolls overflowing document tabs with the mouse wheel', async () => {
     await tabBar.evaluate((node) => {
       node.style.flex = '0 0 240px';
     });
-    const before = await tabBar.evaluate((node) => ({
+    const strip = page.locator('#tabStrip');
+    await strip.evaluate((node) => {
+      node.scrollLeft = 0;
+    });
+    const before = await strip.evaluate((node) => ({
       clientWidth: node.clientWidth,
       scrollLeft: node.scrollLeft,
       scrollWidth: node.scrollWidth,
@@ -454,7 +448,113 @@ test('scrolls overflowing document tabs with the mouse wheel', async () => {
     expect(before.scrollWidth).toBeGreaterThan(before.clientWidth);
     await tabBar.hover();
     await page.mouse.wheel(0, 160);
-    await expect.poll(() => tabBar.evaluate((node) => node.scrollLeft)).toBeGreaterThan(0);
+    await expect.poll(() => strip.evaluate((node) => node.scrollLeft)).toBeGreaterThan(0);
+  } finally {
+    await closeApp(running);
+  }
+});
+
+test('keeps the new tab button visible and shades only overflowing tab edges across themes', async () => {
+  const running = await launchApp({
+    windowMaximized: false,
+    windowBounds: { x: 80, y: 70, width: 760, height: 700 },
+  });
+  try {
+    const { app, page } = running;
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(760, 700));
+    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(760);
+    for (let index = 0; index < 8; index += 1) await createNewTab(page);
+    const strip = page.locator('#tabStrip');
+    const bar = page.locator('#tabBar');
+    const region = page.locator('.tab-scroll-region');
+    const shadows = () =>
+      region.evaluate((node) => ({
+        before: getComputedStyle(node, '::before').opacity,
+        after: getComputedStyle(node, '::after').opacity,
+        pointerEvents: getComputedStyle(node, '::after').pointerEvents,
+        gradient: getComputedStyle(node, '::after').backgroundImage,
+      }));
+    await expect(bar).toHaveClass(/has-tabs-before/);
+    const gradients = new Set<string>();
+    for (const theme of [
+      'classic',
+      'dark',
+      'elegant',
+      'claude-dark',
+      'claude-light',
+      'monokai-pro-light',
+      'monokai-pro-dark',
+    ]) {
+      await page.evaluate((value) => {
+        document.documentElement.dataset.theme = value;
+        document.querySelectorAll<HTMLLinkElement>('link[id^="theme-"]').forEach((link) => {
+          link.disabled = link.id !== `theme-${value}`;
+        });
+      }, theme);
+      await strip.evaluate((node) => {
+        node.scrollLeft = 0;
+      });
+      await expect
+        .poll(async () => {
+          const value = await shadows();
+          return [value.before, value.after];
+        })
+        .toEqual(['0', '0.65']);
+      const start = await shadows();
+      expect(start.pointerEvents).toBe('none');
+      gradients.add(start.gradient);
+      await page
+        .locator('#windowTitlebar')
+        .screenshot({ path: test.info().outputPath(`tab-overflow-${theme}.png`) });
+      await expect(page.locator('#addTab')).toBeInViewport({ ratio: 1 });
+      expect(
+        await page.locator('#addTab').evaluate((button) => {
+          const bounds = button.getBoundingClientRect();
+          const barBounds = document.getElementById('tabBar')!.getBoundingClientRect();
+          const target = document.elementFromPoint(
+            bounds.left + bounds.width / 2,
+            bounds.top + bounds.height / 2,
+          );
+          return (
+            bounds.left >= barBounds.left &&
+            bounds.right <= barBounds.right &&
+            target?.closest('#addTab') === button
+          );
+        }),
+      ).toBe(true);
+      await expect(page.locator('#windowMinimize')).toBeInViewport({ ratio: 1 });
+      await strip.evaluate((node) => {
+        node.scrollLeft = (node.scrollWidth - node.clientWidth) / 2;
+      });
+      await expect
+        .poll(async () => {
+          const value = await shadows();
+          return [value.before, value.after];
+        })
+        .toEqual(['0.65', '0.65']);
+      await strip.evaluate((node) => {
+        node.scrollLeft = node.scrollWidth;
+      });
+      await expect
+        .poll(async () => {
+          const value = await shadows();
+          return [value.before, value.after];
+        })
+        .toEqual(['0.65', '0']);
+      await expect(page.locator('#addTab')).toBeInViewport({ ratio: 1 });
+    }
+    expect(gradients.size).toBeGreaterThan(1);
+    await page.locator('#addTab').click();
+    await expect(page.locator('.document-tab')).toHaveCount(9);
+    await expect(page.locator('.document-tab.active')).toBeInViewport({ ratio: 1 });
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1600, 700));
+    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(1600);
+    await expect
+      .poll(async () => {
+        const value = await shadows();
+        return [value.before, value.after];
+      })
+      .toEqual(['0', '0']);
   } finally {
     await closeApp(running);
   }

@@ -107,15 +107,31 @@ export class AppController implements Controller {
       event.preventDefault();
       const transfer = event.dataTransfer;
       if (!transfer) return;
-      const paths = Array.from(transfer.files).map(bridge.getDroppedPath).filter(Boolean);
+      const files = Array.from(transfer.files);
+      const paths = files.map(bridge.getDroppedPath).filter(Boolean);
       const markdown = paths.filter((filePath) =>
         /\.(md|markdown|mdown|mkd|mkdn)$/i.test(filePath),
       );
-      if (markdown.length) openPaths(markdown);
-      else if (paths.length) commands.rejectDrop();
+      if (markdown.length) {
+        event.stopPropagation();
+        openPaths(markdown);
+      } else if (files.length) {
+        const isEditorDrop = event
+          .composedPath()
+          .some((target) => target instanceof Element && target.classList.contains('editor-host'));
+        const isImageDrop = files.every((file) =>
+          file.type
+            ? file.type.startsWith('image/')
+            : /\.(png|jpe?g|gif|webp|svg|avif|bmp|ico|tiff?)$/i.test(file.name),
+        );
+        if (isEditorDrop && isImageDrop) return;
+        event.stopPropagation();
+        commands.rejectDrop();
+      }
     };
-    document.body.addEventListener('drop', drop);
-    this.resources.add(() => document.body.removeEventListener('drop', drop));
+    // Vditor 3.11.3 treats file drops as uploads before the bubbling shell handler.
+    document.body.addEventListener('drop', drop, true);
+    this.resources.add(() => document.body.removeEventListener('drop', drop, true));
   }
 
   private routeShortcut(event: KeyboardEvent): void {

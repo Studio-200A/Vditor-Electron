@@ -30,6 +30,25 @@ export interface SaveWorkflowDocument {
   readonly externalFileState: SaveWorkflowFileState | null;
 }
 
+export type SaveWorkflowMessageKind =
+  | 'saved'
+  | 'path-open'
+  | 'resolve-file-state'
+  | 'resolve-conflict'
+  | 'changed-again'
+  | 'permission-denied'
+  | 'save-failed'
+  | 'reloaded'
+  | 'ignored'
+  | 'recreated'
+  | 'recreated-copied'
+  | 'recreated-clipboard-failed';
+
+export type RecreateNoticeKind = Extract<
+  SaveWorkflowMessageKind,
+  'recreated' | 'recreated-copied' | 'recreated-clipboard-failed'
+>;
+
 export interface DocumentSaveExternalWorkflowControllerOptions<
   TDocument extends SaveWorkflowDocument,
 > {
@@ -108,25 +127,11 @@ export interface DocumentSaveExternalWorkflowControllerOptions<
     path?: string,
   ) => Promise<boolean>;
   readonly showMessage: (
-    key:
-      | 'saved'
-      | 'path-open'
-      | 'resolve-file-state'
-      | 'resolve-conflict'
-      | 'changed-again'
-      | 'permission-denied'
-      | 'save-failed'
-      | 'reloaded'
-      | 'ignored'
-      | 'recreated'
-      | 'recreated-copied'
-      | 'recreated-clipboard-failed',
+    key: SaveWorkflowMessageKind,
     document: TDocument,
     error?: unknown,
   ) => void;
-  readonly showRecreateNotice: (
-    key: 'recreated' | 'recreated-copied' | 'recreated-clipboard-failed',
-  ) => void;
+  readonly showRecreateNotice: (key: RecreateNoticeKind) => void;
   readonly finish: () => void;
 }
 

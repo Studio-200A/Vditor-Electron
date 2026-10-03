@@ -57,6 +57,7 @@ describe('NotificationsController', () => {
 <body>
   <span id="statusMessage"></span>
   <section id="temporaryDocumentNotice" class="hidden">
+    <img class="temporary-document-notice-icon" alt="" />
     <span id="temporaryDocumentNoticeMessage"></span>
   </section>
   <div id="confirmModal" class="hidden" role="alertdialog" aria-labelledby="confirmTitle" aria-describedby="confirmMessage confirmDetail">
@@ -89,6 +90,7 @@ describe('NotificationsController', () => {
 
   afterEach(() => {
     controller.dispose();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -131,9 +133,9 @@ describe('NotificationsController', () => {
     });
   });
 
-  describe('showTemporaryDocumentNotice', () => {
+  describe('showNotice', () => {
     it('shows the notice with the message', () => {
-      controller.showTemporaryDocumentNotice('Notice');
+      controller.showNotice('Notice');
       const notice = document.getElementById('temporaryDocumentNotice');
       const msg = document.getElementById('temporaryDocumentNoticeMessage');
       expect(notice?.classList.contains('hidden')).toBe(false);
@@ -141,14 +143,18 @@ describe('NotificationsController', () => {
     });
 
     it('applies the error class when error is true', () => {
-      controller.showTemporaryDocumentNotice('Error', true);
+      controller.showNotice('Error', true);
       const notice = document.getElementById('temporaryDocumentNotice');
       expect(notice?.classList.contains('error')).toBe(true);
+      expect(notice?.getAttribute('role')).toBe('alert');
+      expect(notice?.querySelector('img')?.getAttribute('src')).toBe(
+        'assets/notification/warning.svg',
+      );
     });
 
     it('hides the notice after the duration', () => {
       vi.useFakeTimers();
-      controller.showTemporaryDocumentNotice('Temp');
+      controller.showNotice('Temp');
       expect(document.getElementById('temporaryDocumentNotice')?.classList.contains('hidden')).toBe(
         false,
       );
@@ -157,6 +163,96 @@ describe('NotificationsController', () => {
         true,
       );
       vi.useRealTimers();
+    });
+
+    it('stacks consecutive notices newest first with independent durations', () => {
+      vi.useFakeTimers();
+      controller.showNotice('First', true);
+      vi.advanceTimersByTime(4000);
+      controller.showNotice('Second');
+      const notice = document.getElementById('temporaryDocumentNotice');
+      expect(notice?.getAttribute('role')).toBe('status');
+      expect(notice?.classList.contains('error')).toBe(false);
+      expect(notice?.querySelector('img')?.getAttribute('src')).toBe(
+        'assets/notification/notification.svg',
+      );
+      const notices = document.querySelectorAll('.temporary-document-notice');
+      expect([...notices].map((item) => item.textContent)).toEqual(['Second', 'First']);
+      vi.advanceTimersByTime(1000);
+      expect(notice?.classList.contains('hidden')).toBe(false);
+      expect(notices[1].classList.contains('hidden')).toBe(true);
+      vi.advanceTimersByTime(250);
+      expect(notices[1].isConnected).toBe(false);
+      expect(document.getElementById('temporaryDocumentNoticeMessage')?.textContent).toBe('Second');
+      vi.advanceTimersByTime(3750);
+      expect(notice?.classList.contains('hidden')).toBe(true);
+    });
+
+    it('fades the oldest notice early when a fourth notice arrives', () => {
+      vi.useFakeTimers();
+      for (const message of ['First', 'Second', 'Third', 'Fourth']) {
+        controller.showNotice(message, true);
+      }
+      const notices = [...document.querySelectorAll('.temporary-document-notice')];
+      expect(notices.map((item) => item.textContent)).toEqual([
+        'Fourth',
+        'Third',
+        'Second',
+        'First',
+      ]);
+      expect(notices[3].classList.contains('hidden')).toBe(true);
+      expect(notices.filter((item) => !item.classList.contains('hidden'))).toHaveLength(3);
+      vi.advanceTimersByTime(250);
+      expect(notices[3].isConnected).toBe(false);
+      expect(document.querySelectorAll('#temporaryDocumentNotice')).toHaveLength(1);
+      expect(document.querySelectorAll('#temporaryDocumentNoticeMessage')).toHaveLength(1);
+      controller.dispose();
+      expect(document.querySelectorAll('.temporary-document-notice:not(.hidden)')).toHaveLength(0);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('preserves error presentation while the notice fades out', () => {
+      vi.useFakeTimers();
+      controller.showNotice('Failure', true);
+      vi.advanceTimersByTime(5000);
+      const notice = document.getElementById('temporaryDocumentNotice');
+      expect(notice?.classList.contains('hidden')).toBe(true);
+      expect(notice?.classList.contains('error')).toBe(true);
+      expect(notice?.querySelector('img')?.getAttribute('src')).toBe(
+        'assets/notification/warning.svg',
+      );
+      controller.showNotice('Recovered');
+      const recovered = document.getElementById('temporaryDocumentNotice');
+      expect(recovered?.classList.contains('hidden')).toBe(false);
+      expect(recovered?.classList.contains('error')).toBe(false);
+    });
+
+    it('keeps an error notice visible when a status message arrives without moving focus', () => {
+      const input = document.createElement('input');
+      document.body.append(input);
+      input.focus();
+      controller.showNotice('<img src=x onerror=alert(1)>', true);
+      controller.showMessage('Saved');
+      expect(document.activeElement).toBe(input);
+      expect(document.getElementById('temporaryDocumentNotice')?.classList.contains('hidden')).toBe(
+        false,
+      );
+      expect(document.getElementById('temporaryDocumentNoticeMessage')?.children).toHaveLength(0);
+      expect(document.getElementById('temporaryDocumentNoticeMessage')?.textContent).toBe(
+        '<img src=x onerror=alert(1)>',
+      );
+    });
+
+    it('hides active notifications and clears their timers on disposal', () => {
+      vi.useFakeTimers();
+      controller.showNotice('Failure', true);
+      controller.showMessage('Saved');
+      controller.dispose();
+      expect(document.getElementById('temporaryDocumentNotice')?.classList.contains('hidden')).toBe(
+        true,
+      );
+      expect(document.getElementById('statusMessage')?.textContent).toBe('');
+      expect(vi.getTimerCount()).toBe(0);
     });
   });
 
@@ -339,7 +435,7 @@ describe('NotificationsController', () => {
     it('clears pending timers', () => {
       vi.useFakeTimers();
       controller.showMessage('Temp');
-      controller.showTemporaryDocumentNotice('Notice');
+      controller.showNotice('Notice');
       controller.dispose();
       vi.advanceTimersByTime(10000);
       vi.useRealTimers();

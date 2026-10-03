@@ -21,6 +21,24 @@ describe('relative Markdown link resolution', () => {
 
   afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
 
+  it.each(['EACCES', 'EPERM', 'EIO'])(
+    'preserves %s failures for safe IPC error classification',
+    (code) => {
+      const failure = Object.assign(new Error('unreadable target'), { code });
+      expect(() =>
+        resolveRelativeMarkdownLink(sourceFile, 'target.md', {
+          fsApi: {
+            realpathSync: (filePath) => filePath,
+            statSync: (filePath) => {
+              if (filePath === sourceFile) return { isFile: () => true };
+              throw failure;
+            },
+          },
+        }),
+      ).toThrow(failure);
+    },
+  );
+
   it('resolves parent paths, percent encoding, and fragments to canonical Markdown files', () => {
     expect(resolveRelativeMarkdownLink(sourceFile, '../target.md#target')).toEqual({
       kind: 'resolved',

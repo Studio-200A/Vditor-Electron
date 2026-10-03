@@ -14,7 +14,7 @@ export interface TabControllerCallbacks {
 
 export interface TabControllerOptions {
   readonly tabBar: HTMLElement;
-  readonly addTab: HTMLElement;
+  readonly tabStrip: HTMLElement;
   readonly getAttentionTitle: (tab: TabViewModel) => string;
   readonly getCloseTitle: () => string;
   readonly callbacks: TabControllerCallbacks;
@@ -23,7 +23,8 @@ export interface TabControllerOptions {
 /** Renders document tabs and owns only their pointer/click interaction. */
 export class TabController {
   private readonly tabBar: HTMLElement;
-  private readonly addTab: HTMLElement;
+  private readonly tabStrip: HTMLElement;
+  private readonly resizeObserver: ResizeObserver;
   private readonly getAttentionTitle: (tab: TabViewModel) => string;
   private readonly getCloseTitle: () => string;
   private readonly callbacks: TabControllerCallbacks;
@@ -37,27 +38,60 @@ export class TabController {
 
   constructor(options: TabControllerOptions) {
     this.tabBar = options.tabBar;
-    this.addTab = options.addTab;
+    this.tabStrip = options.tabStrip;
     this.getAttentionTitle = options.getAttentionTitle;
     this.getCloseTitle = options.getCloseTitle;
     this.callbacks = options.callbacks;
+    this.tabStrip.addEventListener('scroll', this.updateOverflow);
+    this.tabBar.addEventListener('wheel', this.scrollTabs, { passive: false });
+    this.resizeObserver = new ResizeObserver(this.updateOverflow);
+    this.resizeObserver.observe(this.tabStrip);
   }
 
   render(tabs: readonly TabViewModel[], activeId: string | null): void {
     this.tabBar.querySelectorAll('.document-tab').forEach((node) => node.remove());
     for (const tab of tabs) {
-      this.tabBar.insertBefore(this.createTabButton(tab, activeId === tab.id), this.addTab);
+      this.tabStrip.append(this.createTabButton(tab, activeId === tab.id));
     }
+    this.updateOverflow();
     this.scheduleActiveTabScroll();
   }
 
   dispose(): void {
+    this.tabStrip.removeEventListener('scroll', this.updateOverflow);
+    this.tabBar.removeEventListener('wheel', this.scrollTabs);
+    this.resizeObserver.disconnect();
     if (this.activeTabScrollFrame !== null) cancelAnimationFrame(this.activeTabScrollFrame);
     if (this.dragResetTimer !== null) clearTimeout(this.dragResetTimer);
     this.activeTabScrollFrame = null;
     this.dragResetTimer = null;
     this.clearDragState();
   }
+
+  private readonly updateOverflow = (): void => {
+    const maximumLeft = Math.max(0, this.tabStrip.scrollWidth - this.tabStrip.clientWidth);
+    this.tabBar.classList.toggle('has-tabs-before', this.tabStrip.scrollLeft > 1);
+    this.tabBar.classList.toggle('has-tabs-after', maximumLeft - this.tabStrip.scrollLeft > 1);
+  };
+
+  private readonly scrollTabs = (event: WheelEvent): void => {
+    const strip = this.tabStrip;
+    if (strip.scrollWidth <= strip.clientWidth) return;
+    const rawDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+    if (!rawDelta) return;
+    const delta =
+      event.deltaMode === event.DOM_DELTA_LINE
+        ? rawDelta * 16
+        : event.deltaMode === event.DOM_DELTA_PAGE
+          ? rawDelta * strip.clientWidth
+          : rawDelta;
+    const maximumLeft = Math.max(0, strip.scrollWidth - strip.clientWidth);
+    const nextLeft = Math.min(maximumLeft, Math.max(0, strip.scrollLeft + delta));
+    if (nextLeft === strip.scrollLeft) return;
+    event.preventDefault();
+    strip.scrollLeft = nextLeft;
+    this.updateOverflow();
+  };
 
   private createTabButton(tab: TabViewModel, isActive: boolean): HTMLButtonElement {
     const button = document.createElement('button');
@@ -174,6 +208,7 @@ export class TabController {
           block: 'nearest',
           inline: 'nearest',
         });
+        this.updateOverflow();
       });
     });
   }

@@ -740,10 +740,45 @@ button.primary.danger {
   display: flex;
   align-items: stretch;
   padding: 0;
+  overflow: hidden;
+  background: transparent;
+}
+.tab-scroll-region {
+  position: relative;
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+}
+.tab-strip {
+  height: 100%;
+  display: flex;
   overflow-x: auto;
   overflow-y: hidden;
-  background: transparent;
   scrollbar-width: none;
+}
+.tab-scroll-region::before,
+.tab-scroll-region::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 14px;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0;
+  --tab-overflow-shadow: color-mix(in srgb, var(--sidebar-surface) 65%, #000);
+}
+.tab-scroll-region::before {
+  left: 0;
+  background: linear-gradient(to right, var(--tab-overflow-shadow), transparent);
+}
+.tab-scroll-region::after {
+  right: 0;
+  background: linear-gradient(to left, var(--tab-overflow-shadow), transparent);
+}
+.tabbar.has-tabs-before .tab-scroll-region::before,
+.tabbar.has-tabs-after .tab-scroll-region::after {
+  opacity: 0.65;
 }
 .window-titlebar > .tabbar {
   -webkit-app-region: no-drag;
@@ -757,12 +792,12 @@ button.primary.danger {
   align-self: stretch;
   -webkit-app-region: drag;
 }
-.tabbar::-webkit-scrollbar {
+.tab-strip::-webkit-scrollbar {
   display: none;
   width: 0;
   height: 0;
 }
-.tabbar.app-scrollbar::-webkit-scrollbar {
+.tab-strip.app-scrollbar::-webkit-scrollbar {
   display: none !important;
   width: 0 !important;
   height: 0 !important;
@@ -890,14 +925,42 @@ button.primary.danger {
   overflow: hidden;
   background: var(--sidebar-surface);
 }
-.external-change-banner {
+.document-banner-stack {
   position: absolute;
-  z-index: 12;
+  z-index: 13;
   top: 8px;
   left: 50%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.document-banner-stack > section {
+  opacity: 1;
+  transition:
+    opacity 180ms ease,
+    display 180ms allow-discrete;
+}
+.document-banner-stack > section.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+@starting-style {
+  .document-banner-stack > section {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .document-banner-stack > section {
+    transition: none;
+  }
+}
+.external-change-banner {
   width: min(680px, calc(100% - 24px));
   min-height: 42px;
-  transform: translateX(-50%);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -908,6 +971,7 @@ button.primary.danger {
   background: color-mix(in srgb, var(--panel) 94%, var(--accent));
   box-shadow: 0 5px 18px rgb(0 0 0 / 0.2);
   user-select: none;
+  pointer-events: auto;
 }
 .persistent-banner {
   align-items: flex-start;
@@ -955,10 +1019,6 @@ button.primary.danger {
   background: color-mix(in srgb, var(--panel) 94%, var(--danger));
 }
 .temporary-document-notice {
-  position: absolute;
-  z-index: 13;
-  top: 8px;
-  left: 50%;
   display: flex;
   align-items: center;
   max-width: min(620px, calc(100% - 32px));
@@ -970,7 +1030,8 @@ button.primary.danger {
   border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
   border-radius: 8px;
   box-shadow: 0 5px 18px rgb(0 0 0 / 0.2);
-  transform: translateX(-50%);
+  pointer-events: none;
+  overflow-wrap: anywhere;
 }
 .temporary-document-notice-icon {
   width: 20px;
@@ -978,6 +1039,7 @@ button.primary.danger {
   flex: 0 0 auto;
 }
 .temporary-document-notice.error {
+  color: var(--danger);
   border-color: color-mix(in srgb, var(--danger) 58%, var(--border));
   background: color-mix(in srgb, var(--panel) 94%, var(--danger));
 }

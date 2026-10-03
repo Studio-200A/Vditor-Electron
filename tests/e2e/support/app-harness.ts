@@ -4,6 +4,8 @@ import type { Page } from '@playwright/test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import type { AppSettings, PersistentAppState } from '../../../src/main/services/app-state';
 import { PersistentStateStore } from '../../../src/main/services/persistent-state-store';
 import { SettingsStore } from '../../../src/main/services/settings-store';
@@ -14,6 +16,22 @@ export interface RunningApp {
   app: ElectronApplication;
   page: Page;
   testRoot: string;
+}
+
+export async function openFromSecondInstance(
+  running: RunningApp,
+  filePaths: string[],
+): Promise<void> {
+  const executable = await running.app.evaluate(() => process.execPath);
+  await promisify(execFile)(executable, [projectRoot, ...filePaths], {
+    cwd: projectRoot,
+    env: {
+      ...process.env,
+      VDITOR_DESKTOP_CONFIG_DIR: path.join(running.testRoot, 'config'),
+      VDITOR_DESKTOP_DATA_DIR: path.join(running.testRoot, 'chromium'),
+    },
+    timeout: 10_000,
+  });
 }
 
 export async function launchApp(

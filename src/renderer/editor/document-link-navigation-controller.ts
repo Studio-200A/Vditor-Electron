@@ -1,3 +1,5 @@
+import type { MarkdownLinkResolution } from '../../shared/contracts/markdown-link.js';
+
 export interface DocumentLink {
   readonly element: Element;
   readonly href: string;
@@ -37,15 +39,13 @@ export interface DocumentLinkNavigationControllerOptions<TTab extends DocumentLi
   readonly platform: string;
   readonly translate: (key: string, params?: Record<string, string>) => string;
   readonly showMessage: (message: string, error?: boolean) => void;
+  readonly formatError: (error: unknown) => string;
   readonly showTooltip: (text: string, event: MouseEvent) => void;
   readonly hideTooltip: () => void;
   readonly resolveMarkdownLink: (
     sourcePath: string,
     href: string,
-  ) => Promise<
-    | { readonly kind: 'resolved'; readonly filePath: string; readonly fragment: string }
-    | { readonly kind: 'unsupported' | 'missing'; readonly code: 'not-found' | string }
-  >;
+  ) => Promise<MarkdownLinkResolution>;
   readonly openPath: (filePath: string, activate: boolean, fragment: string) => Promise<void>;
   readonly openExternal: (href: string) => Promise<void>;
   readonly scrollToHeading: (tab: TTab, headingIndex: number) => void;
@@ -67,7 +67,7 @@ export class DocumentLinkNavigationController<TTab extends DocumentLinkTab> {
         const link = this.options.adapter.documentLink(event.target, tab.host);
         const target = link && this.targetForLink(tab, link);
         if (target) this.setHovered(target, event);
-        else if (link?.kind === 'link') this.setBlockedHovered(link);
+        else if (link?.kind === 'link') this.setBlockedHovered(link, event);
       },
       onMouseOut: (event) => {
         const relatedTarget = event.relatedTarget;
@@ -81,6 +81,10 @@ export class DocumentLinkNavigationController<TTab extends DocumentLinkTab> {
       },
       onMouseMove: (event) => {
         if (this.hovered) this.options.showTooltip(this.tooltipText(), event);
+        else if (this.blockedHoveredLink) {
+          const message = this.unsupportedLinkMessage(this.blockedHoveredLink.href);
+          if (message) this.options.showTooltip(message, event);
+        }
       },
       onClick: (event) => this.handleClick(tab, event),
     };
@@ -138,7 +142,7 @@ export class DocumentLinkNavigationController<TTab extends DocumentLinkTab> {
     }
     if (this.isSupportedExternalLink(link.href))
       return { link, headingIndex: null, external: true };
-    return this.isPotentialRelativeMarkdownLink(link.href)
+    return this.localLinkKind(link.href) === 'relative-markdown'
       ? { link, headingIndex: null, external: false }
       : null;
   }
@@ -148,6 +152,11 @@ export class DocumentLinkNavigationController<TTab extends DocumentLinkTab> {
     if (!link || link.kind !== 'link') return false;
     event.preventDefault();
     event.stopPropagation();
+    if (this.hasModifier(event) && !link.href.startsWith('#'))
+      this.options.showMessage(
+        this.unsupportedLinkMessage(link.href) ?? this.options.translate('message.linkUnsupported'),
+        true,
+      );
     this.options.adapter.expandInstantLinkForEditing(link);
     return true;
   }
@@ -162,14 +171,23 @@ export class DocumentLinkNavigationController<TTab extends DocumentLinkTab> {
     >;
     try {
       resolution = await this.resolveMarkdownLink(tab.filePath, href);
-    } catch {
-      this.options.showMessage(this.options.translate('message.linkTargetMissing'), true);
+    } catch (error) {
+      this.options.showMessage(
+        this.options.translate('message.openFailed', { error: this.options.formatError(error) }),
+        true,
+      );
       return;
     }
     if (resolution.kind !== 'resolved') {
       this.options.showMessage(
         this.options.translate(
-          resolution.code === 'not-found' ? 'message.linkTargetMissing' : 'message.linkUnsupported',
+          resolution.code === 'not-found'
+            ? 'message.linkTargetMissing'
+            : resolution.code === 'invalid-source'
+              ? 'message.linkSourceUnavailable'
+              : resolution.code === 'unsupported-target'
+                ? 'message.linkFileTypeUnsupported'
+                : 'message.linkUnsupported',
         ),
         true,
       );
@@ -204,11 +222,16 @@ export class DocumentLinkNavigationController<TTab extends DocumentLinkTab> {
     this.options.hideTooltip();
   }
 
-  private setBlockedHovered(link: DocumentLink): void {
-    if (this.blockedHoveredLink?.element === link.element) return;
-    this.clearHovered();
-    this.blockedHoveredLink = link;
-    this.options.adapter.setDocumentLinkCursor(link, 'text');
+  private setBlockedHovered(link: DocumentLink, event: MouseEvent): void {
+    if (this.blockedHoveredLink?.element !== link.element) {
+      this.clearHovered();
+      this.blockedHoveredLink = link;
+    }
+    const message = this.unsupportedLinkMessage(link.href);
+    if (message) {
+      this.options.adapter.setDocumentLinkHint(link, message, 'text');
+      this.options.showTooltip(message, event);
+    } else this.options.adapter.setDocumentLinkCursor(link, 'text');
   }
 
   private tooltipText(): string {
@@ -229,14 +252,40 @@ export class DocumentLinkNavigationController<TTab extends DocumentLinkTab> {
     }
   }
 
-  private isPotentialRelativeMarkdownLink(href: string): boolean {
+  private unsupportedLinkMessage(href: string): string | null {
+    switch (this.localLinkKind(href)) {
+      case 'file-type':
+        return this.options.translate('message.linkFileTypeUnsupported');
+      case 'absolute-path':
+        return this.options.translate('message.linkAbsolutePathUnsupported');
+      case 'file-protocol':
+        return this.options.translate('message.linkFileProtocolUnsupported');
+      default:
+        return null;
+    }
+  }
+
+  private localLinkKind(
+    href: string,
+  ): 'relative-markdown' | 'file-type' | 'absolute-path' | 'file-protocol' | 'unsupported' {
     const rawPath = href.split('#', 1)[0]?.trim() ?? '';
-    if (!rawPath || rawPath.startsWith('/') || rawPath.startsWith('\\')) return false;
-    if (/^[a-z][a-z\d+.-]*:/i.test(rawPath)) return false;
+    if (!rawPath) return 'unsupported';
+    if (/^file:/i.test(rawPath)) return 'file-protocol';
+    if (/^[a-z]:[\\/]/i.test(rawPath)) return 'absolute-path';
+    if (/^[a-z][a-z\d+.-]*:/i.test(rawPath)) return 'unsupported';
     try {
-      return /\.(?:md|markdown|mdown|mkd|mkdn)$/i.test(decodeURIComponent(rawPath));
+      const decodedPath = decodeURIComponent(rawPath);
+      if (
+        decodedPath.startsWith('/') ||
+        decodedPath.startsWith('\\') ||
+        /^[a-z]:[\\/]/i.test(decodedPath)
+      )
+        return 'absolute-path';
+      return /\.(?:md|markdown|mdown|mkd|mkdn)$/i.test(decodedPath)
+        ? 'relative-markdown'
+        : 'file-type';
     } catch {
-      return false;
+      return 'unsupported';
     }
   }
 }

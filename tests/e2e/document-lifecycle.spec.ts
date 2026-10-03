@@ -1295,7 +1295,9 @@ test('serializes concurrent Save As requests through alias paths for the same mi
     await expect.poll(() => fs.readFileSync(target, 'utf8').trimEnd()).toBe('Local A');
     await expect(page.locator('#statusPath')).toHaveText(path.join(testRoot, 'source-b.md'));
     await expect(page.locator('.document-tab.active .dirty')).toHaveText('●');
-    await expect(page.locator('#statusMessage')).toHaveText(
+    await expect(page.locator('#temporaryDocumentNotice')).toBeVisible();
+    await expect(page.locator('#temporaryDocumentNotice')).toHaveClass(/error/);
+    await expect(page.locator('#temporaryDocumentNoticeMessage')).toHaveText(
       'shared.md is already open in another tab.',
     );
   } finally {
@@ -2242,9 +2244,25 @@ test('protects open documents when files are deleted and reappear outside the ap
     await expect(editor).toContainText('Kept after deletion');
     await page.evaluate(() => window.appAPI.closeWindow());
     await expect(banner).toBeVisible();
-    await expect(page.locator('#statusMessage')).toHaveText(
+    await expect(page.locator('#temporaryDocumentNotice')).toBeVisible();
+    await expect(page.locator('#temporaryDocumentNoticeMessage')).toHaveText(
       'Resolve the unavailable file before saving to its original path.',
     );
+    for (const width of [1000, 760]) {
+      await app.evaluate(
+        ({ BrowserWindow }, windowWidth) =>
+          BrowserWindow.getAllWindows()[0].setSize(windowWidth, 700),
+        width,
+      );
+      await expect
+        .poll(async () => {
+          const persistentBounds = await banner.boundingBox();
+          const noticeBounds = await page.locator('#temporaryDocumentNotice').boundingBox();
+          if (!persistentBounds || !noticeBounds) return null;
+          return Math.round(noticeBounds.y - persistentBounds.y - persistentBounds.height);
+        })
+        .toBe(8);
+    }
 
     await page.locator('#externalFileClose').click();
     await expect(confirm).toBeVisible();

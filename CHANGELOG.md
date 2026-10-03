@@ -2,6 +2,18 @@
 
 ## 0.2.7 -TBA
 
+### Bug Fixes
+
+- **fix(tabs):** Keep the new-tab button visible when document tabs overflow. Add subtle, theme-aware shadows only at edges with hidden tabs, while preserving horizontal wheel scrolling and the existing tab-width behavior.
+- **fix(drop):** Reject unsupported files dropped into the editor before Vditor routes them to image upload, so an untitled document reports the unsupported file type instead of asking to save before inserting an image. Markdown drops open documents, and image drops retain the existing upload workflow.
+- **fix(notifications):** Show brief, themed banners for document link, open/save, image insertion, unsupported file drop, and tab-limit failures so they are easier to notice. Routine success feedback remains in the status bar, and temporary notices stack newest first below persistent file-state warnings without taking focus or blocking editor input. Each notice has its own five-second lifetime; a fourth notice fades out the oldest early, keeping up to three active notices. All document banners fade in and out consistently, with immediate visibility changes when reduced motion is enabled.
+- **fix(links):** Explain unsupported file types, absolute paths, and `file://` document links with specific messages on hover and Ctrl/Cmd-click. Unsupported targets keep a text cursor, while supported links retain the modifier-key navigation hint and pointer cursor. Distinguish an unavailable source from a missing target, and preserve permission/I/O failures instead of reporting every link resolution failure as a missing file.
+- **fix(files):** Forward missing or inaccessible Markdown paths from external open requests to the document open workflow so it can show an error banner instead of silently discarding them before the renderer receives the request.
+
+### Refactor
+
+- **refactor(documents):** Move document feedback localization and presentation mapping out of the renderer composition layer, reuse the existing notification lifecycle, and align the Markdown link result declarations across the main process and renderer.
+
 ### Project Maintenance
 
 - **chore(runtime):** Upgrade the pinned Electron desktop runtime from 44.1.0 to 44.5.1, bringing upstream fixes for Linux clipboard responsiveness, KDE trash handling, file-manager reveal, and Chromium graphics.

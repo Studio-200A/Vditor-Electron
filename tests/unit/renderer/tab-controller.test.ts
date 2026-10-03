@@ -13,14 +13,27 @@ describe('TabController', () => {
   let activate: ReturnType<typeof vi.fn>;
   let close: ReturnType<typeof vi.fn>;
   let move: ReturnType<typeof vi.fn>;
+  let onResize: ResizeObserverCallback;
+  let disconnect: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     const dom = new JSDOM(
-      '<!doctype html><body><div id="tabBar"><button id="addTab"></button></div></body>',
+      '<!doctype html><body><div id="tabBar"><div id="tabStrip"></div><button id="addTab"></button></div></body>',
     );
     document = dom.window.document;
     vi.stubGlobal('document', document);
     vi.stubGlobal('Element', dom.window.Element);
+    disconnect = vi.fn();
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          onResize = callback;
+        }
+        observe = vi.fn();
+        disconnect = disconnect;
+      },
+    );
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
       callback(0);
       return 1;
@@ -37,7 +50,7 @@ describe('TabController', () => {
     move = vi.fn();
     controller = new TabController({
       tabBar: document.getElementById('tabBar') as HTMLElement,
-      addTab: document.getElementById('addTab') as HTMLElement,
+      tabStrip: document.getElementById('tabStrip') as HTMLElement,
       getAttentionTitle: (tab) => `Attention: ${tab.title}`,
       getCloseTitle: () => 'Close tab',
       callbacks: { activate, close, move },
@@ -105,5 +118,45 @@ describe('TabController', () => {
 
     expect(clearTimeout).toHaveBeenCalled();
     vi.useRealTimers();
+  });
+
+  it('shows shadows only on sides with hidden tabs and updates after resizing', () => {
+    const strip = document.getElementById('tabStrip')!;
+    const bar = document.getElementById('tabBar')!;
+    Object.defineProperty(strip, 'clientWidth', { configurable: true, value: 200 });
+    Object.defineProperty(strip, 'scrollWidth', { configurable: true, value: 600 });
+    controller.render(tabs, 'one');
+    expect(bar.classList.contains('has-tabs-before')).toBe(false);
+    expect(bar.classList.contains('has-tabs-after')).toBe(true);
+    strip.scrollLeft = 200;
+    strip.dispatchEvent(new document.defaultView!.Event('scroll'));
+    expect(bar.classList.contains('has-tabs-before')).toBe(true);
+    expect(bar.classList.contains('has-tabs-after')).toBe(true);
+    strip.scrollLeft = 400;
+    strip.dispatchEvent(new document.defaultView!.Event('scroll'));
+    expect(bar.classList.contains('has-tabs-after')).toBe(false);
+    strip.scrollLeft = 0;
+    Object.defineProperty(strip, 'clientWidth', { configurable: true, value: 600 });
+    onResize([], {} as ResizeObserver);
+    expect(bar.classList.contains('has-tabs-before')).toBe(false);
+    expect(bar.classList.contains('has-tabs-after')).toBe(false);
+  });
+
+  it('scrolls only the tab strip with the wheel and releases listeners on disposal', () => {
+    const strip = document.getElementById('tabStrip')!;
+    const bar = document.getElementById('tabBar')!;
+    Object.defineProperty(strip, 'clientWidth', { value: 200 });
+    Object.defineProperty(strip, 'scrollWidth', { value: 600 });
+    const wheel = () =>
+      new document.defaultView!.WheelEvent('wheel', { deltaY: 80, cancelable: true });
+    const event = wheel();
+    bar.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(strip.scrollLeft).toBe(80);
+    expect(bar.scrollLeft).toBe(0);
+    controller.dispose();
+    bar.dispatchEvent(wheel());
+    expect(strip.scrollLeft).toBe(80);
+    expect(disconnect).toHaveBeenCalled();
   });
 });

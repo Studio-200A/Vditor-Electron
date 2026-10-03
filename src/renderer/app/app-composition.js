@@ -111,7 +111,7 @@
   }
   const tabController = new PURE.TabController({
     tabBar: $('#tabBar'),
-    addTab: $('#addTab'),
+    tabStrip: $('#tabStrip'),
     getAttentionTitle: (tab) => t('external.needsAttention', { name: tab.title }),
     getCloseTitle: () => t('tab.close'),
     callbacks: {
@@ -205,8 +205,7 @@
       return t('tab.untitled', { number });
     },
     activate: (id) => editorRuntimeCoordinator.activate(id),
-    reportOpenFailure: (error) =>
-      showMessage(t('message.openFailed', { error: ipcErrorMessage(error) }), true),
+    reportOpenFailure: (error) => documentFeedback.showOpenFailure(error),
     confirmClose: (tab, discard) => confirmTabClose(tab, discard),
     disposeRuntime: (tab) => disposeClosedTabRuntime(tab),
     removeDocument: (tab) => store.removeDocument(tab.id),
@@ -357,38 +356,8 @@
         })) === 'confirm'
       );
     },
-    showMessage: (kind, tab, error) => {
-      const keys = {
-        saved: 'message.saved',
-        'path-open': 'message.savePathAlreadyOpen',
-        'resolve-file-state': 'external.resolveFileStateBeforeSave',
-        'resolve-conflict': 'external.resolveBeforeSave',
-        'changed-again': 'external.changedAgain',
-        'permission-denied': 'message.savePermissionDenied',
-        'save-failed': error ? 'message.saveFailed' : 'message.saveFailedGeneric',
-        reloaded: 'external.reloaded',
-        ignored: 'external.ignored',
-        recreated: 'external.recreated',
-        'recreated-copied': 'external.recreatedCopied',
-        'recreated-clipboard-failed': 'external.recreatedClipboardFailed',
-      };
-      const errorMessage = error ? ipcErrorMessage(error) : undefined;
-      showMessage(
-        t(keys[kind], { title: tab.title, name: tab.title, error: errorMessage }),
-        !['saved', 'reloaded', 'ignored', 'recreated', 'recreated-copied'].includes(kind),
-      );
-    },
-    showRecreateNotice: (kind) =>
-      showTemporaryDocumentNotice(
-        t(
-          {
-            recreated: 'external.recreated',
-            'recreated-copied': 'external.recreatedCopied',
-            'recreated-clipboard-failed': 'external.recreatedClipboardFailed',
-          }[kind],
-        ),
-        kind === 'recreated-clipboard-failed',
-      ),
+    showMessage: (kind, tab, error) => documentFeedback.showSaveResult(kind, tab, error),
+    showRecreateNotice: (kind) => documentFeedback.showRecreateNotice(kind),
     finish: () => {
       renderTabs();
       updateActiveUI();
@@ -587,7 +556,7 @@
     getAssetsDirectory: () => state.settings.pasteImagesDir || './assets',
     getMaximumWidth: () => state.settings.imageMaxWidth,
     getQuality: () => state.settings.imageQuality,
-    onError: (message) => showMessage(message, true),
+    onError: (message) => showNotice(message, true),
     formatError: ipcErrorMessage,
     saveFirstMessage: () => t('message.imageSaveFirst'),
     uploadFailedMessage: (error) => t('message.imageSaveFailed', { error }),
@@ -770,6 +739,12 @@
   let resourceRootsQueue = Promise.resolve();
   const LOCALES = window.VditorDesktopLocales || {};
   const notifications = new PURE.NotificationsController(translateImpl, LOCALES, 'en_US');
+  const documentFeedback = new PURE.DocumentFeedback({
+    translate: t,
+    formatError: ipcErrorMessage,
+    showStatus: showMessage,
+    showNotice,
+  });
   const settingsController = new PURE.SettingsController({
     store,
     save: (patch) => queueSettingsSave(patch, { throwOnFailure: true }),
@@ -1085,7 +1060,8 @@
     adapter: VDITOR,
     platform: window.appAPI.platform,
     translate: t,
-    showMessage,
+    showMessage: showNotice,
+    formatError: ipcErrorMessage,
     showTooltip: (text, event) => appTooltipController.show(text, event),
     hideTooltip: () => appTooltipController.hide(),
     resolveMarkdownLink: (sourcePath, href) => window.fileAPI.resolveMarkdownLink(sourcePath, href),
@@ -1432,8 +1408,8 @@
     notifications.showMessage(message, error);
   }
 
-  function showTemporaryDocumentNotice(message, error = false) {
-    notifications.showTemporaryDocumentNotice(message, error);
+  function showNotice(message, error = false) {
+    notifications.showNotice(message, error);
   }
 
   function preferredCodeTheme(dark) {
@@ -1569,28 +1545,6 @@
       element.classList.remove('scrollbar-visible', 'app-scrollbar');
       delete element.dataset.autoHideScrollbar;
     };
-  }
-
-  function setupTabWheelScrolling(tabBar) {
-    const onWheel = (event) => {
-      if (tabBar.scrollWidth <= tabBar.clientWidth) return;
-      const rawDelta =
-        Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-      if (!rawDelta) return;
-      const delta =
-        event.deltaMode === WheelEvent.DOM_DELTA_LINE
-          ? rawDelta * 16
-          : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
-            ? rawDelta * tabBar.clientWidth
-            : rawDelta;
-      const maximumLeft = Math.max(0, tabBar.scrollWidth - tabBar.clientWidth);
-      const nextLeft = Math.min(maximumLeft, Math.max(0, tabBar.scrollLeft + delta));
-      if (nextLeft === tabBar.scrollLeft) return;
-      event.preventDefault();
-      tabBar.scrollLeft = nextLeft;
-    };
-    tabBar.addEventListener('wheel', onWheel, { passive: false });
-    return () => tabBar.removeEventListener('wheel', onWheel);
   }
 
   function editorOptions(tab, runtimeGeneration, previewModeOverride) {
@@ -1847,7 +1801,7 @@
   } = {}) {
     destroyToolbarPreview();
     if (state.tabs.length >= 20) {
-      showMessage(t('message.maxTabs'), true);
+      showNotice(t('message.maxTabs'), true);
       return null;
     }
     const title =
@@ -3063,8 +3017,6 @@
     resources.add(setupAutoHideScrollbar($('#outlineTree')) || (() => {}));
     appTooltipController.init();
     resources.add(setupAutoHideScrollbar($('#settingsForm')) || (() => {}));
-    resources.add(setupAutoHideScrollbar($('#tabBar')) || (() => {}));
-    resources.add(setupTabWheelScrolling($('#tabBar')));
     resources.add(setupAutoHideScrollbar($('.confirm-content')) || (() => {}));
     resources.add(
       window.appAPI.onSystemThemeChanged((theme) => {
@@ -3077,7 +3029,7 @@
         const unresolvedFileState = state.tabs.find((tab) => tab.externalFileState);
         if (unresolvedFileState) {
           switchTab(unresolvedFileState.id);
-          showMessage(t('external.resolveFileStateBeforeSave'), true);
+          showNotice(t('external.resolveFileStateBeforeSave'), true);
           return;
         }
         const dirty = state.tabs.filter((tab) => tab.modified);
@@ -3202,6 +3154,7 @@
 
   function disposeAppDomains() {
     applicationShellController.dispose();
+    notifications.dispose();
     sidebarLayoutController.dispose();
     appTooltipController.dispose();
     settingsDialogLayoutController.dispose();
@@ -3258,7 +3211,7 @@
       closeWindow: () => window.appAPI.closeWindow(),
       openPaths,
       menu: handleMenu,
-      rejectDrop: () => showMessage(t('message.dropMarkdownOnly'), true),
+      rejectDrop: () => showNotice(t('message.dropMarkdownOnly'), true),
     },
     bridge: {
       onOpenFiles: (callback) => window.appAPI.onOpenFiles(callback),

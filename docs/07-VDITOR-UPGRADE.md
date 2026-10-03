@@ -4,6 +4,8 @@ Vditor Desktop 不修改 `node_modules/vditor` 的源码，但工具栏合并、
 
 ## 兼容边界
 
+- Vditor 3.11.3 的编辑区文件 drop 经 paste/upload handler 处理，可能在 body 冒泡阶段之前消费事件。Desktop 的 `AppController` 在捕获阶段分类文件，先打开 Markdown 或拒绝不支持的文件，仅让编辑区图片继续走 Vditor 上传。升级须运行三模式文件拖入 E2E，确认未保存文档拖入 TXT 显示文件类型提示、图片仍显示保存前置条件，且已保存图片上传与 Markdown 打开保持正常；文字与 HTML 拖放不能被文件分类误拦截。
+
 - 公开 API 和初始化选项位于 `src/renderer/editor/editor-options.ts`（Vditor constructor-only 设置、离线资源、locale、relative-resource base 与回调接线）；Vditor 实例化与重建生命周期由 `src/renderer/editor/editor-controller.ts` 负责，其余业务代码不再直接构造 `new Vditor()`。
 - JavaScript 使用的非公开 DOM 选择器和结构判断集中在 `src/renderer/vditor-adapter.js`。
 - `src/renderer/types/adapter.d.ts` 是冻结 `window.VditorDesktopAdapter` facade 的严格类型边界；`src/renderer/types/adapter-contract.ts` 覆盖全部公开成员的编译期调用，并提供给单测比对的导出键 manifest。升级若增删或改签名，必须在同一改动中同步 runtime facade、声明、manifest 和契约测试；不得用宽泛类型或 overload 掩盖差异。

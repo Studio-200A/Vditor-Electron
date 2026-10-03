@@ -143,7 +143,10 @@ describe('renderer shell', () => {
       expect(fs.existsSync(path.resolve('src/renderer/assets', asset))).toBe(false);
     }
     expect(css).toMatch(/background:\s*linear-gradient\(\s*120deg/s);
-    expect(css).toContain('.tabbar.app-scrollbar::-webkit-scrollbar');
+    expect(document.querySelector('#tabStrip')?.contains(document.querySelector('#addTab'))).toBe(
+      false,
+    );
+    expect(document.querySelector('#tabBar > #addTab')).not.toBeNull();
     expect(css).toMatch(/\.window-controls button:hover\s*\{[^}]*background:/s);
     expect(css).toMatch(
       /\.window-controls button\s*\{[^}]*transition:[^}]*color 0\.16s ease[^}]*background-color 0\.16s ease/s,

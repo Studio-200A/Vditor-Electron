@@ -139,10 +139,17 @@ export const en_US = {
   'message.maxTabs': 'You can open up to 20 tabs.',
   'message.openFailed': 'Could not open: {error}',
   'message.linkSaveFirst': 'Save this document before following relative links.',
-  'message.linkTargetMissing': 'Linked Markdown file was not found.',
+  'message.linkTargetMissing': 'Unable to open: the target Markdown file does not exist.',
+  'message.linkSourceUnavailable':
+    'The current file is unavailable. Save it before following a relative link.',
   'message.linkUnsupported': 'Only relative Markdown files can be opened from a link.',
+  'message.linkFileTypeUnsupported':
+    'Cannot open this link: unsupported file type. Only Markdown files are supported.',
+  'message.linkAbsolutePathUnsupported': 'Cannot open an absolute-path link. Use a relative path.',
+  'message.linkFileProtocolUnsupported': 'Cannot open a file:// link. Use a relative path.',
   'message.saved': 'Saved {title}',
   'message.saveFailed': 'Save failed: {error}',
+  'message.saveFailedGeneric': 'Save failed. The file could not be written safely.',
   'message.savePermissionDenied':
     'Save failed. Check that you can write to the file and its directory.',
   'message.savePathAlreadyOpen': '{title} is already open in another tab.',

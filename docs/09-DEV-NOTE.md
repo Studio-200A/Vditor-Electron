@@ -234,6 +234,18 @@ Vditor 的 `keydown` 会先在编辑器 host 内运行。document 级应用监�
 - 文案：`src/renderer/locale/`
 - 回归：`tests/unit/renderer-shell.test.ts`、`tests/e2e/*.spec.ts`
 
+### 0.2.7：操作反馈与标签溢出
+
+主动错误由短暂通知呈现，普通成功反馈仍在状态栏；常驻恢复、冲突和不可用横幅不依赖通知寿命。`DocumentFeedback` 只映射结果与文案，不迁入保存交易。
+
+横幅放入统一顶部 flex 容器，浏览器按内容实际高度排列；不要用固定 top 偏移假设常驻横幅高度。四类横幅统一用 CSS starting-style 与 display discrete transition 实现 180ms 渐显/渐隐，减少动态效果时立即切换。短暂通知最新在上，每条独立 5 秒，最多 3 条活动提示；第 4 条让最旧条目提前渐隐。通知资源归 `NotificationsController`，退出监听和 fallback 计时器都在 dispose 清理；错误颜色不能在渐隐开始时复位。
+
+Vditor 3.11.3 的文件 drop 会先进入 paste/upload handler；应用只在 body 冒泡阶段分类会来不及阻止非图片误上传。捕获阶段先处理 Markdown 和不支持的文件，编辑区图片继续交给 Vditor。回归测试必须向各模式实际 contenteditable 节点投递事件，外层容器不能替代上传入口。
+
+标签栏将 `#tabStrip` 与 `#addTab` 分离，保留现有标签宽度与横向滚轮。溢出阴影覆盖在滚动区域两端，只在相应方向仍有隐藏标签时出现；主题色从 sidebar-surface 派生，覆盖层必须 pointer-events:none。滚轮、scroll listener 和 ResizeObserver 统一归 `TabController`，不要再回到组合层添加平行实现。窄窗口验证须明确使用非最大化状态，并检查按钮真实鼠标命中，避免仅凭 viewport 相交就误判按钮可点击。
+
+实现与验收记录见 [`10-0.2.7-EXECUTION-TRACKER.md`](10-0.2.7-EXECUTION-TRACKER.md)；当前跨平台边界继续按 [`04-CROSS-PLATFORM.md`](04-CROSS-PLATFORM.md) 维护。
+
 ## Vditor 编辑器兼容性：模式切换与视图行为
 
 ### 模式切换与工具栏内部耦合
