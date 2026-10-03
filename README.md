@@ -1,6 +1,6 @@
 # Vditor Desktop
 
-[简体中文](README_CN.md) · English
+[简体中文](docs/i18n/README_CN.md) · [繁體中文](docs/i18n/README_TW.md) · English
 
 <p align="center">
   <img src="src/renderer/assets/app-icon/vditor-desktop.svg" alt="Vditor Desktop" width="128" />

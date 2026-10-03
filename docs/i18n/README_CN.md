@@ -1,9 +1,9 @@
 # Vditor Desktop
 
-中文 · [English](README.md)
+简体中文 · [繁體中文](README_TW.md) · [English](../../README.md)
 
 <p align="center">
-  <img src="src/renderer/assets/app-icon/vditor-desktop.svg" alt="Vditor Desktop" width="128" />
+  <img src="../../src/renderer/assets/app-icon/vditor-desktop.svg" alt="Vditor Desktop" width="128" />
 </p>
 
 <p align="center">
@@ -25,9 +25,9 @@
 
 Vditor Desktop 把 [Vditor](https://github.com/Vanessa219/vditor)——**最好用的 Markdown 编辑内核之一**——装进了它本该拥有的桌面外壳。没有专有格式，也没有任何锁定：保存后的文档是普通的 Markdown 文件，例如 `.md`，可以用其他编辑器打开；尚未保存的修改会在应用中标明。在此基础上，软件补全了一款真正的桌面工具该有、而网页版编辑器给不了的部分：多标签、工作区、资源管理器、Vditor 自带大纲、主题、会话恢复和桌面文件关联。
 
-![Vditor Desktop 浅色主题](assets/screenshot-light.webp)
+![Vditor Desktop 浅色主题](../../assets/screenshot-light.webp)
 
-![Vditor Desktop Monokai Pro Dark 主题](assets/screenshot-monokai-dark.webp)
+![Vditor Desktop Monokai Pro Dark 主题](../../assets/screenshot-monokai-dark.webp)
 
 ## 目录
 
@@ -88,7 +88,7 @@ Vditor Desktop 把你的写作当作需要保护的内容，而不是可以随�
 
 **资源健康会像照看你的写作一样照看图片资源：** 从“工具 → 资源健康”打开后，它会从当前焦点文档出发梳理图片引用，把未引用图片和丢失图片放到一个清晰的管理界面里。管理图片资源前，它还会扫描工作区内所有具有访问权限的 Markdown 和 HTML 文档，让共用资源目录保持整洁，也尽量避免误删仍被其他文档需要的图片。
 
-![资源健康](assets/resource-health.webp)
+![资源健康](../../assets/resource-health.webp)
 
 ### 其他安全防线
 
@@ -173,7 +173,7 @@ npm ci
 npm start
 ```
 
-编辑器核心资源已内置在本地，使用时不依赖 Vditor CDN。平台支持与验证范围见[跨平台说明](docs/04-CROSS-PLATFORM.md)。
+编辑器核心资源已内置在本地，使用时不依赖 Vditor CDN。平台支持与验证范围见[跨平台说明](../04-CROSS-PLATFORM.md)。
 
 </details>
 
@@ -196,7 +196,7 @@ release/vditor-desktop-<版本号>-linux-x86_64.AppImage
 
 Portable 压缩包中的 desktop 文件使用 `/path/to/vditor-desktop` 作为安装路径占位符。安装到桌面环境前，请将其替换为实际解压路径。AppImage 添加可执行权限后即可运行。
 
-目前 Linux 是主要开发和验证平台。Windows 和 macOS 的后续工作见[跨平台说明](docs/04-CROSS-PLATFORM.md)。
+目前 Linux 是主要开发和验证平台。Windows 和 macOS 的后续工作见[跨平台说明](../04-CROSS-PLATFORM.md)。
 
 </details>
 
@@ -215,13 +215,13 @@ npm run build
 npm run test:e2e
 ```
 
-Vditor 依赖固定为 3.11.3。参考 [Vditor 升级说明](docs/07-VDITOR-UPGRADE.md)。
+Vditor 依赖固定为 3.11.3。参考 [Vditor 升级说明](../07-VDITOR-UPGRADE.md)。
 
 </details>
 
 ## 开源项目
 
-Vditor Desktop 的实现离不开以下开源项目。各项目作者保留其版权和许可证权利，完整依赖关系图见 [`package-lock.json`](package-lock.json)。
+Vditor Desktop 的实现离不开以下开源项目。各项目作者保留其版权和许可证权利，完整依赖关系图见 [`package-lock.json`](../../package-lock.json)。
 
 <details>
 <summary>运行时与直接依赖</summary>
@@ -268,4 +268,4 @@ Vditor Desktop 的实现离不开以下开源项目。各项目作者保留其�
 
 ## 许可证
 
-Vditor Desktop 采用 [MIT License](LICENSE) 发布。
+Vditor Desktop 采用 [MIT License](../../LICENSE) 发布。

@@ -499,7 +499,7 @@ adapter 的 `refreshMermaidTheme()`（`src/renderer/vditor-adapter.js`）先解�
 
 #### 背景
 
-`app.js` 从最初的 5000+ 行（0.2.0 基线统计为 5414 行，见 `docs/ARCHIVED/16-0.2.5-BASELINE-BEHAVIOR.md`）逐步迁移为 `app-composition.js`；批次 10 收口（2026-09-09）时为 3235 行，含资源健康接线与重建 undo 恢复回调。这两个行数是冻结的历史快照，只用于说明迁移幅度，不随后续代码演进更新。迁移过程中，领域逻辑被持续提取为独立的 Controller 类，通过 `PURE` 命名空间注入，composition 层只保留实例化、依赖注入和跨域协调。原 `src/renderer/app.js` 已在批次 9 删除，不得恢复。
+`app.js` 从最初的 5000+ 行（0.2.0 基线统计为 5414 行，见 `docs/ARCHIVED/16-0.2.5-BASELINE-BEHAVIOR.md`）逐步迁移为 `app-composition.js`；批次 10 收口（2026-09-09）时为 3235 行，含资源健康接线与重建 undo 恢复回调。这两个行数是冻结的历史快照，只用于说明迁移幅度，不随后续代码演进更新。迁移过程中，主要领域逻辑被持续提取为独立的 Controller 类，通过 `PURE` 命名空间注入，composition 层以实例化、依赖注入和跨域协调为主要职责，仍保留部分局部 UI 行为。原 `src/renderer/app.js` 已在批次 9 删除，不得恢复。
 
 #### 已提取的 Controller 清单
 
@@ -550,7 +550,7 @@ adapter 的 `refreshMermaidTheme()`（`src/renderer/vditor-adapter.js`）先解�
 
 #### composition 层剩余内容的构成
 
-`app-composition.js` 的剩余内容分为以下四类（构成描述以 2026-09-07 记录为准，不维护实时行数与行号区间）：
+`app-composition.js` 的剩余内容可按以下四类理解（分类沿用 2026-09-07 记录，局部行为示例于 2026-10-04 按当前源码复核；不维护实时行数与行号区间）：
 
 1. **Controller 实例化与依赖注入**：创建 controller 实例并通过回调注入跨域依赖，是文件中占比最大的部分。这是 composition 层的本职工作，不属于膨胀。
 
@@ -558,7 +558,7 @@ adapter 的 `refreshMermaidTheme()`（`src/renderer/vditor-adapter.js`）先解�
 
 3. **跨域协调函数**：需要连接多个 controller 的胶水逻辑，如 `editorOptions`（连接 EditorController、ImageRuntimeController、SplitViewController、ToolbarController 等）、`setupApplicationShellResources`（注册 shell 级 DOM 事件和 Observer）、`beforeAppShortcut`（Escape/F11 焦点分发）、`updateActiveUI`（同步状态栏、横幅、树选择等）。
 
-4. **未提取的局部 UI 辅助**：如 `applyPresentationSettings`、context menu 构建、`handleMenu` 等。
+4. **未提取的局部 UI 行为与辅助**：如 `applyPresentationSettings`、context menu 构建、`handleMenu`，以及 `setupApplicationShellResources` 内的侧栏拖拽调整宽度、`setupAutoHideScrollbar` 的滚动条自动显隐。这些局部行为中仍有状态和资源生命周期，不能一概视为纯接线。
 
 #### 边界判断原则
 
@@ -580,14 +580,14 @@ adapter 的 `refreshMermaidTheme()`（`src/renderer/vditor-adapter.js`）先解�
 
 #### 当前边界结论
 
-**composition 层的模块化拆分已到达合理边界，不应继续系统性拆分。**
+**已完成的迁移足以支持停止以缩减 composition 层为目标的系统性拆分；这不等于所有可独立拥有状态、资源或测试的行为都已迁出。** 后续应由具体变更暴露出的职责与生命周期边界决定是否局部提取。
 
 理由：
 
-1. 剩余函数中，绝大多数是委托层或跨域协调层，提取它们不减少系统复杂度，只增加依赖跳转。
+1. 委托函数和跨域协调构成了剩余内容的重要部分；仅将这些函数搬到另一文件，通常不减少系统复杂度，只增加依赖跳转。
 2. IIFE 闭包通过 `state`/`store` 共享状态是当前的架构契约。强行提取需要重新设计状态传递，引入的隐性耦合风险大于行数收益。
-3. `editorOptions`、`setupApplicationShellResources`、`beforeAppShortcut` 等函数的职责就是连接多个 controller，把它们提取出去只是把协调逻辑从 composition 移到另一个文件，没有消除协调本身。
-4. 从 0.2.0 基线的 5414 行到批次 10 收口时约 3200 行的迁移中，所有拥有领域状态、资源生命周期和可独立测试行为的模块均已提取。剩余内容是 composition 层的合理骨架。
+3. `editorOptions`、`beforeAppShortcut` 等承担跨 controller 协调，整体搬迁不能消除协调本身。`setupApplicationShellResources` 同时包含 shell 接线与侧栏拖拽等具体行为，应区分两者，不能仅因统一注册和清理资源就认定其中的行为都属于组合职责。
+4. 从 0.2.0 基线的 5414 行到批次 10 收口时约 3200 行的迁移中，文档、编辑器、工作区、设置等主要领域职责已迁入独立模块。该迁移成果支持保留现有组合骨架，但不是对剩余行为均无提取价值的穷尽证明；侧栏拖拽和滚动条自动显隐仍是可按具体需求评估的局部空间。
 
 #### 后续微调空间
 
@@ -595,5 +595,7 @@ adapter 的 `refreshMermaidTheme()`（`src/renderer/vditor-adapter.js`）先解�
 
 - `handleMenu` + `setupAppMenus` + `setLayoutPart` → 如果菜单逻辑继续增长，可考虑提取为 `MenuCommandDispatcher`
 - `updateActiveUI` + 状态栏更新函数 → 如果状态栏逻辑继续增长，可考虑提取为 `StatusBarController`
+- `setupApplicationShellResources` 内的侧栏拖拽 → 当相关交互或清理路径需要修改时，可评估将拖拽状态、动画帧、宽度约束与保存回调归入明确的 UI 所有者；侧栏展开/收起已由 `SidebarLayoutController` 管理，不代表拖拽调整宽度也已迁出。
+- `setupAutoHideScrollbar` → 当滚动条行为需要修改或独立验证时，可评估将显隐规则、监听、计时器与清理归入 UI 模块，组合层仅接入初始化与清理。
 
-这些微调只在相关函数增长到值得提取时再做，当前不主动推进。
+这些微调由具体行为变更、生命周期维护或独立验证需求触发，不以函数增长或行数为唯一依据；本记录不启动新的系统性拆分，也不将现有局部遗留作为向组合层新增职责的先例。
