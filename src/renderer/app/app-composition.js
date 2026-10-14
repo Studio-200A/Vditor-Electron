@@ -1534,7 +1534,11 @@
     };
     const onMouseMove = (event) => {
       const rect = element.getBoundingClientRect();
-      if (rect.right - event.clientX <= 14) reveal();
+      if (
+        rect.right - event.clientX <= 14 ||
+        (element.scrollWidth > element.clientWidth && rect.bottom - event.clientY <= 14)
+      )
+        reveal();
     };
     element.addEventListener('scroll', reveal, { passive: true });
     element.addEventListener('mousemove', onMouseMove);

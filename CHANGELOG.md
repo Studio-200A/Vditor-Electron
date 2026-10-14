@@ -4,6 +4,7 @@
 
 ### Bug Fixes
 
+- **fix(scrollbars):** Give code blocks independent automatic scrollbar visibility in Instant Rendering, WYSIWYG, and the SV preview, keeping horizontal thumbs visible while hovered and after switching documents. Reveal horizontally overflowing editor panes at their bottom edge as well as their right edge.
 - **fix(settings):** Disable Electron's built-in spellchecker in the main window so font names and other configuration text do not receive unwanted spelling underlines.
 - **fix(tabs):** Keep the new-tab button visible when document tabs overflow. Add subtle, theme-aware shadows only at edges with hidden tabs, while preserving horizontal wheel scrolling and the existing tab-width behavior.
 - **fix(drop):** Reject unsupported files dropped into the editor before Vditor routes them to image upload, so an untitled document reports the unsupported file type instead of asking to save before inserting an image. Markdown drops open documents, and image drops retain the existing upload workflow.

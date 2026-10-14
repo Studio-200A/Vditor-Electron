@@ -10,6 +10,7 @@ Vditor Desktop 不修改 `node_modules/vditor` 的源码，但工具栏合并、
 - JavaScript 使用的非公开 DOM 选择器和结构判断集中在 `src/renderer/vditor-adapter.js`。
 - `src/renderer/types/adapter.d.ts` 是冻结 `window.VditorDesktopAdapter` facade 的严格类型边界；`src/renderer/types/adapter-contract.ts` 覆盖全部公开成员的编译期调用，并提供给单测比对的导出键 manifest。升级若增删或改签名，必须在同一改动中同步 runtime facade、声明、manifest 和契约测试；不得用宽泛类型或 overload 掩盖差异。
 - Vditor 外观覆盖仍集中在 `src/renderer/styles/app.css` 的 Vditor integration 区段，它是升级时的第二检查面。
+- Vditor 3.11.3 的代码块由 `pre > code` 承担横向滚动；IR 的预览类在 `pre.vditor-ir__preview` 本身。应用 CSS 为这些嵌套滚动节点单独设置滚动条颜色，避免继承外层 pane 的透明 `scrollbar-color`。升级须运行 `tests/e2e/scrollbars.spec.ts`，核对三模式代码块的悬停、拖动、切换文档、三种可见性设置，以及 SV source 横向边缘和各 pane 纵向显隐；不能只检查外层 `.scrollbar-visible` 类。
 - `wordWrap` 通过 adapter 的 `applyWordWrap()` 标记 Vditor 3.11.3 的 SV 编辑根和 WYSIWYG/IR `.vditor-reset` 滚动根，再由应用 CSS 切换软换行；关闭换行时 WYSIWYG/IR 的段落宽度由滚动根的对称 margin 形成居中 viewport，preview 与代码块保持自身布局。升级时须核对三种模式的实际编辑滚动根、关闭换行后的水平滚动、40–100% 段落宽度的独立效果、SV 行号与自绘光标的水平滚动几何，并同步 adapter facade 契约及真实 Electron 回归。
 - `tests/unit/vditor-adapter.test.ts` 验证适配层自身，并将运行时冻结对象的全部导出键与类型 manifest（`src/renderer/types/adapter-contract.ts` 的 `ADAPTER_PUBLIC_KEYS`）精确比对；导出成员数量以该 manifest 为唯一事实来源，文档不维护计数。
 - Electron E2E 中的 `Vditor DOM integration contract` 验证真实 Vditor 构建产物。
