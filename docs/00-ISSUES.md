@@ -4,12 +4,6 @@
 >
 > `docs/01-CODE-STRUCTURE.md` 是代码架构导航地图，不再维护技术债清单。
 
-## 项目元数据检查仍引用迁移前的中文 README 路径
-
-**状态：** 待独立文档检查维护；不是平台或上游能力限制。
-
-`scripts/check-project-metadata.js` 和 `tests/e2e/editor-modes.spec.ts` 的 README 底部留白用例仍读取根目录 `README_CN.md`，而中文 README 已位于 `docs/i18n/README_CN.md`；因此 `npm run check:project` 抛出 ENOENT，阻止 `npm run check:all` 继续运行，独立运行 E2E 时该用例也在启动应用前失败。关闭条件：将版本徽章校验与 E2E 夹具的路径同步到当前文档位置，检查三语 README 的覆盖范围，并确认 `npm run check:project` 和完整 gate 通过。滚动条修复保持独立，不在该改动中迁移文档检查规则。
-
 ## Vditor 3.11.3: 空文档首次 Enter 在 SV 和 IR 中没有形成下一行（见DEV-NOTE）
 
 **状态：** 待上游编辑语义修复与产品决策；0.2.6 已修复三种模式的自绘光标尺寸，尚未实现统一换行。当前没有 3.11.3 定向补丁计划；观察与成因见 [`09-DEV-NOTE.md`](09-DEV-NOTE.md#vditor-3113-空行与回车规则)。

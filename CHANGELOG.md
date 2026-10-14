@@ -18,6 +18,7 @@
 
 ### Project Maintenance
 
+- **fix(checks):** Read relocated Chinese README files from `docs/i18n`, validate version badges in all three README languages, and restore the SV README bottom-spacer E2E fixture.
 - **chore(runtime):** Upgrade the pinned Electron desktop runtime from 44.1.0 to 44.5.1, bringing upstream fixes for Linux clipboard responsiveness, KDE trash handling, file-manager reveal, and Chromium graphics.
 - Updated transitive development dependencies (`undici`, `brace-expansion`, and `fast-uri`) to resolve security advisories reported by Dependabot and npm audit.
 

@@ -1116,7 +1116,7 @@ test('closes a split-view tab after a toolbar layout refresh settles', async () 
 });
 
 test('does not number Vditor SV bottom spacer after README source', async () => {
-  const markdown = fs.readFileSync(path.join(projectRoot, 'README_CN.md'), 'utf8');
+  const markdown = fs.readFileSync(path.join(projectRoot, 'docs', 'i18n', 'README_CN.md'), 'utf8');
   const running = await launchApp({ editMode: 'sv' }, { 'README_CN.md': markdown });
   try {
     const { page } = running;

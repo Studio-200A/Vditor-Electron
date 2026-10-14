@@ -110,7 +110,12 @@ if (!rendererSource.includes(`id="statusVersion">v${version}</span>`)) {
   failures.push('renderer fallback version does not match package.json version');
 }
 
-for (const readmeName of ['README.md', 'README_CN.md']) {
+for (const readmePath of [
+  ['README.md'],
+  ['docs', 'i18n', 'README_CN.md'],
+  ['docs', 'i18n', 'README_TW.md'],
+]) {
+  const readmeName = path.join(...readmePath);
   const readmeSource = readText(path.join(projectRoot, readmeName));
   if (!readmeSource.includes(`version-${version}-blue`)) {
     failures.push(`${readmeName} version badge does not match package.json version`);
