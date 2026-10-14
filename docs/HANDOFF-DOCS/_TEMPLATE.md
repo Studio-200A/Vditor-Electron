@@ -11,7 +11,7 @@
 - **时机**：一个批次结束、即将切换 Session 或 coding agent 时，为下一个 Session 写一份。
 - **读者**：下一个 Session 的 agent，**只在启动批次时阅读一次**，之后不再回头读。
 - **定位**：只写「接班 agent 启动本批次所需的最小上下文」。它不是长期记录——施工进度、问题、测试证据和状态变更必须只写入 Tracker（`docs/<编号>-<版本>-EXECUTION-TRACKER.md`），**不要在本文件追加过程记录**。
-- **生命周期**：批次结束、内容过期后即删除本文件，只保留 Tracker；本模板永久保留。
+- **生命周期**：交接文档是当时的起点快照；批次结束后作为往期留档保留，不随当前源码回写。本模板持续维护，执行过程与验证仍只记 Tracker。
 
 ## 二、编写前必须先采集信息
 
@@ -38,7 +38,7 @@ git tag -l                       # 版本基线 tag
 
 以下每一项不满足就返回重写：
 
-1. **事实可核对**：commit hash、文件路径、函数名、模块名、测试数必须来自上面的命令或真实源码/Tracker，不得臆造或编造行号。
+1. **事实可核对**：commit hash、文件路径、函数名、模块名、测试数必须来自上面的命令或真实源码/Tracker。定位使用文件、函数与章节标题，不维护源码行号、文件行数或实时成员统计；带日期测试数仅作为交接时的证据快照。
 2. **不复制 AGENTS.md**：通用约束（安全配置、命名规范等）指向 AGENTS.md，不整段粘贴；只在「不可突破的边界」里保留与本批次直接相关的 checklist。
 3. **具体而非模糊**：写函数名 / 模块名 / 字段名，不写「相关逻辑」「其他部分」这类空话。
 4. **区分「已迁移」与「待迁移」**：明确列出上一批次已完成、本批次不得重做的职责。
@@ -68,7 +68,7 @@ git tag -l                       # 版本基线 tag
 
 ## 2. 前置批次状态
 
-> **编写要求：** 从 Tracker 第 5 节状态表 + 第 10 节执行记录摘抄。每个前置批次一句话「已完成 + 落地了什么」；再记录最近一次全量验证的真实数字与日期；已知 flaky 必须保留并注明完整证据在 Tracker，不得抹除。不要复制 Tracker 全文。
+> **编写要求：** 从当前 Tracker 的路线状态和执行记录摘抄，以实际章节标题定位，不套用往期固定章节号。每个前置批次一句话「已完成 + 落地了什么」；再记录最近一次全量验证的真实数字与日期；已知 flaky 必须保留并注明完整证据在 Tracker，不得抹除。不要复制 Tracker 全文。
 
 - {{前置批次 N}} 已完成：{{落地成果摘要，一句话}}。
 - {{前置批次 N+1}} 已完成：{{落地成果摘要}}。
@@ -140,7 +140,7 @@ git tag -l                       # 版本基线 tag
 
 1. **专项测试按需运行**：可运行需沙箱外权限的专项测试（单测、单条 E2E、build）。命令：`npm run build`、`npm test`、`npm run check:vditor`、`npm run format:check`、`npm run lint`、`npm run typecheck`、`npm run typecheck:renderer`、`node scripts/run-electron-e2e.js tests/e2e/<file>.spec.ts -g "<name>"`。
 2. **全量测试留给用户手动**：不要运行 `npm run check` 或 `npm run check:all`，除非用户明确改变该约定。
-3. **代码修改后同步文档**：`CHANGELOG.md`（用户可见变化）、`docs/{{编号}}-{{版本}}-EXECUTION-TRACKER.md`（执行记录章节，当前 tracker 为 §7）、`docs/01-CODE-STRUCTURE.md`（新增文件/模块/职责边界）、`docs/07-VDITOR-UPGRADE.md`（Vditor 私有 DOM 假设变化），以及受影响的 `06-FILE-SAFETY.md` / `04-CROSS-PLATFORM.md` / `05-THEMES.md`。
+3. **代码修改后同步文档**：`CHANGELOG.md`（用户可见变化）、`docs/{{编号}}-{{版本}}-EXECUTION-TRACKER.md`（按实际标题定位执行记录）、`docs/01-CODE-STRUCTURE.md`（新增文件/模块/职责边界）、`docs/07-VDITOR-UPGRADE.md`（Vditor 私有 DOM 假设变化），以及受影响的 `06-FILE-SAFETY.md` / `04-CROSS-PLATFORM.md` / `05-THEMES.md`。不回写往期留档。
 4. **不做 git commit**：不要执行 `git add` / `git commit`；改动留在工作区，由用户全量测试通过后提交。
 5. **开始前核对**：重新检查 `git status`、当前 HEAD 和 Tracker；若工作树含用户修改，保留并协作，不回退。
 

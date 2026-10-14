@@ -36,10 +36,23 @@ Vditor 4.0 的 SV 是 `<textarea>`，源码面不再提供可读取的 heading m
 
 ### 显式技术债
 
-| 文件                  | 现状                                                                                                                          |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `src/main/index.ts`   | Linux `unmaximize` 后的多次延迟 bounds 复核是平台兼容 workaround，需在真实平台环境持续确认。                                  |
-| `src/main/preload.ts` | 主窗口尚未启用 Electron sandbox：当前 CommonJS preload 依赖本地 `ipc-contract`；需要单独 bundled-preload 迁移与完整桥接回归。 |
+| 文件 | 现状与原因 | 关闭条件 |
+| --- | --- | --- |
+| `src/main/index.ts` | Linux `unmaximize` 后需多次延迟 bounds 复核；窗口管理器状态变化不能由一次事件保证。 | 在声明支持的 Linux 窗口系统上证明 Electron 原生恢复稳定，移除延迟补偿并通过最大化/恢复、尺寸持久化 E2E 与实机验证。 |
+| `src/main/preload.ts` | 主窗口未启用 Electron sandbox；当前 CommonJS preload 依赖本地 `ipc-contract`，不能直接加载于 sandboxed preload。 | 完成 bundled-preload 迁移，启用 sandbox，并通过全部桥接、启动、文件/窗口/协议回归和打包冒烟。 |
+
+### 测试覆盖缺口
+
+本节从架构地图的旧测试缺口表集中维护。已有单测与 Electron E2E 仍提供回归保护；下列独立覆盖尚未建立，不能因移动文档位置而记为关闭。平台、TOCTOU 与设置模型问题继续按下文原条目的关闭条件处理。
+
+| 所属实现 | 可观察风险与当前覆盖边界 | 关闭条件 |
+| --- | --- | --- |
+| `src/main/index.ts` | 系统 locale、最大化 bounds、初始主题背景和 watcher 事件编排依赖真实 Electron 间接覆盖，缺少直接边界测试。 | 在具体行为变更时为纯决策或窄注入依赖建立测试，覆盖对应输入、失败与清理；保留原生窗口 E2E。 |
+| `src/main/ipc/` | 注册映射与信任包装已有测试；各领域 handler 的业务分支仍主要依赖 E2E，映射测试无法证明全部参数/服务失败语义。 | 补齐领域 handler 的正常、参数拒绝、权限/服务失败及清理行为测试，并保留跨进程集成验证。 |
+| `src/main/preload.ts`、`src/renderer/types/bridges.d.ts` | 通道映射不能证明 contextBridge 方法、参数、结果与订阅 disposer 的 surface 一致。 | 建立独立桥接契约测试，检测方法/签名/方向漂移和监听释放，并通过真实 Electron 调用回归。 |
+| `src/main/protocol.ts` | URL 与资源策略有单测，响应头和 neutral 404 由 E2E 验证；尚无 handler 的直接 `Response` 测试。 | 直接覆盖受控读取、拒绝/缺失、MIME、响应头与安全失败结果；Windows/macOS 原生路径验证另按平台矩阵完成。 |
+| `src/main/menu.ts` | 三语言原生菜单生成缺少独立测试，Linux E2E 不能证明 macOS 原生菜单。 | 测试 locale 标签、命令与菜单资格，并完成 macOS 菜单实机验证。 |
+| `src/renderer/vditor-adapter.js` | adapter 与 E2E 已覆盖主要 DOM 契约；`observeRelativeImageSources` 回调和 `toolbarButton` 的选择器注入防御缺少直接测试。 | 补齐观察者异步变更/释放与非法 toolbar 输入的行为测试，保留真实 Vditor 资源和工具栏回归。 |
 
 ### 架构风险点
 
@@ -70,7 +83,7 @@ Vditor 4.0 的 SV 是 `<textarea>`，源码面不再提供可读取的 heading m
 **P1（功能/安全）：**
 
 1. 为 `local-file://` 补充直接 protocol handler 的纯 `Response` 单测，并完成 Windows/macOS 实体机资源根、大小写、权限和 link 行为验证。
-2. 在 `file:write` / `file:delete` handler 中增加路径授权校验。
+2. `src/main/ipc/file-operations.ts` 的 `file:write` / `file:delete` 已校验可信 renderer 来源和绝对路径形状，但未验证路径属于当前授权文档或工作区；来源校验不能替代路径授权。当前缺少统一的文档/对话框授权范围模型。关闭条件：先定义与真实打开、Save As、工作区外文件兼容的授权模型，再在主进程验证范围，覆盖越界拒绝、失效授权和正常写入/回收站 E2E。
 
 **P2（架构）：**
 

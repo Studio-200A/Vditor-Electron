@@ -8,7 +8,7 @@
 
 与版本无关的文件安全契约（包括针对现有目标仍存在的非原子 compare-and-replace 边界）维护在 [`docs/06-FILE-SAFETY.md`](06-FILE-SAFETY.md) 中。本文档只记录验证该契约所需的平台特定行为和证据。
 
-当前的开发与验证平台是 Linux。跨平台工作计划在已完成的 0.2.5 渲染器重构（已随 v0.2.5 发布）之后、且 Windows/macOS 测试环境就绪后开始。在此之前，Linux 测试可以防止平台无关的回归，但不得被报告为 Windows 或 macOS 验证。
+当前的开发与实机验证仍以 Linux 为准；0.2.7 的证据与范围见 [`10-0.2.7-EXECUTION-TRACKER.md`](10-0.2.7-EXECUTION-TRACKER.md)。Windows/macOS 工作在测试环境就绪后单独开展。Linux 测试可以防止平台无关的回归，但不得被报告为 Windows 或 macOS 验证。
 
 已完成的 0.2.5 渲染器审查的 Linux 全量套件证据保留在 [`docs/ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md`](ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md) 中。在一次资源敏感的 Electron E2E 结果之后进行的 Linux 重试，仍只是 Linux 证据，不能满足任何 Windows 或 macOS 行。
 
@@ -100,7 +100,7 @@ Node 的 `path` 实现随宿主平台而异，且某些 `fs` 操作是明确平�
 - 最后一个窗口关闭后的 macOS Dock 激活，包括替换窗口中的全新未保存文档关闭确认
 - 文件系统特定的 Unicode 规范化和大小写冲突行为
 
-0.2.0 的批次和发布状态已归档在 [`docs/ARCHIVED/13-0.2.0-EXECUTION-TRACKER.md`](ARCHIVED/13-0.2.0-EXECUTION-TRACKER.md)；当前 0.2.5 的批次与发布状态见 [`docs/ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md`](ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md)。不要在这些跟踪器中重复详细的平台证据。
+0.2.0 与 0.2.5 的批次和发布状态已归档在 [`13-0.2.0-EXECUTION-TRACKER.md`](ARCHIVED/13-0.2.0-EXECUTION-TRACKER.md) 与 [`15-0.2.5-EXECUTION-TRACKER.md`](ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md)。当前执行证据写入 0.2.7 Tracker，不回写往期留档。
 
 ## 6. 测试策略
 
@@ -133,6 +133,7 @@ Node 的 `path` 实现随宿主平台而异，且某些 `fs` 操作是明确平�
 
 - 打开/保存对话框返回可以重新打开和保存的原生路径。
 - 剪贴板复制和粘贴通过原生系统剪贴板工作。
+- 渲染代码块顶栏的复制按钮遵守 CSP，复制正文不包含语言标签或行号；在 IR/WYSIWYG/SV preview、长行横向滚动和大字号下保持避让。自动隐藏滚动条需用真实 thumb 拖动、悬停、文档切换与 pane 边缘触发验证，不能只凭 CSS 类判断可用。
 - 外部链接使用平台处理器并拒绝不支持的 scheme。
 - 窗口控件、标题栏拖动区域、菜单、全屏、高 DPI 缩放和键盘修饰键遵循平台惯例。
 - 打包构建以干净的用户数据启动，将配置/数据存储在预期位置，并可以编辑、保存、恢复和导出。
@@ -166,7 +167,7 @@ Node 的 `path` 实现随宿主平台而异，且某些 `fs` 操作是明确平�
 
 相关的长期不变量和确切的剩余 TOCTOU 限制定义在 [`docs/06-FILE-SAFETY.md` §7](06-FILE-SAFETY.md#7-已知原子性边界已有目标的-toctou) 中。此处的平台结果更新该契约的证据；它不会用版本特定的复选框取代契约。
 
-在 0.2.5 渲染器重构有了稳定分支、且真实 Windows 和 macOS 测试环境可用后开始本节。Linux 路径形状夹具、注入的平台值或成功的 Linux E2E 都不是 Windows 或 macOS 行的证据。
+渲染器重构已完成；本节仍等待真实 Windows 和 macOS 测试环境。Linux 路径形状夹具、注入的平台值或成功的 Linux E2E 都不是 Windows 或 macOS 行的证据。
 
 ### 9.2 推迟的验证矩阵
 
@@ -185,7 +186,7 @@ Node 的 `path` 实现随宿主平台而异，且某些 `fs` 操作是明确平�
 
 ## 10. 0.2.0 批次 10 Windows 预检观察
 
-这是在批次 10 开始前记录的只读 Windows 观察。它是 Linux 实现阶段的复现线索，不是 Windows 平台验证，也不是提前开始推迟的跨平台工作的理由。
+本节保留批次 10 开始前的路径模型观察，描述的是当时实现，不是当前源码或 Windows 实机验证。第 11 节记录后续修复；当前协议以 `src/main/local-resource.ts`、`src/main/protocol.ts` 和对应测试为准。
 
 在 2026-08-29，用代表性文档目录 `C:\\Users\\test\\Documents\\project` 和相对图片 `assets/pixel.png` 评估了当前渲染器 URL 构造和协议解析。当前 `localResourceBase()` 逻辑产生 `local-file://rootC%3A%5CUsers%5Ctest%5CDocuments%5Cproject/`：盘符路径被解析为 URL 主机，而解析相对图片时 pathname 仍为 `/assets/pixel.png`。当前 `local-file` 协议处理器解码该 pathname 并传给 `path.resolve()`，后者在此 Windows 工作区上将其解析为 `D:\\assets\\pixel.png`，而非文档资源路径。
 

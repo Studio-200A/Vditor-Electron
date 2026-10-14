@@ -1,8 +1,8 @@
 # Vditor-Electron Code Structure World Map
 
-- **最后同步：** 2026-10-04
+- **最后同步：** 2026-10-14
 - **基于的工作区：** `dev-0.2.7` 当前工作区实现（以已发布的 v0.2.6 为基线）
-- **基于的提交：** `0e1495e`（当前分支已提交基线；本文档另同步本次 0.2.7 工作区的文档反馈、通知队列、拖入分类和标签溢出布局）
+- **源码核对基线：** `f669e94`（`dev-0.2.7`；涵盖反馈、通知、拖入、标签溢出、代码块顶栏、滚动条及 Elegant 分隔线修复）
 - **对应 package.json 版本号：** 0.2.6
 - **技术债与改进建议：** 已迁至 [`docs/00-ISSUES.md`](00-ISSUES.md)，本地图不再维护
 
@@ -16,7 +16,9 @@
 
 **核心功能：** 多标签页 Markdown 编辑、三种编辑模式（IR/SV/WYSIWYG）、分栏预览、文件树侧栏、文档大纲、查找替换、图片插入与压缩、资源健康检查（未引用/缺失图片引用）、HTML/PDF 导出、TOML 偏好与版本化 JSON 状态持久化、三语国际化（英/简/繁）。
 
-**开发阶段：** 0.2.5 渲染层架构重构全部完成（批次 0–11 收口，0.2.5 开发收口）。批次 8 完成工作区、设置、菜单、窗口和导出域迁移；批次 8.1 校正 Vditor adapter 的完整类型 facade 与防漂移证据并完成复审；批次 9 已删除 legacy `app.js` 入口、收口组合层职责和行为测试，用户全量测试与手测通过；批次 10 完成文档同步、`.github/workflows/quality.yml` CI gate、性能与包体对比、Linux 候选包（portable/AppImage）与实机冒烟，并修复候选手测暴露的自绘光标与“设置触发编辑器重建后撤销失效”问题（提交 `5f34490`）；批次 11 最终独立审查收口三个阻塞项修复与最终人工验收。`AppController` 负责启动顺序、窗口级命令、拖放和 IPC 订阅；`app/app-composition.js` 是迁移后的组合层，仅承担保存交易、标签命令、设置/session 组合和部分全局事件的协调，各领域 runtime、自动保存 timer、recovery、共享 toolbar、Split View、outline、find、图片 runtime、文档链接、激活协调、应用 shell 资源和主题协调均已有明确 controller；DocumentController 与组合层仍保留文件 identity、保存交易、外部变化和 recovery 安全动作的语义所有权。0.2.0 的文件安全、恢复、watcher、冲突与跨平台边界继续作为不可改变的行为基线。精确的批次状态、手测、首轮失败及重跑证据只记录在 [`docs/ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md`](ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md)，本地图不维护实时测试总数。主题架构和内置主题见 [`docs/05-THEMES.md`](05-THEMES.md)，renderer 的模块边界见 [`docs/02-RENDERER-ARCHITECTURE.md`](02-RENDERER-ARCHITECTURE.md)。GitHub alert 序列化还原兼容层（`editor/github-alerts.ts`，提交 `0ded7ed`）在 0.2.5 收口阶段交付，已随 v0.2.5 发布。0.2.6 修复批次（已随 v0.2.6 发布收口）在上述架构内交付：source-only SV 的大纲不可用空态、编辑器重建时按 tab 保留 SV pane 布局（`EditorController.rebuildSplitViewLayouts`）、基于标题锚点配对的 SV source → preview 滚动同步（adapter `syncSplitScroll()`）、Nord Dark 与 Elegant 两套内置壳层主题、设置页每行最多四张主题预览卡片、About logo 不可拖出（`draggable="false"`，保留点击彩蛋）、亮暗色调切换后经 adapter `refreshMermaidTheme()` 重绘已渲染的 Mermaid 图表、三模式自动换行实时生效与关闭换行时的居中横向滚动列（adapter `applyWordWrap()`）、Elegant 共享 hover 对比度增强、撤销回退到保存内容时三模式清除脏标记（干净文档以编辑器序列化表示作为 dirty 保存点，`EditorController` 保存点对账）、三模式自绘光标几何稳定性（IR/WYSIWYG 行内 Markdown 格式化后光标保持在插入点并经前一行内节点定位、SV 空文档与空标题标记按源码行高稳定绘制、SV 表格分隔行 Enter 后定位到下一行、IR/WYSIWYG 空文档 Enter 后按空编辑根字体测量高度居中，提交 `4641bf6` 与 `89cb63a`）、renderer locale 字典拆分为 `src/renderer/locale/` 三语模块（esbuild 第三入口生成启动 `locales.js`）、主进程 IPC handler 模块化（64 个渲染器→主进程通道迁入 `src/main/ipc/` 的 11 个领域模块，`ipc/register.ts` 组合入口统一注册，`index.ts` 只构造依赖；见 [`docs/ARCHIVED/19-0.2.6-IPC-MODULARIZATION-PLAN.md`](ARCHIVED/19-0.2.6-IPC-MODULARIZATION-PLAN.md)），以及 Vitest 4.1.11 升级、`js-yaml` 4.3.2 override 与 jsdom 传递依赖 undici 锁定 8.10.2。
+**当前实现：** `AppController` 编排启动与窗口级命令，`app/app-composition.js` 构造领域控制器并保留保存、标签、设置/session 等跨域交易和部分局部 UI 行为。文档安全、编辑器 runtime、工作区、设置、导出、资源健康、主题与通知均有对应领域模块；Vditor 私有 DOM 只由 adapter 提供语义 API。主进程入口负责应用与窗口生命周期，IPC 由 `src/main/ipc/register.ts` 组合领域注册模块。三语 UI 字典由 `locale/` 打包为启动语言包。
+
+0.2.7 沿用上述架构，完善文档反馈映射、链接拒绝原因、顶部通知队列、捕获阶段拖入分类、固定新建标签按钮与溢出阴影、渲染代码块语言/复制顶栏、嵌套滚动条显隐及 Elegant 分隔线对比度。`package.json` 仍为 0.2.6；实现、手测、自动化和发布状态见 [`10-0.2.7-EXECUTION-TRACKER.md`](10-0.2.7-EXECUTION-TRACKER.md)，往期批次记录保留在 `ARCHIVED/`。本地图只维护模块、契约与测试入口，不维护源码行号、文件行数、成员数量或实时测试总数。主题与 renderer 边界分别见 [`05-THEMES.md`](05-THEMES.md) 和 [`02-RENDERER-ARCHITECTURE.md`](02-RENDERER-ARCHITECTURE.md)。
 
 ---
 
@@ -31,7 +33,7 @@
 
 ### 前端框架
 
-**无框架，原生 DOM。** 渲染进程不引入 React、Vue 或任何 UI 框架；0.2.0 阶段所有 UI 逻辑集中在单一 IIFE 控制器（`src/renderer/app.js`）中。0.2.5 现在由 `src/renderer/main.ts` 校验全局能力并启动 `src/renderer/app/app-composition.js` 暴露的 `AppController`，职责按域逐步迁移到类型安全的模块。
+**无框架，原生 DOM。** 渲染进程不引入 React、Vue 或任何 UI 框架。当前由 `src/renderer/main.ts` 校验全局能力并启动 `src/renderer/app/app-composition.js` 暴露的 `AppController`，领域职责位于类型安全的模块，组合层与 adapter 保留既有 JavaScript 入口。
 
 ### 编辑器引擎
 
@@ -312,6 +314,8 @@ const options: BrowserWindowConstructorOptions = {
   },
 };
 ```
+
+**拼写检查：** 创建窗口后调用 `webContents.session.setSpellCheckerEnabled(false)`，避免设置中的字体和路径被标红；编辑区拼写检查仍是候选设计，见 [`08-WISHLIST.md`](08-WISHLIST.md#编辑区拼写检查)。
 
 **窗口尺寸持久化：** 每次 `move` 和 `resize` 事件（带 400ms 防抖）调用 `persistNormalWindowBounds()`，保存到 `PersistentStateStore` 的 `state.json`。最大化状态通过同一 state 的 `windowMaximized` 字段恢复。Linux 平台的 unmaximize 后有额外的延迟位置修复（100/350/800/1400ms）。
 
@@ -627,7 +631,7 @@ const state = {
     delay: settings.previewDelay,
     maxWidth: settings.previewMaxWidth,
     actions: multiPlatformPreview ? ['desktop','tablet','mobile','mp-wechat','zhihu'] : [],
-    hljs: { enable, lineNumber, style: codeTheme },
+    hljs: { enable, lineNumber, style: codeTheme, renderMenu: dependencies.decorateCodeBlockMenu },
     math: { engine: settings.mathEngine },   // 'KaTeX' | 'MathJax'
     markdown: {
       autoSpace, callout, footnotes, imageCaption, mark, sub, sup, toc,
@@ -650,7 +654,7 @@ const state = {
 | 实例化   | `ensureEditor(tab)`        | 首次激活标签时调用 `new Vditor(tab.host, options)`        |
 | 就绪回调 | `after()`                  | 验证 DOM 契约、安装观察者、挂载工具栏、绑定事件           |
 | 切换标签 | `switchTab(id)`            | 恢复旧工具栏到原标签 host，将新标签工具栏挂载到共享 mount |
-| 模式切换 | `rebuildEditor(tab, mode)` | 捕获滚动位置、断开观察者、销毁旧实例、重建                |
+| 模式切换 | `rebuildEditor(tab, mode)` / `prepareVditorModeTransition()` | 应用菜单经 `EditorController.rebuild()` 重建；Vditor 工具栏与快捷键走原生切换，controller 捕获位置、同步模式并对账保存点 |
 | 销毁标签 | `closeTab(id)`             | 调用 `tab.vditor.destroy()` 并移除 host 节点              |
 | 设置变更 | `saveSettings()`           | 展示设置和默认编辑模式热应用；只有影响初始化契约的设置才重建相关编辑器，重建时保留每个标签自身的模式 |
 
@@ -765,7 +769,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 
 `src/renderer/types/adapter.d.ts` 是该冻结 facade 的 TypeScript 边界：它逐项声明全部公开成员的参数、可空性和返回结构，但不描述或导出 selector、Range workaround 等私有实现（`selectors` 常量集合自批次 9 起不再对外导出）。成员清单的唯一事实来源是 `src/renderer/types/adapter-contract.ts` 的 `ADAPTER_PUBLIC_KEYS`，本文不维护成员计数。`adapter-contract.ts` 由 renderer strict typecheck 纳入，覆盖每个公开成员的有效调用及关键无效调用；其中的键 manifest 由 adapter DOM 单测与运行时冻结对象精确比对。修改 adapter 导出表时，必须同时更新这两份类型证据与单测，而 controller 仍只能消费语义 API。
 
-以下为 `window.VditorDesktopAdapter` 冻结对象导出的 API，按职能分组。导出键的权威清单与防漂移比对以 `adapter-contract.ts` 的 `ADAPTER_PUBLIC_KEYS` 和 `tests/unit/vditor-adapter.test.ts` 为准；本表如与 manifest 不一致，以 manifest 为事实来源并回改本表。
+以下按职能列出 `window.VditorDesktopAdapter` 的主要语义 API。导出键的权威清单与防漂移比对以 `adapter-contract.ts` 的 `ADAPTER_PUBLIC_KEYS` 和 `tests/unit/vditor-adapter.test.ts` 为准；本表如与 manifest 不一致，以 manifest 为事实来源并回改本表。
 
 #### DOM 结构查询
 
@@ -773,6 +777,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 
 | 函数                                  | 入参                          | 返回值                                                             | 用途                                                                                                                   |
 | ------------------------------------- | ----------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `decorateCodeBlockMenu(code, menu)` | `HTMLElement, HTMLElement` | `void` | 设置语言标签、背景与 CSP 兼容复制事件；不插入正文或修改 Markdown |
 | `editorParts(host)`                   | `host`                        | `{ toolbar, content, source, instantRendering, wysiwyg, preview }` | 返回编辑器各子视图 DOM 节点                                                                                            |
 | `mountedToolbar(mount)`               | `mount`                       | `Element \| null`                                                  | 返回共享挂载点中当前已挂载的 Vditor toolbar 节点，供 `validateHost` 与工具栏交接使用，不暴露 selector 常量               |
 | `isInitializedEditorHost(host)`       | `host`                        | `boolean`                                                          | 通过 Vditor 3.11.3 初始化时设置的主机 class 判断活动编辑器是否已建立，供侧栏拖动时冻结 host 宽度使用 |
@@ -888,7 +893,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 
 ## 8. IPC 通信架构
 
-**Handler 注册（0.2.6 模块化）：** 全部 64 个渲染器→主进程通道（56 invoke + 8 send）由 `src/main/ipc/` 的 11 个领域模块实现；`ipc/register.ts` 组合入口创建唯一的 `ipc/trusted-channel.ts` 信任包装器并统一注册，`index.ts` 在 `app.whenReady()` 内构造 `IpcRegistrationDeps`（已初始化服务、懒窗口 getter 与命名窄回调）后调用它。共享可变状态（`rendererReady`、菜单资格、窗口状态机）仍由 `index.ts` 持有，模块仅经回调触发。`tests/unit/ipc-channel-map.test.ts` 与 `tests/unit/ipc-channel-coverage.test.ts` 以冻结映射锁定通道集合与注册方向。
+**Handler 注册（0.2.6 模块化）：** 渲染器→主进程通道由 `src/main/ipc/` 的领域模块实现；集合和方向以 `src/main/ipc-contract.ts` 与测试冻结映射为准；`ipc/register.ts` 组合入口创建唯一的 `ipc/trusted-channel.ts` 信任包装器并统一注册，`index.ts` 在 `app.whenReady()` 内构造 `IpcRegistrationDeps`（已初始化服务、懒窗口 getter 与命名窄回调）后调用它。共享可变状态（`rendererReady`、菜单资格、窗口状态机）仍由 `index.ts` 持有，模块仅经回调触发。`tests/unit/ipc-channel-map.test.ts` 与 `tests/unit/ipc-channel-coverage.test.ts` 以冻结映射锁定通道集合与注册方向。
 
 | 领域模块 | 注册通道（invoke / send） |
 | --- | --- |
@@ -1521,15 +1526,15 @@ function rememberRecent(filePath) {
 
 ### 12.3 代码签名
 
-**（待实现）** 无签名配置，无 `afterSign` / `afterAllArtifactBuild` 钩子。
+当前没有签名配置，也没有 `afterSign` / `afterAllArtifactBuild` 钩子；平台交付事项见 [`00-ISSUES.md`](00-ISSUES.md)。
 
 ### 12.4 自动更新机制
 
-**（待实现）** 未集成 `electron-updater`，无发布版检查或增量更新功能。
+当前未集成 `electron-updater`，没有发布版检查或增量更新能力。
 
 ### 12.5 CI/CD 流水线
 
-`.github/workflows/quality.yml` 在向 `main` 的 push 与 pull request 上运行 `npm ci`、`format:check`、`check:project`、`lint`、renderer build、main/renderer typecheck、Vditor 固定版本检查与单元/集成测试。它不发布、签名或打包 Windows/macOS，也不运行 Electron E2E；Linux 候选包仍由批次 10 的本地发布记录覆盖（见 [`docs/03-DEVELOPMENT-WORKFLOW.md`](03-DEVELOPMENT-WORKFLOW.md)）。
+`.github/workflows/quality.yml` 在向 `main` 的 push 与 pull request 上运行 `npm ci`、`format:check`、`check:project`、`lint`、renderer build、main/renderer typecheck、Vditor 固定版本检查与单元/集成测试。它不发布、签名或打包 Windows/macOS，也不运行 Electron E2E；发布包须按最终发布提交单独构建和验收，不能复用往期候选包证据（见 [`docs/03-DEVELOPMENT-WORKFLOW.md`](03-DEVELOPMENT-WORKFLOW.md)）。
 
 ### 12.6 构建流程
 
@@ -1613,7 +1618,7 @@ build:assets:
 ### 13.3 ESLint 配置（`eslint.config.mjs`）
 
 - **全局规则：** 基于 `@eslint/js/recommended` + `typescript-eslint/recommended`
-- **`@typescript-eslint/no-explicit-any`:** 全局关闭（允许 `any`）；仅 `src/renderer/**/*.ts` 单独设为 `warn`
+- **类型规则：** 以 `eslint.config.mjs` 的最终匹配结果为准；当前末尾全局配置关闭 `no-explicit-any`，覆盖前面的 renderer `warn`。这不取消 `AGENTS.md` 对主进程 strict TypeScript 和不绕过边界契约的要求。
 - **`@typescript-eslint/no-unused-vars`:** 允许以 `_` 开头的参数和捕获错误
 - **渲染器 JS 文件（`src/renderer/**/*.js`）：** 注入 `Vditor` 全局只读变量和浏览器全局变量
 - **渲染器 TS 文件（`src/renderer/**/*.ts`）：** 浏览器全局变量
@@ -1636,6 +1641,7 @@ build:assets:
 
 - `printWidth: 100`：控制**代码**每行最大字符数（默认值 80），超过时自动折行。
 - `proseWrap: "preserve"`：仅影响 Markdown 散文段落，保持原有换行不重排（`printWidth` 对 prose 不再生效）；代码文件仍遵循 100 字符限制。
+- `.prettierignore` 已排除 `*.md` / `*.markdown`；Markdown 维护使用内容、链接和 diff 检查，不为文档排版运行 Prettier。
 
 ### 13.5 Vitest 测试配置（`vitest.config.mts`）
 
@@ -1685,7 +1691,7 @@ build:assets:
 | `npm run lint` | ESLint 检查 `src/`、`scripts/`、`tests/`、`*.config.*` |
 | `npm run typecheck` | `tsc -p tsconfig.main.json --noEmit` 主进程类型检查 |
 | `npm run typecheck:renderer` | `tsc -p tsconfig.renderer.json --noEmit`；strict renderer 类型检查，包含 adapter 调用契约 |
-| `npm run check:project` | `scripts/check-project-metadata.js` 校验 package.json / lock / 稳定应用 ID / Linux 元数据一致 |
+| `npm run check:project` | `scripts/check-project-metadata.js` 校验 package.json / lock / 稳定应用 ID / Linux 元数据，以及根英文 README、`docs/i18n/` 简繁 README 徽章与 renderer 回退版本一致 |
 | `npm run check:vditor` | `scripts/check-vditor-version.js` 校验 package.json / lock / node_modules 与 `src/main/ipc/app-shell.ts` 中 `app:getInfo` 的版本一致 |
 | `npm test` | `vitest run` 运行全部单元测试 |
 | `npm run test:watch` | `vitest` 监听模式运行单元测试 |
@@ -1884,7 +1890,7 @@ flowchart TB
 
 ## 15. 测试覆盖情况
 
-本节用于定位测试责任，不维护实时测试总数。以 `npm test` 与 `npx playwright test --list` 发现当前测试；带日期的验证证据、专项范围和平台限制统一记录在 [`docs/ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md`](ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md)。Linux 结果不外推为 Windows/macOS 实体机验证。
+本节用于定位测试责任，不维护实时测试总数。以 `npm test` 与 `npx playwright test --list` 发现当前测试；带日期的当前验证证据记录在 [`10-0.2.7-EXECUTION-TRACKER.md`](10-0.2.7-EXECUTION-TRACKER.md)，往期证据留在 `ARCHIVED/`；平台边界见 [`04-CROSS-PLATFORM.md`](04-CROSS-PLATFORM.md)。Linux 结果不外推为 Windows/macOS 实体机验证。
 
 ### 15.1 单元测试（Vitest）
 
@@ -1952,6 +1958,8 @@ flowchart TB
 | `editor-modes.spec.ts` | 查找替换、WYSIWYG / IR / SV、工具栏、选择、表格、分栏、滚动、自绘光标与 Vditor DOM 契约 |
 | `document-lifecycle.spec.ts` | 保存、恢复、工作区、文件树、原生打开对话框、导出资源、watcher、外部冲突、删除、重命名与 Save As 路径一致性 |
 | `navigation-and-resources.spec.ts` | Markdown/大纲导航、外部 URL 边界，受控根下的本地/HTTPS/上传图片资源与统一 SVG 渲染开关，以及资源健康扫描、缺失引用删除、回收站确认和已保存快照 |
+| `scrollbars.spec.ts` | 三模式渲染代码块独立横向滚动条、原生 thumb 拖动、文档与设置切换，以及外层 pane 边缘显示和自动隐藏 |
+| `code-block-header.spec.ts` | 语言/复制顶栏避让、背景与纹理、横向滚动、字号与行号、系统剪贴板、围栏语言修改、模式切换及保存 |
 
 下列用例按功能域覆盖核心场景；具体数量以 Playwright 测试清单为准：
 
@@ -2091,21 +2099,9 @@ flowchart TB
 - 繁体中文设置面板（`lang="zh-Hant"`、`設定` 标题）
 - 未保存更改确认对话框（`zh_Hans` 下显示 "未保存的更改" 等本地化文案；可在窗口内拖动但不可调整尺寸）
 
-### 15.3 测试覆盖缺口
+### 15.3 验证边界的定位
 
-| 模块                                | 当前状态                                   | 待补充                                                                                                                                                                        |
-| ----------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/main/index.ts`                 | E2E + URL/导航策略单测                     | IPC handler 已迁至 `src/main/ipc/`（见下行）；仍缺乏 `resolveSystemLocale` / `isMaximizedLikeBounds` / `initialWindowBackground` 主题映射 / watcher `on('all')` 事件流的单元测试                |
-| `src/main/ipc/`                     | 通道注册/信任包装/参数转发单测 + Electron E2E | 通道集合与注册方向已由 `ipc-channel-map` / `ipc-channel-coverage` 锁定，`trusted-channel` 与 `file-watching` 有聚焦单测；各领域 handler 的业务行为仍主要依赖真实 Electron E2E，尚无逐模块的 direct 单测 |
-| `src/main/preload.ts`               | 仅 E2E 覆盖                                | 无 Bridge API surface 类型契约测试                                                                                                                                            |
-| `src/main/protocol.ts`              | app URL 单测 + local-resource 策略单测 + 资源 E2E | 仍无 protocol handler 直接单测；响应头和 neutral 404 目前由真实 Electron E2E 覆盖                                                                              |
-| `src/main/menu.ts`                  | 仅 E2E 覆盖                                | 无三语言菜单标签生成的独立测试                                                                                                                                                |
-| `src/main/services/file-manager.ts` | 单元测试较完善                             | 已覆盖 `exists()`、空目录 `listDir`、创建/重命名目标冲突、路径逃逸、safe writer 基线和失败回滚；Windows/macOS 的权限、占用和目录级 no-replace 原生语义仍见 [`docs/04-CROSS-PLATFORM.md` §9](04-CROSS-PLATFORM.md#9-020-批次-7-推迟的平台验证) |
-| `src/main/services/file-identity.ts` | 单元测试已覆盖 Linux 与注入路径模型       | Windows/macOS 实际卷大小写、Unicode 规范化、junction/Finder alias 和平台原生 identity 语义仍待实体机验证 |
-| `src/main/services/file-watch-service.ts` | 单元测试已覆盖 revision、ready/reconciliation 和 cleanup | 真实 Windows/macOS watcher 事件来源、合并时序、权限/占用反馈仍待实体机验证 |
-| `src/renderer/vditor-adapter.js`    | 单元测试与 E2E 均有                        | 覆盖 DOM 结构、链接交互、IR 展开切换、相对图片（含 Vditor 提前转换的 `app://app/` 路径）、`withOriginalImageSources` 替换恢复、`setDocumentLinkCursor` 不抑制标题、导出键 manifest（`ADAPTER_PUBLIC_KEYS`）与运行时冻结对象的一致性；仍缺少 `observeRelativeImageSources` 观察者回调直接单测与 `toolbarButton` 选择器注入防御 |
-| `src/renderer/app/app-composition.js` | 组合层通过各 domain controller 与 E2E 间接覆盖 | 剩余保存交易、标签命令、设置/session 组合和部分壳事件属过渡期组合协调；不再存在 `src/renderer/app.js` 旧入口源码字符串断言 |
-| `src/renderer/locale/`             | `renderer-shell` 与 `locale` 单测、运行时语言切换 E2E | 三语键和占位符对等、启动 bundle 发布全局字典；用户界面的实际语言切换由 Electron E2E 覆盖 |
+单元、DOM 与 Electron E2E 的职责不同；测试入口存在不代表最近一次运行已通过。执行结果与日期查当前版本 Tracker，平台实机要求查 [`04-CROSS-PLATFORM.md`](04-CROSS-PLATFORM.md)。尚未补齐的直接 handler、preload 契约和平台覆盖统一跟踪于 [`00-ISSUES.md`](00-ISSUES.md#测试覆盖缺口)，本地图不复制待办表。
 
 ---
 

@@ -17,8 +17,8 @@
 | Vditor 实例、DOM 宿主、定时器、观察器、选区与运行时代次 | `editor/EditorController` 及聚焦的编辑器控制器 | 运行时句柄从不持久化。 |
 | 会话与恢复投影 | 文档快照模块以及 `RecoveryRuntimeController` | 只有带版本的、可序列化的 DTO 才能跨越持久化/IPC 边界。 |
 | 工作区根修订与资源管理器 DOM 状态 | `workspace/WorkspaceController` 与 `ExplorerController` | 资源管理器通过文档边界提交文档绑定意图。 |
-| 设置对话框生命周期与偏好持久化 | `settings/` 控制器 | 展示型设置使用公开的 Vditor setter；仅构造期设置会请求定向重建。 |
-| 应用自有的菜单、窗口装饰、语言与主题呈现 | `ui/` 控制器；主题应用由 `ui/theme-coordinator.ts` 协调（当前注册 8 个应用主题） | 它们不查询 Vditor 私有 DOM；对 Vditor 的作用只经公开的 `setTheme()` 与注入的 adapter 语义回调（代码主题按钮分类、Mermaid 色调重绘）。 |
+| 设置对话框生命周期与偏好持久化 | `settings/` 控制器 | 展示型设置经公开 setter、adapter 或应用 CSS 热应用；构造期设置会重建受影响的已初始化标签，保留各标签模式、SV 布局、undo 与滚动。 |
+| 应用自有的菜单、窗口装饰、语言与主题呈现 | `ui/` 控制器；主题应用由 `ui/theme-coordinator.ts` 协调，主题集合由 `ui/theme.ts` 定义 | 它们不查询 Vditor 私有 DOM；对 Vditor 的作用只经公开的 `setTheme()` 与注入的 adapter 语义回调（代码主题按钮分类、Mermaid 色调重绘）。 |
 
 ## 领域布局
 
@@ -43,4 +43,10 @@
 
 每个注册了监听器、定时器、观察器、动画帧或订阅的控制器都要暴露幂等的清理方法。编辑器重建或标签页关闭会在清理之前先使旧的运行时代次失效；迟到的回调无法改动替换后的运行时。应用初始化失败与 `beforeunload` 走同一条逆依赖清理路径。
 
-组合层有意不做第二个所有者：它可以保留 controller 实例化、窄依赖注入、短委托与命名跨域事务，也可为已明确 owner 提供 bridge 订阅、timer/observer 注册或受控 Store 命令的接线回调。它不得自行拥有独立领域状态、资源生命周期或安全/IPC 边界，不得形成重复实现、公开任意 patch 入口或绕过 owner 的状态转换；Vditor 私有选择器仍只能属于 adapter。是否继续提取以 [`09-DEV-NOTE.md` 的“模块化重构边界”](09-DEV-NOTE.md#模块化重构边界)的判据为准，而不是以文件体量为准。
+组合层负责 controller 实例化、窄依赖注入、短委托与命名跨域事务。当前还保留侧栏拖拽、外层 pane 滚动条自动显隐等局部 UI 行为；这些是既有实现边界，不能据此把新增监听、定时器、观察器、Store 写入或 bridge 订阅继续放入组合层。新行为由所属域控制器拥有状态与资源，再通过窄回调接线。Vditor 私有选择器仍只能属于 adapter。是否继续提取以 [`09-DEV-NOTE.md` 的“模块化重构边界”](09-DEV-NOTE.md#模块化重构边界)的判据为准，而不是以文件体量为准。
+
+### 代码块呈现与嵌套滚动
+
+`editor/editor-options.ts` 通过公开的 `preview.hljs.renderMenu` 注入 adapter 的 `decorateCodeBlockMenu()`；语言识别、复制菜单结构和 CSP 兼容事件绑定均由 adapter 封装。`styles/app.css` 预留语言与复制顶栏，沿用所选代码主题的背景和纹理，语言标签通过伪元素呈现，不进入 Markdown、行号或复制正文。此路径不修改全文或另建 undo 状态。
+
+外层 pane 自动显隐经 adapter 的 `scrollContainers()` / `innerScroller()` 获取滚动面，既有组合回调检测右侧纵向边缘和存在横向溢出时的底部边缘。表格与渲染代码块的嵌套滚动条由 CSS 独立管理，不能继承外层 pane 的透明颜色后只靠外层显隐类控制。真实 Vditor/剪贴板与滚动交互分别由 `tests/e2e/code-block-header.spec.ts` 和 `tests/e2e/scrollbars.spec.ts` 验证。

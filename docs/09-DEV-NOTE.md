@@ -23,7 +23,7 @@
 
 **成因：** 三种模式使用不同的 Enter/input 路径。SV 的 `processKeydown()` 自行插入 `\n`；在空块或段首走 `processAfterRender()`，只有非空且不在段首时才调用重解析的 `inputEvent()`，所以空文档回车不能简单等同于生成下一段。IR 的输入路径经 `SpinVditorIRDOM` 规范化空段落；WYSIWYG 在该情形保留浏览器产生的两个空段落，但 Lute 的 DOM → Markdown 转换不保留前置空段落。Vditor 的 [3.10.1 变更记录](https://github.com/Vanessa219/vditor/blob/master/CHANGELOG.md)曾将“内容为空时回车禁止光标跳动”列为改动；它不能证明三种模式目前的视觉与序列化差异都是有意设计。
 
-**上游代码：** `node_modules/vditor/src/ts/sv/processKeydown.ts` 的 Enter 分支（约 125–153 行）；`node_modules/vditor/src/ts/ir/input.ts` 的 `SpinVditorIRDOM` 调用（约 174–185 行）；`node_modules/vditor/src/ts/wysiwyg/index.ts` 的 `insertParagraph` 输入分支（约 403–408 行）；`node_modules/vditor/src/ts/markdown/getMarkdown.ts` 的三模式序列化。
+**上游代码：** `node_modules/vditor/src/ts/sv/processKeydown.ts` 的 Enter 分支；`node_modules/vditor/src/ts/ir/input.ts` 的 `SpinVditorIRDOM` 调用；`node_modules/vditor/src/ts/wysiwyg/index.ts` 的 `insertParagraph` 输入分支；`node_modules/vditor/src/ts/markdown/getMarkdown.ts` 的三模式序列化。
 
 #### SV 段落间空行在第二行输入后移动
 
@@ -31,7 +31,7 @@
 
 **成因：** SV 的输入处理在当前块插入光标标记，将当前块及可能存在的前一块文本送入 `processSpinVditorSVDOM()`，由 Lute `SpinVditorSVDOM` 重新解析，再替换块并按 `<wbr>` 恢复选区。处理函数还会把连续的两个 newline span 分到相邻的 source 块。第二行插入文字时触发这条块重建与空行规范化路径，导致后续空行位置变化；目前仅定位到这条处理链，尚未把额外空行归因到某一条单独的 Lute AST 规则。
 
-**上游代码：** `node_modules/vditor/src/ts/sv/inputEvent.ts` 的块文本合并、重解析、DOM 替换与 `setRangeByWbr()`（约 117–179 行）；`node_modules/vditor/src/ts/sv/process.ts` 的 `processSpinVditorSVDOM()` 与连续 newline span 分块（约 54–61 行）；实际解析实现位于打包的 `node_modules/vditor/dist/js/lute/lute.min.js`。
+**上游代码：** `node_modules/vditor/src/ts/sv/inputEvent.ts` 的块文本合并、重解析、DOM 替换与 `setRangeByWbr()`；`node_modules/vditor/src/ts/sv/process.ts` 的 `processSpinVditorSVDOM()` 与连续 newline span 分块；实际解析实现位于打包的 `node_modules/vditor/dist/js/lute/lute.min.js`。
 
 #### 文首空行在切换编辑模式时丢失
 
@@ -39,7 +39,7 @@
 
 **成因：** Vditor `setEditMode()` 先调用 `getMarkdown()`，再从所得 Markdown 重建目标模式。当前打包的 Lute 1.7.6 可独立复现：IR 的 `VditorIRDOM2Md()` 和 WYSIWYG 的 `VditorDOM2Md()` 都将四个前置空 `<p data-block="0">` 后接 `123` 转为 `"123\n"`；将 `"\n\n\n123\n\n234\n"` 转回两种模式 DOM，也都从 `123` 段落开始。文首空行在第一次 DOM → Markdown 转换时就已经丢失，切换模式只是将结果显露出来；通过 `getValue()` 保存同样无法保留。作为语法背景，[CommonMark](https://spec.commonmark.org/spec) 解析时忽略文档首尾空行，但编辑区可见空段落与可保存文本不一致仍是使用时需要知晓的边界。
 
-**上游代码：** `node_modules/vditor/src/ts/toolbar/EditMode.ts` 的 `setEditMode()`（约 23–30、48–60、78–120 行）；`node_modules/vditor/src/ts/markdown/getMarkdown.ts` 的 `VditorDOM2Md()` / `VditorIRDOM2Md()`（约 3–10 行）；转换实现在 `node_modules/vditor/dist/js/lute/lute.min.js`。Desktop 没有在模式切换时补写或清除文首空行。
+**上游代码：** `node_modules/vditor/src/ts/toolbar/EditMode.ts` 的 `setEditMode()`；`node_modules/vditor/src/ts/markdown/getMarkdown.ts` 的 `VditorDOM2Md()` / `VditorIRDOM2Md()`；转换实现在 `node_modules/vditor/dist/js/lute/lute.min.js`。Desktop 没有在模式切换时补写或清除文首空行。
 
 ## 应用功能与工作台
 
@@ -387,6 +387,18 @@ Vditor `3.11.3` 的 WYSIWYG/IR 将表格本身作为横向滚动容器（`displa
 
 ## Vditor 编辑器兼容性：渲染、序列化与主题
 
+### 渲染代码块顶栏与 CSP 复制
+
+Vditor 3.11.3 的原生 `.vditor-copy` 高度为零，绝对定位复制按钮会遮住长代码首行；上游内联复制事件也会被应用 CSP 拒绝。Desktop 在 `editor-options.ts` 的公开 `preview.hljs.renderMenu` 回调中注入 adapter `decorateCodeBlockMenu()`，由 adapter 保留复制 textarea 与相邻 span 的结构，并绑定 textarea select → copy → blur 事件，不放宽 CSP。
+
+`app.css` 为语言和复制按钮预留固定顶栏，语言用 `data-language` 与伪元素呈现，不加入正文、行号或剪贴板内容。外围 pre 与代码正文共享代码主题背景，顶栏继承背景并复用纹理；关闭高亮时仍保持连续。菜单事件归菜单元素所有，随 Vditor 替换/销毁释放，不新增窗口级监听。语言修改、模式切换和保存仍使用 Vditor 原生路径。回归入口为 `tests/unit/vditor-adapter.test.ts`、`tests/unit/renderer/editor-options.test.ts` 与 `tests/e2e/code-block-header.spec.ts`；升级时复核私有菜单结构和实际系统剪贴板。
+
+### 嵌套滚动条的独立显隐
+
+代码块的 `pre > code` 会继承外层编辑/预览 pane 的透明 `scrollbar-color`，仅切换外层显隐类无法保证代码块 thumb 可见。`app.css` 为表格和渲染代码块独立设置 always/auto/hidden 规则；auto 时悬停保持可见，离开后隐藏。外层 pane 的既有 `setupAutoHideScrollbar()` 保留一秒自动隐藏，并在右侧纵向边缘及横向溢出时的底部边缘显示；私有滚动面仍由 adapter 查询。
+
+验证应包含真实 thumb 拖动、持续悬停、文档切换、设置热应用与 SV source 底部边缘，不仅检查 `.scrollbar-visible` 类。对应入口为 `tests/e2e/scrollbars.spec.ts`，实现与阶段证据留在当前 Tracker。
+
 ### IR 折叠标题 marker 的自绘光标异常
 
 **记录版本：** 0.2.5 / 2026-09-09
@@ -499,7 +511,7 @@ adapter 的 `refreshMermaidTheme()`（`src/renderer/vditor-adapter.js`）先解�
 
 #### 背景
 
-`app.js` 从最初的 5000+ 行（0.2.0 基线统计为 5414 行，见 `docs/ARCHIVED/16-0.2.5-BASELINE-BEHAVIOR.md`）逐步迁移为 `app-composition.js`；批次 10 收口（2026-09-09）时为 3235 行，含资源健康接线与重建 undo 恢复回调。这两个行数是冻结的历史快照，只用于说明迁移幅度，不随后续代码演进更新。迁移过程中，主要领域逻辑被持续提取为独立的 Controller 类，通过 `PURE` 命名空间注入，composition 层以实例化、依赖注入和跨域协调为主要职责，仍保留部分局部 UI 行为。原 `src/renderer/app.js` 已在批次 9 删除，不得恢复。
+原 `app.js` 的主要领域职责已迁入独立模块，组合骨架保留于 `app-composition.js`；历史迁移规模和批次快照见 `docs/ARCHIVED/16-0.2.5-BASELINE-BEHAVIOR.md` 与往期 Tracker，本文件不重复维护行数。迁移过程中，主要领域逻辑被持续提取为独立的 Controller 类，通过 `PURE` 命名空间注入，composition 层以实例化、依赖注入和跨域协调为主要职责，仍保留部分局部 UI 行为。原 `src/renderer/app.js` 已在批次 9 删除，不得恢复。
 
 #### 已提取的 Controller 清单
 
@@ -508,6 +520,7 @@ adapter 的 `refreshMermaidTheme()`（`src/renderer/vditor-adapter.js`）先解�
 | 类别 | Controller | 职责 |
 | --- | --- | --- |
 | 文档与文件 | `DocumentController` | 文档绑定、打开、保存事务 |
+| 文档与文件 | `DocumentFeedback` | 文档结果的本地化与状态栏/短暂通知映射，不拥有保存交易 |
 | 文档与文件 | `DocumentSaveController` | 按 document ID 与 canonical identity 的两级保存串行队列 |
 | 文档与文件 | `DocumentCloseController` | 关闭确认 → runtime 释放 → Store 删除的固定顺序与同文档并发请求合并 |
 | 文档与文件 | `DocumentWatchController` | 文件 watcher 生命周期 |
@@ -554,7 +567,7 @@ adapter 的 `refreshMermaidTheme()`（`src/renderer/vditor-adapter.js`）先解�
 
 1. **Controller 实例化与依赖注入**：创建 controller 实例并通过回调注入跨域依赖，是文件中占比最大的部分。这是 composition 层的本职工作，不属于膨胀。
 
-2. **委托函数**（数量较多，各 1–3 行）：如 `ensureEditor`、`rebuildEditor`、`syncToolbarAvailability`、`persistSession`、`queueSettingsSave` 等，直接转发给已提取的 controller。它们提供稳定的内部 API，简化跨函数调用。
+2. **委托函数**：如 `ensureEditor`、`rebuildEditor`、`syncToolbarAvailability`、`persistSession`、`queueSettingsSave` 等，直接转发给已提取的 controller。它们提供稳定的内部 API，简化跨函数调用。
 
 3. **跨域协调函数**：需要连接多个 controller 的胶水逻辑，如 `editorOptions`（连接 EditorController、ImageRuntimeController、SplitViewController、ToolbarController 等）、`setupApplicationShellResources`（注册 shell 级 DOM 事件和 Observer）、`beforeAppShortcut`（Escape/F11 焦点分发）、`updateActiveUI`（同步状态栏、横幅、树选择等）。
 
@@ -573,7 +586,7 @@ adapter 的 `refreshMermaidTheme()`（`src/renderer/vditor-adapter.js`）先解�
 
 ##### 不应该提取的条件
 
-- 仅是 1–3 行的委托函数，提取后只是换了位置
+- 仅是短委托函数，提取后只是换了位置
 - 需要连接 3 个以上 controller 的跨域协调（这是 composition 的本职工作）
 - 提取后需要重新设计状态传递方式（如将 IIFE 闭包共享的 `state`/`store` 改为参数注入）
 - 提取的主要动机是减少行数而非降低耦合
@@ -587,7 +600,7 @@ adapter 的 `refreshMermaidTheme()`（`src/renderer/vditor-adapter.js`）先解�
 1. 委托函数和跨域协调构成了剩余内容的重要部分；仅将这些函数搬到另一文件，通常不减少系统复杂度，只增加依赖跳转。
 2. IIFE 闭包通过 `state`/`store` 共享状态是当前的架构契约。强行提取需要重新设计状态传递，引入的隐性耦合风险大于行数收益。
 3. `editorOptions`、`beforeAppShortcut` 等承担跨 controller 协调，整体搬迁不能消除协调本身。`setupApplicationShellResources` 同时包含 shell 接线与侧栏拖拽等具体行为，应区分两者，不能仅因统一注册和清理资源就认定其中的行为都属于组合职责。
-4. 从 0.2.0 基线的 5414 行到批次 10 收口时约 3200 行的迁移中，文档、编辑器、工作区、设置等主要领域职责已迁入独立模块。该迁移成果支持保留现有组合骨架，但不是对剩余行为均无提取价值的穷尽证明；侧栏拖拽和滚动条自动显隐仍是可按具体需求评估的局部空间。
+4. 在已完成的 renderer 迁移中，文档、编辑器、工作区、设置等主要领域职责已迁入独立模块。该迁移成果支持保留现有组合骨架，但不是对剩余行为均无提取价值的穷尽证明；侧栏拖拽和滚动条自动显隐仍是可按具体需求评估的局部空间。
 
 #### 后续微调空间
 

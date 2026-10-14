@@ -35,6 +35,14 @@
 
 保持发布准备变更在 pull request 中可评审，避免在发布标签创建之后修改源文件。
 
+## 开发文档维护
+
+- 先按标题定位架构地图的相关章节，再核对源码、契约和测试；文档不替代当前实现。
+- 长期文档使用文件路径、模块、函数和行为定位，不维护源码行号、文件行数、导出成员数或实时测试总数。固定的产品限制与布局参数仍需说明；依赖与命令以 `package.json`、构建脚本和配置为准。
+- 带日期的命令结果、测试数量、平台和手测范围写入当前版本 Tracker；历史验证只证明当时的代码与范围，不覆盖后续改动。往期 `ARCHIVED/` 和版本交接文档保留为快照。
+- 未决风险、测试缺口与关闭条件统一记入 `00-ISSUES.md`；架构地图只说明当前模块与测试职责。候选设计保留在 `08-WISHLIST.md` 或 `TBD/`，不冒充已排期或已实现功能。
+- 合并到 `main` 及发布前，最后复核 `01-CODE-STRUCTURE.md` 与最终源码一致。纯文档修改检查相对链接、源码定位和 `git diff --check`；Markdown 已被 Prettier 排除，无需为 Markdown 排版运行 `format:check`。
+
 ## 环境与测试基础设施
 
 - Node.js 版本约束由 `package.json` 的 `engines` 定义：`^22.22.2 || ^24.15.0 || >=26.0.0`；CI（`.github/workflows/quality.yml`）实际使用 Node 24.15.0。
@@ -42,6 +50,8 @@
 - `package.json` 的 `overrides` 将 `electron-builder` 的传递依赖 `js-yaml` 固定为 4.3.2，对应 0.2.6 批次修复的 Dependabot 安全公告；除非确认该传递依赖已升级到不受影响的版本，否则不要在依赖升级时移除此 override。
 
 ## Electron E2E 失败判定
+
+涉及 renderer 的最终 E2E 证据必须来自干净完整构建：先核对仅生成的 `dist/`、`static/`，按文件删除安全规则移入回收站，再运行 `npm run build`。`build:renderer` 只更新 TypeScript bundle；普通 JavaScript、HTML/CSS 和离线 Vditor 资源由 `build:assets` 更新。`test:e2e` 会执行完整 build，但不会先清空旧输出；迭代中的部分构建不能作为最终验收依据。
 
 - Electron E2E 因执行环境限制而无法启动（例如沙箱禁止 Chromium 单实例 socket）时，报告为环境限制，不算应用测试失败。
 - 只有断言实际执行且失败，才判定为应用失败；启动失败不等于测试失败。

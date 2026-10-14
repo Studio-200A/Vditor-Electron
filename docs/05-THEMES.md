@@ -15,7 +15,7 @@ Vditor Desktop 的主题系统分为应用壳层主题和 Vditor 内容主题两
 - Vditor 的 code theme 及代码块语法高亮；
 - SV 模式源码编辑区的上游编辑表现。
 
-Vditor 原生工具栏中的代码预览主题设置控制 WYSIWYG、IR 和 SV 预览区代码块的高亮风格。应用主题不重复定义这部分颜色，从而尊重 Vditor 的上游能力和升级边界。
+Vditor 原生工具栏中的代码预览主题设置控制 WYSIWYG、IR 和 SV 预览区代码块的高亮风格。应用代码块顶栏沿用所选代码主题的背景和纹理，不另外定义高亮配色；关闭高亮时也保持顶栏与正文背景连续。实现通过 `preview.hljs.renderMenu` 与 adapter 的 `decorateCodeBlockMenu()` 接线，结构边界见 [`07-VDITOR-UPGRADE.md`](07-VDITOR-UPGRADE.md)。
 
 Monokai Pro Dark 和 Monokai Pro Light 是历史实现中的内容覆盖例外：应用 CSS 额外提供少量可读性修正和 H1–H6 标题色，以保持既有视觉特征。Nord Dark 也有受限的 H1–H6 标题色覆盖，以匹配其参考主题的标题调色；两类覆盖均不改变代码块高亮，后者仍由 Vditor code theme 控制。Claude 主题不复制这些标题色覆盖；但 Ant Design 与 WeChat 内容主题是按浅色文档设计，应用在深色壳层（`dark`、`claude-dark`、`monokai-pro-dark`、`nord-dark`）下会将其显式浅色文字/表格/标题重映射为壳层深色语义变量，Claude Dark 自 0.2.5 批次 11 起参与该通用可读性重映射。
 
@@ -148,7 +148,7 @@ Monokai Pro 主题额外定义了 `--monokai-code-bg`、`--monokai-input-bg` 和
 
 ### 5.5 Elegant
 
-Elegant 采用 [ColaMD elegant.css](https://github.com/marswaveai/ColaMD/blob/main/themes/elegant.css) 的暖灰纸张调色：应用和编辑区为 `#f0edea`，sidebar 和面板为 `#eae6e1`，设置表单控件为更亮的 `#faf8f5`，正文为 `#2c2c2c`，弱化文字为 `#6c6c6c`，边框为 `#d8d3ce`。通用 hover 表面为更深的暖灰 `#dcd7d1`，使文件树、大纲、右键菜单、应用菜单弹层和标题栏按钮在 sidebar 上有清晰但不过重的悬停层次。交互强调色为 `#bc4424`，危险操作使用陶土色 `#c44b2b`。它只定义应用壳层变量，不覆盖 Vditor 的引用、表格、代码块或 Mermaid 配色；这些内容由关联的 Vditor 浅色内容与代码主题负责。Vditor 3.11.3 不会在 `setTheme()` 后重绘已有 Mermaid SVG，因此亮暗色调切换时，主题协调器会通过适配器仅在当前 Markdown 围栏与已渲染图表一一匹配时重新调用 Vditor 的本地 Mermaid 渲染器；不匹配时保持原图表不变。
+Elegant 采用 [ColaMD elegant.css](https://github.com/marswaveai/ColaMD/blob/main/themes/elegant.css) 的暖灰纸张调色：应用和编辑区为 `#f0edea`，sidebar 和面板为 `#eae6e1`，设置表单控件为更亮的 `#faf8f5`，正文为 `#2c2c2c`，弱化文字为 `#6c6c6c`，边框为 `#d8d3ce`。通用 hover 表面为更深的暖灰 `#dcd7d1`，使文件树、大纲、右键菜单、应用菜单弹层和标题栏按钮在 sidebar 上有清晰但不过重的悬停层次。交互强调色为 `#bc4424`，危险操作使用陶土色 `#c44b2b`。它以应用壳层变量为主，不覆盖 Vditor 的引用、表格、代码块或 Mermaid 配色；这些内容由关联的 Vditor 浅色内容与代码主题负责。受限例外是 Light/Ant Design 内容主题的 Markdown `hr`：`themes/elegant.css` 将背景色设为 `#dedad6`，增强暖灰画布上的可见性，保留上游粗细与间距，也不改变编辑区背景。Vditor 3.11.3 不会在 `setTheme()` 后重绘已有 Mermaid SVG，因此亮暗色调切换时，主题协调器会通过适配器仅在当前 Markdown 围栏与已渲染图表一一匹配时重新调用 Vditor 的本地 Mermaid 渲染器；不匹配时保持原图表不变。
 
 ### 5.6 Nord Dark
 
@@ -175,6 +175,8 @@ Monokai Pro Dark 的同族浅色主题，调色取自官方 Monokai Pro Light VS
 文档短暂通知与常驻警示共用 `app.css` 的横幅布局和过渡规则。错误文字取主题 `--danger`，表面与边框分别从 `--panel`、`--border` 和 `--danger` 派生；普通通知使用 `--accent`。四类横幅使用 180ms 渐显/渐隐，系统减少动态效果时立即切换。标签溢出阴影由主题 `--sidebar-surface` 与黑色混合得到，保持在实际滚动区两端，宽 14px，不覆盖新建标签按钮，也不拦截鼠标。
 
 `tests/e2e/navigation-and-resources.spec.ts` 覆盖通知文案、亮暗配色、队列和四类横幅的真实过渡；`tests/e2e/app-shell.spec.ts` 覆盖窄窗口下的新建按钮、左右溢出状态与多套主题 CSS 的阴影。最新 Linux 全量与手测证据统一记录在 [`10-0.2.7-EXECUTION-TRACKER.md`](10-0.2.7-EXECUTION-TRACKER.md)，不在本文件维护测试总数。
+
+代码块顶栏背景和纹理、关闭高亮后的连续表面由 `tests/e2e/code-block-header.spec.ts` 验证；独立嵌套滚动条由 `tests/e2e/scrollbars.spec.ts` 验证。Elegant 分隔线规则属于标准 Markdown 元素的颜色修正，不新增 adapter 私有 DOM 依赖。
 
 当前测试覆盖配置字段、旧字段忽略、亮暗独立主题组及其 radio 顺序、主题预览卡片、每行最多四张卡片的网格约束与预览宽度、Claude surface/accent/按钮文字/hover/分割线、Elegant 壳层调色、导航与菜单 hover 以及 Mermaid 色调重绘、Nord palette 语义变量与 H1–H6 标题色、状态栏三态主题菜单、系统主题解析，以及编辑器在失焦、聚焦和 IR/WYSIWYG/SV 切换时的编辑区表面。
 

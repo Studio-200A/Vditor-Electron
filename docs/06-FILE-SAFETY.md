@@ -59,6 +59,8 @@ document watcher 读取稳定磁盘正文后，renderer 以保存基线、本地
 
 主动打开、保存或链接跳转失败通过短暂通知呈现；文件不可用、恢复和外部冲突仍由常驻横幅表达并提供安全动作。短暂通知到期或被队列淘汰只改变呈现，不能解除文件状态、恢复自动保存或覆盖磁盘基线。`DocumentFeedback` 仅持有文案与呈现映射；保存 workflow 继续拥有安全交易。权限与 I/O 异常通过安全 IPC 错误分类，不能降格为“目标不存在”。
 
+外部 CLI/第二实例/文件关联请求由 `src/main/open-files.ts` 分类；缺失或暂不可读的 Markdown 路径仍交给文档打开流程报告错误，不能在参数解析时静默丢弃。相对 Markdown 链接结果由 `src/shared/contracts/markdown-link.d.ts` 统一：区分源文件不可用与目标缺失，权限/I/O 错误继续走安全 IPC 分类。此入口反馈不改变文档 identity、磁盘基线或授权策略。
+
 ## 6. watcher 生命周期与过期结果
 
 每个 document binding 需要同时受 binding generation 和读取 revision 保护：
@@ -141,7 +143,7 @@ rename(临时文件, 目标文件)
 - `src/renderer/documents/document-close-controller.ts` 与 `src/renderer/editor/recovery-runtime-controller.ts`：关闭去重、recovery timer/队列与失败后的 snapshot ID 保留；
 - `tests/unit/` 中对应的文件管理、identity、watcher、recovery 测试，`tests/unit/save-dialog-path.test.ts` 的跨平台 Save As 默认路径规则，以及 `tests/e2e/document-lifecycle.spec.ts` 中的文件生命周期与 Save As 默认路径回归。
 
-截至 2026-08-27，用户在 Linux 手动运行的 `npm run check:all` 已通过；该次运行的精确结果记录在 [`docs/ARCHIVED/13-0.2.0-EXECUTION-TRACKER.md` 的批次 7](ARCHIVED/13-0.2.0-EXECUTION-TRACKER.md#批次-7阶段-b-独立复核)。该证据证明当前本地回归闭环，不关闭第 7 节的已有目标 TOCTOU 边界，也不替代 [`docs/04-CROSS-PLATFORM.md` §9](04-CROSS-PLATFORM.md#9-020-批次-7-推迟的平台验证) 的 Windows/macOS 实机证据。
+2026-08-27 的用户 Linux `npm run check:all` 历史结果记录在 [`13-0.2.0-EXECUTION-TRACKER.md` 的批次 7](ARCHIVED/13-0.2.0-EXECUTION-TRACKER.md#批次-7阶段-b-独立复核)，只证明当时的代码与验证范围。当前版本的执行证据见 [`10-0.2.7-EXECUTION-TRACKER.md`](10-0.2.7-EXECUTION-TRACKER.md)；两者均不关闭第 7 节的 TOCTOU 边界，也不替代 [`04-CROSS-PLATFORM.md` §9](04-CROSS-PLATFORM.md#9-020-批次-7-推迟的平台验证) 的 Windows/macOS 实机证据。
 
 0.2.5 批次 7 对 renderer 文档边界的修复和本地全量验证状态记录在 [`docs/ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md`](ARCHIVED/15-0.2.5-EXECUTION-TRACKER.md#批次-7阶段独立复核批次-1-6)。该记录不会改变本文件的 TOCTOU 或跨平台限制。
 

@@ -1,15 +1,26 @@
 # Changelog
 
-## 0.2.7 -TBA
+## 0.2.7 - TBA
 
 ### Bug Fixes
 
-- **fix(theme):** Improve Markdown horizontal-rule contrast in Elegant with the Light and Ant Design content themes, preserving the editor background and each content theme's rule thickness and spacing.
+#### Editor Interaction and Code Blocks
+
 - **fix(editor):** Reserve a header inside rendered code blocks for the language label and copy button, keeping the selected code background continuous and preventing long lines from passing beneath the button. Keep headers out of Markdown, line numbering, and copied code; restore copying under the application's Content Security Policy without allowing inline scripts.
 - **fix(scrollbars):** Give code blocks independent automatic scrollbar visibility in Instant Rendering, WYSIWYG, and the SV preview, keeping horizontal thumbs visible while hovered and after switching documents. Reveal horizontally overflowing editor panes at their bottom edge as well as their right edge.
+- **fix(drop):** Reject unsupported files dropped into the editor before Vditor routes them to image upload, so an untitled document reports the unsupported file type instead of asking to save before inserting an image. Markdown drops open documents, and image drops retain the existing upload workflow.
+
+#### Themes
+
+- **fix(theme):** Improve Markdown horizontal-rule contrast in Elegant with the Light and Ant Design content themes, preserving the editor background and each content theme's rule thickness and spacing.
+
+#### Workbench, Tabs, and Settings
+
 - **fix(settings):** Disable Electron's built-in spellchecker in the main window so font names and other configuration text do not receive unwanted spelling underlines.
 - **fix(tabs):** Keep the new-tab button visible when document tabs overflow. Add subtle, theme-aware shadows only at edges with hidden tabs, while preserving horizontal wheel scrolling and the existing tab-width behavior.
-- **fix(drop):** Reject unsupported files dropped into the editor before Vditor routes them to image upload, so an untitled document reports the unsupported file type instead of asking to save before inserting an image. Markdown drops open documents, and image drops retain the existing upload workflow.
+
+#### Documents, Links, and Notifications
+
 - **fix(notifications):** Show brief, themed banners for document link, open/save, image insertion, unsupported file drop, and tab-limit failures so they are easier to notice. Routine success feedback remains in the status bar, and temporary notices stack newest first below persistent file-state warnings without taking focus or blocking editor input. Each notice has its own five-second lifetime; a fourth notice fades out the oldest early, keeping up to three active notices. All document banners fade in and out consistently, with immediate visibility changes when reduced motion is enabled.
 - **fix(links):** Explain unsupported file types, absolute paths, and `file://` document links with specific messages on hover and Ctrl/Cmd-click. Unsupported targets keep a text cursor, while supported links retain the modifier-key navigation hint and pointer cursor. Distinguish an unavailable source from a missing target, and preserve permission/I/O failures instead of reporting every link resolution failure as a missing file.
 - **fix(files):** Forward missing or inaccessible Markdown paths from external open requests to the document open workflow so it can show an error banner instead of silently discarding them before the renderer receives the request.
