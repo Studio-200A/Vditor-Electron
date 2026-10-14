@@ -1022,6 +1022,70 @@ test('offers three theme modes from the status bar and removes the settings chec
   }
 });
 
+for (const appTheme of ['elegant', 'classic'] as const) {
+  for (const contentTheme of ['light', 'ant-design'] as const) {
+    test(`renders Markdown horizontal rules in ${appTheme} with ${contentTheme}`, async () => {
+      const running = await launchApp({
+        theme: appTheme,
+        lightTheme: appTheme,
+        contentTheme,
+        editMode: 'ir',
+      });
+      try {
+        const { page } = running;
+        await createNewTab(page);
+        await page
+          .locator('.editor-host.active .vditor-ir .vditor-reset')
+          .fill('Before\n\n***\n\nBetween\n\n---\n\nAfter');
+        await expect(page.locator('#vditorContentTheme')).toHaveAttribute(
+          'href',
+          new RegExp(`${contentTheme}\\.css$`),
+        );
+
+        const assertRules = async (modeSelector: string) => {
+          const root = page.locator(`.editor-host.active ${modeSelector} .vditor-reset`);
+          const rules = root.locator('hr');
+          await expect(rules).toHaveCount(2);
+          await expect(root).toHaveCSS(
+            'background-color',
+            appTheme === 'elegant' ? 'rgb(240, 237, 234)' : 'rgb(255, 255, 255)',
+          );
+          for (const rule of await rules.all()) {
+            await expect(rule).toHaveCSS(
+              'background-color',
+              appTheme === 'elegant'
+                ? 'rgb(222, 218, 214)'
+                : contentTheme === 'light'
+                  ? 'rgb(234, 236, 239)'
+                  : 'rgb(240, 240, 240)',
+            );
+            await expect(rule).toHaveCSS('height', contentTheme === 'light' ? '2px' : '1px');
+            await expect(rule).toHaveCSS(
+              'margin-top',
+              contentTheme === 'ant-design'
+                ? '56px'
+                : modeSelector === '.vditor-preview'
+                  ? '24px'
+                  : '12px',
+            );
+          }
+        };
+
+        await assertRules('.vditor-ir');
+        const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+        await modeTrigger.click();
+        await page.locator('#vditorToolbarMount button[data-mode="wysiwyg"]').click();
+        await assertRules('.vditor-wysiwyg');
+        await modeTrigger.click();
+        await page.locator('#vditorToolbarMount button[data-mode="sv"]').click();
+        await assertRules('.vditor-preview');
+      } finally {
+        await closeApp(running);
+      }
+    });
+  }
+}
+
 for (const appTheme of ['dark', 'claude-dark', 'monokai-pro-dark'] as const) {
   for (const contentTheme of ['ant-design', 'wechat'] as const) {
     test(`keeps ${contentTheme} content readable in ${appTheme}`, async () => {

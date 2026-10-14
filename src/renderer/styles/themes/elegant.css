@@ -1,5 +1,5 @@
 /* Elegant palette source: https://github.com/marswaveai/ColaMD/blob/main/themes/elegant.css.
-   This shell theme deliberately leaves Vditor content and code themes to Vditor. */
+   Content and code themes remain independent, with a rule contrast adjustment below. */
 :root[data-theme='elegant'] {
   --bg: #f0edea;
   --panel: #eae6e1;
@@ -17,4 +17,12 @@
   --danger: #c44b2b;
   --top-surface-shadow: 0 5px 12px -8px rgb(44 44 44 / 0.28), 0 2px 5px -4px rgb(44 44 44 / 0.14);
   color-scheme: light;
+}
+
+/* Light content themes use near-white rules that disappear on Elegant's warm surface.
+   Keep their original thickness and spacing; hr is standard rendered Markdown content. */
+:root[data-theme='elegant']
+  .editor-host:is([data-content-theme='light'], [data-content-theme='ant-design'])
+  hr {
+  background-color: #dedad6;
 }
