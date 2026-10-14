@@ -107,6 +107,7 @@ export interface ClipboardContent {
 }
 
 export interface VditorDesktopAdapter {
+  decorateCodeBlockMenu(code: HTMLElement, menu: HTMLElement): void;
   editorParts(host: HTMLElement | null | undefined): EditorParts;
   mountedToolbar(mount: HTMLElement | null | undefined): HTMLElement | null;
   isInitializedEditorHost(host: HTMLElement | null | undefined): boolean;

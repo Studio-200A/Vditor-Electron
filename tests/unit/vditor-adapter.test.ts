@@ -41,6 +41,74 @@ describe('Vditor DOM compatibility adapter', () => {
     return host;
   }
 
+  it('decorates code menus without changing code text or the upstream copy contract', () => {
+    const code = window.document.createElement('code');
+    code.className = 'language-py hljs';
+    code.textContent = 'print("hello")\n';
+    code.style.backgroundImage = 'linear-gradient(red, blue)';
+    code.style.backgroundSize = '20px 20px';
+    const pre = window.document.createElement('pre');
+    pre.append(code);
+    const menu = window.document.createElement('div');
+    menu.className = 'vditor-copy';
+    menu.innerHTML = '<textarea>print("hello")</textarea><span><svg></svg></span>';
+    const copy = menu.lastElementChild;
+    adapter.decorateCodeBlockMenu(code, menu);
+    adapter.decorateCodeBlockMenu(code, menu);
+    expect(menu.dataset.language).toBe('Python');
+    expect(menu.classList.contains('app-code-block-header')).toBe(true);
+    expect(pre.classList.contains('hljs')).toBe(true);
+    expect(pre.classList.contains('app-code-block')).toBe(true);
+    expect(menu.style.backgroundImage).toBe(code.style.backgroundImage);
+    expect(menu.style.backgroundSize).toBe('20px 20px');
+    expect(copy?.classList.contains('app-code-block-copy')).toBe(true);
+    expect(copy?.previousElementSibling).toBe(menu.querySelector('textarea'));
+    expect(menu.children).toHaveLength(2);
+    expect(menu.textContent).toBe('print("hello")');
+    expect(code.textContent).toBe('print("hello")\n');
+    code.className = 'language-<img>';
+    adapter.decorateCodeBlockMenu(code, menu);
+    expect(menu.dataset.language).toBe('<img>');
+    expect(menu.querySelector('img')).toBeNull();
+    code.className = '';
+    adapter.decorateCodeBlockMenu(code, menu);
+    expect(menu.dataset.language).toBe('');
+  });
+
+  it('leaves an incompatible copy menu untouched', () => {
+    const code = window.document.createElement('code');
+    const menu = window.document.createElement('div');
+    menu.innerHTML = '<span>unexpected menu</span>';
+    adapter.decorateCodeBlockMenu(code, menu);
+    expect(menu.className).toBe('');
+    expect(menu.dataset.language).toBeUndefined();
+  });
+
+  it('binds copying under CSP once and uses the current upstream locale', () => {
+    const code = window.document.createElement('code');
+    const menu = window.document.createElement('div');
+    menu.innerHTML =
+      '<textarea>print(1)</textarea><span onclick="throw 1" onmouseover="throw 1"></span>';
+    const textarea = menu.querySelector('textarea')!;
+    const button = menu.querySelector('span')!;
+    const select = vi.spyOn(textarea, 'select');
+    const blur = vi.spyOn(textarea, 'blur');
+    const copy = vi.fn().mockReturnValue(true);
+    Object.defineProperty(window.document, 'execCommand', { value: copy });
+    (window as any).VditorI18n = { copy: 'Copy', copied: 'Copied' };
+    adapter.decorateCodeBlockMenu(code, menu);
+    adapter.decorateCodeBlockMenu(code, menu);
+    expect(button.hasAttribute('onclick')).toBe(false);
+    expect(button.hasAttribute('onmouseover')).toBe(false);
+    button.click();
+    expect(copy).toHaveBeenCalledExactlyOnceWith('copy');
+    expect(select).toHaveBeenCalledOnce();
+    expect(blur).toHaveBeenCalledOnce();
+    expect(button.getAttribute('aria-label')).toBe('Copied');
+    button.dispatchEvent(new window.MouseEvent('mouseover'));
+    expect(button.getAttribute('aria-label')).toBe('Copy');
+  });
+
   function createFrameQueue() {
     const frames = new Map<number, FrameRequestCallback>();
     let nextFrame = 0;

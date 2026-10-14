@@ -769,6 +769,8 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 
 #### DOM 结构查询
 
+渲染代码块顶栏通过 `editor-options.ts` 的 `preview.hljs.renderMenu` 接入 `decorateCodeBlockMenu(code, menu)`。adapter 封装语言 class 和复制 textarea/span 结构，给菜单与外围代码块添加应用展示类，绑定 CSP 兼容的复制事件；`app.css` 为顶部语言标签与悬停复制按钮保留固定高度并继承代码背景。语言标签是 CSS 伪元素，不属于 Markdown 正文。
+
 | 函数                                  | 入参                          | 返回值                                                             | 用途                                                                                                                   |
 | ------------------------------------- | ----------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
 | `editorParts(host)`                   | `host`                        | `{ toolbar, content, source, instantRendering, wysiwyg, preview }` | 返回编辑器各子视图 DOM 节点                                                                                            |

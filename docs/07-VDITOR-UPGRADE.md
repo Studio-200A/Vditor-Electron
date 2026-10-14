@@ -4,6 +4,8 @@ Vditor Desktop 不修改 `node_modules/vditor` 的源码，但工具栏合并、
 
 ## 兼容边界
 
+- 代码块顶栏经 `preview.hljs.renderMenu` 接入 adapter 的 `decorateCodeBlockMenu(code, menu)`：依赖 Vditor 3.11.3 在插入 `.vditor-copy` 前传入代码与菜单，菜单保留 `textarea` 紧邻复制 `span`，语言来源为 `language-*` class。adapter 为外围 `pre` 添加代码主题类，CSS 顶栏继承其背景；语言通过 `data-language` / CSS 伪元素展示，不增加正文文本。上游内联事件被应用 CSP 阻止，adapter 用元素自身事件属性绑定原有 textarea select → execCommand copy → blur 路径，文案使用 Vditor 当前 locale。升级须运行 `tests/e2e/code-block-header.spec.ts`，核对三模式的背景连续、行号、长行滚动、大字号、复制内容、语言修改与切换模式后保存；不得通过放开 CSP 修复复制。
+
 - Vditor 3.11.3 的编辑区文件 drop 经 paste/upload handler 处理，可能在 body 冒泡阶段之前消费事件。Desktop 的 `AppController` 在捕获阶段分类文件，先打开 Markdown 或拒绝不支持的文件，仅让编辑区图片继续走 Vditor 上传。升级须运行三模式文件拖入 E2E，确认未保存文档拖入 TXT 显示文件类型提示、图片仍显示保存前置条件，且已保存图片上传与 Markdown 打开保持正常；文字与 HTML 拖放不能被文件分类误拦截。
 
 - 公开 API 和初始化选项位于 `src/renderer/editor/editor-options.ts`（Vditor constructor-only 设置、离线资源、locale、relative-resource base 与回调接线）；Vditor 实例化与重建生命周期由 `src/renderer/editor/editor-controller.ts` 负责，其余业务代码不再直接构造 `new Vditor()`。

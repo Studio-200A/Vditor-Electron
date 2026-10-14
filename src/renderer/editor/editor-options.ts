@@ -79,6 +79,7 @@ export interface EditorOptionsDependencies<TTab extends EditorOptionsTab> {
   readonly isDarkTheme: (theme: string) => boolean;
   readonly localResourceBase: (baseDir: string) => string;
   readonly onUpload: (tab: TTab, files: File[]) => Promise<string | null>;
+  readonly decorateCodeBlockMenu?: (code: HTMLElement, menu: HTMLElement) => void;
   readonly callbacks: Pick<VditorOptions, 'after' | 'input' | 'blur'>;
 }
 
@@ -133,6 +134,7 @@ export function createEditorOptions<TTab extends EditorOptionsTab>(
         enable: settings.enableHighlight,
         lineNumber: settings.lineNumbers,
         style: settings.codeTheme,
+        renderMenu: dependencies.decorateCodeBlockMenu,
       },
       math: { engine: settings.mathEngine },
       markdown: {

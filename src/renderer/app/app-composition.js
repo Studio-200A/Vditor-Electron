@@ -1565,6 +1565,7 @@
       isDarkTheme,
       localResourceBase,
       onUpload: handleImageUpload,
+      decorateCodeBlockMenu: VDITOR.decorateCodeBlockMenu,
       callbacks: {
         after: () => {
           if (!editorController.isCurrent(tab, runtimeGeneration)) return;

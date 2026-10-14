@@ -1459,6 +1459,52 @@ html[data-scrollbar-mode='hidden']
 .sv-split-resizer.snapped {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
 }
+.editor-host .app-code-block {
+  border-radius: 5px;
+}
+.editor-host .app-code-block > code {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.editor-host .app-code-block > code:not(.hljs):not(.highlight-chroma) {
+  background-color: inherit !important;
+  padding: 0.5em;
+  white-space: pre;
+  word-break: initial;
+  word-wrap: normal;
+}
+.editor-host .app-code-block-header {
+  display: block;
+  position: relative;
+  height: 32px;
+  background-color: inherit;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+  color: var(--muted);
+  user-select: none;
+}
+.editor-host .app-code-block-header::before {
+  content: attr(data-language);
+  position: absolute;
+  inset: 0 44px 0 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 12px / 32px var(--ui-font);
+  text-align: left;
+}
+.editor-host .app-code-block-copy {
+  top: 9px;
+  right: 12px;
+  visibility: hidden;
+}
+.editor-host pre:hover > .app-code-block-header > .app-code-block-copy,
+.editor-host .app-code-block-header:focus-within > .app-code-block-copy {
+  visibility: visible;
+}
+.editor-host .app-code-block-copy svg {
+  color: var(--muted);
+}
 .editor-host .vditor-ir code,
 .editor-host .vditor-wysiwyg code,
 .editor-host .vditor-preview code,

@@ -2,6 +2,7 @@ import type { VditorDesktopAdapter } from './adapter.js';
 
 /** Runtime tests compare this declaration manifest with the frozen adapter facade. */
 export const ADAPTER_PUBLIC_KEYS = [
+  'decorateCodeBlockMenu',
   'editorParts',
   'mountedToolbar',
   'isInitializedEditorHost',
@@ -87,6 +88,7 @@ export const ADAPTER_PUBLIC_KEYS = [
 
 /** This file is included by renderer strict typechecking but has no runtime caller. */
 export function verifyAdapterCallContract(adapter: VditorDesktopAdapter, host: HTMLElement): void {
+  adapter.decorateCodeBlockMenu(host, host);
   const parts = adapter.editorParts(host);
   const toolbar = parts.toolbar;
   const selection = adapter.captureSplitIndentSelection(host);

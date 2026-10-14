@@ -37,6 +37,77 @@
   const documentLinkPresentation = new WeakMap();
   const splitHeadingAlignmentRatio = 0.2;
 
+  function decorateCodeBlockMenu(code, menu) {
+    // Vditor 3.11.3 calls renderMenu before inserting .vditor-copy before code.
+    // Keep textarea immediately before its copy span. A CSS label adds no text
+    // to selection/serialization; element-owned handlers expire with the menu.
+    const button = menu.querySelector('span');
+    if (!button || button.previousElementSibling?.tagName !== 'TEXTAREA') return;
+    // The surrounding PRE shares the selected highlight theme with its CODE,
+    // including when token highlighting is disabled; the header inherits it.
+    code.parentElement?.classList.add('hljs', 'app-code-block');
+    const presentation = window.getComputedStyle(code);
+    menu.style.backgroundImage = presentation.backgroundImage;
+    menu.style.backgroundSize = presentation.backgroundSize;
+    const language = [...code.classList].find((name) => name.startsWith('language-'))?.slice(9);
+    const names = {
+      python: 'Python',
+      py: 'Python',
+      javascript: 'JavaScript',
+      js: 'JavaScript',
+      typescript: 'TypeScript',
+      ts: 'TypeScript',
+      json: 'JSON',
+      html: 'HTML',
+      xml: 'XML',
+      css: 'CSS',
+      bash: 'Bash',
+      sh: 'Shell',
+      shell: 'Shell',
+      java: 'Java',
+      c: 'C',
+      cpp: 'C++',
+      csharp: 'C#',
+      cs: 'C#',
+      go: 'Go',
+      rust: 'Rust',
+      ruby: 'Ruby',
+      php: 'PHP',
+      sql: 'SQL',
+      yaml: 'YAML',
+      yml: 'YAML',
+      toml: 'TOML',
+      markdown: 'Markdown',
+      md: 'Markdown',
+      text: 'Text',
+      plaintext: 'Text',
+    };
+    menu.classList.add('app-code-block-header');
+    menu.dataset.language = language
+      ? Object.hasOwn(names, language.toLowerCase())
+        ? names[language.toLowerCase()]
+        : language
+      : '';
+    button.classList.add('app-code-block-copy');
+    // The application's CSP blocks Vditor's inline handlers. Bind the same copy
+    // transaction without weakening CSP, using Vditor's active locale strings.
+    button.removeAttribute('onclick');
+    button.removeAttribute('onmouseover');
+    button.onmouseover = () => {
+      if (window.VditorI18n?.copy) button.setAttribute('aria-label', window.VditorI18n.copy);
+    };
+    button.onclick = (event) => {
+      event.stopPropagation();
+      const textarea = button.previousElementSibling;
+      textarea.select();
+      const copied = document.execCommand('copy');
+      if (copied && window.VditorI18n?.copied)
+        button.setAttribute('aria-label', window.VditorI18n.copied);
+      if (!copied) console.warn('Code block copy command was unsuccessful.');
+      textarea.blur();
+    };
+  }
+
   function editorParts(host) {
     return {
       toolbar: host?.querySelector(selectors.toolbar) || null,
@@ -2320,6 +2391,7 @@
   }
 
   window.VditorDesktopAdapter = Object.freeze({
+    decorateCodeBlockMenu,
     editorParts,
     mountedToolbar,
     isInitializedEditorHost,

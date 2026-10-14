@@ -47,6 +47,7 @@ describe('editor options', () => {
   it('creates offline options with localized settings and relative-resource base', async () => {
     const onUpload = vi.fn().mockResolvedValue(null);
     const after = vi.fn();
+    const decorateCodeBlockMenu = vi.fn();
     const options = createEditorOptions(
       { content: '# Note', mode: 'sv' as const, baseDir: '/notes/a b' },
       {
@@ -58,6 +59,7 @@ describe('editor options', () => {
         isDarkTheme: (theme) => theme === 'dark',
         localResourceBase: (baseDir) => `local-file://root${baseDir}/`,
         onUpload,
+        decorateCodeBlockMenu,
         callbacks: { after },
       },
     );
@@ -80,6 +82,7 @@ describe('editor options', () => {
       codeBlockPreview: true,
     });
     expect(options.after).toBe(after);
+    expect(options.preview?.hljs?.renderMenu).toBe(decorateCodeBlockMenu);
     await options.upload?.handler?.([new File(['image'], 'photo.png', { type: 'image/png' })]);
     expect(onUpload).toHaveBeenCalledWith(
       { content: '# Note', mode: 'sv', baseDir: '/notes/a b' },
