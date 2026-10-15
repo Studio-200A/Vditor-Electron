@@ -984,6 +984,19 @@ test('toggles word wrap across editing modes while paragraph width stays indepen
     await expectWrap('sv', false);
     const source = editorFor('sv');
     await expect(page.locator('.editor-host.active .sv-line-number')).toHaveCount(2);
+    // A Desktop mode transition re-applies the previous mode's scroll position over
+    // four animation frames plus one final pass 80ms later. Wait until a deliberate
+    // horizontal scroll survives that window, so a late pass cannot reset the axis
+    // under test after the caret has already moved.
+    await expect
+      .poll(() =>
+        source.evaluate(async (node) => {
+          (node as HTMLElement).scrollLeft = 40;
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 150));
+          return (node as HTMLElement).scrollLeft;
+        }),
+      )
+      .toBe(40);
     await source.evaluate((node) => {
       (node as HTMLElement).focus();
       const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);

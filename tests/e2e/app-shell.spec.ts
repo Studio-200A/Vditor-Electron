@@ -2224,6 +2224,12 @@ test('uses the file name in the title and matches the layered chrome surfaces', 
 
     await selectThemeMode(page, 'dark');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    // Each theme stylesheet is a separate <link> that applyTheme() enables after
+    // setting data-theme, so the attribute is not a paint barrier. Wait for the
+    // dark palette to reach the chrome before snapshotting the layered surfaces.
+    await expect
+      .poll(async () => (await chromeColors()).windowTitlebar)
+      .not.toBe(lightColors.windowTitlebar);
     const darkColors = await chromeColors();
     expect(darkColors.windowTitlebar).toBe(darkColors.sidebar);
     expect(darkColors.titlebar).toBe(darkColors.sidebar);

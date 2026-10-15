@@ -2,7 +2,7 @@
 
 - **最后同步：** 2026-10-15
 - **基于的工作区：** `dev-0.2.7` 当前工作区实现（以已发布的 v0.2.6 为基线）
-- **源码核对基线：** `32065c6` 加当前 YAML front matter 表格化工作区改动（`dev-0.2.7`）
+- **源码核对基线：** `f4ccce3` 加当前 E2E 稳定性工作区改动（`dev-0.2.7`；含 YAML front matter 表格化与工具栏面板焦点守卫）
 - **对应 package.json 版本号：** 0.2.6
 - **技术债与改进建议：** 已迁至 [`docs/00-ISSUES.md`](00-ISSUES.md)，本地图不再维护
 
@@ -654,7 +654,7 @@ const state = {
 | -------- | -------------------------- | --------------------------------------------------------- |
 | 延迟创建 | `createTab()`              | 标签创建时不立即实例化 Vditor                             |
 | 实例化   | `ensureEditor(tab)`        | 首次激活标签时调用 `new Vditor(tab.host, options)`        |
-| 就绪回调 | `after()`                  | 验证 DOM 契约、安装观察者、挂载工具栏、绑定事件           |
+| 就绪回调 | `after()`                  | 验证 DOM 契约、安装观察者、front matter 展示与 undo 焦点守卫、挂载工具栏、绑定事件 |
 | 切换标签 | `switchTab(id)`            | 恢复旧工具栏到原标签 host，将新标签工具栏挂载到共享 mount |
 | 模式切换 | `rebuildEditor(tab, mode)` / `prepareVditorModeTransition()` | 应用菜单经 `EditorController.rebuild()` 重建；Vditor 工具栏与快捷键走原生切换，controller 捕获位置、同步模式并对账保存点 |
 | 销毁标签 | `closeTab(id)`             | 调用 `tab.vditor.destroy()` 并移除 host 节点              |
@@ -796,6 +796,7 @@ Vditor 私有 DOM 交互通过 `vditor-adapter.js` 封装（见下 §7.8）。
 | `captureUndoHistory(instance)`        | `instance`                    | `history \| null`                                                  | 重建销毁前经 Vditor 私有 `undo.addToUndoStack()` 冲洗防抖中尚未到期的输入历史，返回可移交的私有 undo owner；结构不完整时返回 `null` |
 | `scheduleUndoHistoryRestore(instance, history, onRestored)` | `instance, history, callback` | `() => void`                                 | 在新实例 `after` 后等待 `undoDelay` 初始基线完成，再把捕获的 undo owner 交还 Vditor 并刷新 undo/redo 图标；返回取消 timer 的 disposer |
 | `installUndoFocusGuard(instance)` | `instance` | `() => void` | 包装 Vditor 3.11.3 私有 `undo.addCaret`：仅当入栈请求恢复焦点而活动元素已不在当前编辑区内时把 `setFocus` 改为 `false`，避免 delayed undo 的选区恢复重新聚焦编辑区并关闭已打开的工具栏子面板；正文快照与 Range 不变，disposer 恢复原型继承或原有自有方法 |
+| `installFrontMatterTables(host, createTable)` | `host, createTable` | `() => void` | 识别三模式的专用 YAML front matter 节点：SV 换为只读预览，IR/WYSIWYG 保留原 CODE 并挂载非编辑展示节点；点击、选区或查找命中时展开源码，离开后恢复表格；MutationObserver 处理输入、undo 与模式切换后的节点重建，不触发全文 `getValue()`/`setValue()`；返回 disposer |
 | `installCustomCaret(host, getMode, getStyle)` | `host, getMode, getStyle` | `() => void`                                             | 安装 IR/WYSIWYG/SV 的 underline/bar/block 自绘光标代理：读取折叠 Selection/Range 几何、滚动同步、闪烁、视口裁剪与 sidebar 拖动隐藏；SV 中无论 Range 属于字形、空行、空标题 span 还是表格换行后的零矩形选区，均按编辑根源码行高稳定绘制，表格分隔行 Enter 后经前一行换行矩形定位到下一行开头；IR/WYSIWYG 行内 Markdown 格式化后落在段落子节点之后的零矩形选区经前一行内节点末端定位插入点，空文档 Enter 后的空段落按空编辑根字体签名测量的行高居中绘制；IR 中 Vditor 3.11.3 恢复到未展开标题 marker 文本或其后边界时与 Chromium 原生行为一致地不绘制；返回 disposer |
 | `setEditorBottomSpacer(host, height)` | `host, pixels`                | `boolean`                                                          | 为 SV、IR、WYSIWYG 与 preview 写入 Vditor 私有 `--editor-bottom`，形成动态尾部留白                                   |
 | `scrollContainers(host)`              | `host`                        | `Element[]`                                                        | 获取所有可滚动容器节点（用于自动隐藏滚动条）                                                                           |
@@ -1466,10 +1467,13 @@ function rememberRecent(filePath) {
   → 状态栏太阳 / 月亮 / 显示器模式解析其中一项为当前 theme
   → themeCoordinator.applyTheme(theme)
     → document.documentElement.dataset.theme = theme
+    → 启用 `theme-<theme>` link 并禁用其余主题样式表
     → tab.vditor.setTheme(editorTheme, contentTheme, codeTheme, cssPath)
     → adapter.refreshMermaidTheme(host, markdown, editorTheme)  // 重绘已渲染 Mermaid
     → syncCodeThemeControls(dark, codeTheme)  // 过滤代码主题下拉选项
 ```
+
+主题样式表按需加载：首次启用某个主题的 `<link>` 时加载是异步的，`data-theme` 属性与最终计算样式之间存在短暂窗口；冷切换的用户可见风险与 E2E 等待前提见 [`00-ISSUES.md`](00-ISSUES.md)。
 
 ### 11.4 暗色模式实现
 
@@ -1928,10 +1932,11 @@ flowchart TB
 | `tests/unit/recovery-store.test.ts` | `src/main/services/recovery-store.ts` | 私有目录/文件权限、候选元数据不含正文、原子写入与显式清理、损坏/未知 schema/超限快照移除，以及 `unchanged` / `changed` / `unavailable` 三种磁盘状态 |
 | `tests/unit/persistent-state-store.test.ts` | `src/main/services/persistent-state-store.ts` | 旧 TOML 状态仅迁移一次且保持 config.toml 偏好化、损坏/未知 schema 安全默认值不阻塞启动、串行原子更新、清空状态时保留用户偏好 |
 | `tests/unit/resource-health-service.test.ts` | `src/main/services/resource-health-service.ts` | Markdown/HTML 本地引用提取（数字实体、未支持命名实体保守阻断、引号属性中的 `>`、代码围栏遮蔽、远程/`data:`/工作区外排除）、候选仅枚举图片目录直接常规文件、直接符号链接阻断与二级目录排除、工作区根为符号链接时返回 `workspace-symbolic-link` 不可用、`pasteImagesDir` 路径段符号链接拒绝、隐藏用户文档保护与 VCS/缓存目录排除、scan epoch/revision 生命周期、回收站前复核、读取/数量/目录项/时长上限只读结果 |
-| `tests/unit/vditor-adapter.test.ts` | `src/renderer/vditor-adapter.js` 与 adapter 类型 manifest | 运行时全部导出键与声明 manifest（`ADAPTER_PUBLIC_KEYS`）的精确一致性、`validateHost` 成功（toolbar 通过 `mountedToolbar` 参数提供）、代码主题亮/暗分界点（`ant-design` 前为 dark 组）、DOM 漂移检测（缺少 source 节点时 `valid: false`）、SV divider 创建与 pane 语义可见性、列表 `marker`/`padding` 解析、动态尾部留白写入全部 Vditor 表面、SVG 开关热更新的图片原始来源与缓存隔离、WYSIWYG 替换期间恢复原始 SVG URL、hash anchor 到标题索引（IR 内部链接 + 元素 id + slug）、原生大纲 snapshot、标题间普通块时的准确目标节点及 SV preview 外层滚动容器、SV source → preview 标题锚点滚动同步（等量配对插值、20% viewport 对齐、集合不等时保留原生比例同步）、`restorePreviewOnly` 经 Preview toolbar action 恢复 preview-only、`refreshMermaidTheme` 在围栏与渲染节点配对时重绘 Mermaid 并在不配对时保持原图表、跨多 span 文本节点的匹配与选区、自绘光标代理的滚动同步/越界隐藏/闪烁重启与快照滚动偏移复制、自绘光标几何稳定性（SV 空标题与空行按源码行高、IR/WYSIWYG 空段落按字体测量高度、SV 表格分隔行换行后的下一行定位、IR/WYSIWYG 行内 marker 后的插入点定位）、`applyWordWrap` 对三模式可编辑滚动根的换行标记与居中滚动类切换 |
+| `tests/unit/vditor-adapter.test.ts` | `src/renderer/vditor-adapter.js` 与 adapter 类型 manifest | 运行时全部导出键与声明 manifest（`ADAPTER_PUBLIC_KEYS`）的精确一致性、`validateHost` 成功（toolbar 通过 `mountedToolbar` 参数提供）、代码主题亮/暗分界点（`ant-design` 前为 dark 组）、DOM 漂移检测（缺少 source 节点时 `valid: false`）、SV divider 创建与 pane 语义可见性、列表 `marker`/`padding` 解析、动态尾部留白写入全部 Vditor 表面、SVG 开关热更新的图片原始来源与缓存隔离、WYSIWYG 替换期间恢复原始 SVG URL、hash anchor 到标题索引（IR 内部链接 + 元素 id + slug）、原生大纲 snapshot、标题间普通块时的准确目标节点及 SV preview 外层滚动容器、SV source → preview 标题锚点滚动同步（等量配对插值、20% viewport 对齐、集合不等时保留原生比例同步）、`restorePreviewOnly` 经 Preview toolbar action 恢复 preview-only、`refreshMermaidTheme` 在围栏与渲染节点配对时重绘 Mermaid 并在不配对时保持原图表、跨多 span 文本节点的匹配与选区、自绘光标代理的滚动同步/越界隐藏/闪烁重启与快照滚动偏移复制、自绘光标几何稳定性（SV 空标题与空行按源码行高、IR/WYSIWYG 空段落按字体测量高度、SV 表格分隔行换行后的下一行定位、IR/WYSIWYG 行内 marker 后的插入点定位）、`applyWordWrap` 对三模式可编辑滚动根的换行标记与居中滚动类切换、`installFrontMatterTables` 的三模式 YAML 节点识别与不改变 Lute 序列化/find 匹配、`installUndoFocusGuard` 仅在焦点离开编辑区时跳过私有 `undo.addCaret` 的选区焦点恢复并在释放后还原原型或自有方法 |
 | `tests/unit/renderer-shell.test.ts` | 渲染器壳（HTML/CSS/JS/preload）静态结构 | 标题栏 / 菜单 / 窗口控件 DOM；en/zh_Hans/zh_Hant 键完整性对等；Linux 发布脚本；自动隐藏滚动条样式；第二实例文件转发；确认对话框（未保存变更可拖动、无调整尺寸手柄）；设置对话框 8 方向调整手柄；空标签恢复；查找替换控件带 SVG；文件树无 draggable；折叠/展开/中间省略；链接目录斜体下划线与 SVG 资产；设置面板分类；关于面板；UI/编辑器/预览缩放；状态栏三态主题控件与无旧 checkbox；CSP img-src/connect-src；大纲无标题态；Monokai Pro Light / Dark、Nord Dark 与 Elegant 主题；主题预览卡片每行最多四张的网格约束；About logo `draggable="false"`；亮/暗代码主题分离；字体子分组；工作区头部；编辑文本宽度范围；无过时占位符/工具栏设置项；适配器脚本加载顺序；设置路径页脚/重置当前页 |
-| `tests/unit/renderer/editor-controller.test.ts`、`editor-options.test.ts`、`editor-runtime-coordinator.test.ts` | 编辑器实例、构造选项与 tab 激活协调 | generation、幂等 destroy、rebuild 正文/滚动恢复、rebuild 时按 tab 捕获并恢复 SV pane 布局（source-only 经 `preview.mode: 'editor'`、preview-only 经 `restorePreviewOnly()`）、auto-save cleanup、pending content、constructor-only 设置、快速切换的 stale rAF 拒绝与 toolbar hand-off、干净文档保存点对账（初始化/干净重载/模式切换采用编辑器序列化表示、快速输入后切换模式保持 dirty） |
+| `tests/unit/renderer/editor-controller.test.ts`、`editor-options.test.ts`、`editor-runtime-coordinator.test.ts` | 编辑器实例、构造选项与 tab 激活协调 | generation、幂等 destroy、rebuild 正文/滚动恢复、rebuild 时按 tab 捕获并恢复 SV pane 布局（source-only 经 `preview.mode: 'editor'`、preview-only 经 `restorePreviewOnly()`）、auto-save cleanup、pending content、constructor-only 设置、快速切换的 stale rAF 拒绝与 toolbar hand-off、干净文档保存点对账（初始化/干净重载/模式切换采用编辑器序列化表示、快速输入后切换模式保持 dirty）、`installUndoFocusGuard`/`installFrontMatterTables` 的按 tab 安装与 destroy 释放 |
 | `tests/unit/renderer/github-alerts.test.ts` | `src/renderer/editor/github-alerts.ts` | 五种 GitHub alert 的默认 emoji/标题还原、自定义标题的展示 emoji 还原、源文件显式 emoji 保留及无关文本不变 |
+| `tests/unit/renderer/front-matter.test.ts` | `src/renderer/editor/front-matter.ts` | 显式 DOM 键值表格：字段名按原文、多行值与 Markdown/HTML 字面量、嵌套映射/序列及非递归共享别名、解析输入与展开别名预算 |
 | `tests/unit/renderer/split-view-controller.test.ts`、`toolbar-controller.test.ts`、`outline-controller.test.ts`、`find-controller.test.ts` | Split View、共享工具栏、大纲与查找 UI | divider/行号/缩进、observer/listener/timer cleanup、toolbar owner 交接、outline stale refresh 与 SV source-only 不可用空态（`isUnavailable` 优先于“文档无标题”）、find reveal 与窗口快捷键 |
 | `tests/unit/renderer/image-controller.test.ts`、`recovery-runtime-controller.test.ts`、`recovery-banner-controller.test.ts` | 图片与 recovery editor runtime | 图片文件名/写入边界、资源 observer、recovery debounce 替换、串行 save/discard、不可用文件保存、非致命 I/O 失败、三种 recovery banner 状态与动作路由 |
 | `tests/unit/renderer/document-controller.test.ts`、`document-controller.integration.test.ts`、`document-save-controller.test.ts`、`document-close-controller.test.ts`、`external-change-controller.test.ts` | 文档生命周期命令 | canonical identity、保存队列、关闭顺序、外部变化分类，以及与 editor runtime 的安全组合边界 |
@@ -1963,6 +1968,7 @@ flowchart TB
 | --- | --- |
 | `app-shell.spec.ts` | 应用启动与单实例、标题栏/菜单/标签、主题、设置、窗口与本地化壳层（含三语言运行时切换的菜单/dialog/空态/通知），以及侧栏过渡期间的编辑器几何与反向切换 |
 | `editor-modes.spec.ts` | 查找替换、WYSIWYG / IR / SV、工具栏、选择、表格、分栏、滚动、自绘光标与 Vditor DOM 契约 |
+| `front-matter.spec.ts` | YAML front matter 表格展示：三模式打开/初始光标/长值/模式切换，编辑、undo 与无效 YAML 修正后的源码与展示状态 |
 | `document-lifecycle.spec.ts` | 保存、恢复、工作区、文件树、原生打开对话框、导出资源、watcher、外部冲突、删除、重命名与 Save As 路径一致性 |
 | `navigation-and-resources.spec.ts` | Markdown/大纲导航、外部 URL 边界，受控根下的本地/HTTPS/上传图片资源与统一 SVG 渲染开关，以及资源健康扫描、缺失引用删除、回收站确认和已保存快照 |
 | `scrollbars.spec.ts` | 三模式渲染代码块独立横向滚动条、原生 thumb 拖动、文档与设置切换，以及外层 pane 边缘显示和自动隐藏 |
@@ -1993,6 +1999,7 @@ flowchart TB
 - SV source → preview 标题锚点滚动同步：滚动 source 时匹配的源/渲染标题在两个面板各约 20% 视口高度对齐（含 HTML 表格块时仍准确），且 preview 独立阅读滚动不带动 source
 - 自动换行开关在三模式实时切换且不重建编辑器：`editorTextWidth` 滑块效果独立保持，关闭换行时 WYSIWYG/IR 在选定文本列内水平滚动且列保持居中
 - 撤销回退到保存/初始/干净重载内容时清除脏标记（三模式，含会话内模式切换后）；快速输入后立即切换模式保持 dirty 并保留关闭确认
+- 编辑后立即打开 edit-mode 工具栏面板并跨过 `undoDelay`：面板保持可操作，undo/redo 仍回到输入前/后正文，切换模式保留内容（IR/WYSIWYG）
 - `Ctrl+Alt+8` 模式切换
 - 设置重建后保留当前编辑模式（WYSIWYG 不被覆盖回 IR）
 - 编辑器设置将 `caretStyle` 切换为 `native` 后移除自绘光标代理、恢复 Chromium 原生光标并持久化设置
@@ -2004,6 +2011,7 @@ flowchart TB
 - 编辑区动态尾部留白：IR / WYSIWYG / SV 源码与 preview 均为编辑器高度约 50%，窗口缩放后重新计算
 - 大纲标题导航：IR / WYSIWYG / SV（双面板）点击后对应标题均进入实际滚动容器的可视区
 - 相对图片加载（Markdown `![](assets/x.png)` + HTML `<img>` 不污染源码）
+- YAML front matter 表格展示：三模式下打开/初始光标/长值保持表格，点击或选区进入源码，编辑、undo 与模式切换后保留注释与源码，无效 YAML 修正后恢复展示；查找不重复计数展示文字
 - HTTPS 文档图片在三模式下均加载
 - 工具栏不出现 `fullscreen` 按钮，WYSIWYG 代码块使用 `previewCodeFontFamily`
 - 编辑区右键菜单仅接管三种模式的真实可编辑表面；覆盖 Range 恢复、SV preview / 查找框排除、剪贴板命令与 WYSIWYG / IR 表格行列操作；SV `Ctrl/Cmd+Shift+I/O` 反/增加列表缩进，以及原生/右键 Markdown、rich-text Paste 均复用 Vditor 的粘贴与 undo 路径

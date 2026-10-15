@@ -4,15 +4,33 @@
 >
 > `docs/01-CODE-STRUCTURE.md` 是代码架构导航地图，不再维护技术债清单。
 
-## 0.2.7 双 worker 全量中的其他未决 E2E 失败
+## Desktop 模式切换后的滚动恢复会覆盖用户约 150ms 内的滚动或光标移动
 
-**状态：** 本轮四组稳定性维护之外的独立验证缺口，尚未定位根因；不能直接判为应用回归或无害 flaky。
+**状态：** 已用临时探针在真实 Electron 中复现并取得调用栈；用户要求先记录、暂不关闭也不修改产品行为，等待后续产品决策。
 
-- `tests/e2e/app-shell.spec.ts` 的 `uses the file name in the title and matches the layered chrome surfaces`：切换 dark 且 data-theme 已更新后，单次读取的 statusbar 与 sidebar 仍同为 `rgb(240, 241, 243)`，不满足表面分层断言。
-- `tests/e2e/editor-modes.spec.ts` 的 `toggles word wrap across editing modes while paragraph width stays independent`：SV 按 End 后 scrollLeft 保持 0，未达到预期的横向滚动距离。
-- 同文件的 `shows the editor context menu only on editable surfaces and restores its Range`：整例 30 秒超时，尚未对根因作结论。
+`EditorController.restoreScroll()`（`src/renderer/editor/editor-controller.ts`，由 `src/renderer/app/app-composition.js` 的 `prepareVditorModeTransition` 在工具栏或快捷键切换模式时调用）会在四个 `requestAnimationFrame` 中重复恢复上一模式的 `scrollTop`/`scrollLeft`，并在最后一个 rAF 后 80ms 再执行一次最终恢复。探针记录：切换 IR → SV 后，用户在 t=661ms 按 End 使 SV 源码 `scrollLeft` 变为 2332，t=730ms 的最终恢复写回 0（栈为 `restore` ← `restoreUntilStable` ← `EditorController.restoreScroll`）。因此切换后约 150ms 内用户主动滚动或移动光标会被这次延迟恢复静默覆盖；跨模式沿用上一模式的 `scrollLeft` 本身也与目标模式布局无关（`scrollTop` 只在新旧模式相同时使用绝对值，否则按比例）。
 
-当前证据来自共享 Linux 桌面下的真实 Electron 双 worker 全量，单次失败不足以区分异步前提、窗口/输入争用与实际功能缺陷；现有 API 不能替代这一根因判断，本轮未改这些用例或运行时代码。关闭条件：分别定位失败阶段，证明并隔离测试环境/同步前提，或修复实际行为缺陷，再以双 worker 重复专项及全量验证；一次复跑通过不视为关闭。执行证据统一见 0.2.7 执行记录的“双 worker E2E 稳定性”。
+**用户前端体感：**
+
+- 触发窗口：切换编辑模式（工具栏菜单、状态栏菜单或 `Ctrl/Cmd+Alt+7/8/9`）后约 150ms 内发生滚动或光标移动。
+- 可见现象：视口被写回切换前位置，表现为“滚了又弹回去”；关闭自动换行且文档含长行时，切到 SV 后立即按 `End`/`Home` 或点击行尾，横向可见区域会被拉回最左。纵向恢复本身是“跨模式保留阅读位置”的设计意图，问题只在它会覆盖更新的用户操作，且横向偏移跨模式本无可比性。
+- 不受影响：正文内容、撤销栈、保存与脏标记、光标在文档中的实际位置；被覆盖的只是视口偏移，用户再滚动一次即可回到期望位置，无数据丢失或功能错误。
+- 命中率与严重度：窗口约 150ms，需要切换后立即操作，常规阅读/编辑节奏通常不会碰到；属于短暂视觉跳变，优先级低，但会给偶发敏感用户造成“滚动失灵”的错觉。
+
+关闭条件：明确产品决策后，选择 (a) 模式变化时不恢复 `scrollLeft`，(b) 用户滚动/输入后取消待执行的恢复，或 (c) 记录为可接受行为并给出理由；随后以真实 Electron 验证切换模式后立即按 End 或拖动滚动不会被覆盖，且既有模式切换恢复、`rebuild` 恢复与相关 E2E 不回归。证据见 0.2.7 执行记录的“三条未决 E2E 失败定位与隔离”。
+
+## 主题样式表在 data-theme 之后启用，冷切换可能短暂保留旧调色板
+
+**状态：** 已从失败 trace 与源码确认属性与计算样式的竞态；用户要求先记录、暂不关闭，未实测用户侧是否可见。
+
+`src/renderer/index.html` 将各主题放在 `disabled` 的独立 `<link id="theme-*">` 中，`src/renderer/ui/theme-coordinator.ts` 的 `applyTheme()` 先写 `document.documentElement.dataset.theme`，再逐个启用/禁用 link。首次启用样式表需要异步加载（app 协议），这段时间内 `html[data-theme]` 已更新而 `:root[data-theme=…]` 的 CSS 变量尚未生效，因此计算样式仍返回旧调色板（chrome 表面无 background transition，已排除过渡插值）；这正是 `app-shell` 分层表面用例首次读取到亮色 `rgb(240, 241, 243)` 的机制。
+
+**用户前端体感：**
+
+- 冷切换到本窗口尚未加载过的主题时，窗口可能有一帧到几帧仍按旧主题绘制，表现为主题切换时“闪一下旧颜色”；深色主题用户在启动瞬间也可能看到浅色壳层。
+- 不影响功能与数据；窗口始终可操作，加载完成后自行收敛。是否肉眼可见未实测，取决于样式表加载耗时（本地 app 协议通常很短，高负载或首次访问可能拉长）。
+
+关闭条件：以真实 Electron 实测（含高负载/首次切换）确认是否存在可见闪变；若可见，将 `applyTheme()` 调整为先等目标样式表就绪再写 `data-theme`（或预加载主题样式表）并验证无旧调色板帧，同时保持现有主题切换与 Vditor `setTheme` 行为不回归；若实测不可见，则记录结论后关闭。相关 E2E 隔离见 `tests/e2e/app-shell.spec.ts` 的分层表面用例。
 
 ## Vditor 3.11.3: 空文档首次 Enter 在 SV 和 IR 中没有形成下一行（见DEV-NOTE）
 
