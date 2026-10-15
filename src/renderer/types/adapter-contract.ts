@@ -2,6 +2,7 @@ import type { VditorDesktopAdapter } from './adapter.js';
 
 /** Runtime tests compare this declaration manifest with the frozen adapter facade. */
 export const ADAPTER_PUBLIC_KEYS = [
+  'installFrontMatterTables',
   'decorateCodeBlockMenu',
   'editorParts',
   'mountedToolbar',
@@ -88,6 +89,10 @@ export const ADAPTER_PUBLIC_KEYS = [
 
 /** This file is included by renderer strict typechecking but has no runtime caller. */
 export function verifyAdapterCallContract(adapter: VditorDesktopAdapter, host: HTMLElement): void {
+  const disposeFrontMatter = adapter.installFrontMatterTables(host, () => null);
+  disposeFrontMatter();
+  // @ts-expect-error Front matter presentation must return a table or null.
+  adapter.installFrontMatterTables(host, () => 'table');
   adapter.decorateCodeBlockMenu(host, host);
   const parts = adapter.editorParts(host);
   const toolbar = parts.toolbar;

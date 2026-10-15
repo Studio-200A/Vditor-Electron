@@ -107,6 +107,10 @@ export interface ClipboardContent {
 }
 
 export interface VditorDesktopAdapter {
+  installFrontMatterTables(
+    host: HTMLElement,
+    createTable: (source: string, document: Document) => HTMLTableElement | null,
+  ): () => void;
   decorateCodeBlockMenu(code: HTMLElement, menu: HTMLElement): void;
   editorParts(host: HTMLElement | null | undefined): EditorParts;
   mountedToolbar(mount: HTMLElement | null | undefined): HTMLElement | null;

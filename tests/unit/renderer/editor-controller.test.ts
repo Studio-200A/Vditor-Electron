@@ -32,6 +32,7 @@ describe('EditorController', () => {
   let observeOutlineChanges: ReturnType<typeof vi.fn>;
   let preserveTableScrollDuringInput: ReturnType<typeof vi.fn>;
   let installCustomCaret: ReturnType<typeof vi.fn>;
+  let installFrontMatterTables: ReturnType<typeof vi.fn>;
   let captureUndoHistory: ReturnType<typeof vi.fn>;
   let scheduleUndoHistoryRestore: ReturnType<typeof vi.fn>;
   let createRebuildSnapshot: ReturnType<typeof vi.fn>;
@@ -54,6 +55,7 @@ describe('EditorController', () => {
     observeOutlineChanges = vi.fn(() => ({ disconnect: vi.fn() }));
     preserveTableScrollDuringInput = vi.fn(() => vi.fn());
     installCustomCaret = vi.fn(() => vi.fn());
+    installFrontMatterTables = vi.fn(() => vi.fn());
     captureUndoHistory = vi.fn(() => null);
     scheduleUndoHistoryRestore = vi.fn(() => vi.fn());
     createRebuildSnapshot = vi.fn(() => vi.fn());
@@ -100,6 +102,7 @@ describe('EditorController', () => {
     };
     controller = new EditorController({
       adapter: {
+        installFrontMatterTables,
         editorScrollContainer: () => null,
         splitViewVisibility,
         restorePreviewOnly,
@@ -153,6 +156,7 @@ describe('EditorController', () => {
       adapter: {
         editorScrollContainer: () => null,
         splitViewVisibility,
+        installFrontMatterTables,
         restorePreviewOnly,
         createRebuildSnapshot,
         setBottomSpacer,
@@ -307,6 +311,19 @@ describe('EditorController', () => {
     expect(secondScrollCleanup).not.toHaveBeenCalled();
   });
 
+  it('releases front matter presentation when reattached and when the editor is destroyed', () => {
+    const firstCleanup = vi.fn();
+    const secondCleanup = vi.fn();
+    installFrontMatterTables.mockReturnValueOnce(firstCleanup).mockReturnValueOnce(secondCleanup);
+    controller.installFrontMatterTables(tab);
+    controller.installFrontMatterTables(tab);
+    expect(firstCleanup).toHaveBeenCalledOnce();
+    expect(secondCleanup).not.toHaveBeenCalled();
+    controller.destroy(tab);
+    controller.destroy(tab);
+    expect(secondCleanup).toHaveBeenCalledOnce();
+  });
+
   it('releases the custom caret when the editor runtime is destroyed', () => {
     const firstCleanup = vi.fn();
     const secondCleanup = vi.fn();
@@ -338,6 +355,7 @@ describe('EditorController', () => {
       adapter: {
         editorScrollContainer: () => null,
         createRebuildSnapshot,
+        installFrontMatterTables,
         setBottomSpacer,
         observeOutlineChanges,
         preserveTableScrollDuringInput,
@@ -570,6 +588,7 @@ describe('EditorController', () => {
       adapter: {
         editorScrollContainer: () => scroller,
         createRebuildSnapshot,
+        installFrontMatterTables,
         setBottomSpacer,
         observeOutlineChanges,
         preserveTableScrollDuringInput,

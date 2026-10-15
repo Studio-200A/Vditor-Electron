@@ -1,4 +1,5 @@
 import type { EditMode, Vditor } from '../state/types.js';
+import { createFrontMatterTable } from './front-matter.js';
 
 export interface EditorScrollPosition {
   readonly mode: EditMode;
@@ -40,6 +41,10 @@ type EditorDocumentUpdates = Pick<
 
 export interface EditorControllerOptions<TTab extends EditorRuntimeTab> {
   readonly adapter: {
+    installFrontMatterTables(
+      host: HTMLElement,
+      createTable: typeof createFrontMatterTable,
+    ): () => void;
     editorScrollContainer(host: HTMLElement, mode: EditMode): HTMLElement | null;
     splitViewVisibility(
       host: HTMLElement,
@@ -116,6 +121,7 @@ export class EditorController<TTab extends EditorRuntimeTab> {
   private readonly outlineObservers = new Map<TTab, { disconnect(): void }>();
   private readonly tableCompositionScrollCleanups = new Map<TTab, () => void>();
   private readonly customCaretCleanups = new Map<TTab, () => void>();
+  private readonly frontMatterCleanups = new Map<TTab, () => void>();
   private readonly rebuildUndoHistories = new Map<TTab, unknown>();
   private readonly rebuildSplitViewLayouts = new Map<TTab, SplitViewLayout>();
   private readonly rebuildUndoRestoreCleanups = new Map<TTab, () => void>();
@@ -301,6 +307,14 @@ export class EditorController<TTab extends EditorRuntimeTab> {
         tab.host,
         () => tab.vditor?.getCurrentMode() ?? tab.mode,
       ),
+    );
+  }
+
+  installFrontMatterTables(tab: TTab): void {
+    this.frontMatterCleanups.get(tab)?.();
+    this.frontMatterCleanups.set(
+      tab,
+      this.adapter.installFrontMatterTables(tab.host, createFrontMatterTable),
     );
   }
 
@@ -603,6 +617,8 @@ export class EditorController<TTab extends EditorRuntimeTab> {
   }
 
   destroy(tab: TTab, disposeTabResources = true): Error | null {
+    this.frontMatterCleanups.get(tab)?.();
+    this.frontMatterCleanups.delete(tab);
     this.cancelAutoSave(tab);
     this.cancelModeTransition(tab);
     this.disconnectBottomSpacer(tab);

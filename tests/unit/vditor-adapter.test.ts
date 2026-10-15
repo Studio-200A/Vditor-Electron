@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { JSDOM } from 'jsdom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ADAPTER_PUBLIC_KEYS } from '../../src/renderer/types/adapter-contract.js';
+import { createFrontMatterTable } from '../../src/renderer/editor/front-matter.js';
 
 describe('Vditor DOM compatibility adapter', () => {
   let window: JSDOM['window'];
@@ -128,6 +129,141 @@ describe('Vditor DOM compatibility adapter', () => {
       }
     };
   }
+
+  it.each([
+    ['ir', 'Md2VditorIRDOM', 'VditorIRDOM2Md'],
+    ['wysiwyg', 'Md2VditorDOM', 'VditorDOM2Md'],
+  ])(
+    'presents %s front matter without changing Lute serialization or find matches',
+    async (mode, render, serialize) => {
+      window.eval(
+        fs.readFileSync(path.resolve('node_modules/vditor/dist/js/lute/lute.min.js'), 'utf8'),
+      );
+      const lute = (window as any).Lute.New();
+      lute.SetYamlFrontMatter(true);
+      const markdown =
+        '---\n# keep this comment\nname: "Example"\ndescription: |\n  first\n  second\n---\n\nBody\n';
+      const host = createHost();
+      window.document.body.append(host);
+      const editor = adapter.activeEditor(host, mode).querySelector('.vditor-reset');
+      editor.setAttribute('contenteditable', 'true');
+      editor.tabIndex = 0;
+      editor.innerHTML = lute[render](markdown);
+      const baseline = lute[serialize](editor.innerHTML);
+      const code = editor.querySelector('code[data-type="yaml-front-matter"]');
+      editor.focus();
+      const initialRange = window.document.createRange();
+      initialRange.selectNodeContents(code);
+      initialRange.collapse(true);
+      window.getSelection()?.removeAllRanges();
+      window.getSelection()?.addRange(initialRange);
+      const dispose = adapter.installFrontMatterTables(host, createFrontMatterTable);
+      window.document.dispatchEvent(new window.Event('selectionchange'));
+      const block = code.parentElement.parentElement;
+      expect(block.classList.contains('app-front-matter-editing')).toBe(false);
+      expect(block.querySelector('.app-front-matter-table th').textContent).toBe('name');
+      expect(lute[serialize](editor.innerHTML)).toBe(baseline);
+      expect(adapter.textMatches(host, mode, 'Example')).toHaveLength(1);
+
+      editor.dispatchEvent(
+        new window.KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true }),
+      );
+      expect(block.classList.contains('app-front-matter-editing')).toBe(false);
+      // Chromium may discard a caret inside display:none source.
+      window.getSelection()?.removeAllRanges();
+      editor.dispatchEvent(
+        new window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }),
+      );
+      expect(block.classList.contains('app-front-matter-editing')).toBe(true);
+      expect(code.contains(window.getSelection()?.anchorNode)).toBe(true);
+
+      block
+        .querySelector('.app-front-matter-table td')
+        .dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      expect(block.classList.contains('app-front-matter-editing')).toBe(true);
+      expect(code.contains(window.getSelection()?.anchorNode)).toBe(true);
+      code.textContent = code.textContent.replace('Example', 'Changed');
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+      expect(block.querySelector('.app-front-matter-table td').textContent).toBe('Changed');
+      expect(lute[serialize](editor.innerHTML)).toBe(baseline.replace('Example', 'Changed'));
+      // Model the HTML replacement performed by undo/mode rebuilding.
+      const undoSnapshot = editor.innerHTML;
+      editor.innerHTML = undoSnapshot;
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+      expect(editor.querySelectorAll('.app-front-matter-preview')).toHaveLength(1);
+      const bodyRange = window.document.createRange();
+      bodyRange.selectNodeContents(editor.querySelector('p'));
+      bodyRange.collapse(true);
+      window.getSelection()?.removeAllRanges();
+      window.getSelection()?.addRange(bodyRange);
+      window.document.dispatchEvent(new window.Event('selectionchange'));
+      expect(editor.querySelector('.app-front-matter-editing')).toBeNull();
+      dispose();
+      expect(editor.querySelector('.app-front-matter-preview')).toBeNull();
+      expect(editor.querySelector('.app-front-matter-block')).toBeNull();
+      editor.querySelector('code').textContent = 'name: After disposal';
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+      expect(editor.querySelector('.app-front-matter-table')).toBeNull();
+    },
+  );
+
+  it('updates preview front matter while leaving fenced YAML and invalid source intact', async () => {
+    const host = createHost();
+    const preview = adapter.editorParts(host).preview.querySelector('.vditor-reset');
+    preview.innerHTML =
+      '<pre class="vditor-yml-front-matter"><code class="language-yaml">name: Example</code></pre><pre><code class="language-yaml">name: Fenced</code></pre>';
+    const dispose = adapter.installFrontMatterTables(host, createFrontMatterTable);
+    expect(preview.querySelector('table td').textContent).toBe('Example');
+    expect(preview.querySelector('pre code').textContent).toBe('name: Fenced');
+    preview.innerHTML =
+      '<pre class="vditor-yml-front-matter"><code class="language-yaml">name: [</code></pre>';
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    expect(preview.querySelector('table')).toBeNull();
+    expect(preview.querySelector('code').textContent).toBe('name: [');
+    preview.querySelector('code').textContent = 'name: Recovered';
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    expect(preview.querySelector('table td').textContent).toBe('Recovered');
+    dispose();
+  });
+
+  it('does not carry source editing intent across automatically focused editing surfaces', () => {
+    const host = createHost();
+    window.document.body.append(host);
+    const roots = ['ir', 'wysiwyg'].map((mode) => {
+      const editor = adapter.activeEditor(host, mode).querySelector('.vditor-reset');
+      editor.setAttribute('contenteditable', 'true');
+      editor.tabIndex = 0;
+      editor.innerHTML =
+        '<div data-type="yaml-front-matter"><pre><code data-type="yaml-front-matter">name: Example</code></pre></div><p>Body</p>';
+      return editor;
+    });
+    const dispose = adapter.installFrontMatterTables(host, createFrontMatterTable);
+    roots[0].focus();
+    const initialRange = window.document.createRange();
+    initialRange.selectNodeContents(roots[0].querySelector('code'));
+    initialRange.collapse(true);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(initialRange);
+    roots[0].dispatchEvent(
+      new window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }),
+    );
+    expect(roots[0].querySelector('.app-front-matter-editing')).not.toBeNull();
+    for (const editor of [roots[1], roots[0]]) {
+      editor.focus();
+      const range = window.document.createRange();
+      range.selectNodeContents(editor.querySelector('code'));
+      range.collapse(true);
+      window.getSelection()?.removeAllRanges();
+      window.getSelection()?.addRange(range);
+      window.document.dispatchEvent(new window.Event('selectionchange'));
+      expect(editor.querySelector('.app-front-matter-editing')).toBeNull();
+    }
+    roots[0]
+      .querySelector('td')
+      .dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    expect(roots[0].querySelector('.app-front-matter-editing')).not.toBeNull();
+    dispose();
+  });
 
   it('exports exactly the declared adapter facade', () => {
     expect(Object.keys(adapter).sort()).toEqual([...ADAPTER_PUBLIC_KEYS].sort());

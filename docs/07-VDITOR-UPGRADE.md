@@ -10,6 +10,9 @@ Vditor Desktop 不修改 `node_modules/vditor` 的源码，但工具栏合并、
 
 - 公开 API 和初始化选项位于 `src/renderer/editor/editor-options.ts`（Vditor constructor-only 设置、离线资源、locale、relative-resource base 与回调接线）；Vditor 实例化与重建生命周期由 `src/renderer/editor/editor-controller.ts` 负责，其余业务代码不再直接构造 `new Vditor()`。
 - JavaScript 使用的非公开 DOM 选择器和结构判断集中在 `src/renderer/vditor-adapter.js`。
+- Front matter 的模式切换回归须覆盖状态栏入口：默认 IR 打开文档后切到 WYSIWYG，以及主动展开 YAML 后切换/切回 IR/WYSIWYG，等待焦点与 undoDelay 回调完成，均默认显示表格；之后点击表格仍能编辑。adapter 依赖 Vditor 3.11.3 在不同编辑模式间切换时 focus 到不同的可编辑根，并据此重置编辑意图，升级时须复核。
+- Front matter 展示还须检查初始化与窄列：自动 focus 把折叠光标放在 YAML 开头时仍显示表格；点击、导航键或实际输入能展开原始源码，选中的查找结果仍能显示。窄表格和长 description 不得拆开 `name` 等字段名，值列继续换行；验证覆盖 IR/WYSIWYG 与 SV preview。
+- YAML front matter 表格通过 adapter 的 `installFrontMatterTables()` 展示：SV 识别 `pre.vditor-yml-front-matter > code.language-yaml`；IR/WYSIWYG 保留文首专用 front matter 块的 `pre > code[data-type="yaml-front-matter"]`，在其后插入非编辑展示节点。Vditor 3.11.3/Lute 的两种 DOM2Md 路径只读取原 CODE，忽略展示节点；不能把 YAML 节点改成普通 Markdown 表格。升级须运行真实 Lute 契约单测与 `tests/e2e/front-matter.spec.ts`，验证点击/键盘选区进入源码、离开后恢复表格、多行/列表/嵌套字段、无效 YAML 回退、普通 YAML 围栏不变，以及注释/引号在输入、undo/redo、三模式切换、保存中保留，重建/关闭时释放 observer/listener。未决私有契约风险见 `00-ISSUES.md`。
 - `src/renderer/types/adapter.d.ts` 是冻结 `window.VditorDesktopAdapter` facade 的严格类型边界；`src/renderer/types/adapter-contract.ts` 覆盖全部公开成员的编译期调用，并提供给单测比对的导出键 manifest。升级若增删或改签名，必须在同一改动中同步 runtime facade、声明、manifest 和契约测试；不得用宽泛类型或 overload 掩盖差异。
 - Vditor 外观覆盖仍集中在 `src/renderer/styles/app.css` 的 Vditor integration 区段，它是升级时的第二检查面。
 - Vditor 3.11.3 的代码块由 `pre > code` 承担横向滚动；IR 的预览类在 `pre.vditor-ir__preview` 本身。应用 CSS 为这些嵌套滚动节点单独设置滚动条颜色，避免继承外层 pane 的透明 `scrollbar-color`。升级须运行 `tests/e2e/scrollbars.spec.ts`，核对三模式代码块的悬停、拖动、切换文档、三种可见性设置，以及 SV source 横向边缘和各 pane 纵向显隐；不能只检查外层 `.scrollbar-visible` 类。

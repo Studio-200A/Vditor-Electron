@@ -34,6 +34,12 @@ Vditor 4.0 的 SV 是 `<textarea>`，源码面不再提供可读取的 heading m
 
 ## 长期技术债与架构风险
 
+### YAML front matter 展示依赖 Vditor 3.11.3 的专用节点与序列化契约
+
+`src/renderer/vditor-adapter.js` 的 `installFrontMatterTables()` 依赖 IR/WYSIWYG 文首 `div[data-type="yaml-front-matter"] > pre > code`，以及 Lute 的 `VditorIRDOM2Md` / `VditorDOM2Md` 只读取原始 CODE、忽略同块内展示节点的行为；SV 依赖预览中的 `pre.vditor-yml-front-matter`。上游没有覆盖三种模式的公开 front matter 展示 API，当前只能保留原始 CODE、增加非编辑展示节点，不能把普通表格交给 Markdown 序列化。若上游改变结构，表格可能退回源码；若改变序列化规则，展示内容可能污染保存。解析与表格 DOM 构造归 `src/renderer/editor/front-matter.ts`，安装/销毁归 `EditorController`。
+
+关闭条件：上游提供并采用不影响 YAML 原文与 undo/selection 的公开展示 API，移除这些私有依赖，并通过真实 Lute 契约单测和 `tests/e2e/front-matter.spec.ts` 的三模式编辑、撤销/重做、切换和保存验证；若迁移 Vditor 4.0 仍无公开 API，需明确迁移或降级方案并继续保留此项。当前保护见 `tests/unit/vditor-adapter.test.ts`，升级复核见 `07-VDITOR-UPGRADE.md`。
+
 ### 显式技术债
 
 | 文件 | 现状与原因 | 关闭条件 |

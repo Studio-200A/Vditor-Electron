@@ -367,6 +367,8 @@
   });
   const editorController = new PURE.EditorController({
     adapter: {
+      installFrontMatterTables: (host, createTable) =>
+        VDITOR.installFrontMatterTables(host, createTable),
       editorScrollContainer: (host, mode) => VDITOR.editorScrollContainer(host, mode),
       splitViewVisibility: (host, mode) => VDITOR.splitViewVisibility(host, mode),
       restorePreviewOnly: (host) => VDITOR.restorePreviewOnly(host),
@@ -1588,6 +1590,7 @@
           const splitSource = VDITOR.editorParts(tab.host).source;
           editorController.installScrollEnhancements(tab, splitSource);
           editorController.preserveTableScrollDuringInput(tab);
+          editorController.installFrontMatterTables(tab);
           editorController.reconcileInitializedContent(tab, wasModified);
           editorController.restoreRebuildUndoHistory(tab);
           tab.ready = true;

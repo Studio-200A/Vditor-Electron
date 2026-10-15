@@ -1,8 +1,8 @@
 # Vditor-Electron Code Structure World Map
 
-- **最后同步：** 2026-10-14
+- **最后同步：** 2026-10-15
 - **基于的工作区：** `dev-0.2.7` 当前工作区实现（以已发布的 v0.2.6 为基线）
-- **源码核对基线：** `f669e94`（`dev-0.2.7`；涵盖反馈、通知、拖入、标签溢出、代码块顶栏、滚动条及 Elegant 分隔线修复）
+- **源码核对基线：** `32065c6` 加当前 YAML front matter 表格化工作区改动（`dev-0.2.7`）
 - **对应 package.json 版本号：** 0.2.6
 - **技术债与改进建议：** 已迁至 [`docs/00-ISSUES.md`](00-ISSUES.md)，本地图不再维护
 
@@ -58,6 +58,7 @@
 {
   "@iarna/toml": "^2.2.5",
   "chokidar": "^4.0.3",
+  "js-yaml": "4.3.2",
   "vditor": "3.11.3"
 }
 ```
@@ -67,6 +68,7 @@
 | `vditor`      | Markdown 编辑器核心（三模式编辑、渲染、工具栏、主题） |
 | `@iarna/toml` | TOML 配置文件的读写                                   |
 | `chokidar`    | 跨平台文件系统监听（工作区树刷新 + 外部变更通知）     |
+| `js-yaml`     | 编辑器 YAML front matter 的本地展示解析              |
 
 ---
 
@@ -723,7 +725,11 @@ mountRuntime(runtime) {
 
 ### 7.5 Markdown 解析配置
 
+YAML front matter 的展示由 `editor/front-matter.ts` 使用 `js-yaml` 的 JSON schema 解析并以显式 DOM 构建键值表格：多行文本保留换行，数组显示为列表，嵌套映射显示为子表格，字段名保持原文；不解析值中的 HTML 或 Markdown。无效、非映射、空映射、自引用、超出 128K UTF-16 码元源码长度或展示深度/节点预算的输入回退源码。`EditorController.installFrontMatterTables()` 管理每个 runtime 的安装与销毁，组合层仅注入 adapter 并在 `after` 接线。adapter 的 `installFrontMatterTables()` 识别三模式的专用 YAML 节点：SV 转换只读预览；IR/WYSIWYG 保留原 CODE、挂载非编辑表格，点击或选区进入 YAML 时显示原始源码，离开后恢复表格；查找只计入源码，不重复计数展示文字。MutationObserver 处理输入、undo 与模式切换后的节点重建，不触发全文 `getValue()` / `setValue()`。`js-yaml` 是固定版本的直接依赖，打包工具的同名 override 限定于 `electron-builder` 依赖树，允许以后分别升级。
+
 参见 §7.1 `preview.markdown` 字段，支持 callout、footnotes、mark、sub/sup、TOC、auto-space、auto-link、list-style 等扩展语法，均可通过设置面板独立控制。`sanitize` 默认启用，传入 Vditor 的 `preview.markdown.sanitize`；它清理 Markdown 中的原始 HTML。关闭时，Vditor 仍可能按编辑模式把原始 HTML 显示为字面源码或在聚焦后显示源码，这不是主动内容已执行的信号。
+
+Front matter 的初始折叠光标不会单独触发源码态：adapter 在 runtime 内区分自动 focus 与用户点击、导航/编辑键及 `beforeinput`，保留已有选区；Vditor 在不同编辑模式的可编辑根之间转移焦点时重置源码编辑意图，切回旧编辑根也不沿用此前的展开状态。若 Chromium 因源码隐藏而清空选区，则在首次实际键盘操作时先展开源码并恢复文首插入点，再交回 Vditor 处理。非折叠查找选区仍可直接展开源码。展示样式让字段名保持单行，值列保留多行文本与长值换行。
 
 Vditor 3.11.3 内置的 Lute 会将 GitHub alert 的展示 emoji 和默认标题放入编辑器 DOM，并可能在 `getValue()` 序列化时把它们带回 Markdown；这属于上游 round-trip 缺陷。Desktop 保持 `callout: true` 以正常渲染，并在编辑器内容边界调用 `restoreGitHubAlertHeaders()` 还原源 Markdown。该兼容层不在 `vditor-adapter.js` 中，因为它处理的是纯 Markdown 序列化而非 Vditor 私有 DOM；升级 Vditor/Lute 时仍需复核五种 alert 的初始加载、输入、保存和自定义标题行为。
 

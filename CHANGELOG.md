@@ -2,9 +2,15 @@
 
 ## 0.2.7 - TBA
 
+### New Features
+
+- **feat(editor):** Display YAML front matter as a GitHub-style key/value table in Instant Rendering, WYSIWYG, and the split preview, including multiline values, lists, and nested mappings. Click the table in editing modes to edit the original YAML; preserve comments, quoting, and YAML syntax through editing, undo/redo, and mode switches. Invalid, unsupported, or excessively complex YAML remains visible as source, and ordinary YAML code fences keep their existing presentation.
+
 ### Bug Fixes
 
 #### Editor Interaction and Code Blocks
+
+- **fix(editor):** Keep YAML front matter in table form when the editor automatically places its initial caret at the document start or focuses another editing mode, including status-bar mode switches and switching back after editing YAML; reveal source for deliberate editing, navigation, or a selected search result. Keep metadata field names on one line while long values wrap, preventing narrow first columns from splitting short names.
 
 - **fix(editor):** Reserve a header inside rendered code blocks for the language label and copy button, keeping the selected code background continuous and preventing long lines from passing beneath the button. Keep headers out of Markdown, line numbering, and copied code; restore copying under the application's Content Security Policy without allowing inline scripts.
 - **fix(scrollbars):** Give code blocks independent automatic scrollbar visibility in Instant Rendering, WYSIWYG, and the SV preview, keeping horizontal thumbs visible while hovered and after switching documents. Reveal horizontally overflowing editor panes at their bottom edge as well as their right edge.

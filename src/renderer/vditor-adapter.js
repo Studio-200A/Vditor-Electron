@@ -37,6 +37,173 @@
   const documentLinkPresentation = new WeakMap();
   const splitHeadingAlignmentRatio = 0.2;
 
+  function installFrontMatterTables(host, createTable) {
+    const document = host.ownerDocument;
+    const blocks = new Map();
+    let isDisposed = false;
+    let hasEditingIntent = false;
+    let focusedEditor = null;
+    // Vditor 3.11.3/Lute serializes only PRE > CODE inside these dedicated
+    // front-matter blocks. A sibling presentation is ignored by both DOM2Md
+    // paths; never replace CODE or convert the YAML into an editable table.
+    const blockSelector =
+      '.vditor-ir .vditor-reset > div[data-type="yaml-front-matter"]:first-child, ' +
+      '.vditor-wysiwyg .vditor-reset > div[data-type="yaml-front-matter"]:first-child';
+    const previewSelector =
+      '.vditor-preview > .vditor-reset > pre.vditor-yml-front-matter:first-child';
+    function clearBlock(block, state) {
+      state.preview?.remove();
+      block.classList.remove('app-front-matter-block', 'app-front-matter-editing');
+    }
+    function updateSelection() {
+      const selection = document.getSelection();
+      const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+      blocks.forEach((state, block) => {
+        const isEditing = Boolean(
+          state.preview &&
+          range &&
+          (hasEditingIntent || !range.collapsed) &&
+          host.contains(document.activeElement) &&
+          range.intersectsNode(state.code),
+        );
+        block.classList.toggle('app-front-matter-editing', isEditing);
+      });
+    }
+    function updateFocusedEditor(event) {
+      const editor = event.target.closest?.('[contenteditable="true"]');
+      if (editor && host.contains(editor) && editor !== focusedEditor) {
+        // Vditor 3.11.3 focuses a different editable root on native mode
+        // switches. That automatic caret must not inherit the previous mode's
+        // intent to edit YAML, including when switching back to an old root.
+        focusedEditor = editor;
+        hasEditingIntent = false;
+      }
+      updateSelection();
+    }
+    function revealSourceForInput(event) {
+      const editor = event.target.closest?.('[contenteditable="true"]');
+      if (!editor) return;
+      if (event.type === 'keydown') {
+        const isNavigationOrEditingKey =
+          /^(Arrow(Left|Right|Up|Down)|Home|End|PageUp|PageDown|Backspace|Delete|Enter)$/.test(
+            event.key,
+          );
+        const isTextKey =
+          event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey;
+        if (!isNavigationOrEditingKey && !isTextKey) return;
+      }
+      // Vditor's initial focus may place a collapsed caret in YAML. Reveal
+      // source only for intentional navigation/input, or a selected find hit;
+      // retain an existing Selection so the first typed character is not lost.
+      hasEditingIntent = true;
+      const selection = document.getSelection();
+      // Chromium can drop a caret when its source becomes display:none. Only
+      // if no Selection remains, restore the initial document-start position
+      // after revealing CODE and before Vditor processes the user's input.
+      if (selection && !selection.rangeCount) {
+        for (const [block, state] of blocks) {
+          if (!state.preview || !editor.contains(block)) continue;
+          block.classList.add('app-front-matter-editing');
+          const range = document.createRange();
+          range.selectNodeContents(state.code);
+          range.collapse(true);
+          selection.addRange(range);
+          break;
+        }
+      }
+      updateSelection();
+    }
+    function refresh() {
+      if (isDisposed) return;
+      observer.disconnect();
+      blocks.forEach((state, block) => {
+        if (!host.contains(block) || !block.matches(blockSelector) || !block.contains(state.code)) {
+          clearBlock(block, state);
+          blocks.delete(block);
+        }
+      });
+      host.querySelectorAll(blockSelector).forEach((block) => {
+        const code = block.querySelector(':scope > pre > code[data-type="yaml-front-matter"]');
+        if (!code) return;
+        const source = code.textContent;
+        const previous = blocks.get(block);
+        if (
+          previous?.source === source &&
+          (!previous.preview || previous.preview.parentElement === block)
+        )
+          return;
+        if (previous) clearBlock(block, previous);
+        block.classList.remove('app-front-matter-block', 'app-front-matter-editing');
+        // Undo restores editor HTML, including presentation nodes. Discard the
+        // restored copy before regenerating it from the authoritative CODE.
+        block
+          .querySelectorAll(':scope > .app-front-matter-preview')
+          .forEach((node) => node.remove());
+        const table = createTable(source, document);
+        const preview = table ? document.createElement('div') : null;
+        if (preview) {
+          preview.className = 'app-front-matter-preview';
+          preview.setAttribute('contenteditable', 'false');
+          preview.append(table);
+          code.parentElement.after(preview);
+          block.classList.add('app-front-matter-block');
+        }
+        blocks.set(block, { source, code, preview });
+      });
+      host.querySelectorAll(previewSelector).forEach((pre) => {
+        const code = pre.querySelector(':scope > code.language-yaml');
+        if (!code) return;
+        const table = createTable(code.textContent, document);
+        if (table) pre.replaceWith(table);
+      });
+      updateSelection();
+      observer.observe(host, { childList: true, characterData: true, subtree: true });
+    }
+    function editSource(event) {
+      const preview = event.target.closest?.('.app-front-matter-preview');
+      if (!preview || !host.contains(preview)) {
+        if (event.target.closest?.('code[data-type="yaml-front-matter"]')) hasEditingIntent = true;
+        return;
+      }
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (event.type !== 'mousedown') return;
+      const block = preview.parentElement;
+      const state = blocks.get(block);
+      if (!state) return;
+      const editor = block.closest('[contenteditable="true"]');
+      editor?.focus();
+      hasEditingIntent = true;
+      block.classList.add('app-front-matter-editing');
+      const range = document.createRange();
+      range.selectNodeContents(state.code);
+      range.collapse(true);
+      const selection = document.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+    const observer = new MutationObserver(refresh);
+    document.addEventListener('selectionchange', updateSelection);
+    document.addEventListener('focusin', updateFocusedEditor);
+    host.addEventListener('mousedown', editSource, true);
+    host.addEventListener('click', editSource, true);
+    host.addEventListener('keydown', revealSourceForInput, true);
+    host.addEventListener('beforeinput', revealSourceForInput, true);
+    refresh();
+    return () => {
+      isDisposed = true;
+      observer.disconnect();
+      document.removeEventListener('selectionchange', updateSelection);
+      document.removeEventListener('focusin', updateFocusedEditor);
+      host.removeEventListener('mousedown', editSource, true);
+      host.removeEventListener('click', editSource, true);
+      host.removeEventListener('keydown', revealSourceForInput, true);
+      host.removeEventListener('beforeinput', revealSourceForInput, true);
+      blocks.forEach((state, block) => clearBlock(block, state));
+      blocks.clear();
+    };
+  }
+
   function decorateCodeBlockMenu(code, menu) {
     // Vditor 3.11.3 calls renderMenu before inserting .vditor-copy before code.
     // Keep textarea immediately before its copy span. A CSS label adds no text
@@ -1813,7 +1980,8 @@
     const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
     let node;
     while ((node = walker.nextNode())) {
-      if (node.nodeValue) nodes.push(node);
+      if (node.nodeValue && !node.parentElement?.closest('.app-front-matter-preview'))
+        nodes.push(node);
     }
     const text = nodes.map((item) => item.nodeValue).join('');
     const haystack = caseSensitive ? text : text.toLocaleLowerCase();
@@ -2391,6 +2559,7 @@
   }
 
   window.VditorDesktopAdapter = Object.freeze({
+    installFrontMatterTables,
     decorateCodeBlockMenu,
     editorParts,
     mountedToolbar,

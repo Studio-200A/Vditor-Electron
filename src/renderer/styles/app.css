@@ -1459,6 +1459,43 @@ html[data-scrollbar-mode='hidden']
 .sv-split-resizer.snapped {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
 }
+.editor-host .app-front-matter-block:not(.app-front-matter-editing) > pre,
+.editor-host .app-front-matter-block:not(.app-front-matter-editing) > span,
+.editor-host .app-front-matter-block:not(.app-front-matter-editing)::before,
+.editor-host .app-front-matter-block:not(.app-front-matter-editing)::after,
+.editor-host .app-front-matter-editing > .app-front-matter-preview {
+  display: none;
+}
+.editor-host .app-front-matter-editing > pre {
+  display: block;
+}
+.editor-host .app-front-matter-preview {
+  cursor: text;
+  white-space: normal;
+}
+.editor-host .app-front-matter-table {
+  white-space: normal;
+  max-width: 100%;
+}
+.editor-host .app-front-matter-table th,
+.editor-host .app-front-matter-table td {
+  text-align: left;
+  vertical-align: top;
+  word-break: normal;
+}
+.editor-host .app-front-matter-table th {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+.editor-host .app-front-matter-table td {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.editor-host .app-front-matter-table table,
+.editor-host .app-front-matter-table ul {
+  margin: 0;
+}
+
 .editor-host .app-code-block {
   border-radius: 5px;
 }
