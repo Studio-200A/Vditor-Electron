@@ -379,6 +379,7 @@
         VDITOR.preserveTableScrollDuringInput(host, getMode),
       installCustomCaret: (host, getMode, getStyle) =>
         VDITOR.installCustomCaret(host, getMode, getStyle),
+      installUndoFocusGuard: (instance) => VDITOR.installUndoFocusGuard(instance),
       captureUndoHistory: (instance) => VDITOR.captureUndoHistory(instance),
       scheduleUndoHistoryRestore: (instance, history, onRestored) =>
         VDITOR.scheduleUndoHistoryRestore(instance, history, onRestored),
@@ -1571,6 +1572,7 @@
       callbacks: {
         after: () => {
           if (!editorController.isCurrent(tab, runtimeGeneration)) return;
+          editorController.installUndoFocusGuard(tab);
           const contract = VDITOR.validateHost(tab.host);
           if (!contract.valid) {
             editorController.releaseRebuildSnapshot(tab);

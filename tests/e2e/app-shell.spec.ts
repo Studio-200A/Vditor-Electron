@@ -1774,13 +1774,18 @@ test('applies the editor paragraph-width slider in WYSIWYG mode', async () => {
     await page.locator('#statusSettings').click();
     await page.locator('.settings-nav [data-panel="editor"]').click();
     const paragraphWidth = page.locator('#editorTextWidth');
-    await paragraphWidth.focus();
-    await paragraphWidth.press('Home');
-    for (let index = 0; index < 20; index += 1) {
-      await paragraphWidth.press('ArrowRight');
-    }
+    // Seed the range, then exercise a real keyboard step without twenty live-save races.
+    await paragraphWidth.evaluate((node: HTMLInputElement) => {
+      node.value = '59';
+      node.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await expect(paragraphWidth).toHaveValue('59');
+    await paragraphWidth.press('ArrowRight');
+    await expect(paragraphWidth).toHaveValue('60');
     await expect(page.locator('#editorTextWidthValue')).toHaveText('60%');
     await page.locator('#saveSettings').click();
+    // Live saving can apply the width before the modal's exit animation completes.
+    await expect(page.locator('#settingsModal')).toBeHidden();
 
     await expect
       .poll(() =>

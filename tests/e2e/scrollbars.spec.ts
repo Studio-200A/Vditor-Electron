@@ -22,13 +22,28 @@ for (const editMode of ['ir', 'sv', 'wysiwyg']) {
       const colors = () => code.evaluate((node) => getComputedStyle(node).scrollbarColor);
       await page.mouse.move(0, 0);
       await expect.poll(colors).toBe('rgba(0, 0, 0, 0) rgba(0, 0, 0, 0)');
-      const box = await code.boundingBox();
-      if (!box) throw new Error('Code block has no bounds');
-      await page.mouse.move(box.x + box.width / 2, box.y + box.height - 3);
+      // Use the stable content interior for the sustained hover assertion;
+      // the native scrollbar gutter is tested separately by the drag below.
+      await code.hover();
+      await expect.poll(() => code.evaluate((node) => node.matches(':hover'))).toBe(true);
       await expect.poll(colors).not.toBe('rgba(0, 0, 0, 0) rgba(0, 0, 0, 0)');
-      // Outlast the outer pane's auto-hide timeout while staying over the thumb.
-      await page.waitForTimeout(1200);
-      await expect.poll(colors).not.toBe('rgba(0, 0, 0, 0) rgba(0, 0, 0, 0)');
+      // Another Electron window can invalidate native hover during parallel runs.
+      // Re-establish that precondition, then outlast the pane's auto-hide timer.
+      let hoveredSince = Date.now();
+      await expect
+        .poll(
+          async () => {
+            if (!(await code.evaluate((node) => node.matches(':hover')))) {
+              await code.hover();
+              hoveredSince = Date.now();
+              return false;
+            }
+            return Date.now() - hoveredSince >= 1200;
+          },
+          { intervals: [100] },
+        )
+        .toBe(true);
+      expect(await colors()).not.toBe('rgba(0, 0, 0, 0) rgba(0, 0, 0, 0)');
       const thumb = await code.evaluate((node) => {
         const rect = node.getBoundingClientRect();
         return {

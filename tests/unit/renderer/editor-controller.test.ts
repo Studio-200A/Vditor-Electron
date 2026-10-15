@@ -32,6 +32,7 @@ describe('EditorController', () => {
   let observeOutlineChanges: ReturnType<typeof vi.fn>;
   let preserveTableScrollDuringInput: ReturnType<typeof vi.fn>;
   let installCustomCaret: ReturnType<typeof vi.fn>;
+  let installUndoFocusGuard: ReturnType<typeof vi.fn>;
   let installFrontMatterTables: ReturnType<typeof vi.fn>;
   let captureUndoHistory: ReturnType<typeof vi.fn>;
   let scheduleUndoHistoryRestore: ReturnType<typeof vi.fn>;
@@ -55,6 +56,7 @@ describe('EditorController', () => {
     observeOutlineChanges = vi.fn(() => ({ disconnect: vi.fn() }));
     preserveTableScrollDuringInput = vi.fn(() => vi.fn());
     installCustomCaret = vi.fn(() => vi.fn());
+    installUndoFocusGuard = vi.fn(() => vi.fn());
     installFrontMatterTables = vi.fn(() => vi.fn());
     captureUndoHistory = vi.fn(() => null);
     scheduleUndoHistoryRestore = vi.fn(() => vi.fn());
@@ -111,6 +113,7 @@ describe('EditorController', () => {
         observeOutlineChanges,
         preserveTableScrollDuringInput,
         installCustomCaret,
+        installUndoFocusGuard,
         captureUndoHistory,
         scheduleUndoHistoryRestore,
         scrollContainers,
@@ -135,6 +138,17 @@ describe('EditorController', () => {
 
     expect(controller.isCurrent(tab, firstGeneration)).toBe(false);
     expect(tab.editorRuntimeGeneration).toBeGreaterThan(firstGeneration);
+  });
+
+  it('installs and releases the undo focus guard with each editor runtime', () => {
+    expect(controller.ensure(tab)).toBe(true);
+    controller.installUndoFocusGuard(tab);
+    const disposeUndoFocusGuard = installUndoFocusGuard.mock.results[0]?.value;
+    expect(installUndoFocusGuard).toHaveBeenCalledWith(tab.vditor);
+
+    controller.destroy(tab);
+
+    expect(disposeUndoFocusGuard).toHaveBeenCalledOnce();
   });
 
   it('captures runtime content before destroying an editor for rebuild', () => {
@@ -163,6 +177,7 @@ describe('EditorController', () => {
         observeOutlineChanges,
         preserveTableScrollDuringInput,
         installCustomCaret,
+        installUndoFocusGuard,
         captureUndoHistory,
         scheduleUndoHistoryRestore,
         scrollContainers,
@@ -360,6 +375,7 @@ describe('EditorController', () => {
         observeOutlineChanges,
         preserveTableScrollDuringInput,
         installCustomCaret,
+        installUndoFocusGuard,
         captureUndoHistory,
         scheduleUndoHistoryRestore,
         scrollContainers,
@@ -593,6 +609,7 @@ describe('EditorController', () => {
         observeOutlineChanges,
         preserveTableScrollDuringInput,
         installCustomCaret,
+        installUndoFocusGuard,
         captureUndoHistory,
         scheduleUndoHistoryRestore,
         scrollContainers,

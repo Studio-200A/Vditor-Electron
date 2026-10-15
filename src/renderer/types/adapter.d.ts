@@ -198,6 +198,7 @@ export interface VditorDesktopAdapter {
     getMode: () => AdapterEditMode,
     getStyle: () => CaretStyle,
   ): () => void;
+  installUndoFocusGuard(instance: unknown): () => void;
   captureUndoHistory(instance: unknown): unknown;
   scheduleUndoHistoryRestore(
     instance: unknown,

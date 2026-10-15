@@ -12,6 +12,8 @@
 
 - **fix(editor):** Keep YAML front matter in table form when the editor automatically places its initial caret at the document start or focuses another editing mode, including status-bar mode switches and switching back after editing YAML; reveal source for deliberate editing, navigation, or a selected search result. Keep metadata field names on one line while long values wrap, preventing narrow first columns from splitting short names.
 
+- **fix(editor):** Keep an open Vditor toolbar panel, such as the edit-mode menu, usable while Vditor's debounced undo snapshot completes. The adapter now skips the private undo caret's focus restoration only when focus has already left the editor, so a panel opened immediately after typing is no longer closed by the delayed snapshot. The snapshot is still recorded, and text, selection, undo/redo, saving, and mode switching keep their existing behavior.
+
 - **fix(editor):** Reserve a header inside rendered code blocks for the language label and copy button, keeping the selected code background continuous and preventing long lines from passing beneath the button. Keep headers out of Markdown, line numbering, and copied code; restore copying under the application's Content Security Policy without allowing inline scripts.
 - **fix(scrollbars):** Give code blocks independent automatic scrollbar visibility in Instant Rendering, WYSIWYG, and the SV preview, keeping horizontal thumbs visible while hovered and after switching documents. Reveal horizontally overflowing editor panes at their bottom edge as well as their right edge.
 - **fix(drop):** Reject unsupported files dropped into the editor before Vditor routes them to image upload, so an untitled document reports the unsupported file type instead of asking to save before inserting an image. Markdown drops open documents, and image drops retain the existing upload workflow.
@@ -37,6 +39,7 @@
 
 ### Project Maintenance
 
+- **test(e2e):** Stabilize paragraph-width, code-header, outline-navigation, and code-scrollbar checks under two workers by waiting for modal closure, rendered mode changes, settled scrolling, and sustained hover preconditions. Allow subpixel geometry rounding while retaining native copy, scrollbar dragging, layout, and persistence checks. Add IR and WYSIWYG regressions that open the Vditor edit-mode panel across the delayed undo snapshot, then confirm the panel stays operable, undo and redo still restore the text, and switching modes keeps the edit.
 - **fix(checks):** Read relocated Chinese README files from `docs/i18n`, validate version badges in all three README languages, and restore the SV README bottom-spacer E2E fixture.
 - **chore(runtime):** Upgrade the pinned Electron desktop runtime from 44.1.0 to 44.5.1, bringing upstream fixes for Linux clipboard responsiveness, KDE trash handling, file-manager reveal, and Chromium graphics.
 - Updated transitive development dependencies (`undici`, `brace-expansion`, and `fast-uri`) to resolve security advisories reported by Dependabot and npm audit.

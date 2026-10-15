@@ -60,6 +60,7 @@ export interface EditorControllerOptions<TTab extends EditorRuntimeTab> {
       getMode: () => EditMode,
       getStyle: () => 'underline' | 'bar' | 'block',
     ): () => void;
+    installUndoFocusGuard(instance: unknown): () => void;
     captureUndoHistory(instance: unknown): unknown;
     scheduleUndoHistoryRestore(
       instance: unknown,
@@ -131,6 +132,7 @@ export class EditorController<TTab extends EditorRuntimeTab> {
   private readonly contextMenuCleanups = new Map<TTab, () => void>();
   private readonly toolbarHandlerCleanups = new Map<TTab, () => void>();
   private readonly focusTimers = new Map<TTab, number>();
+  private readonly undoFocusCleanups = new Map<TTab, () => void>();
 
   constructor(options: EditorControllerOptions<TTab>) {
     this.adapter = options.adapter;
@@ -308,6 +310,11 @@ export class EditorController<TTab extends EditorRuntimeTab> {
         () => tab.vditor?.getCurrentMode() ?? tab.mode,
       ),
     );
+  }
+
+  installUndoFocusGuard(tab: TTab): void {
+    this.undoFocusCleanups.get(tab)?.();
+    this.undoFocusCleanups.set(tab, this.adapter.installUndoFocusGuard(tab.vditor));
   }
 
   installFrontMatterTables(tab: TTab): void {
@@ -637,6 +644,8 @@ export class EditorController<TTab extends EditorRuntimeTab> {
     tab.editorRuntimeGeneration = (tab.editorRuntimeGeneration ?? 0) + 1;
     this.onBeforeDestroy(tab, disposeTabResources);
     if (!tab.vditor) return null;
+    this.undoFocusCleanups.get(tab)?.();
+    this.undoFocusCleanups.delete(tab);
     let destroyError: Error | null = null;
     try {
       tab.vditor.destroy();

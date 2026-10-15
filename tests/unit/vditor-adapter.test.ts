@@ -288,6 +288,50 @@ describe('Vditor DOM compatibility adapter', () => {
     expect(adapter.isInitializedEditorHost(host)).toBe(false);
   });
 
+  it('keeps delayed undo snapshots from restoring focus after focus leaves the editor', () => {
+    const host = window.document.createElement('section');
+    const editor = window.document.createElement('div');
+    editor.contentEditable = 'true';
+    editor.tabIndex = 0;
+    const toolbarButton = window.document.createElement('button');
+    host.append(editor, toolbarButton);
+    window.document.body.append(host);
+    const addCaret = vi.fn((instance: any, shouldRestoreFocus: boolean) => {
+      if (shouldRestoreFocus) instance.ir.element.focus();
+    });
+    const runtime = { currentMode: 'ir', ir: { element: editor }, undo: { addCaret } };
+    const instance = { vditor: runtime };
+    const dispose = adapter.installUndoFocusGuard(instance);
+
+    editor.focus();
+    runtime.undo.addCaret(runtime, true);
+    expect(addCaret).toHaveBeenLastCalledWith(runtime, true);
+    toolbarButton.focus();
+    runtime.undo.addCaret(runtime, true);
+    expect(addCaret).toHaveBeenLastCalledWith(runtime, false);
+    expect(window.document.activeElement).toBe(toolbarButton);
+
+    dispose();
+    expect(runtime.undo.addCaret).toBe(addCaret);
+  });
+
+  it('restores an inherited undo method when the focus guard is disposed', () => {
+    const addCaret = vi.fn();
+    const undo = Object.create({ addCaret });
+    const instance = {
+      currentMode: 'ir',
+      ir: { element: window.document.createElement('div') },
+      undo,
+    };
+    const dispose = adapter.installUndoFocusGuard(instance);
+    expect(Object.prototype.hasOwnProperty.call(undo, 'addCaret')).toBe(true);
+
+    dispose();
+
+    expect(Object.prototype.hasOwnProperty.call(undo, 'addCaret')).toBe(false);
+    expect(undo.addCaret).toBe(addCaret);
+  });
+
   it('reads edit modes only from Vditor edit-mode toolbar buttons', () => {
     const host = createHost();
     const item = host.querySelector<HTMLButtonElement>(

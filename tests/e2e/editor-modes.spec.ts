@@ -188,6 +188,55 @@ test('keeps rapid input dirty when switching modes and asks before closing', asy
   }
 });
 
+for (const [editMode, title] of [
+  ['ir', 'keeps the IR mode menu open while a delayed undo snapshot completes'],
+  ['wysiwyg', 'keeps the WYSIWYG mode menu open while a delayed undo snapshot completes'],
+] as const) {
+  test(title, async () => {
+    const running = await launchApp({ editMode }, { 'toolbar-undo-focus.md': 'Initial paragraph' });
+    try {
+      const { page } = running;
+      const editor = page.locator(modeEditorSelectors[editMode]);
+      await expect(editor).toBeVisible();
+      // Record the initial undo baseline before editing; otherwise the first
+      // debounced snapshot stores the already-edited text and there is nothing
+      // left for a single undo to restore.
+      await page.waitForTimeout(700);
+      await typeAtDocumentEnd(page, modeEditorSelectors[editMode], '111');
+      await expect(editor).toContainText('111');
+
+      const undoButton = page.locator('#vditorToolbarMount button[data-type="undo"]');
+      const redoButton = page.locator('#vditorToolbarMount button[data-type="redo"]');
+      const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+      const modeOption = page.locator('#vditorToolbarMount button[data-mode="sv"]');
+
+      // Open the panel immediately after typing so the pending 500ms snapshot
+      // fires while it is open, then keep waiting past that deadline.
+      await modeTrigger.click();
+      await expect(modeOption).toBeVisible();
+      await page.waitForTimeout(600);
+      await expect(modeOption).toBeVisible();
+      await expect(undoButton).not.toHaveClass(/vditor-menu--disabled/);
+
+      // Vditor keeps one history per mode, so undo and redo are checked before
+      // leaving the mode that recorded the edit.
+      await undoButton.click();
+      await expect(editor).toHaveText('Initial paragraph');
+      await redoButton.click();
+      await expect(editor).toContainText('111');
+
+      // The panel stayed operable through the snapshot: leave it open or reopen
+      // it, then switch modes and keep the edited content.
+      if (!(await modeOption.isVisible())) await modeTrigger.click();
+      await expect(modeOption).toBeVisible();
+      await modeOption.click();
+      await expect(page.locator('.editor-host.active .vditor-sv')).toContainText('111');
+    } finally {
+      await closeApp(running);
+    }
+  });
+}
+
 test('keeps the custom caret visible at the new line after Enter', async () => {
   const running = await launchApp({ editMode: 'ir', caretStyle: 'bar' });
   try {
@@ -2047,6 +2096,27 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
       (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control'
     ) as 'Control' | 'Meta';
     const modifierLabel = linkModifier === 'Meta' ? 'Cmd' : 'Ctrl';
+    const waitForScrollSettled = async (editor: ReturnType<Page['locator']>) => {
+      // A positive scrollTop only proves the navigation animation has started.
+      // Wait for consecutive stable frames before resetting or changing modes.
+      await expect
+        .poll(() =>
+          editor.evaluate(async (node) => {
+            const scroller = node.matches('.vditor-preview, .vditor-sv')
+              ? node
+              : node.querySelector(':scope > .vditor-reset') || node;
+            let previous = scroller.scrollTop;
+            for (let frame = 0; frame < 4; frame += 1) {
+              await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+              const current = scroller.scrollTop;
+              if (Math.abs(current - previous) > 0.01) return false;
+              previous = current;
+            }
+            return true;
+          }),
+        )
+        .toBe(true);
+    };
     const scrollTop = (editor: ReturnType<Page['locator']>) =>
       editor.evaluate((node) =>
         Math.max(node.scrollTop, node.querySelector(':scope > .vditor-reset')?.scrollTop || 0),
@@ -2080,6 +2150,8 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
     await expect.poll(() => scrollTop(ir)).toBe(0);
     await irLink.click({ modifiers: [linkModifier] });
     await expect.poll(() => scrollTop(ir)).toBeGreaterThan(0);
+    await expect.poll(() => headingIsVisible(ir, 'h2')).toBe(true);
+    await waitForScrollSettled(ir);
     await ir.evaluate((node) => {
       node.scrollTop = 0;
       const reset = node.querySelector(':scope > .vditor-reset');
@@ -2099,6 +2171,7 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
     await expect(target).toBeVisible();
     await target.click();
     await expect.poll(() => headingIsVisible(ir, 'h2')).toBe(true);
+    await waitForScrollSettled(ir);
 
     const modeTrigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
     await modeTrigger.click();
@@ -2112,6 +2185,8 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
     });
     await wysiwyg.locator('a[href="#target"]').click({ modifiers: [linkModifier] });
     await expect.poll(() => scrollTop(wysiwyg)).toBeGreaterThan(0);
+    await expect.poll(() => headingIsVisible(wysiwyg, 'h2')).toBe(true);
+    await waitForScrollSettled(wysiwyg);
     await wysiwyg.evaluate((node) => {
       node.scrollTop = 0;
       const reset = node.querySelector(':scope > .vditor-reset');
@@ -2119,6 +2194,7 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
     });
     await target.click();
     await expect.poll(() => headingIsVisible(wysiwyg, 'h2')).toBe(true);
+    await waitForScrollSettled(wysiwyg);
 
     await modeTrigger.click();
     await page.locator('#vditorToolbarMount button[data-mode="sv"]').click();
@@ -2134,6 +2210,9 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
     });
     await preview.locator('a[href="#target"]').click({ modifiers: [linkModifier] });
     await expect.poll(() => preview.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+    await expect.poll(() => headingIsVisible(preview, 'h2')).toBe(true);
+    await waitForScrollSettled(source);
+    await waitForScrollSettled(preview);
     await source.evaluate((node) => {
       node.scrollTop = 0;
     });
@@ -2143,6 +2222,8 @@ test('navigates outline headings in instant, WYSIWYG, and both split panes', asy
     await target.click();
     await expect.poll(() => headingIsVisible(source, '[data-type="heading-marker"]', 1)).toBe(true);
     await expect.poll(() => headingIsVisible(preview, 'h2')).toBe(true);
+    await waitForScrollSettled(source);
+    await waitForScrollSettled(preview);
 
     await source.evaluate((node) => {
       node.scrollTop = 0;

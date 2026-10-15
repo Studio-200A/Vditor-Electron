@@ -6,7 +6,12 @@ import { closeApp, launchApp } from './support/app-harness';
 for (const editMode of ['ir', 'wysiwyg', 'sv']) {
   for (const lineNumbers of [false, true]) {
     test(`keeps the ${editMode} code header outside content with line numbers ${lineNumbers}`, async () => {
-      const content = 'print("hello") # ' + 'long content '.repeat(80) + '\nprint("world")';
+      // Distinguish clipboard contents across modes and repeated runs so a stale
+      // successful copy cannot satisfy the next scenario's assertion.
+      const content =
+        `print("hello") # ${editMode}/${lineNumbers}/${test.info().repeatEachIndex} ` +
+        'long content '.repeat(80) +
+        '\nprint("world")';
       const markdown = '```python\n' + content + '\n```\n';
       const running = await launchApp(
         { editMode, lineNumbers, windowMaximized: false },
@@ -36,12 +41,28 @@ for (const editMode of ['ir', 'wysiwyg', 'sv']) {
           )
           .toBe(true);
         if (lineNumbers) await expect(code.locator('.vditor-linenumber__rows')).toBeAttached();
+        // Hover actionability waits for layout to settle before taking the baseline.
+        await code.hover();
         await page.mouse.move(0, 0);
         await expect(button).toBeHidden();
         const before = await code.boundingBox();
         await header.hover();
         await expect(button).toBeVisible();
-        expect(await code.boundingBox()).toEqual(before);
+        if (!before) throw new Error('Code block has no bounds');
+        const expectBounds = async (locator: typeof code, expected: typeof before) => {
+          await expect
+            .poll(async () => {
+              const actual = await locator.boundingBox();
+              if (!actual) return Infinity;
+              return Math.max(
+                ...(['x', 'y', 'width', 'height'] as const).map((key) =>
+                  Math.abs(actual[key] - expected[key]),
+                ),
+              );
+            })
+            .toBeLessThanOrEqual(1);
+        };
+        await expectBounds(code, before);
         const assertSeparation = async () => {
           const copyBox = await button.boundingBox();
           const codeBox = await code.boundingBox();
@@ -53,13 +74,25 @@ for (const editMode of ['ir', 'wysiwyg', 'sv']) {
           .poll(() => code.evaluate((node) => node.scrollWidth > node.clientWidth))
           .toBe(true);
         const headerBounds = await header.boundingBox();
+        if (!headerBounds) throw new Error('Code header has no bounds');
         await code.evaluate((node) => {
           node.scrollLeft = 200;
         });
-        expect(await header.boundingBox()).toEqual(headerBounds);
+        await expect.poll(() => code.evaluate((node) => node.scrollLeft)).toBeGreaterThan(0);
+        await expectBounds(header, headerBounds);
         await assertSeparation();
         await header.hover();
-        await button.click({ timeout: 5000 });
+        // Move and click through the visible header in one action. A hover-only
+        // child can disappear between separate hover and click actionability checks.
+        const copyBounds = await button.boundingBox();
+        const menuBounds = await header.boundingBox();
+        if (!copyBounds || !menuBounds) throw new Error('Copy button has no bounds');
+        await header.click({
+          position: {
+            x: copyBounds.x + copyBounds.width / 2 - menuBounds.x,
+            y: copyBounds.y + copyBounds.height / 2 - menuBounds.y,
+          },
+        });
         await expect
           .poll(() => app.evaluate(({ clipboard }) => clipboard.readText()))
           .toBe(content);
@@ -71,9 +104,10 @@ for (const editMode of ['ir', 'wysiwyg', 'sv']) {
         await header.hover();
         await assertSeparation();
         const switchMode = async (mode: string) => {
-          await page.locator('#vditorToolbarMount button[data-type="edit-mode"]').click();
-          await page.locator(`#vditorToolbarMount button[data-mode="${mode}"]`).click();
-          await page.waitForTimeout(700);
+          const trigger = page.locator('#vditorToolbarMount button[data-type="edit-mode"]');
+          await trigger.click();
+          await page.locator('#vditorToolbarMount button[data-mode="' + mode + '"]').click();
+          await expect(page.locator('.editor-host.active .vditor-' + mode)).toBeVisible();
         };
         if (editMode !== 'sv') await switchMode('sv');
         const changed = markdown.replace('```python', '```js');
@@ -94,10 +128,14 @@ for (const editMode of ['ir', 'wysiwyg', 'sv']) {
           throw new Error('Python fence is unavailable');
         });
         await page.keyboard.insertText('js');
-        await page.waitForTimeout(700);
+        await expect(
+          page.locator('.editor-host.active .vditor-preview .app-code-block-header').first(),
+        ).toHaveAttribute('data-language', 'JavaScript');
         if (editMode !== 'sv') await switchMode(editMode);
         await expect(header).toHaveAttribute('data-language', 'JavaScript');
-        await page.keyboard.press('Control+s');
+        const modifier =
+          (await page.evaluate(() => window.appAPI.platform)) === 'darwin' ? 'Meta' : 'Control';
+        await page.keyboard.press(`${modifier}+s`);
         await expect
           .poll(() => fs.readFileSync(path.join(testRoot, 'header.md'), 'utf8').trimEnd())
           .toBe(changed.trimEnd());

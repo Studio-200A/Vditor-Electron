@@ -1598,6 +1598,38 @@
     return undo?.resetIcon && undo?.undo && undo?.redo ? undo : null;
   }
 
+  function installUndoFocusGuard(instance) {
+    const runtime = instance?.vditor || instance;
+    const undo = runtime?.undo;
+    if (!undo || typeof undo.addCaret !== 'function') return () => {};
+    const originalAddCaret = undo.addCaret;
+    const hadOwnAddCaret = Object.prototype.hasOwnProperty.call(undo, 'addCaret');
+    const wrappedAddCaret = function (...args) {
+      const runtime = args[0];
+      const mode = runtime?.currentMode;
+      const editor = mode && runtime?.[mode]?.element;
+      const activeElement = editor?.ownerDocument?.activeElement;
+      // Vditor 3.11.3 addToUndoStack() restores the saved Range through addCaret().
+      // Chromium's Selection.addRange also focuses the editor and closes an open toolbar panel.
+      // Keep that focus restoration only while the editor still owns focus; the Range is unchanged.
+      if (
+        args[1] === true &&
+        editor &&
+        activeElement !== editor &&
+        !editor.contains(activeElement)
+      ) {
+        args[1] = false;
+      }
+      return originalAddCaret.apply(this, args);
+    };
+    undo.addCaret = wrappedAddCaret;
+    return () => {
+      if (undo.addCaret !== wrappedAddCaret) return;
+      if (hadOwnAddCaret) undo.addCaret = originalAddCaret;
+      else delete undo.addCaret;
+    };
+  }
+
   function scheduleUndoHistoryRestore(instance, history, onRestored) {
     const runtime = instance?.vditor;
     if (!runtime || !history?.resetIcon || !history?.undo || !history?.redo) return () => {};
@@ -2606,6 +2638,7 @@
     applyWordWrap,
     installCustomCaret,
     captureUndoHistory,
+    installUndoFocusGuard,
     scheduleUndoHistoryRestore,
     preserveTableScrollDuringInput,
     isEditableTarget,

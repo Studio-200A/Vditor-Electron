@@ -48,6 +48,7 @@ export const ADAPTER_PUBLIC_KEYS = [
   'editorScrollContainer',
   'applyWordWrap',
   'installCustomCaret',
+  'installUndoFocusGuard',
   'captureUndoHistory',
   'scheduleUndoHistoryRestore',
   'preserveTableScrollDuringInput',
@@ -146,6 +147,7 @@ export function verifyAdapterCallContract(adapter: VditorDesktopAdapter, host: H
     () => 'ir',
     () => 'bar',
   );
+  adapter.installUndoFocusGuard(null);
   adapter.captureUndoHistory(null);
   adapter.scheduleUndoHistoryRestore(null, null, () => undefined);
   adapter.preserveTableScrollDuringInput(host, () => 'ir');

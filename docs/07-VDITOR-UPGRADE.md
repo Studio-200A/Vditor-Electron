@@ -40,6 +40,7 @@ Vditor Desktop 不修改 `node_modules/vditor` 的源码，但工具栏合并、
 - Vditor 3.11.3 的 IR/WYSIWYG 空文档按 Enter 后会从空编辑根变成空 `p[data-block="0"]`：折叠 Range 均无矩形，段落边界比原始插入字形高。adapter 在空编辑根记录当前字体的自绘光标高度，仅当编辑区仍完全由空段落组成时沿用，并按段落行高居中；输入文字后恢复正常 Range 几何。升级时须验证两种模式的空文档 Enter、自绘光标尺寸与位置、字体设置变化，以及后续输入的实际插入点。
 - 初始化设置要求重建 Vditor 时，adapter 的 `createRebuildSnapshot()` 会临时克隆活动 host 的已渲染内容（同步全部后代 `scrollTop`/`scrollLeft`），直到新实例完成 toolbar/content 接管且滚动位置恢复稳定后才移除，避免空白闪烁与闪回开头。升级时须验证 snapshot 不包含重复 ID、不会接收交互、失败路径会释放，且 toolbar 与内容在重建期间无可见空白。
 - 重建移交 undo 历史依赖 Vditor 私有 undo 契约：`captureUndoHistory()` 在销毁旧实例前调用其私有 `vditor.undo.addToUndoStack()` 冲洗 `undoDelay` 防抖中尚未到期的输入历史，并只在 `resetIcon`/`undo`/`redo` 结构完整时返回该私有 owner；`scheduleUndoHistoryRestore()` 在新实例 `after` 后等待 `undoDelay + 25ms`（让 Vditor 先排队其初始 undo 基线）再替换 `vditor.undo` 并调用私有 `resetIcon()`。升级时须验证 constructor-only 设置重建后 Ctrl/Cmd+Z 与工具栏撤销仍能回退重建前的编辑、首次撤销不会只移除 Vditor 内部光标标记，且重建前 500ms 内的输入不丢失；若上游公开 undo 栈迁移 API，应替换该私有移交。
+- Vditor 3.11.3 的 IR/WYSIWYG 输入经 `undoDelay` 防抖进入私有 `undo.addToUndoStack()`，其中 `addCaret(vditor, true)` 通过 `setSelectionFocus()` 把保存的 Range 重新交给 Selection；当前 Chromium 会因此重新聚焦编辑区，Vditor 的 focus handler 随即 `hidePanel()`，关闭正在打开的工具栏子面板（如 edit-mode）。adapter 的 `installUndoFocusGuard(instance)` 包装该私有 `addCaret`，仅当请求恢复焦点且活动元素已不在编辑区内时把 `setFocus` 改为 `false`，正文快照与 Range 内容不变，并在释放时恢复原型继承或原有自有方法。升级时须运行 `tests/e2e/editor-modes.spec.ts` 的 IR/WYSIWYG 菜单保持回归（编辑后立即打开 edit-mode 面板、等待超过 `undoDelay`，仍可操作），同时验证正文、选区、undo/redo、保存脏标记与模式切换不回归，并核对 `tests/unit/vditor-adapter.test.ts` 的结构漂移与 disposer 断言；若上游提供“保存选区但不夺取其他控件焦点”的公开选项，应移除该包装。
 - SVG 渲染开关变更时，adapter 的 `reloadImageSources()` 假定 Vditor 3.11.3 会把三种模式中的 Markdown 图片保留为 host 内的 `img[src]`。升级时须验证本地与 HTTP(S) SVG 在开关关闭时不显示、开启后无需重建编辑器即可显示，且既有 undo 与选区不受影响。
 - GitHub alert（`> [!NOTE]` 等五种）的展示 emoji/默认标题由 Vditor 3.11.3 底层 Lute 加入编辑器 DOM，并可能在 `getValue()` 序列化时写回 Markdown；这属于上游 round-trip 缺陷而非私有 DOM 访问，Desktop 在 `src/renderer/editor/github-alerts.ts` 用纯 Markdown 规范化（`restoreGitHubAlertHeaders()`，以编辑前正文为来源基线）还原源标题，不放进 `vditor-adapter.js`。升级时须复核五种 alert 的无标题、自定义标题、显式 emoji、三种编辑模式、初始加载/输入/保存路径；若上游为 alert DOM 提供“标题是否由源 Markdown 显式提供”的可逆信息，应优先移除该兼容层并改用上游公共语义。
 
@@ -52,7 +53,7 @@ Vditor Desktop 不修改 `node_modules/vditor` 的源码，但工具栏合并、
 3. 同步 `src/main/ipc/app-shell.ts` 中 `app:getInfo` 的关于页 Vditor 版本号（`npm run check:vditor` 校验该字面量与 package.json、lock 和 node_modules 一致）。
 4. 检查目标包 `dist/index.css`、工具栏、SV、IR、WYSIWYG 和 preview DOM 变化。
 5. 先运行 `npm run check:vditor` 和 `npm run typecheck:renderer`；核对并将生成的 `dist/`、`static/` 移入回收站，完成干净 `npm run build` 后再运行 `npm run check:all`。普通 JavaScript 与 CSS 不由 `build:renderer` 更新，不能用旧输出验证 adapter。
-6. 手工验证三种编辑模式、统一工具栏和状态栏模式菜单、主题菜单与壳层亮暗切换后已渲染 Mermaid 图表的色调重绘、列表缩进、工具栏与 `Ctrl/Cmd+Alt+7/8/9` 模式切换后的文档位置（SV 以源码区为准）及状态栏同步、SV 行号/灰点/滚动、查找匹配定位、原生 outline 入口持续隐藏、Desktop 大纲跳转，以及 WYSIWYG/IR 长表格的横向滚动保留和光标可见性。
+6. 手工验证三种编辑模式、统一工具栏和状态栏模式菜单、主题菜单与壳层亮暗切换后已渲染 Mermaid 图表的色调重绘、列表缩进、工具栏与 `Ctrl/Cmd+Alt+7/8/9` 模式切换后的文档位置（SV 以源码区为准）及状态栏同步、SV 行号/灰点/滚动、查找匹配定位、原生 outline 入口持续隐藏、Desktop 大纲跳转，以及 WYSIWYG/IR 长表格的横向滚动保留和光标可见性；并人工确认编辑后立即打开工具栏子面板、等待超过 `undoDelay` 时面板仍可操作，随后撤销回到输入前正文。
 7. 仅在所有契约测试和人工检查通过后合并升级。
 
 若契约测试失败，优先只修改 `vditor-adapter.js`；除非 Vditor 公共 API 已改变，否则不要把版本判断散布到业务代码中。

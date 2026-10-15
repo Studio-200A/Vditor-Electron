@@ -4,6 +4,16 @@
 >
 > `docs/01-CODE-STRUCTURE.md` 是代码架构导航地图，不再维护技术债清单。
 
+## 0.2.7 双 worker 全量中的其他未决 E2E 失败
+
+**状态：** 本轮四组稳定性维护之外的独立验证缺口，尚未定位根因；不能直接判为应用回归或无害 flaky。
+
+- `tests/e2e/app-shell.spec.ts` 的 `uses the file name in the title and matches the layered chrome surfaces`：切换 dark 且 data-theme 已更新后，单次读取的 statusbar 与 sidebar 仍同为 `rgb(240, 241, 243)`，不满足表面分层断言。
+- `tests/e2e/editor-modes.spec.ts` 的 `toggles word wrap across editing modes while paragraph width stays independent`：SV 按 End 后 scrollLeft 保持 0，未达到预期的横向滚动距离。
+- 同文件的 `shows the editor context menu only on editable surfaces and restores its Range`：整例 30 秒超时，尚未对根因作结论。
+
+当前证据来自共享 Linux 桌面下的真实 Electron 双 worker 全量，单次失败不足以区分异步前提、窗口/输入争用与实际功能缺陷；现有 API 不能替代这一根因判断，本轮未改这些用例或运行时代码。关闭条件：分别定位失败阶段，证明并隔离测试环境/同步前提，或修复实际行为缺陷，再以双 worker 重复专项及全量验证；一次复跑通过不视为关闭。执行证据统一见 0.2.7 执行记录的“双 worker E2E 稳定性”。
+
 ## Vditor 3.11.3: 空文档首次 Enter 在 SV 和 IR 中没有形成下一行（见DEV-NOTE）
 
 **状态：** 待上游编辑语义修复与产品决策；0.2.6 已修复三种模式的自绘光标尺寸，尚未实现统一换行。当前没有 3.11.3 定向补丁计划；观察与成因见 [`09-DEV-NOTE.md`](09-DEV-NOTE.md#vditor-3113-空行与回车规则)。
