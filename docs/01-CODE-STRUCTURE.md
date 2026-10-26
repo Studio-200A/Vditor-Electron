@@ -1510,9 +1510,6 @@ function rememberRecent(filePath) {
     "productName": "Vditor Desktop",
     "directories": { "output": "release" },
     "files": ["dist/**/*", "static/**/*", "package.json", "!node_modules/vditor/src/**"],
-    "electronDownload": {
-      "mirrorOptions": { "mirror": "https://registry.npmmirror.com/-/binary/electron/" }
-    },
     "linux": {
       "syncDesktopName": true,
       "executableName": "vditor-desktop",

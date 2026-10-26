@@ -20,7 +20,6 @@ const productName = packageMetadata.productName;
 const applicationId = packageMetadata.desktopName;
 const stableApplicationId = 'com.github.studio-200a.vditor-electron';
 const electronVersion = packageMetadata.devDependencies?.electron;
-const electronMirror = 'https://registry.npmmirror.com/-/binary/electron/';
 
 function expectEqual(label, actual, expected) {
   if (actual !== expected) failures.push(`${label} is ${actual}, expected ${expected}`);
@@ -127,14 +126,6 @@ const npmrcSettings = new Map(npmrcSource.split(/\r?\n/).map((line) => line.spli
 if (npmrcSettings.get('engine-strict') !== 'true') {
   failures.push('.npmrc must enforce engine-strict=true for reproducible installs');
 }
-if (npmrcSettings.get('electron_mirror') !== electronMirror) {
-  failures.push('.npmrc must configure the npmmirror Electron binary source');
-}
-expectEqual(
-  'electron-builder Electron mirror',
-  packageMetadata.build?.electronDownload?.mirrorOptions?.mirror,
-  electronMirror,
-);
 
 if (failures.length) {
   for (const failure of failures) console.error(`Project metadata check failed: ${failure}`);

@@ -39,6 +39,8 @@
 
 ### Project Maintenance
 
+- **build(downloads):** Remove project-specific npmmirror overrides and their metadata checks. npm packages follow the user's registry configuration; Electron binary downloads use their default source unless configured externally.
+
 - **test(e2e):** Stabilize paragraph-width, code-header, outline-navigation, and code-scrollbar checks under two workers by waiting for modal closure, rendered mode changes, settled scrolling, and sustained hover preconditions. Allow subpixel geometry rounding while retaining native copy, scrollbar dragging, layout, and persistence checks. Add IR and WYSIWYG regressions that open the Vditor edit-mode panel across the delayed undo snapshot, then confirm the panel stays operable, undo and redo still restore the text, and switching modes keeps the edit. Wait for the dark theme palette to reach the chrome before comparing the layered surfaces, and for the mode-transition scroll restore to finish before asserting horizontal scrolling in the word-wrap check, so those two checks no longer depend on transition timing.
 - **fix(checks):** Read relocated Chinese README files from `docs/i18n`, validate version badges in all three README languages, and restore the SV README bottom-spacer E2E fixture.
 - **chore(runtime):** Upgrade the pinned Electron desktop runtime from 44.1.0 to 44.5.1, bringing upstream fixes for Linux clipboard responsiveness, KDE trash handling, file-manager reveal, and Chromium graphics.
