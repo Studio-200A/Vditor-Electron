@@ -39,6 +39,8 @@
 
 ### Project Maintenance
 
+- **build(dependencies):** Upgrade Prettier from 3.9.6 to 3.9.10, globals from 17.10.0 to 17.13.0, ESLint from 10.8.1 to 10.13.0, typescript-eslint from 8.67.0 to 8.72.1, jsdom from 30.0.1 to 30.1.3, Playwright Test from 1.62.1 to 1.64.1, lucide-static from 1.37.0 to 1.61.0, and electron-builder from 26.15.3 to 26.18.0.
+
 - **build(downloads):** Remove project-specific npmmirror overrides and their metadata checks. npm packages follow the user's registry configuration; Electron binary downloads use their default source unless configured externally.
 
 - **test(e2e):** Stabilize paragraph-width, code-header, outline-navigation, and code-scrollbar checks under two workers by waiting for modal closure, rendered mode changes, settled scrolling, and sustained hover preconditions. Allow subpixel geometry rounding while retaining native copy, scrollbar dragging, layout, and persistence checks. Add IR and WYSIWYG regressions that open the Vditor edit-mode panel across the delayed undo snapshot, then confirm the panel stays operable, undo and redo still restore the text, and switching modes keeps the edit. Wait for the dark theme palette to reach the chrome before comparing the layered surfaces, and for the mode-transition scroll restore to finish before asserting horizontal scrolling in the word-wrap check, so those two checks no longer depend on transition timing.
