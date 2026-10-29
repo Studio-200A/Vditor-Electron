@@ -39,6 +39,8 @@
 
 ### Project Maintenance
 
+- **build(dependencies):** Upgrade Electron from 44.5.1 to 44.10.0 and Vitest from 4.1.11 to 4.1.12. Update the locked Vite, source-map-js, and undici dependencies to address security advisories.
+
 - **build(dependencies):** Upgrade Prettier from 3.9.6 to 3.9.10, globals from 17.10.0 to 17.13.0, ESLint from 10.8.1 to 10.13.0, typescript-eslint from 8.67.0 to 8.72.1, jsdom from 30.0.1 to 30.1.3, Playwright Test from 1.62.1 to 1.64.1, lucide-static from 1.37.0 to 1.61.0, and electron-builder from 26.15.3 to 26.18.0.
 
 - **build(downloads):** Remove project-specific npmmirror overrides and their metadata checks. npm packages follow the user's registry configuration; Electron binary downloads use their default source unless configured externally.
